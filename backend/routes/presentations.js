@@ -233,7 +233,8 @@ async function runGeneration(presentationId, slidePlan) {
         slide.image_prompt,
         slide.type,
         slidePlan.theme,
-        slidePlan.color_palette
+        slidePlan.color_palette,
+        slide.index
       );
 
       const completedSlide = { ...slide, image_data: imageData, status: 'complete' };
