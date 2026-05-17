@@ -23,53 +23,46 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
 
   const fullPrompt = buildFullPrompt(nanaBananaPrompt, slideType, theme, colorPalette);
 
-  // When reference images are provided, use multimodal Gemini model
-  if (attachedImages.length > 0) {
-    const parts = [{ text: fullPrompt }];
-    for (const img of attachedImages) {
-      if (img?.data) {
-        parts.push({ inlineData: {
-          mimeType: img.mimeType || 'image/png',
-          data: img.data.replace(/^data:[^;]+;base64,/, ''),
-        }});
-      }
-    }
-    parts.push({ text: 'Use the reference images above to match the visual style, layout energy, brand colours, and design language. Generate a premium presentation-ready slide image.' });
-
-    try {
-      const response = await getClient().models.generateContent({
-        model: IMAGE_GEN_MULTIMODAL,
-        contents: [{ role: 'user', parts }],
-        config: { responseModalities: ['IMAGE', 'TEXT'] },
-      });
-      const imagePart = (response.candidates?.[0]?.content?.parts ?? [])
-        .find(p => p.inlineData?.mimeType?.startsWith('image/'));
-      if (imagePart) {
-        return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
-      }
-    } catch (err) {
-      console.warn('Multimodal image generation failed:', err.message);
+  // All slides use Nano Banana (Gemini Flash Image) — supports both text-only and reference image input
+  const parts = [{ text: fullPrompt }];
+  for (const img of attachedImages) {
+    if (img?.data) {
+      parts.push({ inlineData: {
+        mimeType: img.mimeType || 'image/png',
+        data: img.data.replace(/^data:[^;]+;base64,/, ''),
+      }});
     }
   }
+  if (attachedImages.length > 0) {
+    parts.push({ text: 'Use the reference images above to match the visual style, layout energy, brand colours, and design language. Generate a premium presentation-ready slide image.' });
+  }
 
-  // No reference images — use Imagen 3 for best quality
+  try {
+    const response = await getClient().models.generateContent({
+      model: IMAGE_GEN_MULTIMODAL,
+      contents: [{ role: 'user', parts }],
+      config: { responseModalities: ['IMAGE', 'TEXT'] },
+    });
+    const imagePart = (response.candidates?.[0]?.content?.parts ?? [])
+      .find(p => p.inlineData?.mimeType?.startsWith('image/'));
+    if (imagePart) {
+      return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+    }
+  } catch (err) {
+    console.warn('Nano Banana generation failed:', err.message);
+  }
+
+  // Fallback: Imagen 3
   try {
     const response = await getClient().models.generateImages({
       model: IMAGE_GEN_IMAGEN,
       prompt: fullPrompt,
-      config: {
-        numberOfImages: 1,
-        aspectRatio: '16:9',
-        safetyFilterLevel: 'block_only_high',
-        addWatermark: false,
-      },
+      config: { numberOfImages: 1, aspectRatio: '16:9', safetyFilterLevel: 'block_only_high', addWatermark: false },
     });
     const imageBytes = response.generatedImages?.[0]?.image?.imageBytes;
-    if (imageBytes) {
-      return `data:image/png;base64,${Buffer.from(imageBytes).toString('base64')}`;
-    }
+    if (imageBytes) return `data:image/png;base64,${Buffer.from(imageBytes).toString('base64')}`;
   } catch (err) {
-    console.warn('Imagen 3 generation failed:', err.message);
+    console.warn('Imagen 3 fallback failed:', err.message);
   }
 
   return generateRichPlaceholder(slideType, theme, slideIndex);
