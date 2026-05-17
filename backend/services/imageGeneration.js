@@ -2,8 +2,11 @@ import { GoogleGenAI } from '@google/genai';
 
 const MOCK_MODE = !process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY === 'demo';
 
-// Nano Banana — Google AI Studio image generation model
-const IMAGE_GENERATION_MODEL = 'gemini-2.5-flash-preview-05-20';
+// Nano Banana image generation models
+// - Imagen 3: best quality for text-to-image (no reference image input)
+// - Gemini Flash Image: supports multimodal input (reference images attached)
+const IMAGE_GEN_IMAGEN = 'imagen-3.0-generate-002';
+const IMAGE_GEN_MULTIMODAL = 'gemini-2.0-flash-preview-image-generation';
 
 let ai;
 function getClient() {
@@ -20,37 +23,53 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
 
   const fullPrompt = buildFullPrompt(nanaBananaPrompt, slideType, theme, colorPalette);
 
-  // Build content parts: text prompt + any reference images + final instruction
-  const parts = [{ text: fullPrompt }];
+  // When reference images are provided, use multimodal Gemini model
+  if (attachedImages.length > 0) {
+    const parts = [{ text: fullPrompt }];
+    for (const img of attachedImages) {
+      if (img?.data) {
+        parts.push({ inlineData: {
+          mimeType: img.mimeType || 'image/png',
+          data: img.data.replace(/^data:[^;]+;base64,/, ''),
+        }});
+      }
+    }
+    parts.push({ text: 'Use the reference images above to match the visual style, layout energy, brand colours, and design language. Generate a premium presentation-ready slide image.' });
 
-  for (const img of attachedImages) {
-    if (img?.data) {
-      const base64 = img.data.replace(/^data:[^;]+;base64,/, '');
-      const mimeType = img.mimeType || 'image/png';
-      parts.push({ inlineData: { mimeType, data: base64 } });
+    try {
+      const response = await getClient().models.generateContent({
+        model: IMAGE_GEN_MULTIMODAL,
+        contents: [{ role: 'user', parts }],
+        config: { responseModalities: ['IMAGE', 'TEXT'] },
+      });
+      const imagePart = (response.candidates?.[0]?.content?.parts ?? [])
+        .find(p => p.inlineData?.mimeType?.startsWith('image/'));
+      if (imagePart) {
+        return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+      }
+    } catch (err) {
+      console.warn('Multimodal image generation failed:', err.message);
     }
   }
 
-  if (attachedImages.length > 0) {
-    parts.push({
-      text: 'Use the reference images above to match the visual style, layout energy, brand colours, and design language. Generate a premium presentation-ready slide image that incorporates the provided references appropriately.',
-    });
-  }
-
+  // No reference images — use Imagen 3 for best quality
   try {
-    const response = await getClient().models.generateContent({
-      model: IMAGE_GENERATION_MODEL,
-      contents: [{ role: 'user', parts }],
-      config: { responseModalities: ['IMAGE', 'TEXT'] },
+    const response = await getClient().models.generateImages({
+      model: IMAGE_GEN_IMAGEN,
+      prompt: fullPrompt,
+      config: {
+        numberOfImages: 1,
+        aspectRatio: '16:9',
+        safetyFilterLevel: 'block_only_high',
+        addWatermark: false,
+      },
     });
-
-    const responseParts = response.candidates?.[0]?.content?.parts ?? [];
-    const imagePart = responseParts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
-    if (imagePart) {
-      return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+    const imageBytes = response.generatedImages?.[0]?.image?.imageBytes;
+    if (imageBytes) {
+      return `data:image/png;base64,${Buffer.from(imageBytes).toString('base64')}`;
     }
   } catch (err) {
-    console.warn('Nano Banana generation failed:', err.message);
+    console.warn('Imagen 3 generation failed:', err.message);
   }
 
   return generateRichPlaceholder(slideType, theme, slideIndex);
