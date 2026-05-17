@@ -2,174 +2,140 @@ import { GoogleGenAI } from '@google/genai';
 
 const MOCK_MODE = !process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY === 'demo';
 
+// Nano Banana — Google AI Studio image generation model
+const IMAGE_GENERATION_MODEL = 'gemini-2.5-flash-preview-05-20';
+
 let ai;
 function getClient() {
   if (!ai) ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
   return ai;
 }
 
-const THEME_MODIFIERS = {
-  'modern-minimal': 'ultra-clean minimalist design, geometric shapes, ample negative space',
-  'bold-gradient': 'bold vibrant colour gradients, dynamic energetic composition',
-  'corporate': 'professional corporate aesthetic, trustworthy, polished, elegant',
-  'creative': 'creative artistic composition, unique visual style, expressive',
-  'tech': 'futuristic technology aesthetic, digital data visualisation, cutting-edge',
-};
-
-const TYPE_MODIFIERS = {
-  cover: 'hero image, full-bleed, atmospheric, powerful, impactful',
-  section: 'divider graphic, bold, graphic design element, section header vibe',
-  content: 'subtle presentation background, not distracting, soft and airy',
-  quote: 'atmospheric moody background, inspiring, editorial photography style',
-  data: 'abstract data visualisation implied, analytical, graphs and numbers mood',
-  image: 'full-bleed featured hero image, cinematic, high impact',
-  conclusion: 'forward-looking, hopeful, inspiring, bright future aesthetic',
-};
-
-function buildPrompt(basePrompt, slideType, theme, colorPalette) {
-  const parts = [basePrompt];
-  if (theme && THEME_MODIFIERS[theme]) parts.push(THEME_MODIFIERS[theme]);
-  if (slideType && TYPE_MODIFIERS[slideType]) parts.push(TYPE_MODIFIERS[slideType]);
-  if (colorPalette?.primary) {
-    parts.push(`dominant colour palette: ${colorPalette.primary} and ${colorPalette.secondary || ''}`);
-  }
-  parts.push(
-    'professional presentation background',
-    '16:9 widescreen aspect ratio',
-    'no text, no words, no letters',
-    'no UI elements, no watermarks',
-    'photorealistic or premium illustration',
-    'ultra high resolution 4K'
-  );
-  return parts.filter(Boolean).join(', ');
-}
-
-export async function generateSlideImage(basePrompt, slideType, theme, colorPalette, slideIndex = 0) {
+export async function generateSlideImage(nanaBananaPrompt, slideType, theme, colorPalette, slideIndex = 0, attachedImages = []) {
   if (MOCK_MODE) {
-    // Simulate generation time so the loading animation is visible
     const delay = 700 + Math.random() * 900;
     await new Promise(r => setTimeout(r, delay));
     return generateRichPlaceholder(slideType, theme, slideIndex);
   }
 
-  const prompt = buildPrompt(basePrompt, slideType, theme, colorPalette);
+  const fullPrompt = buildFullPrompt(nanaBananaPrompt, slideType, theme, colorPalette);
 
-  try {
-    const response = await getClient().models.generateImages({
-      model: 'imagen-3.0-generate-002',
-      prompt,
-      config: {
-        numberOfImages: 1,
-        aspectRatio: '16:9',
-        safetyFilterLevel: 'block_only_high',
-        addWatermark: false,
-      },
+  // Build content parts: text prompt + any reference images + final instruction
+  const parts = [{ text: fullPrompt }];
+
+  for (const img of attachedImages) {
+    if (img?.data) {
+      const base64 = img.data.replace(/^data:[^;]+;base64,/, '');
+      const mimeType = img.mimeType || 'image/png';
+      parts.push({ inlineData: { mimeType, data: base64 } });
+    }
+  }
+
+  if (attachedImages.length > 0) {
+    parts.push({
+      text: 'Use the reference images above to match the visual style, layout energy, brand colours, and design language. Generate a premium presentation-ready slide image that incorporates the provided references appropriately.',
     });
-    const imageBytes = response.generatedImages[0].image.imageBytes;
-    return `data:image/png;base64,${Buffer.from(imageBytes).toString('base64')}`;
-  } catch (imagenErr) {
-    console.warn('Imagen 3 failed, trying Gemini 2.0 Flash:', imagenErr.message);
   }
 
   try {
     const response = await getClient().models.generateContent({
-      model: 'gemini-2.0-flash-preview-image-generation',
-      contents: prompt,
-      config: { responseModalities: ['IMAGE'] },
+      model: IMAGE_GENERATION_MODEL,
+      contents: [{ role: 'user', parts }],
+      config: { responseModalities: ['IMAGE', 'TEXT'] },
     });
-    const parts = response.candidates?.[0]?.content?.parts ?? [];
-    const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
+
+    const responseParts = response.candidates?.[0]?.content?.parts ?? [];
+    const imagePart = responseParts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
     if (imagePart) {
       return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
     }
-  } catch (geminiErr) {
-    console.warn('Gemini image generation failed:', geminiErr.message);
+  } catch (err) {
+    console.warn('Nano Banana generation failed:', err.message);
   }
 
   return generateRichPlaceholder(slideType, theme, slideIndex);
 }
 
-// ─── Beautiful placeholder gradients ─────────────────────────────────────
+function buildFullPrompt(basePrompt, slideType, theme, colorPalette) {
+  const typeGuidance = {
+    cover: 'hero full-bleed atmospheric powerful impactful opening slide',
+    section: 'bold graphic section divider, strong typographic energy',
+    content: 'clean airy presentation background, not distracting, supports text readability',
+    quote: 'atmospheric moody editorial background, inspiring and cinematic',
+    data: 'analytical structured background, implies data and insight, subtle grid or chart elements',
+    image: 'full-bleed cinematic hero image, high production value',
+    conclusion: 'forward-looking hopeful inspiring bright energy, strong closing feel',
+  };
+
+  const themeGuidance = {
+    'modern-minimal': 'ultra-clean minimalist design, geometric shapes, ample white space, refined typography feel',
+    'bold-gradient': 'bold vibrant colour gradients, dynamic energetic composition, high contrast',
+    'corporate': 'professional corporate aesthetic, trustworthy polished elegant',
+    'creative': 'creative artistic expressive composition, unique visual style',
+    'tech': 'futuristic technology aesthetic, digital data streams, cutting-edge, dark moody',
+  };
+
+  const parts = [
+    basePrompt,
+    'Create a highly engaging, premium, presentation-ready slide image.',
+    'The image should be polished, visually rich, clear, and easy to present.',
+    typeGuidance[slideType] || typeGuidance.content,
+    themeGuidance[theme] || '',
+    colorPalette?.primary ? `Primary colour palette: ${colorPalette.primary}, secondary: ${colorPalette.secondary || ''}` : '',
+    'Professional presentation background, 16:9 widescreen aspect ratio.',
+    'No visible UI elements, no watermarks, no random text overlays.',
+    'Ultra high resolution, photorealistic or premium illustration quality.',
+  ];
+
+  return parts.filter(Boolean).join('. ');
+}
+
+// ─── Rich placeholder gradients (mock / fallback) ─────────────────────────
 
 const GRADIENT_SETS = [
-  // 0: deep purple
   { stops: [['#0f0c29', 0], ['#302b63', 50], ['#24243e', 100]], accent: '#7b61ff' },
-  // 1: ocean teal
   { stops: [['#0f2027', 0], ['#203a43', 50], ['#2c5364', 100]], accent: '#00c9ff' },
-  // 2: midnight navy
   { stops: [['#1a1a2e', 0], ['#16213e', 50], ['#0f3460', 100]], accent: '#4facfe' },
-  // 3: deep indigo
   { stops: [['#141e30', 0], ['#243b55', 100]], accent: '#667eea' },
-  // 4: rich plum
   { stops: [['#2d1b69', 0], ['#11998e', 100]], accent: '#38ef7d' },
-  // 5: dark rose
   { stops: [['#2c003e', 0], ['#f64f59', 100]], accent: '#f093fb' },
-  // 6: forest dark
   { stops: [['#0a3d2e', 0], ['#11998e', 100]], accent: '#43e97b' },
-  // 7: warm amber
   { stops: [['#1a0a00', 0], ['#6b2d0a', 50], ['#f7971e', 100]], accent: '#ffd200' },
-  // 8: slate blue
   { stops: [['#2b2d42', 0], ['#3d4b6b', 100]], accent: '#8ecae6' },
-  // 9: electric
   { stops: [['#0d0d0d', 0], ['#1a0533', 50], ['#0d0d0d', 100]], accent: '#b721ff' },
 ];
 
 const SHAPES = {
-  cover: (w, h, accent) => `
-    <circle cx="${w * 0.85}" cy="${h * 0.15}" r="${h * 0.5}" fill="${accent}" fill-opacity="0.08"/>
-    <circle cx="${w * 0.1}" cy="${h * 0.9}" r="${h * 0.3}" fill="${accent}" fill-opacity="0.06"/>
-    <line x1="0" y1="${h * 0.6}" x2="${w}" y2="${h * 0.6}" stroke="${accent}" stroke-opacity="0.04" stroke-width="1"/>
-  `,
-  section: (w, h, accent) => `
-    <rect x="${w * 0.05}" y="${h * 0.3}" width="${w * 0.9}" height="2" fill="${accent}" fill-opacity="0.15"/>
-    <rect x="${w * 0.05}" y="${h * 0.7}" width="${w * 0.6}" height="1" fill="${accent}" fill-opacity="0.10"/>
-    <circle cx="${w * 0.92}" cy="${h * 0.5}" r="${h * 0.35}" fill="${accent}" fill-opacity="0.05"/>
-  `,
-  content: (w, h, accent) => `
-    <rect x="${w * 0.75}" y="0" width="${w * 0.25}" height="${h}" fill="${accent}" fill-opacity="0.04"/>
-    <circle cx="${w * 0.9}" cy="${h * 0.2}" r="${h * 0.25}" fill="${accent}" fill-opacity="0.06"/>
-    <line x1="${w * 0.05}" y1="${h * 0.88}" x2="${w * 0.5}" y2="${h * 0.88}" stroke="${accent}" stroke-opacity="0.08" stroke-width="1"/>
-  `,
-  data: (w, h, accent) => `
-    ${Array.from({length: 8}, (_, i) => `<line x1="${w * 0.05 + i * w * 0.13}" y1="${h * 0.1}" x2="${w * 0.05 + i * w * 0.13}" y2="${h * 0.9}" stroke="${accent}" stroke-opacity="0.05" stroke-width="1"/>`).join('')}
-    ${Array.from({length: 5}, (_, i) => `<line x1="${w * 0.05}" y1="${h * 0.2 + i * h * 0.16}" x2="${w * 0.95}" y2="${h * 0.2 + i * h * 0.16}" stroke="${accent}" stroke-opacity="0.05" stroke-width="1"/>`).join('')}
-    <circle cx="${w * 0.8}" cy="${h * 0.3}" r="${h * 0.18}" fill="${accent}" fill-opacity="0.07"/>
-  `,
-  quote: (w, h, accent) => `
-    <text x="${w * 0.07}" y="${h * 0.45}" font-size="${h * 0.5}" fill="${accent}" fill-opacity="0.07" font-family="Georgia,serif">&ldquo;</text>
-    <circle cx="${w * 0.85}" cy="${h * 0.75}" r="${h * 0.2}" fill="${accent}" fill-opacity="0.05"/>
-  `,
-  image: (w, h, accent) => `
-    <circle cx="${w * 0.5}" cy="${h * 0.5}" r="${h * 0.55}" fill="${accent}" fill-opacity="0.06"/>
-    <circle cx="${w * 0.5}" cy="${h * 0.5}" r="${h * 0.35}" fill="${accent}" fill-opacity="0.04"/>
-  `,
-  conclusion: (w, h, accent) => `
-    <circle cx="${w * 0.5}" cy="${h * 1.1}" r="${h * 0.8}" fill="${accent}" fill-opacity="0.07"/>
-    <circle cx="${w * 0.5}" cy="${h * 1.1}" r="${h * 0.55}" fill="${accent}" fill-opacity="0.05"/>
-    <line x1="${w * 0.3}" y1="${h * 0.85}" x2="${w * 0.7}" y2="${h * 0.85}" stroke="${accent}" stroke-opacity="0.12" stroke-width="1"/>
-  `,
+  cover: (w, h, a) => `
+    <circle cx="${w*.85}" cy="${h*.15}" r="${h*.5}" fill="${a}" fill-opacity="0.08"/>
+    <circle cx="${w*.1}" cy="${h*.9}" r="${h*.3}" fill="${a}" fill-opacity="0.06"/>`,
+  section: (w, h, a) => `
+    <rect x="${w*.05}" y="${h*.3}" width="${w*.9}" height="2" fill="${a}" fill-opacity="0.15"/>
+    <circle cx="${w*.92}" cy="${h*.5}" r="${h*.35}" fill="${a}" fill-opacity="0.05"/>`,
+  content: (w, h, a) => `
+    <rect x="${w*.75}" y="0" width="${w*.25}" height="${h}" fill="${a}" fill-opacity="0.04"/>
+    <circle cx="${w*.9}" cy="${h*.2}" r="${h*.25}" fill="${a}" fill-opacity="0.06"/>`,
+  data: (w, h, a) => `
+    ${Array.from({length:8},(_,i)=>`<line x1="${w*.05+i*w*.13}" y1="${h*.1}" x2="${w*.05+i*w*.13}" y2="${h*.9}" stroke="${a}" stroke-opacity="0.05" stroke-width="1"/>`).join('')}
+    <circle cx="${w*.8}" cy="${h*.3}" r="${h*.18}" fill="${a}" fill-opacity="0.07"/>`,
+  quote: (w, h, a) => `
+    <text x="${w*.07}" y="${h*.45}" font-size="${h*.5}" fill="${a}" fill-opacity="0.07" font-family="Georgia,serif">&ldquo;</text>`,
+  image: (w, h, a) => `
+    <circle cx="${w*.5}" cy="${h*.5}" r="${h*.55}" fill="${a}" fill-opacity="0.06"/>`,
+  conclusion: (w, h, a) => `
+    <circle cx="${w*.5}" cy="${h*1.1}" r="${h*.8}" fill="${a}" fill-opacity="0.07"/>
+    <circle cx="${w*.5}" cy="${h*1.1}" r="${h*.55}" fill="${a}" fill-opacity="0.05"/>`,
 };
 
 function generateRichPlaceholder(slideType = 'content', theme = 'modern-minimal', index = 0) {
   const palette = GRADIENT_SETS[index % GRADIENT_SETS.length];
   const w = 1600, h = 900;
-
-  const gradStops = palette.stops
-    .map(([color, pct]) => `<stop offset="${pct}%" stop-color="${color}"/>`)
-    .join('');
-
+  const gradStops = palette.stops.map(([c, p]) => `<stop offset="${p}%" stop-color="${c}"/>`).join('');
   const shapesFn = SHAPES[slideType] || SHAPES.content;
-  const shapeSVG = shapesFn(w, h, palette.accent);
-
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-    <defs>
-      <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-        ${gradStops}
-      </linearGradient>
-    </defs>
+    <defs><linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">${gradStops}</linearGradient></defs>
     <rect width="${w}" height="${h}" fill="url(#bg)"/>
-    ${shapeSVG}
+    ${shapesFn(w, h, palette.accent)}
   </svg>`;
-
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
