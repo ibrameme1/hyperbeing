@@ -15,6 +15,8 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [sending, setSending] = useState(false);
+  const [sendingLabel, setSendingLabel] = useState('Thinking…');
+  const [sendError, setSendError] = useState('');
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -47,6 +49,8 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
   async function handleSend() {
     if (!input.trim() && attachments.length === 0) return;
     setSending(true);
+    setSendError('');
+    setSendingLabel('Thinking…');
     const userMsg = {
       id: Date.now().toString(),
       role: 'user',
@@ -58,6 +62,9 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
     setInput('');
     setAttachments([]);
 
+    // Show a more descriptive label after 8s in case Claude is building the slide plan
+    const labelTimer = setTimeout(() => setSendingLabel('Building your slide plan…'), 8000);
+
     try {
       const { data } = await api.post(`/presentations/${presentation.id}/messages`, {
         message: userMsg.content,
@@ -68,11 +75,15 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
       onNewMessage(data.aiMessage);
 
       if (data.aiMessage.metadata?.state === 'ready') {
-        // Refresh presentation to get the updated slide_plan
         const presResp = await api.get(`/presentations/${presentation.id}`);
         onGenerate(presResp.data.presentation);
       }
+    } catch (err) {
+      console.error('Send failed:', err);
+      const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong — please try again';
+      setSendError(msg);
     } finally {
+      clearTimeout(labelTimer);
       setSending(false);
     }
   }
@@ -125,8 +136,14 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
             </div>
             <div className="bubble-ai flex items-center gap-2 text-ios-gray1">
               <Loader2 size={14} className="animate-spin" />
-              <span>Thinking…</span>
+              <span>{sendingLabel}</span>
             </div>
+          </div>
+        )}
+
+        {sendError && (
+          <div className="flex justify-center">
+            <p className="text-sm text-red-500 bg-red-50 rounded-2xl px-4 py-2.5 max-w-sm text-center">{sendError}</p>
           </div>
         )}
 
