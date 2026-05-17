@@ -255,27 +255,49 @@ export async function chat(conversationHistory, userMessage, attachments = []) {
 export async function regenerateSlide(slide, instruction, presentationContext) {
   if (MOCK_MODE) return mockRegenerateSlide(slide, instruction);
 
-  const prompt = `You are Nova, an expert presentation designer.
+  const slideInfo = { ...slide };
+  delete slideInfo.image_data; // exclude base64 from JSON text block
 
-A user wants to update one specific slide in their presentation.
+  const content = [];
+
+  // Attach the current slide image so Claude can see the existing visual
+  if (slide.image_data) {
+    content.push({ type: 'text', text: '[CURRENT SLIDE IMAGE — the visual you are updating:]' });
+    content.push({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: 'image/png',
+        data: slide.image_data.replace(/^data:[^;]+;base64,/, ''),
+      },
+    });
+  }
+
+  content.push({
+    type: 'text',
+    text: `You are Nova, an expert presentation designer.
+
+A user wants to update the slide shown above.
 
 Presentation context:
 ${JSON.stringify(presentationContext, null, 2)}
 
-Current slide:
-${JSON.stringify(slide, null, 2)}
+Current slide metadata:
+${JSON.stringify(slideInfo, null, 2)}
 
 User's change instruction:
 "${instruction}"
 
 Return an updated slide object as valid JSON with the same structure.
 Only modify fields relevant to the instruction.
-Return ONLY the JSON object, nothing else.`;
+The image_prompt should describe a NEW background image that reflects the requested changes.
+Return ONLY the JSON object, nothing else.`,
+  });
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
-    messages: [{ role: 'user', content: prompt }],
+    messages: [{ role: 'user', content }],
   });
 
   const raw = response.content[0].text.trim();
@@ -297,6 +319,12 @@ function buildUserContent(text, attachments) {
   const parts = [{ type: 'text', text }];
   for (const att of attachments) {
     if (att.type === 'image' && att.data) {
+      if (att.category) {
+        const label = att.category === 'moodboard'
+          ? `[MOODBOARD REFERENCE — use for visual style, mood, and aesthetic direction]`
+          : `[BRANDING & PICTURES REFERENCE — use for brand colours, logos, and visual identity]`;
+        parts.push({ type: 'text', text: label });
+      }
       parts.push({
         type: 'image',
         source: {
