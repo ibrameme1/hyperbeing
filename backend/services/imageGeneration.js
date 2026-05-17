@@ -2,10 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 
 const MOCK_MODE = !process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY === 'demo';
 
-// Nano Banana image generation models
-// - Imagen 3: best quality for text-to-image (no reference image input)
-// - Gemini Flash Image: supports multimodal input (reference images attached)
-const IMAGE_GEN_IMAGEN = 'imagen-3.0-generate-002';
+// Nano Banana — only image generation model used
 const IMAGE_GEN_MULTIMODAL = 'gemini-2.0-flash-preview-image-generation';
 
 let ai;
@@ -50,19 +47,6 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
     }
   } catch (err) {
     console.warn('Nano Banana generation failed:', err.message);
-  }
-
-  // Fallback: Imagen 3
-  try {
-    const response = await getClient().models.generateImages({
-      model: IMAGE_GEN_IMAGEN,
-      prompt: fullPrompt,
-      config: { numberOfImages: 1, aspectRatio: '16:9', safetyFilterLevel: 'block_only_high', addWatermark: false },
-    });
-    const imageBytes = response.generatedImages?.[0]?.image?.imageBytes;
-    if (imageBytes) return `data:image/png;base64,${Buffer.from(imageBytes).toString('base64')}`;
-  } catch (err) {
-    console.warn('Imagen 3 fallback failed:', err.message);
   }
 
   return generateRichPlaceholder(slideType, theme, slideIndex);
