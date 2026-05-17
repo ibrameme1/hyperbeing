@@ -157,6 +157,7 @@ export default function Dashboard() {
   const [brandingFiles, setBrandingFiles] = useState([]);
   const [showZones, setShowZones] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [presentations, setPresentations] = useState([]);
   const [presLoading, setPresLoading] = useState(true);
   const textareaRef = useRef(null);
@@ -175,6 +176,7 @@ export default function Dashboard() {
   async function handleSubmit() {
     if (!input.trim() && allAttachments.length === 0) return;
     setLoading(true);
+    setSubmitError('');
     try {
       const { data } = await api.post('/presentations', {
         message: input.trim(),
@@ -185,6 +187,8 @@ export default function Dashboard() {
       navigate(`/presentations/${data.presentation.id}`);
     } catch (err) {
       console.error(err);
+      const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong';
+      setSubmitError(msg);
       setLoading(false);
     }
   }
@@ -292,6 +296,11 @@ export default function Dashboard() {
                   </button>
                 </div>
               </div>
+              {submitError && (
+                <div className="px-5 pb-4">
+                  <p className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-2.5">{submitError}</p>
+                </div>
+              )}
             </div>
 
             {/* Attachment category zones */}
