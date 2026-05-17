@@ -34,6 +34,13 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
     parts.push({ text: 'Use the reference images above to match the visual style, layout energy, brand colours, and design language. Generate a premium presentation-ready slide image.' });
   }
 
+  console.log('\n' + '─'.repeat(60));
+  console.log(`🍌 NANO BANANA — Slide ${slideIndex} [${slideType}]`);
+  console.log('─'.repeat(60));
+  console.log(`Full prompt:\n${fullPrompt}`);
+  console.log(`Attached images: ${attachedImages.length}`);
+  console.log('─'.repeat(60));
+
   try {
     const response = await getClient().models.generateContent({
       model: IMAGE_GEN_MULTIMODAL,
@@ -43,10 +50,12 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
     const imagePart = (response.candidates?.[0]?.content?.parts ?? [])
       .find(p => p.inlineData?.mimeType?.startsWith('image/'));
     if (imagePart) {
+      console.log(`✅ Nano Banana success — slide ${slideIndex}\n`);
       return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
     }
+    console.warn(`⚠️  Nano Banana returned no image for slide ${slideIndex}`);
   } catch (err) {
-    console.warn('Nano Banana generation failed:', err.message);
+    console.warn(`❌ Nano Banana failed for slide ${slideIndex}:`, err.message);
   }
 
   return generateRichPlaceholder(slideType, theme, slideIndex);
