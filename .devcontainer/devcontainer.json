@@ -1,0 +1,25 @@
+{
+  "name": "HyperBeing",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "forwardPorts": [3001, 5173],
+  "portsAttributes": {
+    "5173": {
+      "label": "Frontend",
+      "onAutoForward": "openBrowser"
+    },
+    "3001": {
+      "label": "Backend API",
+      "onAutoForward": "silent"
+    }
+  },
+  "secrets": {
+    "ANTHROPIC_API_KEY": {
+      "description": "Anthropic API key for Claude AI"
+    },
+    "GOOGLE_API_KEY": {
+      "description": "Google API key for Imagen image generation"
+    }
+  },
+  "postCreateCommand": "cd backend && npm install && cd ../frontend && npm install",
+  "postStartCommand": "bash /workspaces/hyperbeing/start.sh"
+}
