@@ -1,83 +1,114 @@
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 
-const STAGES = [
+const STATUS_MESSAGES = [
   'Understanding your brief…',
-  'Planning the narrative…',
-  'Designing slide structure…',
-  'Crafting image prompts…',
-  'Generating visuals…',
-  'Putting it all together…',
+  'Studying your reference images…',
+  'Mapping the right slide structure…',
+  'Crafting the storyline…',
+  'Designing each slide prompt…',
+  'Matching visuals with your uploaded assets…',
+  'Generating slide visuals with Nano Banana…',
+  'Polishing the final presentation…',
 ];
 
-export default function LoadingScreen({ generatedSlides = [], totalSlides = 0, currentStage = 0 }) {
-  const progress = totalSlides > 0 ? (generatedSlides.length / totalSlides) : 0;
-  const stageText = STAGES[Math.min(currentStage, STAGES.length - 1)];
+export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 }) {
+  const [msgIndex, setMsgIndex] = useState(0);
+  const progress = totalSlides > 0 ? generatedSlides.length / totalSlides : 0;
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setMsgIndex(i => (i + 1) % STATUS_MESSAGES.length);
+    }, 3200);
+    return () => clearInterval(id);
+  }, []);
+
+  // When slides start coming in, jump to the Nano Banana message
+  useEffect(() => {
+    if (generatedSlides.length > 0) setMsgIndex(6);
+  }, [generatedSlides.length > 0]);
+
+  const currentMsg = STATUS_MESSAGES[msgIndex];
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden"
-         style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}>
-
-      {/* Ambient glow */}
+    <div
+      className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden"
+      style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
+    >
+      {/* Ambient glows */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/3 left-1/3 w-96 h-96 rounded-full opacity-20 animate-float"
-             style={{ background: 'radial-gradient(circle, #7b61ff 0%, transparent 70%)' }} />
-        <div className="absolute bottom-1/3 right-1/3 w-80 h-80 rounded-full opacity-15 animate-float"
-             style={{ background: 'radial-gradient(circle, #00b4ff 0%, transparent 70%)', animationDelay: '2s' }} />
+        <div
+          className="absolute top-1/3 left-1/3 w-96 h-96 rounded-full opacity-20 animate-float"
+          style={{ background: 'radial-gradient(circle, #7b61ff 0%, transparent 70%)' }}
+        />
+        <div
+          className="absolute bottom-1/3 right-1/3 w-80 h-80 rounded-full opacity-15 animate-float"
+          style={{ background: 'radial-gradient(circle, #00b4ff 0%, transparent 70%)', animationDelay: '2s' }}
+        />
       </div>
 
-      {/* Spinner & stage text */}
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="flex flex-col items-center gap-6 z-10"
+        className="flex flex-col items-center gap-6 z-10 px-6 text-center"
       >
         {/* Pulsing logo */}
         <div className="relative">
           <motion.div
-            animate={{ scale: [1, 1.1, 1], opacity: [0.6, 1, 0.6] }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+            animate={{ scale: [1, 1.15, 1], opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
             className="absolute inset-0 rounded-3xl blur-xl"
             style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
           />
-          <div className="relative w-20 h-20 rounded-3xl flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+          <div
+            className="relative w-20 h-20 rounded-3xl flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+          >
             <Sparkles size={36} className="text-white" />
           </div>
         </div>
 
-        <div className="text-center">
+        {/* Headline */}
+        <p className="text-white/60 text-sm font-semibold uppercase tracking-widest">
+          Creating your presentation…
+        </p>
+
+        {/* Cycling status message */}
+        <div className="h-8 flex items-center">
           <AnimatePresence mode="wait">
             <motion.p
-              key={stageText}
-              initial={{ opacity: 0, y: 8 }}
+              key={currentMsg}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="text-white text-lg font-semibold"
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.4 }}
+              className="text-white text-xl font-semibold"
             >
-              {stageText}
+              {currentMsg}
             </motion.p>
           </AnimatePresence>
-
-          {totalSlides > 0 && (
-            <p className="text-white/50 text-sm mt-1">
-              {generatedSlides.length} of {totalSlides} slides ready
-            </p>
-          )}
         </div>
 
-        {/* Progress bar */}
+        {/* Slide count */}
         {totalSlides > 0 && (
-          <div className="w-64 h-1.5 rounded-full overflow-hidden"
-               style={{ background: 'rgba(255,255,255,0.15)' }}>
-            <motion.div
-              className="h-full rounded-full"
-              style={{ background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)' }}
-              animate={{ width: `${Math.max(progress * 100, 8)}%` }}
-              transition={{ duration: 0.6, ease: 'easeOut' }}
-            />
-          </div>
+          <p className="text-white/40 text-sm">
+            {generatedSlides.length} of {totalSlides} slides ready
+          </p>
         )}
+
+        {/* Progress bar */}
+        <div
+          className="w-72 h-1.5 rounded-full overflow-hidden"
+          style={{ background: 'rgba(255,255,255,0.12)' }}
+        >
+          <motion.div
+            className="h-full rounded-full"
+            style={{ background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)' }}
+            animate={{ width: totalSlides > 0 ? `${Math.max(progress * 100, 5)}%` : '30%' }}
+            transition={totalSlides > 0 ? { duration: 0.6, ease: 'easeOut' } : { duration: 2, repeat: Infinity, repeatType: 'reverse', ease: 'easeInOut' }}
+          />
+        </div>
       </motion.div>
 
       {/* Slide preview strip */}
