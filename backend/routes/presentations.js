@@ -225,16 +225,43 @@ async function runGeneration(presentationId, slidePlan) {
     total_slides: slidePlan.slides.length,
   });
 
+  // Fetch user-uploaded images from the first user message
+  const firstUserMsg = db
+    .prepare(`SELECT attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
+    .get(presentationId);
+
+  let userAttachments = [];
+  try {
+    userAttachments = JSON.parse(firstUserMsg?.attachments || '[]');
+  } catch { userAttachments = []; }
+
+  const moodboardImages = userAttachments.filter(a => a.category === 'moodboard' && a.data);
+  const brandingImages = userAttachments.filter(a => a.category === 'branding' && a.data);
+  const allImages = userAttachments.filter(a => a.data);
+
   for (const slide of slidePlan.slides) {
     broadcast(presentationId, { type: 'slide_generating', index: slide.index });
 
+    // Resolve which images to attach to this slide
+    const categories = slide.attach_image_categories || [];
+    let attachedImages = [];
+    if (categories.includes('all')) {
+      attachedImages = allImages;
+    } else {
+      if (categories.includes('moodboard')) attachedImages.push(...moodboardImages);
+      if (categories.includes('branding')) attachedImages.push(...brandingImages);
+    }
+    // Cap at 3 images to avoid token limits
+    attachedImages = attachedImages.slice(0, 3);
+
     try {
       const imageData = await generateSlideImage(
-        slide.image_prompt,
+        slide.nano_banana_prompt || slide.image_prompt || slide.title,
         slide.type,
         slidePlan.theme,
         slidePlan.color_palette,
-        slide.index
+        slide.index,
+        attachedImages
       );
 
       const completedSlide = { ...slide, image_data: imageData, status: 'complete' };
@@ -249,8 +276,7 @@ async function runGeneration(presentationId, slidePlan) {
   }
 
   db.prepare(
-    `UPDATE presentations SET status = 'completed', slides_data = ?, updated_at = CURRENT_TIMESTAMP
-     WHERE id = ?`
+    `UPDATE presentations SET status = 'completed', slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
   ).run(JSON.stringify(slides), presentationId);
 
   broadcast(presentationId, { type: 'complete', total_slides: slides.length });
@@ -287,11 +313,29 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
         presentation_title: slidePlan.presentation_title,
       });
 
+      const firstUserMsg = db
+        .prepare(`SELECT attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
+        .get(req.params.id);
+      let userAttachments = [];
+      try { userAttachments = JSON.parse(firstUserMsg?.attachments || '[]'); } catch {}
+
+      const categories = updatedSlide.attach_image_categories || slide.attach_image_categories || [];
+      let attachedImages = userAttachments.filter(a => a.data);
+      if (!categories.includes('all')) {
+        attachedImages = attachedImages.filter(a =>
+          (categories.includes('moodboard') && a.category === 'moodboard') ||
+          (categories.includes('branding') && a.category === 'branding')
+        );
+      }
+      attachedImages = attachedImages.slice(0, 3);
+
       const imageData = await generateSlideImage(
-        updatedSlide.image_prompt || slide.image_prompt,
+        updatedSlide.nano_banana_prompt || updatedSlide.image_prompt || slide.nano_banana_prompt || slide.image_prompt,
         updatedSlide.type || slide.type,
         slidePlan.theme,
-        slidePlan.color_palette
+        slidePlan.color_palette,
+        undefined,
+        attachedImages
       );
 
       updatedSlide.image_data = imageData;
