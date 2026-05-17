@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import {
-  Sparkles, Paperclip, Send, LogOut, Plus, X,
-  FileImage, Clock, Trash2, ChevronRight, Loader2
+  Sparkles, Send, LogOut, X, Clock, Trash2, Loader2,
+  ImageIcon, Palette, Plus, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
@@ -15,6 +15,76 @@ function greeting(name) {
   return `Good ${time}, ${name.split(' ')[0]}`;
 }
 
+// ─── Attachment Drop Zone ──────────────────────────────────────────────────
+function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove }) {
+  const onDrop = useCallback(accepted => {
+    accepted.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = e => onAdd({
+        id: Math.random().toString(36).slice(2),
+        name: file.name,
+        type: 'image',
+        mimeType: file.type,
+        data: e.target.result,
+      });
+      reader.readAsDataURL(file);
+    });
+  }, [onAdd]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { 'image/*': [] },
+    multiple: true,
+  });
+
+  return (
+    <div className="bg-white rounded-2xl overflow-hidden shadow-ios">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-ios-gray5">
+        <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0"
+             style={{ background: accentColor + '22' }}>
+          <Icon size={14} style={{ color: accentColor }} />
+        </div>
+        <span className="font-semibold text-gray-900 text-sm">{label}</span>
+        <span className="text-xs text-ios-gray2 ml-auto">{files.length} image{files.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      <div
+        {...getRootProps()}
+        className={`min-h-[90px] p-3 cursor-pointer transition-all duration-200 ${
+          isDragActive ? 'bg-blue-50 ring-2 ring-inset ring-ios-blue' : 'hover:bg-ios-gray6'
+        }`}
+      >
+        <input {...getInputProps()} />
+
+        {files.length === 0 ? (
+          <div className="h-[66px] flex flex-col items-center justify-center text-ios-gray2">
+            <p className="text-xs font-medium">{isDragActive ? 'Drop here' : 'Drop images or click to browse'}</p>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {files.map(f => (
+              <div key={f.id} className="relative group">
+                <img src={f.data} alt={f.name}
+                     className="h-14 w-14 rounded-xl object-cover border border-ios-gray5" />
+                <button
+                  onClick={e => { e.stopPropagation(); onRemove(f.id); }}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-800 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+            <div className="h-14 w-14 rounded-xl border-2 border-dashed border-ios-gray4 flex items-center justify-center hover:border-ios-blue transition-colors">
+              <Plus size={16} className="text-ios-gray2" />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Presentation Card ─────────────────────────────────────────────────────
 function PresentationCard({ pres, onDelete }) {
   const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
@@ -34,13 +104,7 @@ function PresentationCard({ pres, onDelete }) {
     generating: 'bg-orange-100 text-orange-600',
     completed: 'bg-green-100 text-green-600',
   };
-
-  const statusLabels = {
-    chat: 'Draft',
-    ready: 'Ready',
-    generating: 'Generating',
-    completed: 'Complete',
-  };
+  const statusLabels = { chat: 'Draft', ready: 'Ready', generating: 'Generating…', completed: 'Complete' };
 
   return (
     <motion.div
@@ -51,31 +115,32 @@ function PresentationCard({ pres, onDelete }) {
       whileHover={{ scale: 1.02, y: -2 }}
       whileTap={{ scale: 0.98 }}
       onClick={() => navigate(`/presentations/${pres.id}`)}
-      className="bg-white rounded-3xl p-5 shadow-ios cursor-pointer group relative"
+      className="bg-white rounded-2xl overflow-hidden shadow-ios cursor-pointer group relative"
     >
-      {/* Thumbnail placeholder */}
-      <div className="aspect-[16/9] rounded-2xl mb-4 overflow-hidden flex items-center justify-center"
+      <div className="aspect-[16/9] flex items-center justify-center"
            style={{ background: 'linear-gradient(135deg, #667eea22 0%, #764ba222 100%)' }}>
-        <Sparkles className="w-8 h-8 text-ios-indigo opacity-40" />
+        <Sparkles className="w-7 h-7 text-ios-indigo opacity-40" />
       </div>
 
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h3 className="font-semibold text-gray-900 text-sm truncate">{pres.title}</h3>
-          <p className="text-xs text-ios-gray1 mt-0.5 flex items-center gap-1">
-            <Clock size={11} />
-            {new Date(pres.updated_at).toLocaleDateString()}
-          </p>
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="font-semibold text-gray-900 text-sm truncate">{pres.title}</h3>
+            <p className="text-xs text-ios-gray1 mt-0.5 flex items-center gap-1">
+              <Clock size={11} />
+              {new Date(pres.updated_at).toLocaleDateString()}
+            </p>
+          </div>
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg flex-shrink-0 ${statusColors[pres.status] || 'bg-gray-100 text-gray-600'}`}>
+            {statusLabels[pres.status] || pres.status}
+          </span>
         </div>
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg flex-shrink-0 ${statusColors[pres.status] || 'bg-gray-100 text-gray-600'}`}>
-          {statusLabels[pres.status] || pres.status}
-        </span>
       </div>
 
       <button
         onClick={handleDelete}
         disabled={deleting}
-        className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity w-7 h-7 rounded-xl bg-ios-gray5 flex items-center justify-center hover:bg-red-50 hover:text-red-500"
+        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity w-7 h-7 rounded-xl bg-white/90 shadow-ios flex items-center justify-center hover:bg-red-50 hover:text-red-500"
       >
         {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
       </button>
@@ -83,11 +148,14 @@ function PresentationCard({ pres, onDelete }) {
   );
 }
 
+// ─── Dashboard ─────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [input, setInput] = useState('');
-  const [attachments, setAttachments] = useState([]);
+  const [moodboardFiles, setMoodboardFiles] = useState([]);
+  const [brandingFiles, setBrandingFiles] = useState([]);
+  const [showZones, setShowZones] = useState(false);
   const [loading, setLoading] = useState(false);
   const [presentations, setPresentations] = useState([]);
   const [presLoading, setPresLoading] = useState(true);
@@ -99,39 +167,20 @@ export default function Dashboard() {
       .finally(() => setPresLoading(false));
   }, []);
 
-  const onDrop = useCallback(acceptedFiles => {
-    acceptedFiles.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = e => {
-        setAttachments(prev => [...prev, {
-          id: Math.random().toString(36).slice(2),
-          name: file.name,
-          type: file.type.startsWith('image/') ? 'image' : 'file',
-          mimeType: file.type,
-          data: e.target.result,
-        }]);
-      };
-      reader.readAsDataURL(file);
-    });
-  }, []);
-
-  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
-    onDrop,
-    noClick: true,
-    accept: { 'image/*': [] },
-  });
-
-  function removeAttachment(id) {
-    setAttachments(prev => prev.filter(a => a.id !== id));
-  }
+  const allAttachments = [
+    ...moodboardFiles.map(f => ({ ...f, category: 'moodboard' })),
+    ...brandingFiles.map(f => ({ ...f, category: 'branding' })),
+  ];
 
   async function handleSubmit() {
-    if (!input.trim() && attachments.length === 0) return;
+    if (!input.trim() && allAttachments.length === 0) return;
     setLoading(true);
     try {
       const { data } = await api.post('/presentations', {
         message: input.trim(),
-        attachments: attachments.map(a => ({ type: a.type, name: a.name, data: a.data, mimeType: a.mimeType })),
+        attachments: allAttachments.map(a => ({
+          type: a.type, name: a.name, data: a.data, mimeType: a.mimeType, category: a.category,
+        })),
       });
       navigate(`/presentations/${data.presentation.id}`);
     } catch (err) {
@@ -148,10 +197,12 @@ export default function Dashboard() {
     setPresentations(prev => prev.filter(p => p.id !== id));
   }
 
+  const totalAttachments = allAttachments.length;
+
   return (
     <div className="min-h-screen" style={{ background: '#F2F2F7' }}>
-      {/* Navbar */}
-      <nav className="sticky top-0 z-50 flex items-center justify-between px-6 py-4"
+      {/* Nav */}
+      <nav className="sticky top-0 z-50 flex items-center justify-between px-6 py-3"
            style={{ background: 'rgba(242,242,247,0.85)', backdropFilter: 'blur(20px)' }}>
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center"
@@ -169,155 +220,138 @@ export default function Dashboard() {
         </button>
       </nav>
 
-      <main className="max-w-2xl mx-auto px-4 py-10">
-        {/* Greeting */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          className="mb-8"
-        >
-          <p className="text-xs font-semibold tracking-widest text-ios-gray1 uppercase mb-1">
-            {greeting(user?.name || 'there')}
-          </p>
-          <h1 className="text-4xl font-bold text-gray-900 leading-tight tracking-tight">
-            What would you<br />like to create?
-          </h1>
-        </motion.div>
-
-        {/* Composer */}
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <div
-            {...getRootProps()}
-            className={`bg-white rounded-3xl shadow-ios-md transition-all duration-200 ${
-              isDragActive ? 'ring-2 ring-ios-blue shadow-ios-lg' : ''
-            }`}
+      {/* Hero gradient section */}
+      <div style={{ background: 'linear-gradient(160deg, #ece9ff 0%, #e8f0ff 40%, #fce8f4 100%)' }}>
+        <div className="max-w-3xl mx-auto px-4 pt-12 pb-10">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            className="text-center mb-8"
           >
-            <input {...getInputProps()} />
+            <p className="text-xs font-semibold tracking-widest text-purple-500 uppercase mb-2">
+              {greeting(user?.name || 'there')}
+            </p>
+            <h1 className="text-5xl font-bold leading-tight tracking-tight"
+                style={{ background: 'linear-gradient(135deg, #5b4fcf 0%, #9333ea 50%, #ec4899 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              What will you<br />create today?
+            </h1>
+          </motion.div>
 
-            {/* Attachment strip */}
-            <AnimatePresence>
-              {attachments.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="px-4 pt-4 flex gap-2 flex-wrap"
-                >
-                  {attachments.map(att => (
-                    <motion.div
-                      key={att.id}
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.8 }}
-                      className="relative group"
-                    >
-                      {att.type === 'image' ? (
-                        <img
-                          src={att.data}
-                          alt={att.name}
-                          className="h-16 w-16 rounded-xl object-cover border border-ios-gray5"
-                        />
-                      ) : (
-                        <div className="h-16 w-16 rounded-xl bg-ios-gray5 flex flex-col items-center justify-center gap-1">
-                          <FileImage size={20} className="text-ios-gray1" />
-                          <span className="text-[10px] text-ios-gray1 truncate w-full text-center px-1">{att.name}</span>
-                        </div>
-                      )}
-                      <button
-                        onClick={() => removeAttachment(att.id)}
-                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-800 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X size={10} />
-                      </button>
-                    </motion.div>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <div className="p-4">
-              {isDragActive ? (
-                <div className="flex flex-col items-center justify-center py-8 text-ios-blue">
-                  <FileImage size={32} className="mb-2 opacity-60" />
-                  <p className="text-sm font-medium">Drop images here</p>
-                </div>
-              ) : (
+          {/* Composer card */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <div className="bg-white rounded-3xl shadow-ios-xl overflow-hidden">
+              <div className="p-5">
                 <textarea
                   ref={textareaRef}
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Describe your presentation, drop in a brief, paste your content, share a logo — tell me everything…"
+                  placeholder="Describe your presentation — paste your brief, add your content, mention your audience and tone…"
                   rows={4}
                   className="w-full resize-none border-none outline-none text-gray-800 placeholder:text-ios-gray2 text-base bg-transparent leading-relaxed"
                 />
+              </div>
+
+              <div className="flex items-center gap-2 px-5 pb-5 pt-1 border-t border-ios-gray5">
+                {/* Toggle attach zones */}
+                <button
+                  onClick={() => setShowZones(v => !v)}
+                  className={`flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-xl transition-colors ${
+                    showZones || totalAttachments > 0
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'text-ios-gray1 hover:text-gray-900 hover:bg-ios-gray5'
+                  }`}
+                >
+                  <ImageIcon size={15} />
+                  Add references
+                  {totalAttachments > 0 && (
+                    <span className="bg-purple-600 text-white rounded-full text-xs w-5 h-5 flex items-center justify-center font-bold">
+                      {totalAttachments}
+                    </span>
+                  )}
+                  {showZones ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                </button>
+
+                <div className="ml-auto flex items-center gap-2">
+                  <p className="text-xs text-ios-gray2 hidden sm:block">⌘ + Enter</p>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={loading || (!input.trim() && allAttachments.length === 0)}
+                    className="ios-btn py-2 px-5 text-sm"
+                  >
+                    {loading ? (
+                      <><Loader2 size={15} className="animate-spin" /> Starting…</>
+                    ) : (
+                      <><Send size={15} /> Create</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Attachment category zones */}
+            <AnimatePresence>
+              {showZones && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                  animate={{ opacity: 1, height: 'auto', marginTop: 12 }}
+                  exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                  className="grid grid-cols-2 gap-3 overflow-hidden"
+                >
+                  <AttachZone
+                    label="Moodboard"
+                    icon={Palette}
+                    accentColor="#764ba2"
+                    files={moodboardFiles}
+                    onAdd={f => setMoodboardFiles(prev => [...prev, f])}
+                    onRemove={id => setMoodboardFiles(prev => prev.filter(f => f.id !== id))}
+                  />
+                  <AttachZone
+                    label="Branding & Pictures"
+                    icon={ImageIcon}
+                    accentColor="#007AFF"
+                    files={brandingFiles}
+                    onAdd={f => setBrandingFiles(prev => [...prev, f])}
+                    onRemove={id => setBrandingFiles(prev => prev.filter(f => f.id !== id))}
+                  />
+                </motion.div>
               )}
-            </div>
+            </AnimatePresence>
+          </motion.div>
+        </div>
+      </div>
 
-            {/* Bottom bar */}
-            <div className="flex items-center justify-between px-4 pb-4 pt-2 border-t border-ios-gray5">
-              <button
-                onClick={open}
-                className="flex items-center gap-1.5 text-ios-gray1 hover:text-ios-blue transition-colors text-sm font-medium"
-              >
-                <Paperclip size={16} />
-                Attach
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={loading || (!input.trim() && attachments.length === 0)}
-                className="ios-btn py-2 px-5 text-sm"
-              >
-                {loading ? (
-                  <><Loader2 size={15} className="animate-spin" /> Starting…</>
-                ) : (
-                  <><Send size={15} /> Create</>
-                )}
-              </button>
-            </div>
-          </div>
-
-          <p className="text-center text-xs text-ios-gray2 mt-3">
-            ⌘ + Enter to submit · Drop images to attach
-          </p>
-        </motion.div>
-
-        {/* Recent presentations */}
+      {/* Recent presentations */}
+      <main className="max-w-4xl mx-auto px-4 py-10">
         {(presLoading || presentations.length > 0) && (
           <motion.section
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className="mt-12"
           >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-gray-900 text-lg">Recent</h2>
-              <button
-                onClick={() => setInput('')}
-                className="flex items-center gap-1 text-ios-blue text-sm font-medium"
-              >
-                <Plus size={16} />
-                New
-              </button>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="font-bold text-gray-900 text-xl">Recents</h2>
             </div>
 
             {presLoading ? (
-              <div className="grid grid-cols-2 gap-4">
-                {[0,1,2,3].map(i => (
-                  <div key={i} className="bg-white rounded-3xl p-5 shadow-ios">
-                    <div className="aspect-[16/9] rounded-2xl skeleton mb-4" />
-                    <div className="h-4 rounded-lg skeleton mb-2 w-3/4" />
-                    <div className="h-3 rounded-lg skeleton w-1/2" />
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {[0, 1, 2, 3, 4, 5].map(i => (
+                  <div key={i} className="bg-white rounded-2xl overflow-hidden shadow-ios">
+                    <div className="aspect-[16/9] skeleton" />
+                    <div className="p-4 space-y-2">
+                      <div className="h-4 rounded-lg skeleton w-3/4" />
+                      <div className="h-3 rounded-lg skeleton w-1/2" />
+                    </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <motion.div layout className="grid grid-cols-2 gap-4">
+              <motion.div layout className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 <AnimatePresence>
                   {presentations.map(p => (
                     <PresentationCard key={p.id} pres={p} onDelete={handleDeletePresentation} />
@@ -326,6 +360,16 @@ export default function Dashboard() {
               </motion.div>
             )}
           </motion.section>
+        )}
+
+        {!presLoading && presentations.length === 0 && (
+          <div className="text-center py-16">
+            <div className="w-16 h-16 rounded-3xl mx-auto mb-4 flex items-center justify-center"
+                 style={{ background: 'linear-gradient(135deg, #667eea22 0%, #764ba222 100%)' }}>
+              <Sparkles size={28} className="text-ios-indigo opacity-60" />
+            </div>
+            <p className="text-gray-500 text-sm">Your presentations will appear here.</p>
+          </div>
         )}
       </main>
     </div>

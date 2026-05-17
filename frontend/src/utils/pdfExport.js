@@ -1,6 +1,19 @@
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
+export function exportImages(slides, title = 'Presentation') {
+  const safeName = title.replace(/[^a-z0-9]/gi, '_');
+  slides.forEach((slide, i) => {
+    if (!slide.image_data) return;
+    const link = document.createElement('a');
+    link.href = slide.image_data;
+    link.download = `${safeName}_slide_${i + 1}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+}
+
 export async function exportToPDF(slides, title = 'Presentation') {
   const pdf = new jsPDF({
     orientation: 'landscape',
