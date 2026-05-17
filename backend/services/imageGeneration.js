@@ -2,8 +2,8 @@ import { GoogleGenAI } from '@google/genai';
 
 const MOCK_MODE = !process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY === 'demo';
 
-// Nano Banana — only image generation model used
-const IMAGE_GEN_MULTIMODAL = 'gemini-2.0-flash-preview-image-generation';
+// Nano Banana — Google AI Studio image generation model
+const IMAGE_GEN_MULTIMODAL = 'gemini-2.5-flash-image';
 
 let ai;
 function getClient() {
