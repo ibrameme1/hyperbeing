@@ -332,6 +332,28 @@ export default function Dashboard() {
               )}
             </AnimatePresence>
           </motion.div>
+
+          {/* Prompt Generator shortcut */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <button
+              onClick={() => navigate('/prompt-generator')}
+              className="w-full flex items-center gap-3 bg-white/70 hover:bg-white rounded-2xl px-5 py-3.5 shadow-ios transition-all duration-150 active:scale-[0.99] mt-3"
+            >
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                   style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}>
+                <Sparkles size={15} className="text-white" />
+              </div>
+              <div className="text-left min-w-0">
+                <p className="font-semibold text-gray-900 text-sm">Prompt Generator</p>
+                <p className="text-xs text-ios-gray1">Generate cinematic image prompts with Nova</p>
+              </div>
+              <ChevronDown size={16} className="text-ios-gray2 ml-auto flex-shrink-0 -rotate-90" />
+            </button>
+          </motion.div>
         </div>
       </div>
 

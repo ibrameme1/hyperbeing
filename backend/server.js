@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { initDatabase } from './database.js';
 import authRoutes from './routes/auth.js';
 import presentationRoutes from './routes/presentations.js';
+import promptChatRoutes from './routes/promptChat.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -20,6 +21,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/presentations', presentationRoutes);
+app.use('/api/prompt-chat', promptChatRoutes);
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 

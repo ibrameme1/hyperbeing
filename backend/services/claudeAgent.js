@@ -265,6 +265,16 @@ export async function chat(conversationHistory, userMessage, attachments = []) {
     { role: 'user', content: userContent },
   ];
 
+  console.log('\n' + '═'.repeat(60));
+  console.log('📨 CLAUDE API INPUT');
+  console.log('═'.repeat(60));
+  console.log(`Turn: ${messages.length} messages`);
+  messages.forEach((m, i) => {
+    const content = typeof m.content === 'string' ? m.content : `[multipart: ${Array.isArray(m.content) ? m.content.map(p => p.type).join(', ') : 'object'}]`;
+    console.log(`  [${i}] ${m.role}: ${content.slice(0, 200)}${content.length > 200 ? '…' : ''}`);
+  });
+  console.log('═'.repeat(60));
+
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 4096,
@@ -277,13 +287,31 @@ export async function chat(conversationHistory, userMessage, attachments = []) {
     ? raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
     : raw;
 
+  let parsed;
   try {
-    return JSON.parse(jsonText);
+    parsed = JSON.parse(jsonText);
   } catch {
     const match = jsonText.match(/\{[\s\S]*\}/);
-    if (match) return JSON.parse(match[0]);
-    return { message: raw, state: 'gathering_info', slide_plan: null };
+    if (match) parsed = JSON.parse(match[0]);
+    else parsed = { message: raw, state: 'gathering_info', slide_plan: null };
   }
+
+  console.log('\n' + '═'.repeat(60));
+  console.log('🤖 CLAUDE API OUTPUT');
+  console.log('═'.repeat(60));
+  console.log(`State: ${parsed.state}`);
+  console.log(`Message: ${parsed.message?.slice(0, 300)}${(parsed.message?.length ?? 0) > 300 ? '…' : ''}`);
+  if (parsed.slide_plan) {
+    console.log(`Slide plan: ${parsed.slide_plan.total_slides} slides — "${parsed.slide_plan.presentation_title}"`);
+    parsed.slide_plan.slides?.forEach(s => {
+      console.log(`\n  Slide ${s.index} [${s.type}]: ${s.title}`);
+      console.log(`  Nano Banana prompt: ${(s.nano_banana_prompt || '—').slice(0, 200)}…`);
+      console.log(`  Attach categories: ${JSON.stringify(s.attach_image_categories)}`);
+    });
+  }
+  console.log('═'.repeat(60) + '\n');
+
+  return parsed;
 }
 
 export async function regenerateSlide(slide, instruction, presentationContext) {

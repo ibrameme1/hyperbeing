@@ -3,7 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 const MOCK_MODE = !process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY === 'demo';
 
 // Nano Banana — Google AI Studio image generation model
-const IMAGE_GENERATION_MODEL = 'gemini-2.5-flash-preview-05-20';
+const IMAGE_GEN_MULTIMODAL = 'gemini-2.5-flash-image';
 
 let ai;
 function getClient() {
@@ -20,37 +20,42 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
 
   const fullPrompt = buildFullPrompt(nanaBananaPrompt, slideType, theme, colorPalette);
 
-  // Build content parts: text prompt + any reference images + final instruction
+  // All slides use Nano Banana (Gemini Flash Image) — supports both text-only and reference image input
   const parts = [{ text: fullPrompt }];
-
   for (const img of attachedImages) {
     if (img?.data) {
-      const base64 = img.data.replace(/^data:[^;]+;base64,/, '');
-      const mimeType = img.mimeType || 'image/png';
-      parts.push({ inlineData: { mimeType, data: base64 } });
+      parts.push({ inlineData: {
+        mimeType: img.mimeType || 'image/png',
+        data: img.data.replace(/^data:[^;]+;base64,/, ''),
+      }});
     }
   }
-
   if (attachedImages.length > 0) {
-    parts.push({
-      text: 'Use the reference images above to match the visual style, layout energy, brand colours, and design language. Generate a premium presentation-ready slide image that incorporates the provided references appropriately.',
-    });
+    parts.push({ text: 'Use the reference images above to match the visual style, layout energy, brand colours, and design language. Generate a premium presentation-ready slide image.' });
   }
+
+  console.log('\n' + '─'.repeat(60));
+  console.log(`🍌 NANO BANANA — Slide ${slideIndex} [${slideType}]`);
+  console.log('─'.repeat(60));
+  console.log(`Full prompt:\n${fullPrompt}`);
+  console.log(`Attached images: ${attachedImages.length}`);
+  console.log('─'.repeat(60));
 
   try {
     const response = await getClient().models.generateContent({
-      model: IMAGE_GENERATION_MODEL,
+      model: IMAGE_GEN_MULTIMODAL,
       contents: [{ role: 'user', parts }],
       config: { responseModalities: ['IMAGE', 'TEXT'] },
     });
-
-    const responseParts = response.candidates?.[0]?.content?.parts ?? [];
-    const imagePart = responseParts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
+    const imagePart = (response.candidates?.[0]?.content?.parts ?? [])
+      .find(p => p.inlineData?.mimeType?.startsWith('image/'));
     if (imagePart) {
+      console.log(`✅ Nano Banana success — slide ${slideIndex}\n`);
       return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
     }
+    console.warn(`⚠️  Nano Banana returned no image for slide ${slideIndex}`);
   } catch (err) {
-    console.warn('Nano Banana generation failed:', err.message);
+    console.warn(`❌ Nano Banana failed for slide ${slideIndex}:`, err.message);
   }
 
   return generateRichPlaceholder(slideType, theme, slideIndex);

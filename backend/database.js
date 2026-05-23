@@ -49,6 +49,15 @@ export function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (presentation_id) REFERENCES presentations(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS prompt_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      history TEXT DEFAULT '[]',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 
   console.log('✅ Database ready');
