@@ -46,9 +46,9 @@ router.post('/analyze', authenticateToken, async (req, res) => {
   }
 });
 
-// ─── Create presentation + send first message ──────────────────────────────
-router.post('/', authenticateToken, async (req, res) => {
-  const { message, attachments = [] } = req.body;
+// ─── Create presentation + kick off async full flow ───────────────────────
+router.post('/', authenticateToken, (req, res) => {
+  const { message, attachments = [], aspectRatio = '16:9' } = req.body;
   if (!message?.trim() && attachments.length === 0) {
     return res.status(400).json({ error: 'Message or attachment required' });
   }
@@ -57,10 +57,9 @@ router.post('/', authenticateToken, async (req, res) => {
   const id = uuid();
   const msgId = uuid();
 
-  const { aspectRatio = '16:9' } = req.body;
   db.prepare(
     `INSERT INTO presentations (id, user_id, title, status, aspect_ratio)
-     VALUES (?, ?, 'Untitled Presentation', 'chat', ?)`
+     VALUES (?, ?, 'Untitled Presentation', 'processing', ?)`
   ).run(id, req.user.id, aspectRatio);
 
   db.prepare(
@@ -68,32 +67,48 @@ router.post('/', authenticateToken, async (req, res) => {
      VALUES (?, ?, 'user', ?, ?)`
   ).run(msgId, id, message, JSON.stringify(attachments));
 
-  try {
-    const agentResponse = await chat([], message, attachments);
-    const aiMsgId = uuid();
+  // Respond immediately — Claude planning + image generation run async
+  res.status(201).json({
+    presentation: db.prepare('SELECT * FROM presentations WHERE id = ?').get(id),
+  });
 
-    db.prepare(
-      `INSERT INTO messages (id, presentation_id, role, content, metadata)
-       VALUES (?, ?, 'assistant', ?, ?)`
-    ).run(aiMsgId, id, agentResponse.message, JSON.stringify(agentResponse));
-
-    if (agentResponse.state === 'ready' && agentResponse.slide_plan) {
-      const { presentation_title } = agentResponse.slide_plan;
-      db.prepare(
-        `UPDATE presentations SET title = ?, slide_plan = ?, status = 'ready', updated_at = CURRENT_TIMESTAMP
-         WHERE id = ?`
-      ).run(presentation_title || 'Untitled Presentation', JSON.stringify(agentResponse.slide_plan), id);
-    }
-
-    res.status(201).json({
-      presentation: db.prepare('SELECT * FROM presentations WHERE id = ?').get(id),
-      aiMessage: { id: aiMsgId, role: 'assistant', content: agentResponse.message, metadata: agentResponse },
-    });
-  } catch (err) {
-    console.error('Agent error:', err);
-    res.status(500).json({ error: 'AI agent failed', detail: err.message });
-  }
+  runFullFlow(id, message, attachments).catch(err => {
+    console.error('Full flow error:', err);
+    broadcast(id, { type: 'error', message: err.message });
+    getDb().prepare(`UPDATE presentations SET status = 'error', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(id);
+  });
 });
+
+async function runFullFlow(presentationId, message, attachments) {
+  const db = getDb();
+
+  broadcast(presentationId, { type: 'plan_generating' });
+
+  const agentResponse = await chat([], message, attachments);
+  const aiMsgId = uuid();
+
+  db.prepare(
+    `INSERT INTO messages (id, presentation_id, role, content, metadata)
+     VALUES (?, ?, 'assistant', ?, ?)`
+  ).run(aiMsgId, presentationId, agentResponse.message, JSON.stringify(agentResponse));
+
+  if (agentResponse.state === 'ready' && agentResponse.slide_plan) {
+    const { presentation_title, slides } = agentResponse.slide_plan;
+    db.prepare(
+      `UPDATE presentations SET title = ?, slide_plan = ?, status = 'generating', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+    ).run(presentation_title || 'Untitled Presentation', JSON.stringify(agentResponse.slide_plan), presentationId);
+
+    broadcast(presentationId, { type: 'plan_ready', total_slides: slides.length });
+
+    await runGeneration(presentationId, agentResponse.slide_plan);
+  } else {
+    // Nova wants more info — fall back to chat mode so user can continue
+    db.prepare(
+      `UPDATE presentations SET status = 'chat', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+    ).run(presentationId);
+    broadcast(presentationId, { type: 'chat_needed', message: agentResponse.message });
+  }
+}
 
 // ─── Get single presentation with messages ────────────────────────────────
 router.get('/:id', authenticateToken, (req, res) => {

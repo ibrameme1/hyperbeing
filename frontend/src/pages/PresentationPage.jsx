@@ -268,7 +268,7 @@ export default function PresentationPage() {
         setGeneratedSlides(data.presentation.slides_data);
         setPhase('viewing');
         startSSE(id); // stay subscribed for slide_updated events
-      } else if (data.presentation.status === 'generating') {
+      } else if (data.presentation.status === 'generating' || data.presentation.status === 'processing') {
         setPhase('generating');
         startSSE(id);
       } else {
@@ -292,9 +292,29 @@ export default function PresentationPage() {
     sse.onmessage = (e) => {
       const event = JSON.parse(e.data);
 
+      if (event.type === 'plan_generating') {
+        setPhase('generating');
+      }
+
+      if (event.type === 'plan_ready') {
+        setTotalSlides(event.total_slides);
+      }
+
+      if (event.type === 'chat_needed') {
+        // Nova wants more info — reload messages and show chat UI
+        api.get(`/presentations/${id}`).then(({ data }) => {
+          setPresentation(data.presentation);
+          setMessages(data.messages.map(m => ({
+            ...m,
+            attachments: Array.isArray(m.attachments) ? m.attachments : [],
+            metadata: m.metadata || {},
+          })));
+          setPhase('chat');
+        });
+      }
+
       if (event.type === 'started') {
         setTotalSlides(event.total_slides);
-        setGenerationStage(2);
         stageTimer = setInterval(() => {
           setGenerationStage(s => Math.min(s + 1, 4));
         }, 4000);

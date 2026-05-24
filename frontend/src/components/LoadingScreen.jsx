@@ -2,34 +2,37 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 
-const STATUS_MESSAGES = [
-  'Understanding your brief…',
-  'Studying your reference images…',
-  'Mapping the right slide structure…',
-  'Crafting the storyline…',
-  'Designing each slide prompt…',
-  'Matching visuals with your uploaded assets…',
+const PLANNING_MESSAGES = [
+  'Nova is crafting your slide plan…',
+  'Deciding the perfect narrative structure…',
+  'Writing detailed visual directions…',
+  'Choosing themes and colour palettes…',
+  'Preparing prompts for Nano Banana…',
+];
+
+const GENERATING_MESSAGES = [
   'Generating slide visuals with Nano Banana…',
-  'Polishing the final presentation…',
+  'Rendering your presentation visuals…',
+  'Nano Banana is painting your slides…',
+  'Bringing your presentation to life…',
+  'Almost there — finishing your slides…',
 ];
 
 export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 }) {
   const [msgIndex, setMsgIndex] = useState(0);
+  const isGenerating = totalSlides > 0;
+  const messages = isGenerating ? GENERATING_MESSAGES : PLANNING_MESSAGES;
   const progress = totalSlides > 0 ? generatedSlides.length / totalSlides : 0;
 
   useEffect(() => {
+    setMsgIndex(0);
     const id = setInterval(() => {
-      setMsgIndex(i => (i + 1) % STATUS_MESSAGES.length);
+      setMsgIndex(i => (i + 1) % messages.length);
     }, 3200);
     return () => clearInterval(id);
-  }, []);
+  }, [isGenerating]);
 
-  // When slides start coming in, jump to the Nano Banana message
-  useEffect(() => {
-    if (generatedSlides.length > 0) setMsgIndex(6);
-  }, [generatedSlides.length > 0]);
-
-  const currentMsg = STATUS_MESSAGES[msgIndex];
+  const currentMsg = messages[msgIndex];
 
   return (
     <div

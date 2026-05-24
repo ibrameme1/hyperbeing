@@ -10,88 +10,6 @@ import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
 import QuestionFlow from '../components/QuestionFlow';
 
-const CREATING_MESSAGES = [
-  'Nova is reading your answers…',
-  'Mapping the perfect slide structure…',
-  'Crafting the narrative flow…',
-  'Writing detailed slide prompts…',
-  'Selecting themes and colour palette…',
-  'Preparing Nano Banana for your visuals…',
-  'Almost there — finalising your plan…',
-];
-
-function CreatingScreen() {
-  const [msgIndex, setMsgIndex] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => setMsgIndex(i => (i + 1) % CREATING_MESSAGES.length), 2800);
-    return () => clearInterval(id);
-  }, []);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex flex-col items-center justify-center"
-      style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
-    >
-      {/* Ambient glows */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/3 left-1/3 w-96 h-96 rounded-full opacity-20 animate-float"
-             style={{ background: 'radial-gradient(circle, #7b61ff 0%, transparent 70%)' }} />
-        <div className="absolute bottom-1/3 right-1/3 w-80 h-80 rounded-full opacity-15 animate-float"
-             style={{ background: 'radial-gradient(circle, #00b4ff 0%, transparent 70%)', animationDelay: '2s' }} />
-      </div>
-
-      <div className="flex flex-col items-center gap-6 z-10 px-6 text-center">
-        {/* Pulsing logo */}
-        <div className="relative">
-          <motion.div
-            animate={{ scale: [1, 1.15, 1], opacity: [0.5, 1, 0.5] }}
-            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute inset-0 rounded-3xl blur-xl"
-            style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
-          />
-          <div className="relative w-20 h-20 rounded-3xl flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-            <Sparkles size={36} className="text-white" />
-          </div>
-        </div>
-
-        <p className="text-white/60 text-sm font-semibold uppercase tracking-widest">
-          Building your presentation
-        </p>
-
-        <div className="h-8 flex items-center">
-          <AnimatePresence mode="wait">
-            <motion.p
-              key={msgIndex}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.4 }}
-              className="text-white text-xl font-semibold"
-            >
-              {CREATING_MESSAGES[msgIndex]}
-            </motion.p>
-          </AnimatePresence>
-        </div>
-
-        {/* Indeterminate progress bar */}
-        <div className="w-72 h-1.5 rounded-full overflow-hidden"
-             style={{ background: 'rgba(255,255,255,0.12)' }}>
-          <motion.div
-            className="h-full rounded-full"
-            style={{ background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)' }}
-            animate={{ width: ['10%', '70%', '10%'] }}
-            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-          />
-        </div>
-      </div>
-    </motion.div>
-  );
-}
 
 function greeting(name) {
   const h = new Date().getHours();
@@ -240,7 +158,6 @@ export default function Dashboard() {
   const [moodboardFiles, setMoodboardFiles] = useState([]);
   const [brandingFiles, setBrandingFiles] = useState([]);
   const [showZones, setShowZones] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [presentations, setPresentations] = useState([]);
   const [presLoading, setPresLoading] = useState(true);
@@ -286,10 +203,8 @@ export default function Dashboard() {
 
   async function handleQuestionComplete(answers, suggestedSlideCount) {
     setShowQuestionFlow(false);
-    setLoading(true);
     setSubmitError('');
 
-    // Build comprehensive message with all pre-flight answers
     const qaSection = answers.map(a => `- ${a.question}: ${a.answer}`).join('\n');
     const comprehensiveMessage = `${pendingInput}\n\nPREFLIGHT ANSWERS:\n${qaSection}\n\nDetected type: ${analysis.detected_type || ''}\nDetected industry: ${analysis.detected_industry || ''}\nSuggested slides: ${suggestedSlideCount || analysis.suggested_slide_count || 8}\n\nPlease generate the full presentation now.`;
 
@@ -303,7 +218,6 @@ export default function Dashboard() {
     } catch (err) {
       const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong';
       setSubmitError(msg);
-      setLoading(false);
     }
   }
 
@@ -327,9 +241,6 @@ export default function Dashboard() {
           onCancel={() => { setShowQuestionFlow(false); setLoading(false); }}
         />
       )}
-    </AnimatePresence>
-    <AnimatePresence>
-      {loading && <CreatingScreen />}
     </AnimatePresence>
     <div className="min-h-screen" style={{ background: '#F2F2F7' }}>
       {/* Nav */}
@@ -429,13 +340,11 @@ export default function Dashboard() {
                   <p className="text-xs text-ios-gray2 hidden sm:block">⌘ + Enter</p>
                   <button
                     onClick={handleSubmit}
-                    disabled={analyzing || loading || (!input.trim() && allAttachments.length === 0)}
+                    disabled={analyzing || (!input.trim() && allAttachments.length === 0)}
                     className="ios-btn py-2 px-5 text-sm"
                   >
                     {analyzing ? (
                       <><Loader2 size={15} className="animate-spin" /> Analyzing…</>
-                    ) : loading ? (
-                      <><Loader2 size={15} className="animate-spin" /> Creating…</>
                     ) : (
                       <><Send size={15} /> Create</>
                     )}
