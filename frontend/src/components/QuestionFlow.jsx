@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, ArrowRight } from 'lucide-react';
 
 const SLIDE_COUNT_QUESTION = {
   question: 'How many slides do you want?',
-  options: ['5 slides', '8 slides', '10 slides', '12 slides', '15 slides'],
+  options: ['5 slides', '8 slides', '10 slides', '12 slides', '15 slides', 'Custom'],
   isSlideCount: true,
 };
 
@@ -14,19 +14,31 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [customCount, setCustomCount] = useState('');
   const [direction, setDirection] = useState(1);
+  const customInputRef = useRef(null);
 
   const question = allQuestions[currentIndex];
+  const isSlideCountStep = question?.isSlideCount;
+  const isCustomSelected = selected === 'Custom';
   const isLast = currentIndex === allQuestions.length - 1;
   const total = allQuestions.length;
 
+  useEffect(() => {
+    if (isCustomSelected) customInputRef.current?.focus();
+  }, [isCustomSelected]);
+
   function handleSelect(option) {
     setSelected(option);
+    if (option !== 'Custom') setCustomCount('');
   }
 
+  const canProceed = selected && (selected !== 'Custom' || (customCount !== '' && parseInt(customCount) >= 1 && parseInt(customCount) <= 50));
+
   function handleNext() {
-    if (!selected) return;
-    const newAnswers = [...answers, { question: question.question, answer: selected }];
+    if (!canProceed) return;
+    const answer = isCustomSelected ? `${parseInt(customCount)} slides` : selected;
+    const newAnswers = [...answers, { question: question.question, answer }];
 
     if (isLast) {
       const slideCountStr = newAnswers.find(a => a.question === SLIDE_COUNT_QUESTION.question)?.answer || '';
@@ -36,6 +48,7 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
       setDirection(1);
       setAnswers(newAnswers);
       setSelected(null);
+      setCustomCount('');
       setCurrentIndex(i => i + 1);
     }
   }
@@ -129,6 +142,32 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
                   {option}
                 </motion.button>
               ))}
+
+              <AnimatePresence>
+                {isSlideCountStep && isCustomSelected && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                    animate={{ opacity: 1, height: 'auto', marginTop: 8 }}
+                    exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                    className="w-full overflow-hidden"
+                  >
+                    <div className="flex items-center gap-3 bg-gray-50 border-2 border-purple-300 rounded-2xl px-4 py-3">
+                      <input
+                        ref={customInputRef}
+                        type="number"
+                        min="1"
+                        max="50"
+                        value={customCount}
+                        onChange={e => setCustomCount(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleNext()}
+                        placeholder="Enter a number (1–50)"
+                        className="flex-1 bg-transparent text-sm font-semibold text-gray-800 placeholder:text-gray-400 outline-none"
+                      />
+                      <span className="text-xs text-gray-400 font-medium flex-shrink-0">slides</span>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           </AnimatePresence>
 
@@ -143,7 +182,7 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={handleNext}
-              disabled={!selected}
+              disabled={!canProceed}
               className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold text-white transition-all disabled:opacity-30"
               style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
             >
