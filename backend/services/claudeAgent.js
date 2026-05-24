@@ -239,17 +239,38 @@ SLIDE STRUCTURE RULES:
 - Below the headline in key_points, include supporting detail: data points, explanation, or context that expands on the headline.
 - Cover and title slides (type "cover") keep their original format — do not force a key takeaway structure on them.
 
-EVERY nano_banana_prompt must describe in specific detail:
-1. SCENE: Exactly what is visually happening. If a person is present — describe their exact position, posture, what they are doing, what surrounds them, any objects or screens they interact with. If it is a product — describe the surface, background, angle, surrounding props. If it is a data/consulting slide — describe a premium environment (sleek boardroom, abstract data rendered as a physical object, confident executive reviewing structured information). If it is a marketing/brand slide — describe the specific emotion, energy, and aesthetic of the scene cinematically.
-2. SHOT TYPE: Specific shot type (e.g. wide cinematic establishing shot, macro close-up, aerial overhead, eye-level medium shot, dramatic low angle).
-3. COLOR PALETTE: Dominant colors with specific names (e.g. deep navy blue, warm amber, muted sage green, rich burgundy — never just "dark" or "bright").
-4. MOOD: Specific mood and atmosphere (e.g. aspirational and expansive, quietly tense, electric and urgent, calm and authoritative).
-5. LIGHTING: Include lighting direction only when genuinely relevant and impactful to the scene (e.g. golden hour backlight, dramatic single-source side lighting, soft diffused studio light). Do not add lighting as a checkbox item on every slide.
-6. VISUAL STYLE REFERENCE: Name a specific visual style that fits the presentation type (e.g. Apple keynote product aesthetic, McKinsey consulting visual language, Nat Geo documentary cinematography, editorial fashion photography, Nike campaign energy).
-7. BANNED DESCRIPTIONS — never use these or any variation: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart". Always find a specific, art-directed visual concept.
-8. MOODBOARD REFERENCE: If the user uploaded moodboard or reference images, explicitly describe which visual elements, colors, and mood from those references should carry into this specific slide.
-9. END EVERY PROMPT WITH EXACTLY: "no text, no logos, no typography, photorealistic"
-10. NEVER mention aspect ratio in the prompt text — aspect ratio is handled separately as an API parameter.
+VISUAL DESIGN PRINCIPLES — internalize these for every prompt:
+
+DEFAULT AESTHETIC: Pure black (#000000) or near-black (#0A0A0A) backgrounds. Darkness is the luxury. Scarcity of design elements is the design. Never default to light, airy, or gradient-heavy unless the brand explicitly demands it.
+
+COLOR SYSTEM: Hot pink for hero emphasis, CTA text, and accent lines. Neon green (#00FF88 or similar) for data points, stats, and supporting metrics. Crisp white for body text and primary display copy. Dark green (#0A2E1A or similar) for full-width bottom strips. This four-color system is your default palette unless client branding overrides it.
+
+TYPOGRAPHY AS HERO: Describe bold ALL-CAPS display text with intentional line breaks where the line break IS the emphasis. Describe size hierarchy — oversized stat numbers (sometimes taking 30% of the slide), smaller italic subtext below, mixed weights. The typography layout IS the composition.
+
+UI MOCKUPS AS PHOTOGRAPHY: Default to describing real phone screens showing actual app interfaces — WhatsApp message threads (with timestamps, read receipts, sender names), TikTok For You pages (with view counts, sounds, comments), Instagram Reels UI, Twitter/X threads, story interfaces. These are described as real photographs of real screens, not illustrations. The phone is a prop in a scene, held by a real person in a genuine reaction moment.
+
+MULTI-SCREEN STORYTELLING: For narrative or social proof slides, describe 3-4 phones stacked or arranged side-by-side, each showing a different POV of the same story — one person's TikTok, someone else's Twitter thread, a group WhatsApp screenshot. The phones together tell one story.
+
+COLUMN PANEL LAYOUTS: For comparison or data slides, describe full-height vertical columns separated by hairline dividers. Each column has a distinct temperature pulled from its subject's identity. Platform logos at top, oversized stat number, real photography collage center (faded 70-80% to let text breathe), insight pills in hot pink rounded rectangles, bottom strip per column.
+
+BOTTOM STRIP CONVENTION: Every slide ends with a full-width dark green strip spanning the entire bottom. One single bold white line. This is the slide's thesis statement. It must land like a punch. Describe this strip explicitly in every prompt.
+
+FLOATING DATA ELEMENTS: Describe stats as oversized hero numbers in bold white. Supporting context in neon green below. Insight pills as hot pink rounded rectangles with emoji. Journey flow cards stacked vertically, connected by thin neon green arrow lines, each card with a color-coded border (hot pink, white, neon green, yellow). Badge/certification icons as glowing bordered elements.
+
+SCENE SPECIFICITY: Describe the exact person (Pakistani Gen Z girl laughing at her phone, a young man mid-gesture, a woman caught mid-reaction — never a posed corporate portrait). Describe their expression, posture, what is on their screen with exact content (the message text, the username, the timestamp, the view count). Describe surrounding props and environmental details.
+
+LAYERING: Background (pure dark) → photography (real, faded) → text overlay → floating UI elements → bottom strip. Describe all layers explicitly.
+
+SHOT TYPE: Be specific (eye-level medium shot of a person's hands and phone, overhead flat-lay of a product on a dark surface, cinematic three-quarter view of phone screens).
+
+VISUAL STYLE REFERENCE: Premium ad agency pitch deck energy. Think Nike campaign, Supreme drop announcement, Erewhon brand deck, Highsnobiety editorial — not corporate keynote, not stock photo, not consulting report.
+
+MOODBOARD REFERENCE: If the user uploaded moodboard or reference images, explicitly describe which visual elements, colors, and mood from those references should carry into this specific slide.
+
+BANNED FOREVER — never use these or any variation: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart", "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization". Always find a specific, real, directed visual concept.
+
+END EVERY PROMPT WITH EXACTLY: "no text, no logos, no typography, photorealistic"
+NEVER mention aspect ratio in the prompt text — aspect ratio is handled separately as an API parameter.
 
 ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 - "moodboard" — attach moodboard references to slides where visual style guidance is needed
