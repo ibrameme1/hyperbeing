@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
+import QuestionFlow from '../components/QuestionFlow';
 
 function greeting(name) {
   const h = new Date().getHours();
@@ -160,6 +161,12 @@ export default function Dashboard() {
   const [submitError, setSubmitError] = useState('');
   const [presentations, setPresentations] = useState([]);
   const [presLoading, setPresLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState(null);
+  const [showQuestionFlow, setShowQuestionFlow] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [pendingInput, setPendingInput] = useState('');
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState('16:9');
   const textareaRef = useRef(null);
 
   useEffect(() => {
@@ -175,18 +182,42 @@ export default function Dashboard() {
 
   async function handleSubmit() {
     if (!input.trim() && allAttachments.length === 0) return;
-    setLoading(true);
+    setAnalyzing(true);
     setSubmitError('');
     try {
-      const { data } = await api.post('/presentations', {
+      const { data } = await api.post('/presentations/analyze', {
         message: input.trim(),
-        attachments: allAttachments.map(a => ({
-          type: a.type, name: a.name, data: a.data, mimeType: a.mimeType, category: a.category,
-        })),
+        attachments: allAttachments.map(a => ({ type: a.type, name: a.name, data: a.data, mimeType: a.mimeType, category: a.category })),
+      });
+      setPendingInput(input.trim());
+      setPendingAttachments(allAttachments.map(a => ({ type: a.type, name: a.name, data: a.data, mimeType: a.mimeType, category: a.category })));
+      setAnalysis(data);
+      setShowQuestionFlow(true);
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong';
+      setSubmitError(msg);
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  async function handleQuestionComplete(answers, suggestedSlideCount) {
+    setShowQuestionFlow(false);
+    setLoading(true);
+    setSubmitError('');
+
+    // Build comprehensive message with all pre-flight answers
+    const qaSection = answers.map(a => `- ${a.question}: ${a.answer}`).join('\n');
+    const comprehensiveMessage = `${pendingInput}\n\nPREFLIGHT ANSWERS:\n${qaSection}\n\nDetected type: ${analysis.detected_type || ''}\nDetected industry: ${analysis.detected_industry || ''}\nSuggested slides: ${suggestedSlideCount || analysis.suggested_slide_count || 8}\n\nPlease generate the full presentation now.`;
+
+    try {
+      const { data } = await api.post('/presentations', {
+        message: comprehensiveMessage,
+        attachments: pendingAttachments,
+        aspectRatio: selectedAspectRatio,
       });
       navigate(`/presentations/${data.presentation.id}`);
     } catch (err) {
-      console.error(err);
       const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong';
       setSubmitError(msg);
       setLoading(false);
@@ -204,6 +235,16 @@ export default function Dashboard() {
   const totalAttachments = allAttachments.length;
 
   return (
+    <>
+    <AnimatePresence>
+      {showQuestionFlow && analysis && (
+        <QuestionFlow
+          analysis={analysis}
+          onComplete={handleQuestionComplete}
+          onCancel={() => { setShowQuestionFlow(false); setLoading(false); }}
+        />
+      )}
+    </AnimatePresence>
     <div className="min-h-screen" style={{ background: '#F2F2F7' }}>
       {/* Nav */}
       <nav className="sticky top-0 z-50 flex items-center justify-between px-6 py-3"
@@ -262,6 +303,23 @@ export default function Dashboard() {
               </div>
 
               <div className="flex items-center gap-2 px-5 pb-5 pt-1 border-t border-ios-gray5">
+                {/* Aspect ratio selector */}
+                <div className="flex items-center gap-1 bg-ios-gray5 rounded-xl p-1">
+                  {['16:9', '4:3', '1:1', '9:16'].map(ratio => (
+                    <button
+                      key={ratio}
+                      onClick={() => setSelectedAspectRatio(ratio)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-150 ${
+                        selectedAspectRatio === ratio
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-ios-gray1 hover:text-gray-700'
+                      }`}
+                    >
+                      {ratio}
+                    </button>
+                  ))}
+                </div>
+
                 {/* Toggle attach zones */}
                 <button
                   onClick={() => setShowZones(v => !v)}
@@ -285,11 +343,13 @@ export default function Dashboard() {
                   <p className="text-xs text-ios-gray2 hidden sm:block">⌘ + Enter</p>
                   <button
                     onClick={handleSubmit}
-                    disabled={loading || (!input.trim() && allAttachments.length === 0)}
+                    disabled={analyzing || loading || (!input.trim() && allAttachments.length === 0)}
                     className="ios-btn py-2 px-5 text-sm"
                   >
-                    {loading ? (
-                      <><Loader2 size={15} className="animate-spin" /> Starting…</>
+                    {analyzing ? (
+                      <><Loader2 size={15} className="animate-spin" /> Analyzing…</>
+                    ) : loading ? (
+                      <><Loader2 size={15} className="animate-spin" /> Creating…</>
                     ) : (
                       <><Send size={15} /> Create</>
                     )}
@@ -333,27 +393,6 @@ export default function Dashboard() {
             </AnimatePresence>
           </motion.div>
 
-          {/* Prompt Generator shortcut */}
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <button
-              onClick={() => navigate('/prompt-generator')}
-              className="w-full flex items-center gap-3 bg-white/70 hover:bg-white rounded-2xl px-5 py-3.5 shadow-ios transition-all duration-150 active:scale-[0.99] mt-3"
-            >
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-                   style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}>
-                <Sparkles size={15} className="text-white" />
-              </div>
-              <div className="text-left min-w-0">
-                <p className="font-semibold text-gray-900 text-sm">Prompt Generator</p>
-                <p className="text-xs text-ios-gray1">Generate cinematic image prompts with Nova</p>
-              </div>
-              <ChevronDown size={16} className="text-ios-gray2 ml-auto flex-shrink-0 -rotate-90" />
-            </button>
-          </motion.div>
         </div>
       </div>
 
@@ -404,5 +443,6 @@ export default function Dashboard() {
         )}
       </main>
     </div>
+    </>
   );
 }

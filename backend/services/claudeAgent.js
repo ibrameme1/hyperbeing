@@ -195,6 +195,8 @@ Your information-gathering checklist — ask about any you're missing:
 5. Any products, flavours, campaigns, or specific content to feature
 6. Reference images, brand assets, pack shots, or moodboards (user may have already attached these)
 
+IMPORTANT: When the user's message contains the section "PREFLIGHT ANSWERS:", you already have ALL the information needed. Do NOT ask any follow-up questions. Go directly to state="ready" and generate the full slide plan immediately.
+
 Once you have enough context — stop asking and generate the full slide plan.
 
 CRITICAL: You ALWAYS respond with VALID JSON in EXACTLY this format:
@@ -230,15 +232,24 @@ When state is "ready", set slide_plan to:
 }
 
 NANO BANANA PROMPT FORMAT — write this for every slide:
-Each nano_banana_prompt must be richly detailed and include:
-- What this slide is about and its role in the story
-- The exact visual mood, energy, and atmosphere
-- Specific imagery, objects, or scenes to show
-- Layout direction (e.g., hero image left, text space right; full-bleed background; etc.)
-- Colour palette direction
-- Style keywords (cinematic, editorial, minimalist, bold, etc.)
-- Relevant visual elements (icons, textures, patterns, product visuals if relevant)
-- Always end every prompt with: "Create a highly engaging, premium, presentation-ready slide. Use attached reference images wherever applicable. Follow the visual style, layout energy, and design language of the provided references. Make the slide feel professionally designed, visually rich, clear, and easy to present."
+Each nano_banana_prompt must be 250-300 words of specific, art-directed visual direction. Vague prompts are not acceptable.
+
+SLIDE STRUCTURE RULES:
+- Every slide (EXCEPT cover/title slides at index 0) must have a KEY TAKEAWAY headline as its title. This headline must communicate the main point of that slide on its own — someone reading only the headlines should be able to follow the full story of the presentation.
+- Below the headline in key_points, include supporting detail: data points, explanation, or context that expands on the headline.
+- Cover and title slides (type "cover") keep their original format — do not force a key takeaway structure on them.
+
+EVERY nano_banana_prompt must describe in specific detail:
+1. SCENE: Exactly what is visually happening. If a person is present — describe their exact position, posture, what they are doing, what surrounds them, any objects or screens they interact with. If it is a product — describe the surface, background, angle, surrounding props. If it is a data/consulting slide — describe a premium environment (sleek boardroom, abstract data rendered as a physical object, confident executive reviewing structured information). If it is a marketing/brand slide — describe the specific emotion, energy, and aesthetic of the scene cinematically.
+2. SHOT TYPE: Specific shot type (e.g. wide cinematic establishing shot, macro close-up, aerial overhead, eye-level medium shot, dramatic low angle).
+3. COLOR PALETTE: Dominant colors with specific names (e.g. deep navy blue, warm amber, muted sage green, rich burgundy — never just "dark" or "bright").
+4. MOOD: Specific mood and atmosphere (e.g. aspirational and expansive, quietly tense, electric and urgent, calm and authoritative).
+5. LIGHTING: Include lighting direction only when genuinely relevant and impactful to the scene (e.g. golden hour backlight, dramatic single-source side lighting, soft diffused studio light). Do not add lighting as a checkbox item on every slide.
+6. VISUAL STYLE REFERENCE: Name a specific visual style that fits the presentation type (e.g. Apple keynote product aesthetic, McKinsey consulting visual language, Nat Geo documentary cinematography, editorial fashion photography, Nike campaign energy).
+7. BANNED DESCRIPTIONS — never use these or any variation: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart". Always find a specific, art-directed visual concept.
+8. MOODBOARD REFERENCE: If the user uploaded moodboard or reference images, explicitly describe which visual elements, colors, and mood from those references should carry into this specific slide.
+9. END EVERY PROMPT WITH EXACTLY: "no text, no logos, no typography, photorealistic"
+10. NEVER mention aspect ratio in the prompt text — aspect ratio is handled separately as an API parameter.
 
 ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 - "moodboard" — attach moodboard references to slides where visual style guidance is needed
@@ -250,7 +261,7 @@ CRITICAL RULES:
 1. Always return valid JSON — nothing outside the JSON object
 2. Never make up facts about the user's business — only use what they provide
 3. When state = "ready", slide_plan MUST be fully populated with ALL slides
-4. nano_banana_prompt must be detailed (100-200 words per slide)
+4. nano_banana_prompt must be 250-300 words — specific, art-directed, cinematically written
 5. key_points ≤ 12 words each
 6. total_slides: use the user's number if specified; otherwise decide intelligently (typically 5-12 slides)`;
 
@@ -312,6 +323,66 @@ export async function chat(conversationHistory, userMessage, attachments = []) {
   console.log('═'.repeat(60) + '\n');
 
   return parsed;
+}
+
+const ANALYZE_PROMPT = `You are a presentation intelligence system. A user has submitted a brief to create a presentation. Analyze their input and return a JSON object with contextual questions to gather exactly what's needed.
+
+Return ONLY valid JSON — no text before or after:
+{
+  "detected_type": "e.g. investor pitch / marketing deck / product launch / consulting report / brand deck",
+  "detected_industry": "e.g. fintech / fashion / SaaS / FMCG / healthcare",
+  "suggested_slide_count": <number 5-15>,
+  "contextual_questions": [
+    {
+      "question": "Specific question based on the brief",
+      "options": ["Option A", "Option B", "Option C", "Option D"]
+    }
+  ]
+}
+
+Rules:
+- Generate 3-5 questions that are specific to what the user submitted — not generic
+- Each question must have 3-4 answer options
+- Questions should uncover: audience, tone/style, key objective, content specifics relevant to their industry/type
+- Examples for an investor pitch: "Who is the primary audience?", "What funding stage is this for?", "What tone do you want?"
+- Examples for a product launch: "Who is the target consumer?", "What is the key emotion you want to evoke?", "How product-heavy should the visuals be?"
+- NEVER ask generic questions like "how many slides" — use suggested_slide_count instead
+- Questions and options must be directly relevant to the specific brief provided`;
+
+export async function analyzePresentation(message, attachments = []) {
+  if (MOCK_MODE) {
+    await new Promise(r => setTimeout(r, 800));
+    return {
+      detected_type: 'marketing deck',
+      detected_industry: 'FMCG',
+      suggested_slide_count: 8,
+      contextual_questions: [
+        { question: 'Who is the primary audience for this presentation?', options: ['Internal team', 'External clients', 'Investors', 'Consumers'] },
+        { question: 'What tone should this deck have?', options: ['Bold and energetic', 'Premium and minimal', 'Corporate and structured', 'Creative and playful'] },
+        { question: 'How visually product-focused should the slides be?', options: ['Product-led — visuals front and centre', 'Story-led — product supports the narrative', 'Data-led — insights and numbers', 'Mixed balance'] },
+      ],
+    };
+  }
+
+  const userContent = buildUserContent(message, attachments);
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1024,
+    system: ANALYZE_PROMPT,
+    messages: [{ role: 'user', content: userContent }],
+  });
+
+  const raw = response.content[0].text.trim();
+  const jsonText = raw.startsWith('```') ? raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '') : raw;
+
+  try {
+    return JSON.parse(jsonText);
+  } catch {
+    const match = jsonText.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error('Failed to parse analysis response');
+  }
 }
 
 export async function regenerateSlide(slide, instruction, presentationContext) {

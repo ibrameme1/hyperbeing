@@ -11,7 +11,7 @@ function getClient() {
   return ai;
 }
 
-export async function generateSlideImage(nanaBananaPrompt, slideType, theme, colorPalette, slideIndex = 0, attachedImages = []) {
+export async function generateSlideImage(nanaBananaPrompt, slideType, theme, colorPalette, slideIndex = 0, attachedImages = [], aspectRatio = '16:9') {
   if (MOCK_MODE) {
     const delay = 700 + Math.random() * 900;
     await new Promise(r => setTimeout(r, delay));
@@ -45,7 +45,7 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
     const response = await getClient().models.generateContent({
       model: IMAGE_GEN_MULTIMODAL,
       contents: [{ role: 'user', parts }],
-      config: { responseModalities: ['IMAGE', 'TEXT'] },
+      config: { responseModalities: ['IMAGE', 'TEXT'], aspectRatio },
     });
     const imagePart = (response.candidates?.[0]?.content?.parts ?? [])
       .find(p => p.inlineData?.mimeType?.startsWith('image/'));

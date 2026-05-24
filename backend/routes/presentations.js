@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { chat, regenerateSlide } from '../services/claudeAgent.js';
+import { chat, regenerateSlide, analyzePresentation } from '../services/claudeAgent.js';
 import { generateSlideImage } from '../services/imageGeneration.js';
 
 const router = Router();
@@ -31,6 +31,21 @@ router.get('/', authenticateToken, (req, res) => {
   res.json({ presentations: rows });
 });
 
+// ─── Analyze brief and return contextual questions ─────────────────────────
+router.post('/analyze', authenticateToken, async (req, res) => {
+  const { message, attachments = [] } = req.body;
+  if (!message?.trim() && attachments.length === 0) {
+    return res.status(400).json({ error: 'Message or attachment required' });
+  }
+  try {
+    const analysis = await analyzePresentation(message, attachments);
+    res.json(analysis);
+  } catch (err) {
+    console.error('Analysis error:', err);
+    res.status(500).json({ error: 'Analysis failed', detail: err.message });
+  }
+});
+
 // ─── Create presentation + send first message ──────────────────────────────
 router.post('/', authenticateToken, async (req, res) => {
   const { message, attachments = [] } = req.body;
@@ -42,10 +57,11 @@ router.post('/', authenticateToken, async (req, res) => {
   const id = uuid();
   const msgId = uuid();
 
+  const { aspectRatio = '16:9' } = req.body;
   db.prepare(
-    `INSERT INTO presentations (id, user_id, title, status)
-     VALUES (?, ?, 'Untitled Presentation', 'chat')`
-  ).run(id, req.user.id);
+    `INSERT INTO presentations (id, user_id, title, status, aspect_ratio)
+     VALUES (?, ?, 'Untitled Presentation', 'chat', ?)`
+  ).run(id, req.user.id, aspectRatio);
 
   db.prepare(
     `INSERT INTO messages (id, presentation_id, role, content, attachments)
@@ -219,6 +235,8 @@ router.post('/:id/generate', authenticateToken, async (req, res) => {
 async function runGeneration(presentationId, slidePlan) {
   const db = getDb();
   const slides = [];
+  const presRow = db.prepare('SELECT aspect_ratio FROM presentations WHERE id = ?').get(presentationId);
+  const aspectRatio = presRow?.aspect_ratio || '16:9';
 
   broadcast(presentationId, {
     type: 'started',
@@ -261,7 +279,8 @@ async function runGeneration(presentationId, slidePlan) {
         slidePlan.theme,
         slidePlan.color_palette,
         slide.index,
-        attachedImages
+        attachedImages,
+        aspectRatio
       );
 
       const completedSlide = { ...slide, image_data: imageData, status: 'complete' };
@@ -304,6 +323,9 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
 
   res.json({ message: 'Regenerating…', index: idx });
 
+  const regenPresRow = db.prepare('SELECT aspect_ratio FROM presentations WHERE id = ?').get(req.params.id);
+  const regenAspectRatio = regenPresRow?.aspect_ratio || '16:9';
+
   // Run async — client watches SSE for result
   (async () => {
     try {
@@ -335,7 +357,8 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
         slidePlan.theme,
         slidePlan.color_palette,
         undefined,
-        attachedImages
+        attachedImages,
+        regenAspectRatio
       );
 
       updatedSlide.image_data = imageData;

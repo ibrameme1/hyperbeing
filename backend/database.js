@@ -60,6 +60,11 @@ export function initDatabase() {
     );
   `);
 
+  // Migrate: add aspect_ratio column if it doesn't exist
+  try {
+    db.exec('ALTER TABLE presentations ADD COLUMN aspect_ratio TEXT DEFAULT "16:9"');
+  } catch { /* column already exists */ }
+
   console.log('✅ Database ready');
   return db;
 }
