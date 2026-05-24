@@ -5,17 +5,17 @@ import { Sparkles } from 'lucide-react';
 const PLANNING_MESSAGES = [
   'Nova is crafting your slide plan…',
   'Deciding the perfect narrative structure…',
-  'Writing detailed visual directions…',
-  'Choosing themes and colour palettes…',
-  'Preparing prompts for Nano Banana…',
+  'Writing art direction for each slide…',
+  'Choosing your visual style and palette…',
+  'Almost ready to generate your slides…',
 ];
 
 const GENERATING_MESSAGES = [
-  'Generating slide visuals with Nano Banana…',
-  'Rendering your presentation visuals…',
-  'Nano Banana is painting your slides…',
-  'Bringing your presentation to life…',
-  'Almost there — finishing your slides…',
+  'Generating your slide visuals…',
+  'Rendering your presentation…',
+  'Creating your slides…',
+  'Bringing your vision to life…',
+  'Almost there…',
 ];
 
 export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 }) {
@@ -94,11 +94,11 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
         </div>
 
         {/* Slide count */}
-        {totalSlides > 0 && (
-          <p className="text-white/40 text-sm">
-            {generatedSlides.length} of {totalSlides} slides ready
-          </p>
-        )}
+        <p className="text-white/40 text-sm">
+          {totalSlides > 0
+            ? `${generatedSlides.length} of ${totalSlides} slides ready`
+            : 'Planning your presentation…'}
+        </p>
 
         {/* Progress bar */}
         <div

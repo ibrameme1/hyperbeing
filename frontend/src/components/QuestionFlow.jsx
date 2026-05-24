@@ -2,16 +2,23 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, ArrowRight } from 'lucide-react';
 
+const SLIDE_COUNT_QUESTION = {
+  question: 'How many slides do you want?',
+  options: ['5 slides', '8 slides', '10 slides', '12 slides', '15 slides'],
+  isSlideCount: true,
+};
+
 export default function QuestionFlow({ analysis, onComplete, onCancel }) {
-  const { contextual_questions = [], detected_type = '', suggested_slide_count } = analysis;
+  const { contextual_questions = [], detected_type = '', suggested_slide_count = 8 } = analysis;
+  const allQuestions = [...contextual_questions, SLIDE_COUNT_QUESTION];
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState([]);
   const [selected, setSelected] = useState(null);
   const [direction, setDirection] = useState(1);
 
-  const question = contextual_questions[currentIndex];
-  const isLast = currentIndex === contextual_questions.length - 1;
-  const total = contextual_questions.length;
+  const question = allQuestions[currentIndex];
+  const isLast = currentIndex === allQuestions.length - 1;
+  const total = allQuestions.length;
 
   function handleSelect(option) {
     setSelected(option);
@@ -22,7 +29,9 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
     const newAnswers = [...answers, { question: question.question, answer: selected }];
 
     if (isLast) {
-      onComplete(newAnswers, suggested_slide_count);
+      const slideCountStr = newAnswers.find(a => a.question === SLIDE_COUNT_QUESTION.question)?.answer || '';
+      const slideCount = parseInt(slideCountStr) || suggested_slide_count;
+      onComplete(newAnswers, slideCount);
     } else {
       setDirection(1);
       setAnswers(newAnswers);

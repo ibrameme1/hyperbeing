@@ -270,6 +270,13 @@ export default function PresentationPage() {
         startSSE(id); // stay subscribed for slide_updated events
       } else if (data.presentation.status === 'generating' || data.presentation.status === 'processing') {
         setPhase('generating');
+        // Load any slides already persisted (in case we connect late)
+        if (data.presentation.slides_data) {
+          setGeneratedSlides(data.presentation.slides_data);
+        }
+        if (data.presentation.slide_plan?.slides?.length) {
+          setTotalSlides(data.presentation.slide_plan.slides.length);
+        }
         startSSE(id);
       } else {
         setPhase('chat');
@@ -325,7 +332,10 @@ export default function PresentationPage() {
       }
 
       if (event.type === 'slide_ready') {
-        setGeneratedSlides(prev => [...prev, event.slide]);
+        setGeneratedSlides(prev => {
+          if (prev.some(s => s.index === event.slide.index)) return prev;
+          return [...prev, event.slide].sort((a, b) => a.index - b.index);
+        });
         setGenerationStage(5);
       }
 

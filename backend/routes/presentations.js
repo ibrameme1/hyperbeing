@@ -216,6 +216,30 @@ router.get('/:id/events', (req, res) => {
   if (!sseRegistry.has(id)) sseRegistry.set(id, new Set());
   sseRegistry.get(id).add(res);
 
+  // Catch-up: replay current state for clients that connect after events were broadcast
+  const db2 = getDb();
+  const presState = db2.prepare('SELECT status, slide_plan, slides_data FROM presentations WHERE id = ?').get(id);
+  if (presState) {
+    if (presState.status === 'processing' || presState.status === 'generating') {
+      if (presState.slide_plan) {
+        const plan = JSON.parse(presState.slide_plan);
+        res.write(`data: ${JSON.stringify({ type: 'plan_ready', total_slides: plan.slides.length })}\n\n`);
+      }
+      if (presState.slides_data) {
+        const doneSlides = JSON.parse(presState.slides_data);
+        for (const s of doneSlides) {
+          res.write(`data: ${JSON.stringify({ type: 'slide_ready', slide: s })}\n\n`);
+        }
+      }
+    } else if (presState.status === 'completed' && presState.slides_data) {
+      const doneSlides = JSON.parse(presState.slides_data);
+      for (const s of doneSlides) {
+        res.write(`data: ${JSON.stringify({ type: 'slide_ready', slide: s })}\n\n`);
+      }
+      res.write(`data: ${JSON.stringify({ type: 'complete', total_slides: doneSlides.length })}\n\n`);
+    }
+  }
+
   req.on('close', () => {
     sseRegistry.get(id)?.delete(res);
     if (sseRegistry.get(id)?.size === 0) sseRegistry.delete(id);
@@ -300,6 +324,11 @@ async function runGeneration(presentationId, slidePlan) {
 
       const completedSlide = { ...slide, image_data: imageData, status: 'complete' };
       slides.push(completedSlide);
+
+      // Persist progress so SSE catch-up works for late-connecting clients
+      db.prepare(
+        `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+      ).run(JSON.stringify(slides), presentationId);
 
       broadcast(presentationId, { type: 'slide_ready', slide: completedSlide });
     } catch (err) {
