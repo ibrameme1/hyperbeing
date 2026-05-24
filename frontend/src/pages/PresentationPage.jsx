@@ -253,6 +253,38 @@ export default function PresentationPage() {
   const [generationStage, setGenerationStage] = useState(0);
 
   const sseRef = useRef(null);
+  const pollRef = useRef(null);
+
+  function stopPolling() {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  }
+
+  function startPolling(presId) {
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      try {
+        const { data } = await api.get(`/presentations/${presId}`);
+        if (data.presentation.status === 'completed' && data.presentation.slides_data) {
+          stopPolling();
+          setGeneratedSlides(data.presentation.slides_data);
+          setTotalSlides(data.presentation.slides_data.length);
+          setTimeout(() => setPhase('viewing'), 400);
+        } else if (data.presentation.status === 'generating' && data.presentation.slides_data) {
+          const partial = data.presentation.slides_data;
+          setGeneratedSlides(prev => {
+            const merged = [...prev];
+            for (const s of partial) {
+              if (!merged.some(x => x.index === s.index)) merged.push(s);
+            }
+            return merged.sort((a, b) => a.index - b.index);
+          });
+          if (data.presentation.slide_plan?.slides?.length) {
+            setTotalSlides(data.presentation.slide_plan.slides.length);
+          }
+        }
+      } catch {}
+    }, 5000);
+  }
 
   // Load presentation
   useEffect(() => {
@@ -270,7 +302,6 @@ export default function PresentationPage() {
         startSSE(id); // stay subscribed for slide_updated events
       } else if (data.presentation.status === 'generating' || data.presentation.status === 'processing') {
         setPhase('generating');
-        // Load any slides already persisted (in case we connect late)
         if (data.presentation.slides_data) {
           setGeneratedSlides(data.presentation.slides_data);
         }
@@ -278,6 +309,7 @@ export default function PresentationPage() {
           setTotalSlides(data.presentation.slide_plan.slides.length);
         }
         startSSE(id);
+        startPolling(id); // fallback in case SSE events are missed
       } else {
         setPhase('chat');
       }
@@ -301,6 +333,7 @@ export default function PresentationPage() {
 
       if (event.type === 'plan_generating') {
         setPhase('generating');
+        startPolling(presId);
       }
 
       if (event.type === 'plan_ready') {
@@ -347,7 +380,7 @@ export default function PresentationPage() {
 
       if (event.type === 'complete') {
         clearInterval(stageTimer);
-        // Keep SSE open for slide_updated events during viewing
+        stopPolling();
         setTimeout(() => setPhase('viewing'), 800);
       }
 
@@ -369,7 +402,7 @@ export default function PresentationPage() {
   }, []);
 
   useEffect(() => {
-    return () => sseRef.current?.close();
+    return () => { sseRef.current?.close(); stopPolling(); };
   }, []);
 
   async function handleGenerate(updatedPres) {

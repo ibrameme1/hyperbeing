@@ -284,7 +284,8 @@ CRITICAL RULES:
 3. When state = "ready", slide_plan MUST be fully populated with ALL slides
 4. nano_banana_prompt must be 250-300 words — specific, art-directed, cinematically written
 5. key_points ≤ 12 words each
-6. total_slides: use the user's number if specified; otherwise decide intelligently (typically 5-12 slides)`;
+6. SLIDE COUNT IS ABSOLUTE: When the PREFLIGHT ANSWERS specify a slide count, you MUST generate EXACTLY that number of slides. Not fewer, not more. User said 5 — you create exactly 5 slides. User said 10 — exactly 10 slides. Never round down. Never decide fewer "makes more sense". The slide count is the user's final decision and overrides your judgment entirely. If "Suggested slides: 5" appears anywhere in the message, total_slides must equal 5 and slides array must have exactly 5 entries.
+7. total_slides must EXACTLY equal the length of the slides array — they must always match`;
 
 // ─── Exports ────────────────────────────────────────────────────────────────
 
