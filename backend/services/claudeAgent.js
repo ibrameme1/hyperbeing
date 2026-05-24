@@ -288,7 +288,7 @@ export async function chat(conversationHistory, userMessage, attachments = []) {
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
+    max_tokens: 16000,
     system: SYSTEM_PROMPT,
     messages,
   });

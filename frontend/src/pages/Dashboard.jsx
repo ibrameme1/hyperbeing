@@ -10,6 +10,89 @@ import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
 import QuestionFlow from '../components/QuestionFlow';
 
+const CREATING_MESSAGES = [
+  'Nova is reading your answers…',
+  'Mapping the perfect slide structure…',
+  'Crafting the narrative flow…',
+  'Writing detailed slide prompts…',
+  'Selecting themes and colour palette…',
+  'Preparing Nano Banana for your visuals…',
+  'Almost there — finalising your plan…',
+];
+
+function CreatingScreen() {
+  const [msgIndex, setMsgIndex] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setMsgIndex(i => (i + 1) % CREATING_MESSAGES.length), 2800);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center"
+      style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
+    >
+      {/* Ambient glows */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-1/3 left-1/3 w-96 h-96 rounded-full opacity-20 animate-float"
+             style={{ background: 'radial-gradient(circle, #7b61ff 0%, transparent 70%)' }} />
+        <div className="absolute bottom-1/3 right-1/3 w-80 h-80 rounded-full opacity-15 animate-float"
+             style={{ background: 'radial-gradient(circle, #00b4ff 0%, transparent 70%)', animationDelay: '2s' }} />
+      </div>
+
+      <div className="flex flex-col items-center gap-6 z-10 px-6 text-center">
+        {/* Pulsing logo */}
+        <div className="relative">
+          <motion.div
+            animate={{ scale: [1, 1.15, 1], opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+            className="absolute inset-0 rounded-3xl blur-xl"
+            style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+          />
+          <div className="relative w-20 h-20 rounded-3xl flex items-center justify-center"
+               style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+            <Sparkles size={36} className="text-white" />
+          </div>
+        </div>
+
+        <p className="text-white/60 text-sm font-semibold uppercase tracking-widest">
+          Building your presentation
+        </p>
+
+        <div className="h-8 flex items-center">
+          <AnimatePresence mode="wait">
+            <motion.p
+              key={msgIndex}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.4 }}
+              className="text-white text-xl font-semibold"
+            >
+              {CREATING_MESSAGES[msgIndex]}
+            </motion.p>
+          </AnimatePresence>
+        </div>
+
+        {/* Indeterminate progress bar */}
+        <div className="w-72 h-1.5 rounded-full overflow-hidden"
+             style={{ background: 'rgba(255,255,255,0.12)' }}>
+          <motion.div
+            className="h-full rounded-full"
+            style={{ background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)' }}
+            animate={{ width: ['10%', '70%', '10%'] }}
+            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 function greeting(name) {
   const h = new Date().getHours();
   const time = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
@@ -244,6 +327,9 @@ export default function Dashboard() {
           onCancel={() => { setShowQuestionFlow(false); setLoading(false); }}
         />
       )}
+    </AnimatePresence>
+    <AnimatePresence>
+      {loading && <CreatingScreen />}
     </AnimatePresence>
     <div className="min-h-screen" style={{ background: '#F2F2F7' }}>
       {/* Nav */}
