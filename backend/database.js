@@ -65,6 +65,11 @@ export function initDatabase() {
     db.exec('ALTER TABLE presentations ADD COLUMN aspect_ratio TEXT DEFAULT "16:9"');
   } catch { /* column already exists */ }
 
+  // Migrate: add thumbnail column for dashboard card previews
+  try {
+    db.exec('ALTER TABLE presentations ADD COLUMN thumbnail TEXT');
+  } catch { /* column already exists */ }
+
   console.log('✅ Database ready');
   return db;
 }

@@ -119,9 +119,15 @@ function PresentationCard({ pres, onDelete }) {
       onClick={() => navigate(`/presentations/${pres.id}`)}
       className="bg-white rounded-2xl overflow-hidden shadow-ios cursor-pointer group relative"
     >
-      <div className="aspect-[16/9] flex items-center justify-center"
+      <div className="aspect-[16/9] overflow-hidden"
            style={{ background: 'linear-gradient(135deg, #667eea22 0%, #764ba222 100%)' }}>
-        <Sparkles className="w-7 h-7 text-ios-indigo opacity-40" />
+        {pres.thumbnail ? (
+          <img src={pres.thumbnail} alt={pres.title} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Sparkles className="w-7 h-7 text-ios-indigo opacity-40" />
+          </div>
+        )}
       </div>
 
       <div className="p-4">

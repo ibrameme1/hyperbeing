@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { chat, regenerateSlide, analyzePresentation, streamSlidePlan } from '../services/claudeAgent.js';
+import { chat, regenerateSlide, analyzePresentation, streamSlidePlan, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
 import { generateSlideImage } from '../services/imageGeneration.js';
 
 const router = Router();
@@ -24,7 +24,7 @@ function broadcast(presentationId, event) {
 router.get('/', authenticateToken, (req, res) => {
   const rows = getDb()
     .prepare(
-      `SELECT id, title, status, created_at, updated_at
+      `SELECT id, title, status, thumbnail, created_at, updated_at
        FROM presentations WHERE user_id = ? ORDER BY updated_at DESC`
     )
     .all(req.user.id);
@@ -151,6 +151,10 @@ async function runFullFlow(presentationId, message, attachments) {
         const done = { ...slide, image_data: imageData, status: 'complete' };
         completedSlides.set(slide.index, done);
         persistProgress();
+        // Save thumbnail from first slide
+        if (slide.index === 0 && imageData && !imageData.startsWith('data:image/svg')) {
+          db.prepare(`UPDATE presentations SET thumbnail = ? WHERE id = ?`).run(imageData, presentationId);
+        }
         broadcast(presentationId, { type: 'slide_ready', slide: done });
       }).catch(err => {
         console.error(`Slide ${slide.index} image failed:`, err.message);
@@ -403,6 +407,11 @@ async function runGeneration(presentationId, slidePlan) {
         `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
       ).run(JSON.stringify(slides), presentationId);
 
+      // Save thumbnail from first slide
+      if (slide.index === 0 && imageData && !imageData.startsWith('data:image/svg')) {
+        db.prepare(`UPDATE presentations SET thumbnail = ? WHERE id = ?`).run(imageData, presentationId);
+      }
+
       broadcast(presentationId, { type: 'slide_ready', slide: completedSlide });
     } catch (err) {
       console.error(`Slide ${slide.index} image failed:`, err.message);
@@ -529,6 +538,135 @@ router.post('/:id/reorder', authenticateToken, (req, res) => {
     .run(JSON.stringify(reordered), req.params.id);
 
   res.json({ message: 'Reordered' });
+});
+
+// ─── Update title ─────────────────────────────────────────────────────────
+router.patch('/:id/title', authenticateToken, (req, res) => {
+  const { title } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'Title required' });
+  const result = getDb()
+    .prepare(`UPDATE presentations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`)
+    .run(title.trim(), req.params.id, req.user.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+  res.json({ title: title.trim() });
+});
+
+// ─── Suggest title via AI ─────────────────────────────────────────────────
+router.post('/:id/suggest-title', authenticateToken, async (req, res) => {
+  const db = getDb();
+  const pres = db.prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!pres) return res.status(404).json({ error: 'Not found' });
+
+  const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : null;
+  const slidesData = pres.slides_data ? JSON.parse(pres.slides_data) : null;
+
+  const context = {
+    presentation_title: slidePlan?.presentation_title || pres.title,
+    slides: (slidesData || []).map(s => ({ title: s.title, type: s.type, key_points: s.key_points?.slice(0, 2) })),
+  };
+
+  try {
+    const title = await suggestTitle(context);
+    res.json({ title });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not suggest title', detail: err.message });
+  }
+});
+
+// ─── Add more slides ──────────────────────────────────────────────────────
+router.post('/:id/add-slides', authenticateToken, (req, res) => {
+  const { description, count = 1 } = req.body;
+  if (!description?.trim()) return res.status(400).json({ error: 'Description required' });
+  const slideCount = Math.min(Math.max(parseInt(count) || 1, 1), 10);
+
+  const db = getDb();
+  const pres = db.prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!pres) return res.status(404).json({ error: 'Not found' });
+  if (!pres.slides_data) return res.status(400).json({ error: 'No slides yet' });
+
+  const slides = JSON.parse(pres.slides_data);
+  const startIndex = slides.length;
+  const presRow = db.prepare('SELECT aspect_ratio FROM presentations WHERE id = ?').get(req.params.id);
+  const aspectRatio = presRow?.aspect_ratio || '16:9';
+  const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
+
+  // Create placeholder slides immediately
+  const placeholders = Array.from({ length: slideCount }, (_, i) => ({
+    index: startIndex + i,
+    type: 'content',
+    title: `New Slide ${startIndex + i + 1}`,
+    status: 'generating',
+    image_data: null,
+  }));
+  const newSlides = [...slides, ...placeholders];
+  db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .run(JSON.stringify(newSlides), req.params.id);
+  broadcast(req.params.id, { type: 'slides_adding', placeholders });
+
+  res.json({ message: 'Adding slides…', startIndex, count: slideCount });
+
+  // Run async
+  (async () => {
+    try {
+      const firstUserMsg = db
+        .prepare(`SELECT attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
+        .get(req.params.id);
+      let userAttachments = [];
+      try { userAttachments = JSON.parse(firstUserMsg?.attachments || '[]'); } catch {}
+      const moodboardImages = userAttachments.filter(a => a.category === 'moodboard' && a.data);
+      const allImages = userAttachments.filter(a => a.data);
+
+      const presentationContext = {
+        presentation_title: slidePlan.presentation_title || pres.title,
+        theme: slidePlan.theme,
+        color_palette: slidePlan.color_palette,
+        existing_slides: slides.map(s => ({ index: s.index, type: s.type, title: s.title, key_points: s.key_points })),
+      };
+
+      const newSlideDefs = [];
+      await streamNewSlides(description, slideCount, startIndex, presentationContext, (slideDef) => {
+        newSlideDefs.push(slideDef);
+      });
+
+      // Generate images for each new slide with stagger
+      const imagePromises = newSlideDefs.map((slideDef, i) =>
+        new Promise(r => setTimeout(r, i * 800)).then(() => {
+          const attachedImages = (slideDef.attach_image_categories || []).includes('moodboard')
+            ? moodboardImages.slice(0, 2)
+            : allImages.slice(0, 1);
+
+          return generateSlideImage(
+            slideDef.nano_banana_prompt || slideDef.title,
+            slideDef.type, slidePlan.theme, slidePlan.color_palette,
+            slideDef.index, attachedImages, aspectRatio
+          ).then(imageData => {
+            const done = { ...slideDef, image_data: imageData, status: 'complete' };
+            // Persist: replace placeholder with done slide
+            const current = JSON.parse(db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id).slides_data);
+            const idx = current.findIndex(s => s.index === done.index);
+            if (idx !== -1) current[idx] = done; else current.push(done);
+            db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+              .run(JSON.stringify(current), req.params.id);
+            broadcast(req.params.id, { type: 'slide_ready', slide: done });
+          }).catch(err => {
+            const errSlide = { ...slideDef, image_data: null, status: 'error' };
+            const current = JSON.parse(db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id).slides_data);
+            const idx = current.findIndex(s => s.index === errSlide.index);
+            if (idx !== -1) current[idx] = errSlide;
+            db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+              .run(JSON.stringify(current), req.params.id);
+            broadcast(req.params.id, { type: 'slide_error', index: errSlide.index, message: err.message });
+          });
+        })
+      );
+
+      await Promise.all(imagePromises);
+      broadcast(req.params.id, { type: 'slides_added', count: slideCount });
+    } catch (err) {
+      console.error('Add slides error:', err);
+      broadcast(req.params.id, { type: 'error', message: err.message });
+    }
+  })();
 });
 
 // ─── Delete presentation ──────────────────────────────────────────────────

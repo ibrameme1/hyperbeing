@@ -338,6 +338,19 @@ export default function PresentationPage() {
 
       if (event.type === 'plan_ready') {
         setTotalSlides(event.total_slides);
+        // Create placeholder slides so viewer can show immediately
+        setGeneratedSlides(prev => {
+          if (prev.length >= event.total_slides) return prev;
+          const placeholders = Array.from({ length: event.total_slides }, (_, i) => ({
+            index: i, type: 'content', title: `Slide ${i + 1}`, status: 'generating', image_data: null,
+          }));
+          // Keep any real slides already arrived
+          const merged = [...placeholders];
+          for (const s of prev) {
+            if (s.status === 'complete') merged[s.index] = s;
+          }
+          return merged;
+        });
       }
 
       if (event.type === 'chat_needed') {
@@ -366,10 +379,23 @@ export default function PresentationPage() {
 
       if (event.type === 'slide_ready') {
         setGeneratedSlides(prev => {
-          if (prev.some(s => s.index === event.slide.index)) return prev;
-          return [...prev, event.slide].sort((a, b) => a.index - b.index);
+          const next = prev.map(s => s.index === event.slide.index ? event.slide : s);
+          if (!prev.some(s => s.index === event.slide.index)) next.push(event.slide);
+          return next.sort((a, b) => a.index - b.index);
         });
         setGenerationStage(5);
+        // Switch to viewer as soon as we have 1 real slide with an image
+        setPhase(p => p === 'generating' ? 'viewing' : p);
+      }
+
+      if (event.type === 'slide_error') {
+        setGeneratedSlides(prev =>
+          prev.map(s => s.index === event.index ? { ...s, status: 'error' } : s)
+        );
+      }
+
+      if (event.type === 'slides_adding') {
+        setGeneratedSlides(prev => [...prev, ...(event.placeholders || [])].sort((a, b) => a.index - b.index));
       }
 
       if (event.type === 'slide_updated') {
@@ -381,7 +407,7 @@ export default function PresentationPage() {
       if (event.type === 'complete') {
         clearInterval(stageTimer);
         stopPolling();
-        setTimeout(() => setPhase('viewing'), 800);
+        setPhase('viewing');
       }
 
       if (event.type === 'error') {
@@ -462,6 +488,7 @@ export default function PresentationPage() {
           navigate('/dashboard');
         }}
         onSlidesUpdate={setGeneratedSlides}
+        onTitleChange={(t) => setPresentation(p => ({ ...p, title: t }))}
       />
     );
   }

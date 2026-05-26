@@ -775,3 +775,107 @@ export async function streamSlidePlan(message, attachments, callbacks) {
     }
   }
 }
+
+// ─── Suggest presentation title ──────────────────────────────────────────────
+
+export async function suggestTitle(context) {
+  if (MOCK_MODE) return 'Untitled Presentation';
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 60,
+    messages: [{
+      role: 'user',
+      content: `You are a presentation strategist. Based on this presentation context, suggest a sharp, compelling title — 4–7 words maximum. No subtitles, no punctuation at the end, no quotes.
+
+Context:
+${JSON.stringify(context, null, 2)}
+
+Return only the title text, nothing else.`,
+    }],
+  });
+
+  return response.content[0].text.trim().replace(/^["']|["']$/g, '');
+}
+
+// ─── Stream new slides (add-slides feature) ──────────────────────────────────
+
+const ADD_SLIDES_SYSTEM_PROMPT = `You are Nova, adding new slides to an existing presentation. The user has given you the full context of the existing deck plus a description of what new slides they want.
+
+Output format — CRITICAL. Output ONLY lines starting with SLIDE:. No HEADER: line. No other text, no markdown, no commentary.
+
+One line per new slide:
+SLIDE:{"index":<N>,"type":"cover|section|content|quote|data|image|conclusion","title":"...","subtitle":"...or null","key_points":["..."],"speaker_note":"...","nano_banana_prompt":"...250-600 word prompt...","attach_image_categories":["moodboard"|"branding"|"all"|[]]}
+
+Rules:
+- Output EXACTLY the number of SLIDE: lines requested — not fewer, not more
+- index values start from the provided startIndex and increment by 1
+- The new slides must continue the story naturally from the existing slides
+- Maintain the same visual style, theme, and tone as the existing deck
+- Each nano_banana_prompt must follow the mandatory 5-layer structure (Background → Top/Header → Main Body → Callout Cards → Bottom Strip) at 250–600 words`;
+
+export async function streamNewSlides(description, count, startIndex, presentationContext, onSlide) {
+  if (MOCK_MODE) {
+    for (let i = 0; i < count; i++) {
+      await new Promise(r => setTimeout(r, 500));
+      onSlide({
+        index: startIndex + i,
+        type: 'content',
+        title: `New Slide ${startIndex + i + 1}`,
+        subtitle: null,
+        key_points: [],
+        speaker_note: '',
+        nano_banana_prompt: 'Additional slide',
+        attach_image_categories: [],
+      });
+    }
+    return;
+  }
+
+  const message = `EXISTING PRESENTATION CONTEXT:
+${JSON.stringify(presentationContext, null, 2)}
+
+USER REQUEST: ${description}
+
+Generate exactly ${count} new slide(s). Start index at ${startIndex}.`;
+
+  console.log('\n' + '═'.repeat(60));
+  console.log('📨 CLAUDE ADD-SLIDES STREAM');
+  console.log('═'.repeat(60));
+  console.log(`Adding ${count} slide(s) starting at index ${startIndex}`);
+  console.log('═'.repeat(60));
+
+  const stream = client.messages.stream({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 8000,
+    system: ADD_SLIDES_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: message }],
+  });
+
+  let buffer = '';
+
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+      buffer += event.delta.text;
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('SLIDE:')) {
+          try {
+            const slide = JSON.parse(trimmed.slice(6));
+            console.log(`📊 NEW SLIDE ${slide.index} parsed: "${slide.title}"`);
+            onSlide(slide);
+          } catch (e) {
+            console.warn('Failed to parse new SLIDE line:', e.message);
+          }
+        }
+      }
+    }
+  }
+
+  if (buffer.trim().startsWith('SLIDE:')) {
+    try { onSlide(JSON.parse(buffer.trim().slice(6))); } catch {}
+  }
+}
