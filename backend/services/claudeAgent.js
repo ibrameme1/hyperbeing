@@ -815,8 +815,11 @@ Rules:
 - Each nano_banana_prompt must follow the mandatory 5-layer structure (Background → Top/Header → Main Body → Callout Cards → Bottom Strip) at 250–600 words`;
 
 export async function streamNewSlides(description, count, startIndex, presentationContext, onSlide) {
+  const isAuto = count === null || count === 'auto';
+
   if (MOCK_MODE) {
-    for (let i = 0; i < count; i++) {
+    const n = isAuto ? 2 : count;
+    for (let i = 0; i < n; i++) {
       await new Promise(r => setTimeout(r, 500));
       onSlide({
         index: startIndex + i,
@@ -832,12 +835,16 @@ export async function streamNewSlides(description, count, startIndex, presentati
     return;
   }
 
+  const countInstruction = isAuto
+    ? `Generate however many slides (1–6) are genuinely needed to do this topic justice. Do NOT add padding slides. Quality over quantity.`
+    : `Generate exactly ${count} new slide(s).`;
+
   const message = `EXISTING PRESENTATION CONTEXT:
 ${JSON.stringify(presentationContext, null, 2)}
 
 USER REQUEST: ${description}
 
-Generate exactly ${count} new slide(s). Start index at ${startIndex}.`;
+${countInstruction} Start index at ${startIndex}.`;
 
   console.log('\n' + '═'.repeat(60));
   console.log('📨 CLAUDE ADD-SLIDES STREAM');

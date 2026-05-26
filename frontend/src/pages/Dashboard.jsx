@@ -4,8 +4,77 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import {
   Sparkles, Send, LogOut, X, Clock, Trash2, Loader2,
-  ImageIcon, Palette, Plus, ChevronDown, ChevronUp,
+  ImageIcon, Palette, Plus, ChevronDown, ChevronUp, Paperclip,
 } from 'lucide-react';
+
+const ANALYZING_MESSAGES = [
+  'Reading your brief…',
+  'Identifying key themes…',
+  'Understanding your audience…',
+  'Crafting the right questions…',
+  'Almost there…',
+];
+
+function AnalyzingOverlay() {
+  const [msgIdx, setMsgIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setMsgIdx(i => (i + 1) % ANALYZING_MESSAGES.length), 2200);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(16px)' }}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+        transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+        className="bg-white rounded-3xl px-10 py-10 max-w-xs w-full mx-4 text-center shadow-2xl"
+      >
+        <div
+          className="w-16 h-16 rounded-2xl mx-auto mb-5 flex items-center justify-center"
+          style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+        >
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+          >
+            <Sparkles size={26} className="text-white" />
+          </motion.div>
+        </div>
+        <h3 className="font-bold text-xl text-gray-900 mb-2">Analysing your brief</h3>
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={msgIdx}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.3 }}
+            className="text-sm text-gray-500 min-h-[20px]"
+          >
+            {ANALYZING_MESSAGES[msgIdx]}
+          </motion.p>
+        </AnimatePresence>
+        <div className="flex justify-center gap-1.5 mt-5">
+          {[0, 1, 2].map(i => (
+            <motion.div
+              key={i}
+              animate={{ scale: [1, 1.4, 1], opacity: [0.4, 1, 0.4] }}
+              transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+              className="w-2 h-2 rounded-full"
+              style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+            />
+          ))}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
 import QuestionFlow from '../components/QuestionFlow';
@@ -237,14 +306,32 @@ export default function Dashboard() {
 
   const totalAttachments = allAttachments.length;
 
+  function handleTextareaDrop(e) {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (!files.length) return;
+    setShowZones(true);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = ev => setMoodboardFiles(prev => [...prev, {
+        id: Math.random().toString(36).slice(2),
+        name: file.name, type: 'image', mimeType: file.type, data: ev.target.result,
+      }]);
+      reader.readAsDataURL(file);
+    });
+  }
+
   return (
     <>
+    <AnimatePresence>
+      {analyzing && <AnalyzingOverlay />}
+    </AnimatePresence>
     <AnimatePresence>
       {showQuestionFlow && analysis && (
         <QuestionFlow
           analysis={analysis}
           onComplete={handleQuestionComplete}
-          onCancel={() => { setShowQuestionFlow(false); setLoading(false); }}
+          onCancel={() => setShowQuestionFlow(false)}
         />
       )}
     </AnimatePresence>
@@ -299,7 +386,9 @@ export default function Dashboard() {
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Describe your presentation — paste your brief, add your content, mention your audience and tone…"
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={handleTextareaDrop}
+                  placeholder="Describe your presentation — paste your brief, add your content, mention your audience and tone… (drag images here to attach)"
                   rows={4}
                   className="w-full resize-none border-none outline-none text-gray-800 placeholder:text-ios-gray2 text-base bg-transparent leading-relaxed"
                 />
@@ -349,11 +438,7 @@ export default function Dashboard() {
                     disabled={analyzing || (!input.trim() && allAttachments.length === 0)}
                     className="ios-btn py-2 px-5 text-sm"
                   >
-                    {analyzing ? (
-                      <><Loader2 size={15} className="animate-spin" /> Analyzing…</>
-                    ) : (
-                      <><Send size={15} /> Create</>
-                    )}
+                    <Send size={15} /> Create
                   </button>
                 </div>
               </div>

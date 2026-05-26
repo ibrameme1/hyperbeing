@@ -128,17 +128,10 @@ async function runFullFlow(presentationId, message, attachments) {
     onSlide(slide) {
       broadcast(presentationId, { type: 'slide_generating', index: slide.index });
 
-      const categories = slide.attach_image_categories || [];
-      let attachedImages = [];
-      if (categories.includes('all')) {
-        attachedImages = allImages;
-      } else {
-        if (categories.includes('moodboard')) attachedImages.push(...moodboardImages);
-        if (categories.includes('branding'))  attachedImages.push(...brandingImages);
-      }
-      attachedImages = attachedImages.slice(0, 3);
+      // Always attach all user reference images to every slide
+      const attachedImages = allImages.slice(0, 3);
 
-      const staggerDelay = slide.index * 800; // 800ms apart to avoid simultaneous API hammering
+      const staggerDelay = slide.index * 800;
       const promise = new Promise(r => setTimeout(r, staggerDelay)).then(() => generateSlideImage(
         slide.nano_banana_prompt || slide.title,
         slide.type,
@@ -183,6 +176,16 @@ async function runFullFlow(presentationId, message, attachments) {
   db.prepare(
     `UPDATE presentations SET status = 'completed', slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
   ).run(JSON.stringify(allSlides), presentationId);
+
+  // Auto-suggest a contextual title after generation completes
+  try {
+    const titleCtx = { slides: allSlides.map(s => ({ title: s.title, type: s.type, key_points: s.key_points?.slice(0, 2) })) };
+    const autoTitle = await suggestTitle(titleCtx);
+    if (autoTitle) {
+      db.prepare(`UPDATE presentations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(autoTitle, presentationId);
+      broadcast(presentationId, { type: 'title_updated', title: autoTitle });
+    }
+  } catch {}
 
   broadcast(presentationId, { type: 'complete', total_slides: allSlides.length });
 }
@@ -552,9 +555,10 @@ router.post('/:id/suggest-title', authenticateToken, async (req, res) => {
 
 // ─── Add more slides ──────────────────────────────────────────────────────
 router.post('/:id/add-slides', authenticateToken, (req, res) => {
-  const { description, count = 1 } = req.body;
+  const { description, count = 1, attachments: reqAttachments = [] } = req.body;
   if (!description?.trim()) return res.status(400).json({ error: 'Description required' });
-  const slideCount = Math.min(Math.max(parseInt(count) || 1, 1), 10);
+  const isAuto = count === 'auto';
+  const slideCount = isAuto ? null : Math.min(Math.max(parseInt(count) || 1, 1), 10);
 
   const db = getDb();
   const pres = db.prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
@@ -567,8 +571,9 @@ router.post('/:id/add-slides', authenticateToken, (req, res) => {
   const aspectRatio = presRow?.aspect_ratio || '16:9';
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
 
-  // Create placeholder slides immediately
-  const placeholders = Array.from({ length: slideCount }, (_, i) => ({
+  // Create placeholder slides immediately (for auto, use 3 as optimistic placeholder count)
+  const placeholderCount = slideCount ?? 3;
+  const placeholders = Array.from({ length: placeholderCount }, (_, i) => ({
     index: startIndex + i,
     type: 'content',
     title: `New Slide ${startIndex + i + 1}`,
@@ -580,7 +585,7 @@ router.post('/:id/add-slides', authenticateToken, (req, res) => {
     .run(JSON.stringify(newSlides), req.params.id);
   broadcast(req.params.id, { type: 'slides_adding', placeholders });
 
-  res.json({ message: 'Adding slides…', startIndex, count: slideCount });
+  res.json({ message: 'Adding slides…', startIndex, count: slideCount, auto: isAuto });
 
   // Run async
   (async () => {
@@ -590,8 +595,10 @@ router.post('/:id/add-slides', authenticateToken, (req, res) => {
         .get(req.params.id);
       let userAttachments = [];
       try { userAttachments = JSON.parse(firstUserMsg?.attachments || '[]'); } catch {}
-      const moodboardImages = userAttachments.filter(a => a.category === 'moodboard' && a.data);
-      const allImages = userAttachments.filter(a => a.data);
+      const allUserImages = userAttachments.filter(a => a.data);
+      // Merge user's original images + any images attached to this add-slides request
+      const extraImages = (reqAttachments || []).filter(a => a.data);
+      const combinedImages = [...extraImages, ...allUserImages].slice(0, 3);
 
       const presentationContext = {
         presentation_title: slidePlan.presentation_title || pres.title,
@@ -605,12 +612,18 @@ router.post('/:id/add-slides', authenticateToken, (req, res) => {
         newSlideDefs.push(slideDef);
       });
 
+      // Remove excess optimistic placeholders if Nova generated fewer than 3
+      const current0 = JSON.parse(db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id).slides_data);
+      const trimmed = current0.filter(s => s.status !== 'generating' || newSlideDefs.some(d => d.index === s.index));
+      if (trimmed.length !== current0.length) {
+        db.prepare(`UPDATE presentations SET slides_data = ? WHERE id = ?`).run(JSON.stringify(trimmed), req.params.id);
+        broadcast(req.params.id, { type: 'slides_trimmed', keep_indices: newSlideDefs.map(d => d.index) });
+      }
+
       // Generate images for each new slide with stagger
       const imagePromises = newSlideDefs.map((slideDef, i) =>
         new Promise(r => setTimeout(r, i * 800)).then(() => {
-          const attachedImages = (slideDef.attach_image_categories || []).includes('moodboard')
-            ? moodboardImages.slice(0, 2)
-            : allImages.slice(0, 1);
+          const attachedImages = combinedImages;
 
           return generateSlideImage(
             slideDef.nano_banana_prompt || slideDef.title,

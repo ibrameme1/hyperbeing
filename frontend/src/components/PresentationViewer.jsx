@@ -73,8 +73,10 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   // Add slides modal
   const [showAddSlides, setShowAddSlides] = useState(false);
   const [addDesc, setAddDesc] = useState('');
-  const [addCount, setAddCount] = useState(1);
+  const [addCount, setAddCount] = useState(1); // number 1-5 or 'auto'
+  const [addAttachments, setAddAttachments] = useState([]);
   const [addLoading, setAddLoading] = useState(false);
+  const addFileRef = useRef(null);
 
   const editRef = useRef(null);
   const filmstripRef = useRef(null);
@@ -220,14 +222,43 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
     } catch {} finally { setTitleSuggesting(false); }
   }
 
+  function handleAddAttach(files) {
+    Array.from(files).forEach(file => {
+      if (!file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = e => setAddAttachments(prev => [...prev, {
+        id: Math.random().toString(36).slice(2),
+        name: file.name, data: e.target.result, mimeType: file.type,
+      }]);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function handleAddDrop(e) {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length) handleAddAttach(files);
+  }
+
+  function handleEditDrop(e) {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length) handleEditAttach(files);
+  }
+
   async function handleAddSlides() {
     if (!addDesc.trim() || addLoading) return;
     setAddLoading(true);
     try {
-      await api.post(`/presentations/${presentationId}/add-slides`, { description: addDesc.trim(), count: addCount });
+      await api.post(`/presentations/${presentationId}/add-slides`, {
+        description: addDesc.trim(),
+        count: addCount,
+        attachments: addAttachments.map(a => ({ data: a.data, mimeType: a.mimeType, name: a.name })),
+      });
       setShowAddSlides(false);
       setAddDesc('');
       setAddCount(1);
+      setAddAttachments([]);
     } catch (err) {
       console.error('Add slides failed:', err);
     } finally {
@@ -478,6 +509,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEditSubmit(); }
                 }}
+                onDragOver={e => e.preventDefault()}
+                onDrop={handleEditDrop}
                 placeholder={`Describe changes to slide ${current + 1}…`}
                 rows={1}
                 className="flex-1 bg-transparent text-sm outline-none text-gray-800 placeholder:text-gray-400 resize-none leading-relaxed"
@@ -540,12 +573,12 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               <div className="px-6 pb-6 space-y-4">
                 <div>
                   <p className="text-sm font-semibold text-gray-700 mb-2">How many slides?</p>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     {[1, 2, 3, 4, 5].map(n => (
                       <button
                         key={n}
                         onClick={() => setAddCount(n)}
-                        className={`flex-1 py-2 rounded-xl text-sm font-semibold border-2 transition-all ${
+                        className={`w-10 py-2 rounded-xl text-sm font-semibold border-2 transition-all ${
                           addCount === n
                             ? 'border-transparent text-white'
                             : 'border-gray-200 text-gray-600 bg-gray-50 hover:border-gray-300'
@@ -555,7 +588,21 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                         {n}
                       </button>
                     ))}
+                    <button
+                      onClick={() => setAddCount('auto')}
+                      className={`flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all ${
+                        addCount === 'auto'
+                          ? 'border-transparent text-white'
+                          : 'border-gray-200 text-gray-600 bg-gray-50 hover:border-gray-300'
+                      }`}
+                      style={addCount === 'auto' ? { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' } : {}}
+                    >
+                      ✦ Nova decides
+                    </button>
                   </div>
+                  {addCount === 'auto' && (
+                    <p className="text-[11px] text-purple-500 mt-1.5">Nova will pick the right number of slides based on your content</p>
+                  )}
                 </div>
 
                 <div>
@@ -564,11 +611,47 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                     value={addDesc}
                     onChange={e => setAddDesc(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAddSlides(); }}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={handleAddDrop}
                     placeholder={`e.g. "A competitive analysis comparing the top 3 rivals" or "A closing call-to-action with next steps"`}
                     rows={3}
                     className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm text-gray-800 placeholder:text-gray-400 outline-none resize-none leading-relaxed"
                   />
-                  <p className="text-[11px] text-gray-400 mt-1">⌘+Enter to generate</p>
+                  <p className="text-[11px] text-gray-400 mt-1">⌘+Enter to generate · drag images below to attach</p>
+                </div>
+
+                {/* Attachment row */}
+                <div>
+                  <input
+                    ref={addFileRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={e => handleAddAttach(e.target.files)}
+                  />
+                  {addAttachments.length > 0 && (
+                    <div className="flex gap-2 flex-wrap mb-2">
+                      {addAttachments.map(att => (
+                        <div key={att.id} className="relative group">
+                          <img src={att.data} alt={att.name} className="h-12 w-12 rounded-xl object-cover border border-gray-200" />
+                          <button
+                            onClick={() => setAddAttachments(prev => prev.filter(a => a.id !== att.id))}
+                            className="absolute -top-1 -right-1 w-4 h-4 bg-gray-800 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X size={8} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => addFileRef.current?.click()}
+                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-purple-600 transition-colors"
+                  >
+                    <Paperclip size={12} />
+                    Attach reference images
+                  </button>
                 </div>
 
                 <button
@@ -579,6 +662,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 >
                   {addLoading ? (
                     <><Loader2 size={16} className="animate-spin" /> Generating…</>
+                  ) : addCount === 'auto' ? (
+                    <><Sparkles size={15} /> Let Nova decide &amp; generate</>
                   ) : (
                     <><Sparkles size={15} /> Generate {addCount} Slide{addCount > 1 ? 's' : ''}</>
                   )}

@@ -404,6 +404,10 @@ export default function PresentationPage() {
         );
       }
 
+      if (event.type === 'title_updated') {
+        setPresentation(p => p ? { ...p, title: event.title } : p);
+      }
+
       if (event.type === 'complete') {
         clearInterval(stageTimer);
         stopPolling();
