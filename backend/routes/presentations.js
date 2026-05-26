@@ -461,38 +461,15 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
         presentation_title: slidePlan.presentation_title,
       });
 
-      const firstUserMsg = db
-        .prepare(`SELECT attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
-        .get(req.params.id);
-      let userAttachments = [];
-      try { userAttachments = JSON.parse(firstUserMsg?.attachments || '[]'); } catch {}
-
-      // User-supplied extra images from the edit request
-      const reqAttachments = (reqBodyAttachments || []).filter(a => a.data);
-
-      const categories = updatedSlide.attach_image_categories || slide.attach_image_categories || [];
-      let attachedImages = userAttachments.filter(a => a.data);
-      if (!categories.includes('all')) {
-        attachedImages = attachedImages.filter(a =>
-          (categories.includes('moodboard') && a.category === 'moodboard') ||
-          (categories.includes('branding') && a.category === 'branding')
-        );
-      }
-
-      // Include extra images from the request (user uploaded alongside their instruction)
-      for (const a of reqAttachments) {
-        attachedImages.push(a);
-      }
-
-      // Include current slide's rendered image as a visual reference for Nano Banana
+      // Only the current slide's rendered image + any new attachments the user added in the edit bar
+      let attachedImages = [];
       if (slide.image_data && !slide.image_data.startsWith('data:image/svg')) {
-        attachedImages.unshift({
-          data: slide.image_data,
-          mimeType: 'image/jpeg',
-        });
+        const mimeType = slide.image_data.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg';
+        attachedImages.push({ data: slide.image_data, mimeType });
       }
-
-      attachedImages = attachedImages.slice(0, 4); // allow 1 extra since current slide is a reference
+      const reqAttachments = (reqBodyAttachments || []).filter(a => a.data);
+      attachedImages.push(...reqAttachments);
+      attachedImages = attachedImages.slice(0, 4);
 
       const imageData = await generateSlideImage(
         updatedSlide.nano_banana_prompt || updatedSlide.image_prompt || slide.nano_banana_prompt || slide.image_prompt,

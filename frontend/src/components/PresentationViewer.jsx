@@ -9,6 +9,50 @@ import SlideRenderer from './SlideRenderer';
 import { exportToPDF, exportImages } from '../utils/pdfExport';
 import api from '../api/client';
 
+// Separate component so each item has its own wasDragging ref
+function FilmstripItem({ slide, idx, isCurrent, onGoTo }) {
+  const wasDragging = useRef(false);
+
+  return (
+    <Reorder.Item
+      key={slide.index}
+      value={slide}
+      className="flex flex-col items-center gap-1.5 flex-shrink-0"
+      style={{ listStyle: 'none', cursor: 'grab' }}
+      whileDrag={{ scale: 1.06, zIndex: 50, cursor: 'grabbing' }}
+      onDragStart={() => { wasDragging.current = true; }}
+      onDragEnd={() => { setTimeout(() => { wasDragging.current = false; }, 80); }}
+    >
+      <div
+        onPointerUp={() => { if (!wasDragging.current) onGoTo(idx); }}
+        className={`w-24 rounded-lg overflow-hidden transition-all duration-150 relative select-none ${
+          isCurrent ? 'ring-2 ring-purple-500 shadow-md' : 'opacity-60 hover:opacity-90'
+        }`}
+        style={{ aspectRatio: '16/9' }}
+      >
+        {slide.image_data && !slide.image_data.startsWith('data:image/svg') ? (
+          <img src={slide.image_data} alt={slide.title} className="w-full h-full object-cover pointer-events-none" draggable={false} />
+        ) : (
+          <div className="w-full h-full bg-gray-200 animate-pulse" />
+        )}
+        {slide.status === 'generating' && (
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
+            <Loader2 size={14} className="text-white animate-spin" />
+          </div>
+        )}
+        {slide.status === 'error' && (
+          <div className="absolute inset-0 bg-red-900/60 flex items-center justify-center rounded-lg">
+            <AlertTriangle size={14} className="text-red-300" />
+          </div>
+        )}
+      </div>
+      <span className={`text-xs font-medium transition-colors select-none ${isCurrent ? 'text-purple-600' : 'text-gray-400'}`}>
+        {idx + 1}
+      </span>
+    </Reorder.Item>
+  );
+}
+
 export default function PresentationViewer({ slides, presentationId, title, onBack, onSlidesUpdate, onTitleChange }) {
   const [current, setCurrent] = useState(0);
   const [editInstruction, setEditInstruction] = useState('');
@@ -381,44 +425,13 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
           style={{ scrollbarWidth: 'thin', listStyle: 'none', margin: 0, padding: '12px 16px' }}
         >
           {localSlides.map((slide, idx) => (
-            <Reorder.Item
+            <FilmstripItem
               key={slide.index}
-              value={slide}
-              className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-grab active:cursor-grabbing"
-              style={{ listStyle: 'none' }}
-              whileDrag={{ scale: 1.05, zIndex: 50 }}
-            >
-              <div
-                onClick={() => goTo(idx)}
-                className={`w-24 rounded-lg overflow-hidden transition-all duration-150 relative ${
-                  idx === current ? 'ring-2 ring-purple-500 shadow-md' : 'opacity-60 hover:opacity-90'
-                }`}
-                style={{ aspectRatio: '16/9' }}
-              >
-                {slide.image_data && !slide.image_data.startsWith('data:image/svg') ? (
-                  <img src={slide.image_data} alt={slide.title} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full bg-gray-200 animate-pulse" />
-                )}
-
-                {/* Generating indicator on thumbnail */}
-                {slide.status === 'generating' && (
-                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
-                    <Loader2 size={14} className="text-white animate-spin" />
-                  </div>
-                )}
-
-                {/* Error indicator on thumbnail */}
-                {slide.status === 'error' && (
-                  <div className="absolute inset-0 bg-red-900/60 flex items-center justify-center rounded-lg">
-                    <AlertTriangle size={14} className="text-red-300" />
-                  </div>
-                )}
-              </div>
-              <span className={`text-xs font-medium transition-colors ${idx === current ? 'text-purple-600' : 'text-gray-400'}`}>
-                {idx + 1}
-              </span>
-            </Reorder.Item>
+              slide={slide}
+              idx={idx}
+              isCurrent={idx === current}
+              onGoTo={goTo}
+            />
           ))}
 
           {/* Add slides button at end of filmstrip */}
