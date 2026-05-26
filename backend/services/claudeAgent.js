@@ -486,12 +486,13 @@ export async function regenerateSlide(slide, instruction, presentationContext) {
 
   // Attach the current slide image so Claude can see the existing visual
   if (slide.image_data) {
+    const detectedMime = slide.image_data.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg';
     content.push({ type: 'text', text: '[CURRENT SLIDE IMAGE — the visual you are updating:]' });
     content.push({
       type: 'image',
       source: {
         type: 'base64',
-        media_type: 'image/png',
+        media_type: detectedMime,
         data: slide.image_data.replace(/^data:[^;]+;base64,/, ''),
       },
     });
