@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
 import QuestionFlow from '../components/QuestionFlow';
 
+
 function greeting(name) {
   const h = new Date().getHours();
   const time = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
@@ -157,7 +158,6 @@ export default function Dashboard() {
   const [moodboardFiles, setMoodboardFiles] = useState([]);
   const [brandingFiles, setBrandingFiles] = useState([]);
   const [showZones, setShowZones] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [presentations, setPresentations] = useState([]);
   const [presLoading, setPresLoading] = useState(true);
@@ -203,10 +203,8 @@ export default function Dashboard() {
 
   async function handleQuestionComplete(answers, suggestedSlideCount) {
     setShowQuestionFlow(false);
-    setLoading(true);
     setSubmitError('');
 
-    // Build comprehensive message with all pre-flight answers
     const qaSection = answers.map(a => `- ${a.question}: ${a.answer}`).join('\n');
     const comprehensiveMessage = `${pendingInput}\n\nPREFLIGHT ANSWERS:\n${qaSection}\n\nDetected type: ${analysis.detected_type || ''}\nDetected industry: ${analysis.detected_industry || ''}\nSuggested slides: ${suggestedSlideCount || analysis.suggested_slide_count || 8}\n\nPlease generate the full presentation now.`;
 
@@ -220,7 +218,6 @@ export default function Dashboard() {
     } catch (err) {
       const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong';
       setSubmitError(msg);
-      setLoading(false);
     }
   }
 
@@ -343,13 +340,11 @@ export default function Dashboard() {
                   <p className="text-xs text-ios-gray2 hidden sm:block">⌘ + Enter</p>
                   <button
                     onClick={handleSubmit}
-                    disabled={analyzing || loading || (!input.trim() && allAttachments.length === 0)}
+                    disabled={analyzing || (!input.trim() && allAttachments.length === 0)}
                     className="ios-btn py-2 px-5 text-sm"
                   >
                     {analyzing ? (
                       <><Loader2 size={15} className="animate-spin" /> Analyzing…</>
-                    ) : loading ? (
-                      <><Loader2 size={15} className="animate-spin" /> Creating…</>
                     ) : (
                       <><Send size={15} /> Create</>
                     )}

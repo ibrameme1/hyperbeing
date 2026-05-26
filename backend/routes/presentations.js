@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { chat, regenerateSlide, analyzePresentation } from '../services/claudeAgent.js';
+import { chat, regenerateSlide, analyzePresentation, streamSlidePlan } from '../services/claudeAgent.js';
 import { generateSlideImage } from '../services/imageGeneration.js';
 
 const router = Router();
@@ -46,9 +46,9 @@ router.post('/analyze', authenticateToken, async (req, res) => {
   }
 });
 
-// ─── Create presentation + send first message ──────────────────────────────
-router.post('/', authenticateToken, async (req, res) => {
-  const { message, attachments = [] } = req.body;
+// ─── Create presentation + kick off async full flow ───────────────────────
+router.post('/', authenticateToken, (req, res) => {
+  const { message, attachments = [], aspectRatio = '16:9' } = req.body;
   if (!message?.trim() && attachments.length === 0) {
     return res.status(400).json({ error: 'Message or attachment required' });
   }
@@ -57,10 +57,9 @@ router.post('/', authenticateToken, async (req, res) => {
   const id = uuid();
   const msgId = uuid();
 
-  const { aspectRatio = '16:9' } = req.body;
   db.prepare(
     `INSERT INTO presentations (id, user_id, title, status, aspect_ratio)
-     VALUES (?, ?, 'Untitled Presentation', 'chat', ?)`
+     VALUES (?, ?, 'Untitled Presentation', 'processing', ?)`
   ).run(id, req.user.id, aspectRatio);
 
   db.prepare(
@@ -68,32 +67,120 @@ router.post('/', authenticateToken, async (req, res) => {
      VALUES (?, ?, 'user', ?, ?)`
   ).run(msgId, id, message, JSON.stringify(attachments));
 
-  try {
-    const agentResponse = await chat([], message, attachments);
-    const aiMsgId = uuid();
+  // Respond immediately — Claude planning + image generation run async
+  res.status(201).json({
+    presentation: db.prepare('SELECT * FROM presentations WHERE id = ?').get(id),
+  });
 
-    db.prepare(
-      `INSERT INTO messages (id, presentation_id, role, content, metadata)
-       VALUES (?, ?, 'assistant', ?, ?)`
-    ).run(aiMsgId, id, agentResponse.message, JSON.stringify(agentResponse));
-
-    if (agentResponse.state === 'ready' && agentResponse.slide_plan) {
-      const { presentation_title } = agentResponse.slide_plan;
-      db.prepare(
-        `UPDATE presentations SET title = ?, slide_plan = ?, status = 'ready', updated_at = CURRENT_TIMESTAMP
-         WHERE id = ?`
-      ).run(presentation_title || 'Untitled Presentation', JSON.stringify(agentResponse.slide_plan), id);
-    }
-
-    res.status(201).json({
-      presentation: db.prepare('SELECT * FROM presentations WHERE id = ?').get(id),
-      aiMessage: { id: aiMsgId, role: 'assistant', content: agentResponse.message, metadata: agentResponse },
-    });
-  } catch (err) {
-    console.error('Agent error:', err);
-    res.status(500).json({ error: 'AI agent failed', detail: err.message });
-  }
+  runFullFlow(id, message, attachments).catch(err => {
+    console.error('Full flow error:', err);
+    broadcast(id, { type: 'error', message: err.message });
+    getDb().prepare(`UPDATE presentations SET status = 'error', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(id);
+  });
 });
+
+async function runFullFlow(presentationId, message, attachments) {
+  const db = getDb();
+
+  broadcast(presentationId, { type: 'plan_generating' });
+
+  const presRow = db.prepare('SELECT aspect_ratio FROM presentations WHERE id = ?').get(presentationId);
+  const aspectRatio = presRow?.aspect_ratio || '16:9';
+
+  const firstUserMsg = db
+    .prepare(`SELECT attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
+    .get(presentationId);
+  let userAttachments = [];
+  try { userAttachments = JSON.parse(firstUserMsg?.attachments || '[]'); } catch {}
+  const moodboardImages = userAttachments.filter(a => a.category === 'moodboard' && a.data);
+  const brandingImages  = userAttachments.filter(a => a.category === 'branding'  && a.data);
+  const allImages       = userAttachments.filter(a => a.data);
+
+  let header = null;
+  const slidePromises = [];
+  const completedSlides = new Map();
+
+  function persistProgress() {
+    const sorted = [...completedSlides.values()].sort((a, b) => a.index - b.index);
+    db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(JSON.stringify(sorted), presentationId);
+  }
+
+  await streamSlidePlan(message, attachments, {
+    onHeader(h) {
+      header = h;
+      db.prepare(
+        `INSERT INTO messages (id, presentation_id, role, content, metadata) VALUES (?, ?, 'assistant', ?, ?)`
+      ).run(uuid(), presentationId, h.message || '', JSON.stringify({ state: 'ready', message: h.message }));
+
+      db.prepare(
+        `UPDATE presentations SET title = ?, slide_plan = ?, status = 'generating', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+      ).run(
+        h.presentation_title || 'Untitled Presentation',
+        JSON.stringify({ ...h, slides: [] }),
+        presentationId
+      );
+
+      broadcast(presentationId, { type: 'plan_ready',  total_slides: h.total_slides });
+      broadcast(presentationId, { type: 'started',     total_slides: h.total_slides });
+    },
+
+    onSlide(slide) {
+      broadcast(presentationId, { type: 'slide_generating', index: slide.index });
+
+      const categories = slide.attach_image_categories || [];
+      let attachedImages = [];
+      if (categories.includes('all')) {
+        attachedImages = allImages;
+      } else {
+        if (categories.includes('moodboard')) attachedImages.push(...moodboardImages);
+        if (categories.includes('branding'))  attachedImages.push(...brandingImages);
+      }
+      attachedImages = attachedImages.slice(0, 3);
+
+      const promise = generateSlideImage(
+        slide.nano_banana_prompt || slide.title,
+        slide.type,
+        header?.theme        || 'modern-minimal',
+        header?.color_palette || {},
+        slide.index,
+        attachedImages,
+        aspectRatio
+      ).then(imageData => {
+        const done = { ...slide, image_data: imageData, status: 'complete' };
+        completedSlides.set(slide.index, done);
+        persistProgress();
+        broadcast(presentationId, { type: 'slide_ready', slide: done });
+      }).catch(err => {
+        console.error(`Slide ${slide.index} image failed:`, err.message);
+        const errSlide = { ...slide, image_data: null, status: 'error' };
+        completedSlides.set(slide.index, errSlide);
+        broadcast(presentationId, { type: 'slide_error', index: slide.index, message: err.message });
+      });
+
+      slidePromises.push(promise);
+    },
+  });
+
+  // Wait for all Nano Banana calls (they started as Claude was streaming)
+  await Promise.all(slidePromises);
+
+  const allSlides = [...completedSlides.values()].sort((a, b) => a.index - b.index);
+
+  if (header) {
+    db.prepare(`UPDATE presentations SET slide_plan = ? WHERE id = ?`)
+      .run(
+        JSON.stringify({ ...header, slides: allSlides.map(({ image_data, ...rest }) => rest) }),
+        presentationId
+      );
+  }
+
+  db.prepare(
+    `UPDATE presentations SET status = 'completed', slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+  ).run(JSON.stringify(allSlides), presentationId);
+
+  broadcast(presentationId, { type: 'complete', total_slides: allSlides.length });
+}
 
 // ─── Get single presentation with messages ────────────────────────────────
 router.get('/:id', authenticateToken, (req, res) => {
@@ -201,6 +288,30 @@ router.get('/:id/events', (req, res) => {
   if (!sseRegistry.has(id)) sseRegistry.set(id, new Set());
   sseRegistry.get(id).add(res);
 
+  // Catch-up: replay current state for clients that connect after events were broadcast
+  const db2 = getDb();
+  const presState = db2.prepare('SELECT status, slide_plan, slides_data FROM presentations WHERE id = ?').get(id);
+  if (presState) {
+    if (presState.status === 'processing' || presState.status === 'generating') {
+      if (presState.slide_plan) {
+        const plan = JSON.parse(presState.slide_plan);
+        res.write(`data: ${JSON.stringify({ type: 'plan_ready', total_slides: plan.slides.length })}\n\n`);
+      }
+      if (presState.slides_data) {
+        const doneSlides = JSON.parse(presState.slides_data);
+        for (const s of doneSlides) {
+          res.write(`data: ${JSON.stringify({ type: 'slide_ready', slide: s })}\n\n`);
+        }
+      }
+    } else if (presState.status === 'completed' && presState.slides_data) {
+      const doneSlides = JSON.parse(presState.slides_data);
+      for (const s of doneSlides) {
+        res.write(`data: ${JSON.stringify({ type: 'slide_ready', slide: s })}\n\n`);
+      }
+      res.write(`data: ${JSON.stringify({ type: 'complete', total_slides: doneSlides.length })}\n\n`);
+    }
+  }
+
   req.on('close', () => {
     sseRegistry.get(id)?.delete(res);
     if (sseRegistry.get(id)?.size === 0) sseRegistry.delete(id);
@@ -286,6 +397,11 @@ async function runGeneration(presentationId, slidePlan) {
       const completedSlide = { ...slide, image_data: imageData, status: 'complete' };
       slides.push(completedSlide);
 
+      // Persist progress so SSE catch-up works for late-connecting clients
+      db.prepare(
+        `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+      ).run(JSON.stringify(slides), presentationId);
+
       broadcast(presentationId, { type: 'slide_ready', slide: completedSlide });
     } catch (err) {
       console.error(`Slide ${slide.index} image failed:`, err.message);
@@ -303,7 +419,7 @@ async function runGeneration(presentationId, slidePlan) {
 
 // ─── Regenerate a single slide ────────────────────────────────────────────
 router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res) => {
-  const { instruction } = req.body;
+  const { instruction, attachments: reqBodyAttachments } = req.body;
   if (!instruction?.trim()) return res.status(400).json({ error: 'Instruction required' });
 
   const db = getDb();
@@ -341,6 +457,9 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
       let userAttachments = [];
       try { userAttachments = JSON.parse(firstUserMsg?.attachments || '[]'); } catch {}
 
+      // User-supplied extra images from the edit request
+      const reqAttachments = (reqBodyAttachments || []).filter(a => a.data);
+
       const categories = updatedSlide.attach_image_categories || slide.attach_image_categories || [];
       let attachedImages = userAttachments.filter(a => a.data);
       if (!categories.includes('all')) {
@@ -349,7 +468,21 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
           (categories.includes('branding') && a.category === 'branding')
         );
       }
-      attachedImages = attachedImages.slice(0, 3);
+
+      // Include extra images from the request (user uploaded alongside their instruction)
+      for (const a of reqAttachments) {
+        attachedImages.push(a);
+      }
+
+      // Include current slide's rendered image as a visual reference for Nano Banana
+      if (slide.image_data && !slide.image_data.startsWith('data:image/svg')) {
+        attachedImages.unshift({
+          data: slide.image_data,
+          mimeType: 'image/jpeg',
+        });
+      }
+
+      attachedImages = attachedImages.slice(0, 4); // allow 1 extra since current slide is a reference
 
       const imageData = await generateSlideImage(
         updatedSlide.nano_banana_prompt || updatedSlide.image_prompt || slide.nano_banana_prompt || slide.image_prompt,
@@ -375,6 +508,26 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
       broadcast(req.params.id, { type: 'slide_error', index: idx, message: err.message });
     }
   })();
+});
+
+// ─── Reorder slides ───────────────────────────────────────────────────────
+router.post('/:id/reorder', authenticateToken, (req, res) => {
+  const { order } = req.body; // array of slide indexes in new order
+  if (!Array.isArray(order)) return res.status(400).json({ error: 'order array required' });
+
+  const db = getDb();
+  const pres = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+  if (!pres || !pres.slides_data) return res.status(404).json({ error: 'Not found' });
+
+  const slides = JSON.parse(pres.slides_data);
+  const byIndex = new Map(slides.map(s => [s.index, s]));
+  const reordered = order.map(idx => byIndex.get(idx)).filter(Boolean);
+
+  db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .run(JSON.stringify(reordered), req.params.id);
+
+  res.json({ message: 'Reordered' });
 });
 
 // ─── Delete presentation ──────────────────────────────────────────────────

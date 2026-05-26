@@ -2,34 +2,37 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 
-const STATUS_MESSAGES = [
-  'Understanding your brief…',
-  'Studying your reference images…',
-  'Mapping the right slide structure…',
-  'Crafting the storyline…',
-  'Designing each slide prompt…',
-  'Matching visuals with your uploaded assets…',
-  'Generating slide visuals with Nano Banana…',
-  'Polishing the final presentation…',
+const PLANNING_MESSAGES = [
+  'Nova is crafting your slide plan…',
+  'Deciding the perfect narrative structure…',
+  'Writing art direction for each slide…',
+  'Choosing your visual style and palette…',
+  'Almost ready to generate your slides…',
+];
+
+const GENERATING_MESSAGES = [
+  'Generating your slide visuals…',
+  'Rendering your presentation…',
+  'Creating your slides…',
+  'Bringing your vision to life…',
+  'Almost there…',
 ];
 
 export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 }) {
   const [msgIndex, setMsgIndex] = useState(0);
+  const isGenerating = totalSlides > 0;
+  const messages = isGenerating ? GENERATING_MESSAGES : PLANNING_MESSAGES;
   const progress = totalSlides > 0 ? generatedSlides.length / totalSlides : 0;
 
   useEffect(() => {
+    setMsgIndex(0);
     const id = setInterval(() => {
-      setMsgIndex(i => (i + 1) % STATUS_MESSAGES.length);
+      setMsgIndex(i => (i + 1) % messages.length);
     }, 3200);
     return () => clearInterval(id);
-  }, []);
+  }, [isGenerating]);
 
-  // When slides start coming in, jump to the Nano Banana message
-  useEffect(() => {
-    if (generatedSlides.length > 0) setMsgIndex(6);
-  }, [generatedSlides.length > 0]);
-
-  const currentMsg = STATUS_MESSAGES[msgIndex];
+  const currentMsg = messages[msgIndex];
 
   return (
     <div
@@ -91,11 +94,11 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
         </div>
 
         {/* Slide count */}
-        {totalSlides > 0 && (
-          <p className="text-white/40 text-sm">
-            {generatedSlides.length} of {totalSlides} slides ready
-          </p>
-        )}
+        <p className="text-white/40 text-sm">
+          {totalSlides > 0
+            ? `${generatedSlides.length} of ${totalSlides} slides ready`
+            : 'Planning your presentation…'}
+        </p>
 
         {/* Progress bar */}
         <div
