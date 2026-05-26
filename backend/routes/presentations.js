@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { chat, regenerateSlide, analyzePresentation } from '../services/claudeAgent.js';
+import { chat, regenerateSlide, analyzePresentation, streamSlidePlan } from '../services/claudeAgent.js';
 import { generateSlideImage } from '../services/imageGeneration.js';
 
 const router = Router();
@@ -84,30 +84,102 @@ async function runFullFlow(presentationId, message, attachments) {
 
   broadcast(presentationId, { type: 'plan_generating' });
 
-  const agentResponse = await chat([], message, attachments);
-  const aiMsgId = uuid();
+  const presRow = db.prepare('SELECT aspect_ratio FROM presentations WHERE id = ?').get(presentationId);
+  const aspectRatio = presRow?.aspect_ratio || '16:9';
+
+  const firstUserMsg = db
+    .prepare(`SELECT attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
+    .get(presentationId);
+  let userAttachments = [];
+  try { userAttachments = JSON.parse(firstUserMsg?.attachments || '[]'); } catch {}
+  const moodboardImages = userAttachments.filter(a => a.category === 'moodboard' && a.data);
+  const brandingImages  = userAttachments.filter(a => a.category === 'branding'  && a.data);
+  const allImages       = userAttachments.filter(a => a.data);
+
+  let header = null;
+  const slidePromises = [];
+  const completedSlides = new Map();
+
+  function persistProgress() {
+    const sorted = [...completedSlides.values()].sort((a, b) => a.index - b.index);
+    db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(JSON.stringify(sorted), presentationId);
+  }
+
+  await streamSlidePlan(message, attachments, {
+    onHeader(h) {
+      header = h;
+      db.prepare(
+        `INSERT INTO messages (id, presentation_id, role, content, metadata) VALUES (?, ?, 'assistant', ?, ?)`
+      ).run(uuid(), presentationId, h.message || '', JSON.stringify({ state: 'ready', message: h.message }));
+
+      db.prepare(
+        `UPDATE presentations SET title = ?, slide_plan = ?, status = 'generating', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+      ).run(
+        h.presentation_title || 'Untitled Presentation',
+        JSON.stringify({ ...h, slides: [] }),
+        presentationId
+      );
+
+      broadcast(presentationId, { type: 'plan_ready',  total_slides: h.total_slides });
+      broadcast(presentationId, { type: 'started',     total_slides: h.total_slides });
+    },
+
+    onSlide(slide) {
+      broadcast(presentationId, { type: 'slide_generating', index: slide.index });
+
+      const categories = slide.attach_image_categories || [];
+      let attachedImages = [];
+      if (categories.includes('all')) {
+        attachedImages = allImages;
+      } else {
+        if (categories.includes('moodboard')) attachedImages.push(...moodboardImages);
+        if (categories.includes('branding'))  attachedImages.push(...brandingImages);
+      }
+      attachedImages = attachedImages.slice(0, 3);
+
+      const promise = generateSlideImage(
+        slide.nano_banana_prompt || slide.title,
+        slide.type,
+        header?.theme        || 'modern-minimal',
+        header?.color_palette || {},
+        slide.index,
+        attachedImages,
+        aspectRatio
+      ).then(imageData => {
+        const done = { ...slide, image_data: imageData, status: 'complete' };
+        completedSlides.set(slide.index, done);
+        persistProgress();
+        broadcast(presentationId, { type: 'slide_ready', slide: done });
+      }).catch(err => {
+        console.error(`Slide ${slide.index} image failed:`, err.message);
+        const errSlide = { ...slide, image_data: null, status: 'error' };
+        completedSlides.set(slide.index, errSlide);
+        broadcast(presentationId, { type: 'slide_error', index: slide.index, message: err.message });
+      });
+
+      slidePromises.push(promise);
+    },
+  });
+
+  // Wait for all Nano Banana calls (they started as Claude was streaming)
+  await Promise.all(slidePromises);
+
+  const allSlides = [...completedSlides.values()].sort((a, b) => a.index - b.index);
+
+  if (header) {
+    db.prepare(`UPDATE presentations SET slide_plan = ? WHERE id = ?`)
+      .run(
+        JSON.stringify({ ...header, slides: allSlides.map(({ image_data, ...rest }) => rest) }),
+        presentationId
+      );
+  }
 
   db.prepare(
-    `INSERT INTO messages (id, presentation_id, role, content, metadata)
-     VALUES (?, ?, 'assistant', ?, ?)`
-  ).run(aiMsgId, presentationId, agentResponse.message, JSON.stringify(agentResponse));
+    `UPDATE presentations SET status = 'completed', slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+  ).run(JSON.stringify(allSlides), presentationId);
 
-  if (agentResponse.state === 'ready' && agentResponse.slide_plan) {
-    const { presentation_title, slides } = agentResponse.slide_plan;
-    db.prepare(
-      `UPDATE presentations SET title = ?, slide_plan = ?, status = 'generating', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-    ).run(presentation_title || 'Untitled Presentation', JSON.stringify(agentResponse.slide_plan), presentationId);
-
-    broadcast(presentationId, { type: 'plan_ready', total_slides: slides.length });
-
-    await runGeneration(presentationId, agentResponse.slide_plan);
-  } else {
-    // Nova wants more info — fall back to chat mode so user can continue
-    db.prepare(
-      `UPDATE presentations SET status = 'chat', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-    ).run(presentationId);
-    broadcast(presentationId, { type: 'chat_needed', message: agentResponse.message });
-  }
+  broadcast(presentationId, { type: 'complete', total_slides: allSlides.length });
 }
 
 // ─── Get single presentation with messages ────────────────────────────────
@@ -347,7 +419,7 @@ async function runGeneration(presentationId, slidePlan) {
 
 // ─── Regenerate a single slide ────────────────────────────────────────────
 router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res) => {
-  const { instruction } = req.body;
+  const { instruction, attachments: reqBodyAttachments } = req.body;
   if (!instruction?.trim()) return res.status(400).json({ error: 'Instruction required' });
 
   const db = getDb();
@@ -385,6 +457,9 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
       let userAttachments = [];
       try { userAttachments = JSON.parse(firstUserMsg?.attachments || '[]'); } catch {}
 
+      // User-supplied extra images from the edit request
+      const reqAttachments = (reqBodyAttachments || []).filter(a => a.data);
+
       const categories = updatedSlide.attach_image_categories || slide.attach_image_categories || [];
       let attachedImages = userAttachments.filter(a => a.data);
       if (!categories.includes('all')) {
@@ -393,7 +468,21 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
           (categories.includes('branding') && a.category === 'branding')
         );
       }
-      attachedImages = attachedImages.slice(0, 3);
+
+      // Include extra images from the request (user uploaded alongside their instruction)
+      for (const a of reqAttachments) {
+        attachedImages.push(a);
+      }
+
+      // Include current slide's rendered image as a visual reference for Nano Banana
+      if (slide.image_data && !slide.image_data.startsWith('data:image/svg')) {
+        attachedImages.unshift({
+          data: slide.image_data,
+          mimeType: 'image/jpeg',
+        });
+      }
+
+      attachedImages = attachedImages.slice(0, 4); // allow 1 extra since current slide is a reference
 
       const imageData = await generateSlideImage(
         updatedSlide.nano_banana_prompt || updatedSlide.image_prompt || slide.nano_banana_prompt || slide.image_prompt,
@@ -419,6 +508,26 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
       broadcast(req.params.id, { type: 'slide_error', index: idx, message: err.message });
     }
   })();
+});
+
+// ─── Reorder slides ───────────────────────────────────────────────────────
+router.post('/:id/reorder', authenticateToken, (req, res) => {
+  const { order } = req.body; // array of slide indexes in new order
+  if (!Array.isArray(order)) return res.status(400).json({ error: 'order array required' });
+
+  const db = getDb();
+  const pres = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+  if (!pres || !pres.slides_data) return res.status(404).json({ error: 'Not found' });
+
+  const slides = JSON.parse(pres.slides_data);
+  const byIndex = new Map(slides.map(s => [s.index, s]));
+  const reordered = order.map(idx => byIndex.get(idx)).filter(Boolean);
+
+  db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .run(JSON.stringify(reordered), req.params.id);
+
+  res.json({ message: 'Reordered' });
 });
 
 // ─── Delete presentation ──────────────────────────────────────────────────
