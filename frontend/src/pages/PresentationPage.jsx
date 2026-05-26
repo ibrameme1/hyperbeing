@@ -323,7 +323,8 @@ export default function PresentationPage() {
     }
 
     const token = localStorage.getItem('hb_token');
-    const sse = new EventSource(`/api/presentations/${presId}/events?token=${encodeURIComponent(token)}`);
+    const apiBase = import.meta.env.VITE_API_URL || '';
+    const sse = new EventSource(`${apiBase}/api/presentations/${presId}/events?token=${encodeURIComponent(token)}`);
     sseRef.current = sse;
 
     let stageTimer = 0;

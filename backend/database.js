@@ -4,8 +4,10 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, 'data');
-const DB_PATH = path.join(DATA_DIR, 'hyperbeing.db');
+const DATA_DIR = process.env.DB_PATH
+  ? path.dirname(process.env.DB_PATH)
+  : path.join(__dirname, 'data');
+const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'hyperbeing.db');
 
 let db;
 
