@@ -138,7 +138,8 @@ async function runFullFlow(presentationId, message, attachments) {
       }
       attachedImages = attachedImages.slice(0, 3);
 
-      const promise = generateSlideImage(
+      const staggerDelay = slide.index * 800; // 800ms apart to avoid simultaneous API hammering
+      const promise = new Promise(r => setTimeout(r, staggerDelay)).then(() => generateSlideImage(
         slide.nano_banana_prompt || slide.title,
         slide.type,
         header?.theme        || 'modern-minimal',
@@ -146,7 +147,7 @@ async function runFullFlow(presentationId, message, attachments) {
         slide.index,
         attachedImages,
         aspectRatio
-      ).then(imageData => {
+      )).then(imageData => {
         const done = { ...slide, image_data: imageData, status: 'complete' };
         completedSlides.set(slide.index, done);
         persistProgress();
