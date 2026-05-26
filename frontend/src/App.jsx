@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import PresentationPage from './pages/PresentationPage';
 import PromptGeneratorPage from './pages/PromptGeneratorPage';
+import Onboarding from './pages/Onboarding';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -34,6 +35,7 @@ export default function App() {
           path="/presentations/:id"
           element={<ProtectedRoute><PresentationPage /></ProtectedRoute>}
         />
+        <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
         <Route path="/prompt-generator" element={<ProtectedRoute><PromptGeneratorPage /></ProtectedRoute>} />
       </Routes>
     </AuthProvider>

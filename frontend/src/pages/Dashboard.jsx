@@ -38,7 +38,7 @@ function AnalyzingOverlay() {
       >
         <div
           className="w-16 h-16 rounded-2xl mx-auto mb-5 flex items-center justify-center"
-          style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+          style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}
         >
           <motion.div
             animate={{ rotate: 360 }}
@@ -67,7 +67,7 @@ function AnalyzingOverlay() {
               animate={{ scale: [1, 1.4, 1], opacity: [0.4, 1, 0.4] }}
               transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
               className="w-2 h-2 rounded-full"
-              style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+              style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}
             />
           ))}
         </div>
@@ -85,6 +85,19 @@ function greeting(name) {
   const time = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
   return `Good ${time}, ${name.split(' ')[0]}`;
 }
+
+const VIBE_SUBTITLES = {
+  'dark-editorial': 'Ready to make something that looks like a magazine cover?',
+  'clean-minimal': 'Clean, sharp, minimal — just how you like it.',
+  'bold-punchy': 'Time to make something that gets a reaction.',
+  'colorful': 'Let\'s make something that brings the energy.',
+};
+const PRIORITY_SUBTITLES = {
+  speed: 'Nova\'s warmed up and ready to move fast.',
+  quality: 'Nova\'s in full art-director mode today.',
+  storytelling: 'Let\'s build a narrative that lands.',
+  automation: 'Describe it. Nova handles the rest.',
+};
 
 // ─── Attachment Drop Zone ──────────────────────────────────────────────────
 function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove }) {
@@ -189,7 +202,7 @@ function PresentationCard({ pres, onDelete }) {
       className="bg-white rounded-2xl overflow-hidden shadow-ios cursor-pointer group relative"
     >
       <div className="aspect-[16/9] overflow-hidden"
-           style={{ background: 'linear-gradient(135deg, #667eea22 0%, #764ba222 100%)' }}>
+           style={{ background: 'linear-gradient(135deg, #7B5EFF22 0%, #FF4B8C22 100%)' }}>
         {pres.thumbnail ? (
           <img src={pres.thumbnail} alt={pres.title} className="w-full h-full object-cover" />
         ) : (
@@ -230,6 +243,11 @@ export default function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [input, setInput] = useState('');
+
+  const prefs = (() => { try { return JSON.parse(localStorage.getItem('hb_prefs') || 'null'); } catch { return null; } })();
+  const heroSubtitle = prefs
+    ? (VIBE_SUBTITLES[prefs.design_vibe] || PRIORITY_SUBTITLES[prefs.priority] || 'What will you create today?')
+    : 'What will you create today?';
   const [moodboardFiles, setMoodboardFiles] = useState([]);
   const [brandingFiles, setBrandingFiles] = useState([]);
   const [showZones, setShowZones] = useState(false);
@@ -335,13 +353,13 @@ export default function Dashboard() {
         />
       )}
     </AnimatePresence>
-    <div className="min-h-screen" style={{ background: '#F2F2F7' }}>
+    <div className="min-h-screen" style={{ background: '#F7F5FF' }}>
       {/* Nav */}
       <nav className="sticky top-0 z-50 flex items-center justify-between px-6 py-3"
-           style={{ background: 'rgba(242,242,247,0.85)', backdropFilter: 'blur(20px)' }}>
+           style={{ background: 'rgba(247,245,255,0.88)', backdropFilter: 'blur(20px)', borderBottom: '1px solid #EDE8FF' }}>
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+               style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}>
             <Sparkles size={16} className="text-white" />
           </div>
           <span className="font-bold text-gray-900 text-lg tracking-tight">HyperBeing</span>
@@ -356,7 +374,7 @@ export default function Dashboard() {
       </nav>
 
       {/* Hero gradient section */}
-      <div style={{ background: 'linear-gradient(160deg, #ece9ff 0%, #e8f0ff 40%, #fce8f4 100%)' }}>
+      <div style={{ background: 'linear-gradient(160deg, #EDE8FF 0%, #F0EEFF 40%, #FFE8F3 100%)' }}>
         <div className="max-w-3xl mx-auto px-4 pt-12 pb-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -364,13 +382,14 @@ export default function Dashboard() {
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             className="text-center mb-8"
           >
-            <p className="text-xs font-semibold tracking-widest text-purple-500 uppercase mb-2">
+            <p className="text-xs font-semibold tracking-widest uppercase mb-2" style={{ color: '#7B5EFF' }}>
               {greeting(user?.name || 'there')}
             </p>
             <h1 className="text-5xl font-bold leading-tight tracking-tight"
-                style={{ background: 'linear-gradient(135deg, #5b4fcf 0%, #9333ea 50%, #ec4899 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               What will you<br />create today?
             </h1>
+            <p className="text-sm mt-3" style={{ color: '#6B6285' }}>{heroSubtitle}</p>
           </motion.div>
 
           {/* Composer card */}
@@ -521,7 +540,7 @@ export default function Dashboard() {
         {!presLoading && presentations.length === 0 && (
           <div className="text-center py-16">
             <div className="w-16 h-16 rounded-3xl mx-auto mb-4 flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #667eea22 0%, #764ba222 100%)' }}>
+                 style={{ background: 'linear-gradient(135deg, #7B5EFF22 0%, #FF4B8C22 100%)' }}>
               <Sparkles size={28} className="text-ios-indigo opacity-60" />
             </div>
             <p className="text-gray-500 text-sm">Your presentations will appear here.</p>

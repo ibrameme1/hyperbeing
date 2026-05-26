@@ -11,8 +11,8 @@
 
   html, body {
     @apply font-sans;
-    background-color: #F2F2F7;
-    color: #1C1C1E;
+    background-color: #F7F5FF;
+    color: #18132E;
   }
 
   ::selection {
@@ -43,10 +43,13 @@
   /* iOS primary button */
   .ios-btn {
     @apply inline-flex items-center justify-center gap-2 px-6 py-3
-           rounded-2xl bg-ios-blue text-white font-semibold text-sm
+           rounded-2xl text-white font-semibold text-sm
            shadow-ios active:scale-[0.97] transition-all duration-150
-           disabled:opacity-40 disabled:pointer-events-none
-           hover:bg-blue-600;
+           disabled:opacity-40 disabled:pointer-events-none;
+    background: linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%);
+  }
+  .ios-btn:hover {
+    background: linear-gradient(135deg, #6B4EEF 0%, #EF3A7C 100%);
   }
 
   /* iOS secondary button */
@@ -78,10 +81,65 @@
   }
 }
 
+@layer components {
+  .hb-gradient {
+    background: linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%);
+  }
+  .hb-gradient-text {
+    background: linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hb-surface {
+    background: rgba(28, 22, 53, 0.7);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(123, 94, 255, 0.15);
+  }
+  .hb-btn {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3
+           rounded-2xl text-white font-semibold text-sm
+           active:scale-[0.97] transition-all duration-150
+           disabled:opacity-40 disabled:pointer-events-none;
+    background: linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%);
+    box-shadow: 0 4px 24px rgba(123,94,255,0.35);
+  }
+  .hb-btn:hover {
+    background: linear-gradient(135deg, #6B4EEF 0%, #EF3A7C 100%);
+    box-shadow: 0 6px 32px rgba(123,94,255,0.45);
+  }
+  .hb-chip {
+    @apply px-4 py-3 rounded-2xl text-sm font-semibold border-2 transition-all duration-200 cursor-pointer text-left;
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(123,94,255,0.2);
+    color: rgba(255,255,255,0.75);
+  }
+  .hb-chip:hover {
+    border-color: rgba(123,94,255,0.5);
+    background: rgba(123,94,255,0.1);
+    color: white;
+  }
+  .hb-chip.selected {
+    background: linear-gradient(135deg, rgba(123,94,255,0.25) 0%, rgba(255,75,140,0.20) 100%);
+    border-color: #7B5EFF;
+    color: white;
+    box-shadow: 0 0 20px rgba(123,94,255,0.2);
+  }
+}
+
 @layer utilities {
   .animate-in {
     animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
+
+  @keyframes aurora {
+    0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.5; }
+    33% { transform: translate(30px, -20px) scale(1.1); opacity: 0.7; }
+    66% { transform: translate(-20px, 10px) scale(0.9); opacity: 0.4; }
+  }
+  .animate-aurora { animation: aurora 8s ease-in-out infinite; }
+  .animate-aurora-2 { animation: aurora 11s ease-in-out infinite reverse; }
+  .animate-aurora-3 { animation: aurora 14s ease-in-out infinite 3s; }
 
   /* Shimmer skeleton */
   .skeleton {

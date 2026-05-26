@@ -287,7 +287,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
 
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-               style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+               style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}>
             <Sparkles size={13} className="text-white" />
           </div>
 
@@ -347,7 +347,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
             onClick={() => setShowExportMenu(v => !v)}
             disabled={exportingPDF || exportingImages}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold text-white transition-all duration-150 active:scale-95"
-            style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+            style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}
           >
             {(exportingPDF || exportingImages) ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             Export
@@ -527,7 +527,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               onClick={handleEditSubmit}
               disabled={!editInstruction.trim() || editLoading || isUpdating}
               className="w-10 h-10 rounded-2xl flex items-center justify-center text-white transition-all duration-150 active:scale-95 disabled:opacity-40 flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+              style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}
             >
               {editLoading ? <Loader2 size={16} className="animate-spin" /> : <Send size={15} />}
             </button>
@@ -556,7 +556,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               <div className="flex items-center justify-between px-6 pt-6 pb-4">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-2xl flex items-center justify-center"
-                       style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                       style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}>
                     <Plus size={15} className="text-white" />
                   </div>
                   <div>
@@ -583,7 +583,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                             ? 'border-transparent text-white'
                             : 'border-gray-200 text-gray-600 bg-gray-50 hover:border-gray-300'
                         }`}
-                        style={addCount === n ? { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' } : {}}
+                        style={addCount === n ? { background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' } : {}}
                       >
                         {n}
                       </button>
@@ -595,7 +595,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                           ? 'border-transparent text-white'
                           : 'border-gray-200 text-gray-600 bg-gray-50 hover:border-gray-300'
                       }`}
-                      style={addCount === 'auto' ? { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' } : {}}
+                      style={addCount === 'auto' ? { background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' } : {}}
                     >
                       ✦ Nova decides
                     </button>
@@ -658,7 +658,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   onClick={handleAddSlides}
                   disabled={!addDesc.trim() || addLoading}
                   className="w-full py-3 rounded-2xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-40"
-                  style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+                  style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}
                 >
                   {addLoading ? (
                     <><Loader2 size={16} className="animate-spin" /> Generating…</>

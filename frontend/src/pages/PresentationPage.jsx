@@ -131,7 +131,7 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
         {sending && (
           <div className="flex gap-3">
             <div className="flex-shrink-0 w-8 h-8 rounded-2xl flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                 style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}>
               <Sparkles size={14} className="text-white" />
             </div>
             <div className="bubble-ai flex items-center gap-2 text-ios-gray1">
@@ -156,7 +156,7 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
             <button
               onClick={() => onGenerate(presentation)}
               className="ios-btn py-3 px-8 text-base shadow-ios-lg"
-              style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+              style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}
             >
               <Wand2 size={18} />
               Generate Presentation
@@ -462,7 +462,7 @@ export default function PresentationPage() {
       <div className="h-screen flex items-center justify-center" style={{ background: '#F2F2F7' }}>
         <div className="flex flex-col items-center gap-3">
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center animate-pulse"
-               style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+               style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}>
             <Sparkles size={24} className="text-white" />
           </div>
           <p className="text-ios-gray1 text-sm">Loading…</p>

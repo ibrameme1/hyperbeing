@@ -21,6 +21,26 @@ export default {
           gray5: '#E5E5EA',
           gray6: '#F2F2F7',
         },
+        hb: {
+          // Brand core
+          primary: '#7B5EFF',
+          'primary-dark': '#5B3FE8',
+          'primary-light': '#A08BFF',
+          accent: '#FF4B8C',
+          'accent-light': '#FF80B0',
+          // Dark surfaces (auth / onboarding)
+          dark: '#0A0812',
+          'dark-mid': '#140F26',
+          surface: '#1C1635',
+          'surface-2': '#261E44',
+          border: '#362B55',
+          // Light surfaces (dashboard / app)
+          app: '#F7F5FF',
+          'app-card': '#FFFFFF',
+          'app-border': '#EDE8FF',
+          text: '#18132E',
+          muted: '#6B6285',
+        },
       },
       fontFamily: {
         sans: [
@@ -43,6 +63,9 @@ export default {
         'ios-md': '0 4px 20px rgba(0,0,0,0.10)',
         'ios-lg': '0 8px 32px rgba(0,0,0,0.12)',
         'ios-xl': '0 20px 60px rgba(0,0,0,0.18)',
+        'hb-glow': '0 0 40px rgba(123,94,255,0.35)',
+        'hb-glow-pink': '0 0 40px rgba(255,75,140,0.30)',
+        'hb-card': '0 4px 32px rgba(10,8,18,0.25)',
       },
       keyframes: {
         fadeIn: {
