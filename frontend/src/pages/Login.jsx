@@ -76,7 +76,12 @@ export default function Login() {
         navigate('/onboarding');
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Something went wrong');
+      const code = err.response?.data?.code;
+      if (mode === 'login' && code === 'USER_NOT_FOUND') {
+        setError('__no_account__');
+      } else {
+        setError(err.response?.data?.error || 'Something went wrong');
+      }
     } finally {
       setLoading(false);
     }
@@ -272,14 +277,29 @@ export default function Login() {
 
             <AnimatePresence>
               {error && (
-                <motion.p
+                <motion.div
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="text-red-500 text-xs text-center py-2 px-4 rounded-xl bg-red-50 dark:bg-red-900/20"
+                  className="py-2.5 px-4 rounded-xl text-xs text-center"
+                  style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}
                 >
-                  {error}
-                </motion.p>
+                  {error === '__no_account__' ? (
+                    <span style={{ color: '#f87171' }}>
+                      No account with that email.{' '}
+                      <button
+                        type="button"
+                        onClick={() => { setMode('register'); setError(''); }}
+                        className="underline font-semibold"
+                        style={{ color: '#8B5CF6' }}
+                      >
+                        Sign up instead →
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="text-red-400">{error}</span>
+                  )}
+                </motion.div>
               )}
             </AnimatePresence>
 

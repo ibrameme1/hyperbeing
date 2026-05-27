@@ -213,7 +213,11 @@ router.post('/login',
     const dummyHash = '$2a$12$invalidhashpadding000000000000000000000000000000000000000';
     const valid = await bcrypt.compare(password, user?.password_hash || dummyHash);
 
-    if (!user || !user.password_hash || !valid) {
+    if (!user || !user.password_hash) {
+      // bcrypt ran (timing-safe), but no account exists for this email
+      return res.status(401).json({ error: 'No account found with that email.', code: 'USER_NOT_FOUND' });
+    }
+    if (!valid) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
