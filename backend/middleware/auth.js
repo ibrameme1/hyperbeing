@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { getDb } from '../database.js';
 
+export { authenticateToken as authMiddleware };
 export function authenticateToken(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Access token required' });
@@ -13,6 +14,7 @@ export function authenticateToken(req, res, next) {
 
     if (!user) return res.status(401).json({ error: 'User not found' });
     req.user = user;
+    req.userId = userId;
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });

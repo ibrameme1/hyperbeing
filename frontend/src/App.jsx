@@ -6,6 +6,8 @@ import PresentationPage from './pages/PresentationPage';
 import PromptGeneratorPage from './pages/PromptGeneratorPage';
 import Onboarding from './pages/Onboarding';
 import AuthCallback from './pages/AuthCallback';
+import Pricing from './pages/Pricing';
+import BillingSuccess from './pages/BillingSuccess';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -39,6 +41,8 @@ export default function App() {
         <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
         <Route path="/prompt-generator" element={<ProtectedRoute><PromptGeneratorPage /></ProtectedRoute>} />
         <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/pricing" element={<Pricing />} />
+        <Route path="/billing/success" element={<ProtectedRoute><BillingSuccess /></ProtectedRoute>} />
       </Routes>
     </AuthProvider>
   );

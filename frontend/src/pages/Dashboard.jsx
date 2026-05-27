@@ -4,8 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import {
   Sparkles, Send, LogOut, X, Clock, Trash2, Loader2,
-  ImageIcon, Palette, Plus, ChevronDown, ChevronUp, Paperclip,
+  ImageIcon, Palette, Plus, ChevronDown, ChevronUp, Paperclip, Zap,
 } from 'lucide-react';
+import api from '../api/client';
 
 const ANALYZING_MESSAGES = [
   'Reading your brief…',
@@ -76,7 +77,6 @@ function AnalyzingOverlay() {
   );
 }
 import { useAuth } from '../contexts/AuthContext';
-import api from '../api/client';
 import QuestionFlow from '../components/QuestionFlow';
 
 
@@ -260,12 +260,20 @@ export default function Dashboard() {
   const [pendingAttachments, setPendingAttachments] = useState([]);
   const [pendingInput, setPendingInput] = useState('');
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('16:9');
+  const [credits, setCredits] = useState(null);
+  const [currentPlan, setCurrentPlan] = useState('free');
   const textareaRef = useRef(null);
 
   useEffect(() => {
     api.get('/presentations')
       .then(r => setPresentations(r.data.presentations || []))
       .finally(() => setPresLoading(false));
+    api.get('/billing/subscription')
+      .then(r => {
+        setCredits(r.data.subscription.credits_remaining);
+        setCurrentPlan(r.data.subscription.plan);
+      })
+      .catch(() => {});
   }, []);
 
   const allAttachments = [
@@ -309,6 +317,10 @@ export default function Dashboard() {
       });
       navigate(`/presentations/${data.presentation.id}`);
     } catch (err) {
+      if (err.response?.status === 402) {
+        navigate('/pricing');
+        return;
+      }
       const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong';
       setSubmitError(msg);
     }
@@ -364,13 +376,34 @@ export default function Dashboard() {
           </div>
           <span className="font-bold text-gray-900 text-lg tracking-tight">HyperBeing</span>
         </div>
-        <button
-          onClick={logout}
-          className="flex items-center gap-1.5 text-ios-gray1 hover:text-gray-900 transition-colors text-sm font-medium"
-        >
-          <LogOut size={15} />
-          Sign out
-        </button>
+        <div className="flex items-center gap-3">
+          {credits !== null && (
+            <button
+              onClick={() => navigate('/pricing')}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl transition-all duration-200 hover:opacity-80"
+              style={{ background: credits < 10 ? 'rgba(255,75,140,0.12)' : 'rgba(123,94,255,0.10)', color: credits < 10 ? '#FF4B8C' : '#7B5EFF', border: `1px solid ${credits < 10 ? 'rgba(255,75,140,0.25)' : 'rgba(123,94,255,0.2)'}` }}
+            >
+              <Zap size={12} />
+              {credits} credits
+            </button>
+          )}
+          {currentPlan === 'free' && (
+            <button
+              onClick={() => navigate('/pricing')}
+              className="text-xs font-bold px-3 py-1.5 rounded-xl text-white transition-all duration-200 hover:opacity-90"
+              style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}
+            >
+              Upgrade
+            </button>
+          )}
+          <button
+            onClick={logout}
+            className="flex items-center gap-1.5 text-ios-gray1 hover:text-gray-900 transition-colors text-sm font-medium"
+          >
+            <LogOut size={15} />
+            Sign out
+          </button>
+        </div>
       </nav>
 
       {/* Hero gradient section */}

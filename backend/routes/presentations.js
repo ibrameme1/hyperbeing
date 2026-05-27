@@ -5,6 +5,7 @@ import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { chat, regenerateSlide, analyzePresentation, streamSlidePlan, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
 import { generateSlideImage } from '../services/imageGeneration.js';
+import { deductCredits, getOrCreateSubscription, CREDIT_COSTS } from '../services/stripeService.js';
 
 const router = Router();
 
@@ -51,6 +52,16 @@ router.post('/', authenticateToken, (req, res) => {
   const { message, attachments = [], aspectRatio = '16:9' } = req.body;
   if (!message?.trim() && attachments.length === 0) {
     return res.status(400).json({ error: 'Message or attachment required' });
+  }
+
+  // Check + deduct credits before starting
+  try {
+    deductCredits(req.user.id, CREDIT_COSTS.create_presentation, 'create_presentation', 'Create presentation');
+  } catch (err) {
+    if (err.message === 'INSUFFICIENT_CREDITS') {
+      return res.status(402).json({ error: 'Insufficient credits', code: 'INSUFFICIENT_CREDITS' });
+    }
+    throw err;
   }
 
   const db = getDb();
@@ -559,6 +570,15 @@ router.post('/:id/add-slides', authenticateToken, (req, res) => {
   if (!description?.trim()) return res.status(400).json({ error: 'Description required' });
   const isAuto = count === 'auto';
   const slideCount = isAuto ? null : Math.min(Math.max(parseInt(count) || 1, 1), 10);
+
+  try {
+    deductCredits(req.user.id, CREDIT_COSTS.add_slides, 'add_slides', 'Add slides', req.params.id);
+  } catch (err) {
+    if (err.message === 'INSUFFICIENT_CREDITS') {
+      return res.status(402).json({ error: 'Insufficient credits', code: 'INSUFFICIENT_CREDITS' });
+    }
+    throw err;
+  }
 
   const db = getDb();
   const pres = db.prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);

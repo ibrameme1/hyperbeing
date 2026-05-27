@@ -64,6 +64,33 @@ export function initDatabase() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT UNIQUE NOT NULL,
+      plan TEXT DEFAULT 'free',
+      stripe_customer_id TEXT UNIQUE,
+      stripe_subscription_id TEXT UNIQUE,
+      status TEXT DEFAULT 'active',
+      credits_remaining INTEGER DEFAULT 5,
+      credits_total INTEGER DEFAULT 5,
+      current_period_end DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS credit_transactions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      balance_after INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      description TEXT,
+      presentation_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 
   // Migrate: OAuth columns
