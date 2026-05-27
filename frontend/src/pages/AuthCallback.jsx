@@ -31,9 +31,9 @@ export default function AuthCallback() {
   }, []);
 
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: '#0A0812' }}>
+    <div className="min-h-screen flex items-center justify-center" style={{ background: '#0A0A0B' }}>
       <div className="text-center">
-        <Loader2 size={32} className="animate-spin mx-auto mb-4" style={{ color: '#7B5EFF' }} />
+        <Loader2 size={32} className="animate-spin mx-auto mb-4" style={{ color: '#8B5CF6' }} />
         <p className="text-white/50 text-sm">Signing you in…</p>
       </div>
     </div>

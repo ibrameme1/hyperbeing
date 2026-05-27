@@ -130,18 +130,18 @@ export default function Onboarding() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden"
-         style={{ background: '#0A0812' }}>
+         style={{ background: '#0A0A0B' }}>
 
       {/* Aurora background */}
       <div className="absolute top-0 left-1/4 w-[600px] h-[600px] rounded-full pointer-events-none"
-           style={{ background: 'radial-gradient(circle, rgba(123,94,255,0.18) 0%, transparent 65%)', filter: 'blur(60px)' }} />
+           style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.18) 0%, transparent 65%)', filter: 'blur(60px)' }} />
       <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] rounded-full pointer-events-none"
-           style={{ background: 'radial-gradient(circle, rgba(255,75,140,0.14) 0%, transparent 65%)', filter: 'blur(60px)' }} />
+           style={{ background: 'radial-gradient(circle, rgba(0,240,255,0.14) 0%, transparent 65%)', filter: 'blur(60px)' }} />
 
       {/* Logo */}
       <div className="absolute top-6 left-6 flex items-center gap-2">
         <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-             style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}>
+             style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
           <Sparkles size={14} className="text-white" />
         </div>
         <span className="text-white/60 font-semibold text-sm">HyperBeing</span>
@@ -174,7 +174,7 @@ export default function Onboarding() {
               animate={{ scale: 1, rotate: 0 }}
               transition={{ type: 'spring', stiffness: 300, damping: 18, delay: 0.1 }}
               className="w-24 h-24 rounded-3xl mx-auto mb-8 flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)', boxShadow: '0 0 60px rgba(123,94,255,0.5)' }}
+              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 0 60px rgba(139,92,246,0.5)' }}
             >
               <CheckCircle2 size={42} className="text-white" />
             </motion.div>
@@ -184,7 +184,7 @@ export default function Onboarding() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3, duration: 0.5 }}
             >
-              <h2 className="text-3xl font-bold text-white mb-3">
+              <h2 className="font-display text-3xl font-bold text-white mb-3">
                 You're all set, {firstName}!
               </h2>
               <p className="text-white/50 text-base leading-relaxed mb-2">
@@ -204,7 +204,7 @@ export default function Onboarding() {
                     <span
                       key={key}
                       className="px-3 py-1.5 rounded-xl text-xs font-semibold"
-                      style={{ background: 'rgba(123,94,255,0.2)', color: '#A08BFF', border: '1px solid rgba(123,94,255,0.3)' }}
+                      style={{ background: 'rgba(139,92,246,0.2)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.3)' }}
                     >
                       {option.label}
                     </span>
@@ -241,7 +241,7 @@ export default function Onboarding() {
                   className="h-1 rounded-full flex-1 transition-all duration-500"
                   style={{
                     background: i <= step
-                      ? 'linear-gradient(90deg, #7B5EFF, #FF4B8C)'
+                      ? 'linear-gradient(90deg, #8B5CF6, #00F0FF)'
                       : 'rgba(255,255,255,0.10)',
                   }}
                 />
@@ -275,7 +275,7 @@ export default function Onboarding() {
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
-                      style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}
+                      style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
                     >
                       <CheckCircle2 size={12} className="text-white" />
                     </motion.div>
@@ -300,8 +300,8 @@ export default function Onboarding() {
                 disabled={!selected}
                 className="flex-1 py-3.5 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] disabled:opacity-30"
                 style={{
-                  background: selected ? 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' : 'rgba(255,255,255,0.08)',
-                  boxShadow: selected ? '0 4px 24px rgba(123,94,255,0.35)' : 'none',
+                  background: selected ? 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' : 'rgba(255,255,255,0.08)',
+                  boxShadow: selected ? '0 4px 24px rgba(139,92,246,0.35)' : 'none',
                 }}
               >
                 {isLast ? (

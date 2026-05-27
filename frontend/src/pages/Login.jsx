@@ -34,8 +34,8 @@ function TikTokIcon() {
 }
 
 const FEATURES = [
-  { icon: Zap, title: 'Instant generation', desc: 'Full deck in under 60 seconds', color: '#7B5EFF' },
-  { icon: Layers, title: 'AI art direction', desc: 'Every slide professionally designed', color: '#FF4B8C' },
+  { icon: Zap, title: 'Instant generation', desc: 'Full deck in under 60 seconds', color: '#8B5CF6' },
+  { icon: Layers, title: 'AI art direction', desc: 'Every slide professionally designed', color: '#00F0FF' },
   { icon: TrendingUp, title: 'Strategy baked in', desc: 'Nova thinks like a McKinsey + Apple hybrid', color: '#00D4FF' },
 ];
 
@@ -83,17 +83,17 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex" style={{ background: '#0A0812' }}>
+    <div className="min-h-screen flex" style={{ background: '#0A0A0B' }}>
 
       {/* ── Left brand panel ── */}
       <div className="hidden lg:flex lg:flex-1 relative overflow-hidden flex-col justify-between p-12"
-           style={{ background: 'linear-gradient(145deg, #0A0812 0%, #140F26 50%, #0E0B1F 100%)' }}>
+           style={{ background: 'linear-gradient(145deg, #0A0A0B 0%, #111113 50%, #0E0B1F 100%)' }}>
 
         {/* Aurora blobs */}
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full animate-aurora"
-             style={{ background: 'radial-gradient(circle, rgba(123,94,255,0.25) 0%, transparent 65%)', filter: 'blur(40px)' }} />
+             style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.25) 0%, transparent 65%)', filter: 'blur(40px)' }} />
         <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] rounded-full animate-aurora-2"
-             style={{ background: 'radial-gradient(circle, rgba(255,75,140,0.20) 0%, transparent 65%)', filter: 'blur(40px)' }} />
+             style={{ background: 'radial-gradient(circle, rgba(0,240,255,0.20) 0%, transparent 65%)', filter: 'blur(40px)' }} />
         <div className="absolute top-1/2 left-1/2 w-[300px] h-[300px] -translate-x-1/2 -translate-y-1/2 rounded-full animate-aurora-3"
              style={{ background: 'radial-gradient(circle, rgba(0,212,255,0.12) 0%, transparent 65%)', filter: 'blur(40px)' }} />
 
@@ -101,7 +101,7 @@ export default function Login() {
         <div className="relative z-10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}>
+                 style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
               <Sparkles size={18} className="text-white" />
             </div>
             <span className="text-white font-bold text-xl tracking-tight">HyperBeing</span>
@@ -116,11 +116,11 @@ export default function Login() {
             transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
           >
             <p className="text-xs font-semibold tracking-[0.2em] uppercase mb-4"
-               style={{ color: '#7B5EFF' }}>AI Presentation Maker</p>
-            <h2 className="text-5xl font-bold text-white leading-tight mb-6">
+               style={{ color: '#8B5CF6' }}>AI Presentation Maker</p>
+            <h2 className="font-display text-5xl font-bold text-white leading-tight mb-6">
               Presentations that make people go{' '}
               <span style={{
-                background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)',
+                background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
               }}>
@@ -169,7 +169,7 @@ export default function Login() {
 
       {/* ── Right form panel ── */}
       <div className="flex-1 lg:max-w-[480px] flex items-center justify-center p-6 lg:p-12"
-           style={{ background: '#F7F5FF' }}>
+           style={{ background: '#F5F3FF' }}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -179,7 +179,7 @@ export default function Login() {
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-2 mb-8">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}>
+                 style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
               <Sparkles size={16} className="text-white" />
             </div>
             <span className="font-bold text-hb-text text-lg">HyperBeing</span>
@@ -196,7 +196,7 @@ export default function Login() {
 
           {/* Toggle */}
           <div className="flex gap-1 p-1 rounded-2xl mb-8"
-               style={{ background: '#EDE8FF' }}>
+               style={{ background: '#EDE9FE' }}>
             {['login', 'register'].map(m => (
               <button
                 key={m}
@@ -229,9 +229,9 @@ export default function Login() {
                     onChange={e => setName(e.target.value)}
                     required
                     className="w-full px-4 py-3.5 rounded-2xl text-sm text-hb-text placeholder:text-hb-muted focus:outline-none transition-all duration-200 bg-white border-2"
-                    style={{ borderColor: '#EDE8FF', boxShadow: '0 1px 4px rgba(123,94,255,0.06)' }}
-                    onFocus={e => e.target.style.borderColor = '#7B5EFF'}
-                    onBlur={e => e.target.style.borderColor = '#EDE8FF'}
+                    style={{ borderColor: '#EDE9FE', boxShadow: '0 1px 4px rgba(139,92,246,0.06)' }}
+                    onFocus={e => e.target.style.borderColor = '#8B5CF6'}
+                    onBlur={e => e.target.style.borderColor = '#EDE9FE'}
                   />
                 </motion.div>
               )}
@@ -244,9 +244,9 @@ export default function Login() {
               onChange={e => setEmail(e.target.value)}
               required
               className="w-full px-4 py-3.5 rounded-2xl text-sm text-hb-text placeholder:text-hb-muted focus:outline-none transition-all duration-200 bg-white border-2"
-              style={{ borderColor: '#EDE8FF', boxShadow: '0 1px 4px rgba(123,94,255,0.06)' }}
-              onFocus={e => e.target.style.borderColor = '#7B5EFF'}
-              onBlur={e => e.target.style.borderColor = '#EDE8FF'}
+              style={{ borderColor: '#EDE9FE', boxShadow: '0 1px 4px rgba(139,92,246,0.06)' }}
+              onFocus={e => e.target.style.borderColor = '#8B5CF6'}
+              onBlur={e => e.target.style.borderColor = '#EDE9FE'}
             />
 
             <div className="relative">
@@ -257,9 +257,9 @@ export default function Login() {
                 onChange={e => setPassword(e.target.value)}
                 required
                 className="w-full px-4 py-3.5 pr-12 rounded-2xl text-sm text-hb-text placeholder:text-hb-muted focus:outline-none transition-all duration-200 bg-white border-2"
-                style={{ borderColor: '#EDE8FF', boxShadow: '0 1px 4px rgba(123,94,255,0.06)' }}
-                onFocus={e => e.target.style.borderColor = '#7B5EFF'}
-                onBlur={e => e.target.style.borderColor = '#EDE8FF'}
+                style={{ borderColor: '#EDE9FE', boxShadow: '0 1px 4px rgba(139,92,246,0.06)' }}
+                onFocus={e => e.target.style.borderColor = '#8B5CF6'}
+                onBlur={e => e.target.style.borderColor = '#EDE9FE'}
               />
               <button
                 type="button"
@@ -289,8 +289,8 @@ export default function Login() {
               disabled={loading}
               className="w-full py-3.5 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mt-2 disabled:opacity-50"
               style={{
-                background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)',
-                boxShadow: '0 4px 24px rgba(123,94,255,0.35)',
+                background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)',
+                boxShadow: '0 4px 24px rgba(139,92,246,0.35)',
               }}
             >
               {loading ? (
@@ -326,9 +326,9 @@ export default function Login() {
           {mode === 'register' && (
             <p className="text-center text-xs mt-6" style={{ color: '#6B6285' }}>
               By signing up you agree to our{' '}
-              <span className="underline cursor-pointer" style={{ color: '#7B5EFF' }}>Terms</span>
+              <span className="underline cursor-pointer" style={{ color: '#8B5CF6' }}>Terms</span>
               {' '}and{' '}
-              <span className="underline cursor-pointer" style={{ color: '#7B5EFF' }}>Privacy Policy</span>
+              <span className="underline cursor-pointer" style={{ color: '#8B5CF6' }}>Privacy Policy</span>
             </p>
           )}
         </motion.div>

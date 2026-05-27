@@ -19,9 +19,9 @@ export default function BillingSuccess() {
   }, []);
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#0A0812' }}>
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#0A0A0B' }}>
       <div className="fixed top-1/4 left-1/4 w-[600px] h-[600px] rounded-full pointer-events-none"
-           style={{ background: 'radial-gradient(circle, rgba(123,94,255,0.2) 0%, transparent 65%)', filter: 'blur(80px)' }} />
+           style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.2) 0%, transparent 65%)', filter: 'blur(80px)' }} />
 
       <motion.div
         initial={{ opacity: 0, scale: 0.92 }}
@@ -34,24 +34,24 @@ export default function BillingSuccess() {
           animate={{ scale: 1, rotate: 0 }}
           transition={{ type: 'spring', stiffness: 280, damping: 18, delay: 0.1 }}
           className="w-24 h-24 rounded-3xl mx-auto mb-8 flex items-center justify-center"
-          style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)', boxShadow: '0 0 60px rgba(123,94,255,0.5)' }}
+          style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 0 60px rgba(139,92,246,0.5)' }}
         >
           <CheckCircle2 size={42} className="text-white" />
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-          <h1 className="text-3xl font-bold text-white mb-3">You're on {plan || 'your new plan'}!</h1>
+          <h1 className="font-display text-3xl font-bold text-white mb-3">You're on {plan || 'your new plan'}!</h1>
           <p className="text-white/50 mb-2">Payment confirmed. Nova is ready to create.</p>
           {credits !== null && (
             <p className="text-white/35 text-sm mb-8">
-              <span style={{ color: '#A08BFF', fontWeight: 600 }}>{credits} credits</span> added to your account.
+              <span style={{ color: '#C4B5FD', fontWeight: 600 }}>{credits} credits</span> added to your account.
             </p>
           )}
 
           <button
             onClick={() => navigate('/dashboard')}
             className="w-full py-4 rounded-2xl font-bold text-white flex items-center justify-center gap-2"
-            style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)', boxShadow: '0 4px 24px rgba(123,94,255,0.35)' }}
+            style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 4px 24px rgba(139,92,246,0.35)' }}
           >
             <Sparkles size={16} /> Start creating <ArrowRight size={15} />
           </button>

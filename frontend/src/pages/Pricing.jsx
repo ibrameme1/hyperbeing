@@ -12,9 +12,9 @@ const PLANS = [
     price: 10,
     credits: 100,
     icon: Zap,
-    color: '#7B5EFF',
-    gradient: 'linear-gradient(135deg, #7B5EFF 0%, #9B7EFF 100%)',
-    glow: 'rgba(123,94,255,0.35)',
+    color: '#8B5CF6',
+    gradient: 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)',
+    glow: 'rgba(139,92,246,0.35)',
     presentations: '~10',
     features: [
       '100 credits / month',
@@ -31,9 +31,9 @@ const PLANS = [
     price: 49,
     credits: 500,
     icon: Crown,
-    color: '#FF4B8C',
-    gradient: 'linear-gradient(135deg, #FF4B8C 0%, #FF7BAC 100%)',
-    glow: 'rgba(255,75,140,0.35)',
+    color: '#00F0FF',
+    gradient: 'linear-gradient(135deg, #00F0FF 0%, #FF7BAC 100%)',
+    glow: 'rgba(0,240,255,0.35)',
     presentations: '~50',
     popular: true,
     features: [
@@ -121,25 +121,25 @@ export default function Pricing() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: '#0A0812' }}>
+    <div className="min-h-screen" style={{ background: '#0A0A0B' }}>
       {/* Aurora bg */}
       <div className="fixed top-0 left-1/4 w-[700px] h-[700px] rounded-full pointer-events-none"
-           style={{ background: 'radial-gradient(circle, rgba(123,94,255,0.15) 0%, transparent 65%)', filter: 'blur(80px)' }} />
+           style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 65%)', filter: 'blur(80px)' }} />
       <div className="fixed bottom-0 right-1/4 w-[500px] h-[500px] rounded-full pointer-events-none"
-           style={{ background: 'radial-gradient(circle, rgba(255,75,140,0.12) 0%, transparent 65%)', filter: 'blur(80px)' }} />
+           style={{ background: 'radial-gradient(circle, rgba(0,240,255,0.12) 0%, transparent 65%)', filter: 'blur(80px)' }} />
 
       {/* Nav */}
       <div className="relative z-10 flex items-center justify-between px-8 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
         <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}>
+               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
             <Sparkles size={14} className="text-white" />
           </div>
           <span className="text-white font-bold text-base">HyperBeing</span>
         </button>
         <div className="flex items-center gap-3">
           {creditsLeft !== null && (
-            <span className="text-sm px-3 py-1.5 rounded-xl" style={{ background: 'rgba(123,94,255,0.15)', color: '#A08BFF', border: '1px solid rgba(123,94,255,0.3)' }}>
+            <span className="text-sm px-3 py-1.5 rounded-xl" style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.3)' }}>
               {creditsLeft} credits left
             </span>
           )}
@@ -161,12 +161,12 @@ export default function Pricing() {
           className="text-center mb-16"
         >
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold mb-6"
-               style={{ background: 'rgba(123,94,255,0.15)', color: '#A08BFF', border: '1px solid rgba(123,94,255,0.25)' }}>
+               style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.25)' }}>
             <Sparkles size={12} /> Simple, transparent pricing
           </div>
-          <h1 className="text-5xl font-bold text-white mb-4">
+          <h1 className="font-display text-5xl font-bold text-white mb-4">
             Pick your plan,{' '}
-            <span style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <span style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               start creating
             </span>
           </h1>
@@ -191,16 +191,16 @@ export default function Pricing() {
                 className="relative rounded-3xl p-7 flex flex-col"
                 style={{
                   background: plan.popular
-                    ? 'linear-gradient(145deg, rgba(255,75,140,0.12) 0%, rgba(123,94,255,0.08) 100%)'
+                    ? 'linear-gradient(145deg, rgba(0,240,255,0.12) 0%, rgba(139,92,246,0.08) 100%)'
                     : 'rgba(255,255,255,0.04)',
                   border: plan.popular
-                    ? '1.5px solid rgba(255,75,140,0.4)'
+                    ? '1.5px solid rgba(0,240,255,0.4)'
                     : '1px solid rgba(255,255,255,0.08)',
                 }}
               >
                 {plan.popular && (
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full text-xs font-bold text-white"
-                       style={{ background: 'linear-gradient(135deg, #FF4B8C 0%, #7B5EFF 100%)', boxShadow: `0 4px 20px ${plan.glow}` }}>
+                       style={{ background: 'linear-gradient(135deg, #00F0FF 0%, #8B5CF6 100%)', boxShadow: `0 4px 20px ${plan.glow}` }}>
                     Most popular
                   </div>
                 )}
@@ -275,7 +275,7 @@ export default function Pricing() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {CREDIT_TABLE.map(({ action, cost }) => (
               <div key={action} className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <p className="text-2xl font-bold mb-1" style={{ color: '#7B5EFF' }}>{cost}</p>
+                <p className="text-2xl font-bold mb-1" style={{ color: '#8B5CF6' }}>{cost}</p>
                 <p className="text-xs font-semibold text-white/80 mb-0.5">credits</p>
                 <p className="text-xs text-white/40">{action}</p>
               </div>
