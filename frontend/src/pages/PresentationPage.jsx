@@ -95,16 +95,16 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
   const isReady = messages.some(m => m.metadata?.state === 'ready') || presentation.status === 'ready';
 
   return (
-    <div className="h-screen flex flex-col" style={{ background: '#F2F2F7' }}>
+    <div className="h-screen flex flex-col" style={{ background: 'var(--bg-page)' }}>
       {/* Top bar */}
       <div className="flex items-center gap-4 px-5 py-4 border-b border-ios-gray5"
-           style={{ background: 'rgba(242,242,247,0.9)', backdropFilter: 'blur(20px)' }}>
+           style={{ background: 'var(--bg-nav)', backdropFilter: 'blur(20px)' }}>
         <button onClick={() => window.history.back()} className="text-ios-blue flex items-center gap-1 text-sm font-medium">
           <ArrowLeft size={16} />
           Back
         </button>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-gray-900 text-sm truncate">{presentation.title}</p>
+          <p className="font-semibold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{presentation.title}</p>
           <p className="text-xs text-ios-gray1">
             {isReady ? '✓ Ready to generate' : 'Gathering details…'}
           </p>
@@ -143,7 +143,7 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
 
         {sendError && (
           <div className="flex justify-center">
-            <p className="text-sm text-red-500 bg-red-50 rounded-2xl px-4 py-2.5 max-w-sm text-center">{sendError}</p>
+            <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-2xl px-4 py-2.5 max-w-sm text-center">{sendError}</p>
           </div>
         )}
 
@@ -169,12 +169,13 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
 
       {/* Input area */}
       <div className="border-t border-ios-gray5 p-4"
-           style={{ background: 'rgba(242,242,247,0.95)', backdropFilter: 'blur(20px)' }}>
+           style={{ background: 'var(--bg-nav)', backdropFilter: 'blur(20px)' }}>
         <div
           {...getRootProps()}
-          className={`bg-white rounded-3xl shadow-ios transition-all duration-200 ${
+          className={`rounded-3xl shadow-ios transition-all duration-200 ${
             isDragActive ? 'ring-2 ring-ios-blue' : ''
           }`}
+          style={{ background: 'var(--bg-card)' }}
         >
           <input {...getInputProps()} />
 
@@ -213,7 +214,8 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
               onKeyDown={handleKeyDown}
               placeholder={isDragActive ? 'Drop images here…' : 'Reply to Nova…'}
               rows={2}
-              className="flex-1 resize-none border-none outline-none text-gray-800 placeholder:text-ios-gray2 text-sm bg-transparent leading-relaxed"
+              className="flex-1 resize-none border-none outline-none placeholder:text-ios-gray2 dark:placeholder:text-zinc-500 text-sm bg-transparent leading-relaxed"
+              style={{ color: 'var(--text-primary)' }}
             />
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
@@ -470,13 +472,13 @@ export default function PresentationPage() {
 
   if (phase === 'loading' || !presentation) {
     return (
-      <div className="h-screen flex items-center justify-center" style={{ background: '#F2F2F7' }}>
+      <div className="h-screen flex items-center justify-center" style={{ background: 'var(--bg-page)' }}>
         <div className="flex flex-col items-center gap-3">
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center animate-pulse"
                style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
             <Sparkles size={24} className="text-white" />
           </div>
-          <p className="text-ios-gray1 text-sm">Loading…</p>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading…</p>
         </div>
       </div>
     );
