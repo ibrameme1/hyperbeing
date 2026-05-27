@@ -90,6 +90,6 @@ app.use((err, req, res, next) => {
 });
 
 initDatabase();
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 HyperBeing API running on http://localhost:${PORT}`);
 });
