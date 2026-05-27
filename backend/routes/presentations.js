@@ -3,10 +3,23 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { heavyLimiter } from '../middleware/rateLimiter.js';
+import {
+  requireUUIDParam,
+  validateCreatePresentation,
+  validateAnalyzePresentation,
+  validateAddMessage,
+  validateRegenerateSlide,
+  validateReorderSlides,
+} from '../middleware/validation.js';
 import { chat, regenerateSlide, analyzePresentation, streamSlidePlan } from '../services/claudeAgent.js';
 import { generateSlideImage } from '../services/imageGeneration.js';
 
 const router = Router();
+
+// Validate the :id path param as a UUID on all routes in this router.
+// Returns 404 for non-UUID values to avoid revealing expected format (OWASP A03).
+router.param('id', requireUUIDParam);
 
 // In-memory SSE client registry: presentationId → Set<res>
 const sseRegistry = new Map();
@@ -20,7 +33,7 @@ function broadcast(presentationId, event) {
   });
 }
 
-// ─── List presentations ────────────────────────────────────────────────────
+// ─── List presentations ────────────────────────────────────────────────────────
 router.get('/', authenticateToken, (req, res) => {
   const rows = getDb()
     .prepare(
@@ -31,8 +44,9 @@ router.get('/', authenticateToken, (req, res) => {
   res.json({ presentations: rows });
 });
 
-// ─── Analyze brief and return contextual questions ─────────────────────────
-router.post('/analyze', authenticateToken, async (req, res) => {
+// ─── Analyze brief and return contextual questions ─────────────────────────────
+// heavyLimiter: Claude API call — 20/hour per user to cap AI spend
+router.post('/analyze', authenticateToken, heavyLimiter, validateAnalyzePresentation, async (req, res) => {
   const { message, attachments = [] } = req.body;
   if (!message?.trim() && attachments.length === 0) {
     return res.status(400).json({ error: 'Message or attachment required' });
@@ -42,12 +56,13 @@ router.post('/analyze', authenticateToken, async (req, res) => {
     res.json(analysis);
   } catch (err) {
     console.error('Analysis error:', err);
-    res.status(500).json({ error: 'Analysis failed', detail: err.message });
+    res.status(500).json({ error: 'Analysis failed' });
   }
 });
 
-// ─── Create presentation + kick off async full flow ───────────────────────
-router.post('/', authenticateToken, (req, res) => {
+// ─── Create presentation + kick off async full flow ────────────────────────────
+// heavyLimiter: triggers Claude streaming + Gemini image generation
+router.post('/', authenticateToken, heavyLimiter, validateCreatePresentation, (req, res) => {
   const { message, attachments = [], aspectRatio = '16:9' } = req.body;
   if (!message?.trim() && attachments.length === 0) {
     return res.status(400).json({ error: 'Message or attachment required' });
@@ -74,7 +89,8 @@ router.post('/', authenticateToken, (req, res) => {
 
   runFullFlow(id, message, attachments).catch(err => {
     console.error('Full flow error:', err);
-    broadcast(id, { type: 'error', message: err.message });
+    // Broadcast a generic error message — do not expose err.message to SSE clients
+    broadcast(id, { type: 'error', message: 'Generation failed. Please try again.' });
     getDb().prepare(`UPDATE presentations SET status = 'error', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(id);
   });
 });
@@ -155,7 +171,8 @@ async function runFullFlow(presentationId, message, attachments) {
         console.error(`Slide ${slide.index} image failed:`, err.message);
         const errSlide = { ...slide, image_data: null, status: 'error' };
         completedSlides.set(slide.index, errSlide);
-        broadcast(presentationId, { type: 'slide_error', index: slide.index, message: err.message });
+        // Generic message — internal error detail stays server-side
+        broadcast(presentationId, { type: 'slide_error', index: slide.index, message: 'Slide generation failed' });
       });
 
       slidePromises.push(promise);
@@ -182,7 +199,7 @@ async function runFullFlow(presentationId, message, attachments) {
   broadcast(presentationId, { type: 'complete', total_slides: allSlides.length });
 }
 
-// ─── Get single presentation with messages ────────────────────────────────
+// ─── Get single presentation with messages ─────────────────────────────────────
 router.get('/:id', authenticateToken, (req, res) => {
   const db = getDb();
   const pres = db
@@ -209,8 +226,9 @@ router.get('/:id', authenticateToken, (req, res) => {
   });
 });
 
-// ─── Continue chat ────────────────────────────────────────────────────────
-router.post('/:id/messages', authenticateToken, async (req, res) => {
+// ─── Continue chat ─────────────────────────────────────────────────────────────
+// heavyLimiter: Claude API call
+router.post('/:id/messages', authenticateToken, heavyLimiter, validateAddMessage, async (req, res) => {
   const { message, attachments = [] } = req.body;
   if (!message?.trim() && attachments.length === 0) {
     return res.status(400).json({ error: 'Message required' });
@@ -254,11 +272,15 @@ router.post('/:id/messages', authenticateToken, async (req, res) => {
     });
   } catch (err) {
     console.error('Agent error:', err);
-    res.status(500).json({ error: 'AI agent failed', detail: err.message });
+    res.status(500).json({ error: 'AI agent failed' });
   }
 });
 
-// ─── SSE: real-time events (auth via ?token= query param, headers not possible with EventSource)
+// ─── SSE: real-time events ─────────────────────────────────────────────────────
+// The browser EventSource API does not support custom request headers, so the JWT is
+// accepted via the ?token= query parameter as a necessary exception to the header-only rule.
+// In production, consider issuing short-lived (~60 s) SSE-specific tokens to reduce the
+// exposure window of long-lived tokens appearing in server access logs.
 router.get('/:id/events', (req, res) => {
   const token = req.query.token || req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).end();
@@ -318,8 +340,9 @@ router.get('/:id/events', (req, res) => {
   });
 });
 
-// ─── Trigger generation ────────────────────────────────────────────────────
-router.post('/:id/generate', authenticateToken, async (req, res) => {
+// ─── Trigger generation ────────────────────────────────────────────────────────
+// heavyLimiter: triggers Gemini image generation for all slides
+router.post('/:id/generate', authenticateToken, heavyLimiter, async (req, res) => {
   const db = getDb();
   const pres = db
     .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
@@ -339,7 +362,7 @@ router.post('/:id/generate', authenticateToken, async (req, res) => {
   // Run generation async — do not await
   runGeneration(req.params.id, slidePlan).catch(err => {
     console.error('Generation error:', err);
-    broadcast(req.params.id, { type: 'error', message: err.message });
+    broadcast(req.params.id, { type: 'error', message: 'Generation failed. Please try again.' });
   });
 });
 
@@ -406,7 +429,8 @@ async function runGeneration(presentationId, slidePlan) {
     } catch (err) {
       console.error(`Slide ${slide.index} image failed:`, err.message);
       slides.push({ ...slide, image_data: null, status: 'error' });
-      broadcast(presentationId, { type: 'slide_error', index: slide.index, message: err.message });
+      // Generic error — do not forward internal error messages to clients via SSE
+      broadcast(presentationId, { type: 'slide_error', index: slide.index, message: 'Slide generation failed' });
     }
   }
 
@@ -417,10 +441,17 @@ async function runGeneration(presentationId, slidePlan) {
   broadcast(presentationId, { type: 'complete', total_slides: slides.length });
 }
 
-// ─── Regenerate a single slide ────────────────────────────────────────────
-router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res) => {
+// ─── Regenerate a single slide ─────────────────────────────────────────────────
+// heavyLimiter: Claude + Gemini call
+router.post('/:id/slides/:index/regenerate', authenticateToken, heavyLimiter, validateRegenerateSlide, async (req, res) => {
   const { instruction, attachments: reqBodyAttachments } = req.body;
   if (!instruction?.trim()) return res.status(400).json({ error: 'Instruction required' });
+
+  // Validate :index is a non-negative integer
+  const idx = parseInt(req.params.index, 10);
+  if (!Number.isInteger(idx) || idx < 0 || String(idx) !== req.params.index) {
+    return res.status(400).json({ error: 'Slide index must be a non-negative integer' });
+  }
 
   const db = getDb();
   const pres = db
@@ -431,7 +462,6 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
   if (!pres.slides_data) return res.status(400).json({ error: 'No slides generated yet' });
 
   const slides = JSON.parse(pres.slides_data);
-  const idx = parseInt(req.params.index, 10);
   const slide = slides[idx];
   if (!slide) return res.status(404).json({ error: 'Slide not found' });
 
@@ -505,15 +535,15 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
       broadcast(req.params.id, { type: 'slide_updated', slide: slides[idx] });
     } catch (err) {
       console.error('Slide regen error:', err);
-      broadcast(req.params.id, { type: 'slide_error', index: idx, message: err.message });
+      // Generic error — internal detail stays server-side
+      broadcast(req.params.id, { type: 'slide_error', index: idx, message: 'Slide regeneration failed' });
     }
   })();
 });
 
-// ─── Reorder slides ───────────────────────────────────────────────────────
-router.post('/:id/reorder', authenticateToken, (req, res) => {
-  const { order } = req.body; // array of slide indexes in new order
-  if (!Array.isArray(order)) return res.status(400).json({ error: 'order array required' });
+// ─── Reorder slides ────────────────────────────────────────────────────────────
+router.post('/:id/reorder', authenticateToken, validateReorderSlides, (req, res) => {
+  const { order } = req.body;
 
   const db = getDb();
   const pres = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?')
@@ -530,7 +560,7 @@ router.post('/:id/reorder', authenticateToken, (req, res) => {
   res.json({ message: 'Reordered' });
 });
 
-// ─── Delete presentation ──────────────────────────────────────────────────
+// ─── Delete presentation ───────────────────────────────────────────────────────
 router.delete('/:id', authenticateToken, (req, res) => {
   const result = getDb()
     .prepare('DELETE FROM presentations WHERE id = ? AND user_id = ?')

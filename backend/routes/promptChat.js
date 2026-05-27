@@ -2,12 +2,18 @@ import { Router } from 'express';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { heavyLimiter } from '../middleware/rateLimiter.js';
+import { requireUUIDParam, validatePromptChat } from '../middleware/validation.js';
 import { generatePromptResponse } from '../services/promptGenerator.js';
 
 const router = Router();
 
+// Validate the :sessionId path param as a UUID on all routes in this router (OWASP A03)
+router.param('sessionId', requireUUIDParam);
+
 // POST /api/prompt-chat/:sessionId
-router.post('/:sessionId', authenticateToken, async (req, res) => {
+// heavyLimiter: Claude API call — 20/hour per user
+router.post('/:sessionId', authenticateToken, heavyLimiter, validatePromptChat, async (req, res) => {
   const { sessionId } = req.params;
   const { message, images = [] } = req.body;
 
@@ -46,7 +52,7 @@ router.post('/:sessionId', authenticateToken, async (req, res) => {
     });
   } catch (err) {
     console.error('Prompt chat error:', err);
-    res.status(500).json({ error: 'Failed to generate response', detail: err.message });
+    res.status(500).json({ error: 'Failed to generate response' });
   }
 });
 
