@@ -274,7 +274,9 @@ export default function PresentationPage() {
           setGeneratedSlides(prev => {
             const merged = [...prev];
             for (const s of partial) {
-              if (!merged.some(x => x.index === s.index)) merged.push(s);
+              const existingIdx = merged.findIndex(x => x.index === s.index);
+              if (existingIdx === -1) merged.push(s);
+              else if (merged[existingIdx].status !== 'complete') merged[existingIdx] = s;
             }
             return merged.sort((a, b) => a.index - b.index);
           });
@@ -302,11 +304,21 @@ export default function PresentationPage() {
         startSSE(id); // stay subscribed for slide_updated events
       } else if (data.presentation.status === 'generating' || data.presentation.status === 'processing') {
         setPhase('generating');
-        if (data.presentation.slides_data) {
-          setGeneratedSlides(data.presentation.slides_data);
+        // Build full slide list: completed slides + placeholders for in-progress ones
+        const planSlides = data.presentation.slide_plan?.slides || [];
+        const completedSlides = data.presentation.slides_data || [];
+        if (planSlides.length > 0) {
+          const completedByIndex = new Map(completedSlides.map(s => [s.index, s]));
+          const merged = planSlides.map(slide =>
+            completedByIndex.get(slide.index) ?? { ...slide, status: 'generating', image_data: null }
+          );
+          setGeneratedSlides(merged.sort((a, b) => a.index - b.index));
+          setTotalSlides(planSlides.length);
+        } else if (completedSlides.length > 0) {
+          setGeneratedSlides(completedSlides);
         }
-        if (data.presentation.slide_plan?.slides?.length) {
-          setTotalSlides(data.presentation.slide_plan.slides.length);
+        if (data.presentation.slide_plan?.total_slides) {
+          setTotalSlides(data.presentation.slide_plan.total_slides);
         }
         startSSE(id);
         startPolling(id); // fallback in case SSE events are missed
@@ -339,16 +351,14 @@ export default function PresentationPage() {
 
       if (event.type === 'plan_ready') {
         setTotalSlides(event.total_slides);
-        // Create placeholder slides so viewer can show immediately
+        // Create placeholder slides so viewer can show immediately, preserving any already-completed slides
         setGeneratedSlides(prev => {
-          if (prev.length >= event.total_slides) return prev;
           const placeholders = Array.from({ length: event.total_slides }, (_, i) => ({
             index: i, type: 'content', title: `Slide ${i + 1}`, status: 'generating', image_data: null,
           }));
-          // Keep any real slides already arrived
           const merged = [...placeholders];
           for (const s of prev) {
-            if (s.status === 'complete') merged[s.index] = s;
+            if (s.status === 'complete' && s.index < event.total_slides) merged[s.index] = s;
           }
           return merged;
         });
@@ -422,8 +432,8 @@ export default function PresentationPage() {
     };
 
     sse.onerror = () => {
-      clearInterval(stageTimer);
-      sse.close();
+      // Don't close — EventSource auto-reconnects, and the catch-up replay
+      // on reconnect will re-send any completed slides we missed.
     };
 
     return () => {

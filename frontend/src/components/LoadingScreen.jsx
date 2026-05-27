@@ -22,7 +22,8 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
   const [msgIndex, setMsgIndex] = useState(0);
   const isGenerating = totalSlides > 0;
   const messages = isGenerating ? GENERATING_MESSAGES : PLANNING_MESSAGES;
-  const progress = totalSlides > 0 ? generatedSlides.length / totalSlides : 0;
+  const completedSlides = generatedSlides.filter(s => s.status === 'complete');
+  const progress = totalSlides > 0 ? completedSlides.length / totalSlides : 0;
 
   useEffect(() => {
     setMsgIndex(0);
@@ -96,7 +97,7 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
         {/* Slide count */}
         <p className="text-white/40 text-sm">
           {totalSlides > 0
-            ? `${generatedSlides.length} of ${totalSlides} slides ready`
+            ? `${completedSlides.length} of ${totalSlides} slides ready`
             : 'Planning your presentation…'}
         </p>
 
@@ -116,7 +117,7 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
 
       {/* Slide preview strip */}
       <AnimatePresence>
-        {generatedSlides.length > 0 && (
+        {completedSlides.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
@@ -126,7 +127,7 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
               Slides ready
             </p>
             <div className="flex gap-3 overflow-x-auto pb-2 justify-center">
-              {generatedSlides.map(slide => (
+              {completedSlides.map(slide => (
                 <motion.div
                   key={slide.index}
                   initial={{ opacity: 0, scale: 0.8, x: 20 }}

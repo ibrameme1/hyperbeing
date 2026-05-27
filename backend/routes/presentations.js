@@ -350,7 +350,8 @@ router.get('/:id/events', (req, res) => {
     if (presState.status === 'processing' || presState.status === 'generating') {
       if (presState.slide_plan) {
         const plan = JSON.parse(presState.slide_plan);
-        res.write(`data: ${JSON.stringify({ type: 'plan_ready', total_slides: plan.slides.length })}\n\n`);
+        const totalSlides = plan.total_slides || plan.slides?.length || 0;
+        res.write(`data: ${JSON.stringify({ type: 'plan_ready', total_slides: totalSlides })}\n\n`);
       }
       if (presState.slides_data) {
         const doneSlides = JSON.parse(presState.slides_data);

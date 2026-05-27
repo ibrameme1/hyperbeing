@@ -78,6 +78,9 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   const [addLoading, setAddLoading] = useState(false);
   const addFileRef = useRef(null);
 
+  const [slowSlideWarning, setSlowSlideWarning] = useState(false);
+  const slowTimerRef = useRef(null);
+
   const editRef = useRef(null);
   const filmstripRef = useRef(null);
   const exportMenuRef = useRef(null);
@@ -85,6 +88,17 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
 
   useEffect(() => { setLocalSlides(slides); }, [slides]);
   useEffect(() => { setTitleValue(title); }, [title]);
+
+  // Show friendly message when the current slide has been generating for >12s
+  useEffect(() => {
+    clearTimeout(slowTimerRef.current);
+    setSlowSlideWarning(false);
+    const slide = localSlides[current];
+    if (slide?.status === 'generating' || updatingSlides.has(current)) {
+      slowTimerRef.current = setTimeout(() => setSlowSlideWarning(true), 12000);
+    }
+    return () => clearTimeout(slowTimerRef.current);
+  }, [localSlides[current]?.status, current, updatingSlides.size]);
 
   useEffect(() => {
     setUpdatingSlides(prev => {
@@ -401,11 +415,17 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
 
               {/* Generating overlay */}
               {isUpdating && (
-                <div className="absolute inset-0 rounded-xl flex flex-col items-center justify-center gap-3"
+                <div className="absolute inset-0 rounded-xl flex flex-col items-center justify-center gap-3 px-8 text-center"
                      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}>
                   <Loader2 size={32} className="text-white animate-spin" />
                   <p className="text-white text-sm font-semibold">Generating slide…</p>
-                  <p className="text-white/60 text-xs">This may take a moment</p>
+                  {slowSlideWarning ? (
+                    <p className="text-white/70 text-xs max-w-xs leading-relaxed">
+                      Don't worry — your slide is still being processed. Google's image service is experiencing high demand right now, but we're on it.
+                    </p>
+                  ) : (
+                    <p className="text-white/60 text-xs">This may take a moment</p>
+                  )}
                 </div>
               )}
 
