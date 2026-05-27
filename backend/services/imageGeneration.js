@@ -60,9 +60,7 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
       const isTransient = err.message.includes('fetch failed') || err.message.includes('429') || err.message.includes('503');
       console.warn(`❌ Nano Banana failed for slide ${slideIndex} (attempt ${attempt}/${maxAttempts}):`, err.message);
       if (attempt < maxAttempts && isTransient) {
-        const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
-        console.log(`   Retrying in ${delay / 1000}s…`);
-        await new Promise(r => setTimeout(r, delay));
+        console.log(`   Retrying immediately (attempt ${attempt + 1})…`);
         continue;
       }
     }

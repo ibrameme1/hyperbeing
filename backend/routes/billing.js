@@ -4,6 +4,8 @@ import {
   stripe, PLANS, getOrCreateSubscription, resetCreditsForPlan, grantCredits, isAdmin,
 } from '../services/stripeService.js';
 import { getDb } from '../database.js';
+import { validate, isEnum } from '../middleware/validate.js';
+import { billingLimiter } from '../middleware/rateLimits.js';
 
 const router = Router();
 
@@ -20,10 +22,12 @@ router.get('/subscription', authMiddleware, (req, res) => {
 });
 
 // ── POST /api/billing/checkout ────────────────────────────────────────────────
-router.post('/checkout', authMiddleware, async (req, res) => {
+router.post('/checkout', authMiddleware, billingLimiter,
+  validate({ planKey: isEnum('basic', 'pro', 'ultra') }),
+  async (req, res) => {
   const { planKey } = req.body;
   const plan = PLANS[planKey];
-  if (!plan || !plan.priceId) return res.status(400).json({ error: 'Invalid plan' });
+  if (!plan || !plan.priceId) return res.status(400).json({ error: 'Plan not available for purchase' });
   if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments not configured' });
 
   const sub = getOrCreateSubscription(req.userId);
@@ -53,7 +57,8 @@ router.post('/checkout', authMiddleware, async (req, res) => {
   });
 
   res.json({ url: session.url });
-});
+  },
+);
 
 // ── POST /api/billing/portal ──────────────────────────────────────────────────
 router.post('/portal', authMiddleware, async (req, res) => {

@@ -12,6 +12,13 @@
     <style>
       * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
     </style>
+    <!-- Apply theme class before React mounts to prevent flash of light mode -->
+    <script>
+      (function() {
+        var t = localStorage.getItem('hb_theme') || 'dark';
+        if (t === 'dark') document.documentElement.classList.add('dark');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

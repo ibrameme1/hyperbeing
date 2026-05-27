@@ -169,7 +169,7 @@ export default function Login() {
 
       {/* ── Right form panel ── */}
       <div className="flex-1 lg:max-w-[480px] flex items-center justify-center p-6 lg:p-12"
-           style={{ background: '#F5F3FF' }}>
+           style={{ background: 'var(--bg-page)' }}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -182,13 +182,13 @@ export default function Login() {
                  style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
               <Sparkles size={16} className="text-white" />
             </div>
-            <span className="font-bold text-hb-text text-lg">HyperBeing</span>
+            <span className="font-bold text-lg" style={{ color: 'var(--text-primary)' }}>HyperBeing</span>
           </div>
 
-          <h1 className="text-2xl font-bold text-hb-text mb-1">
+          <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
             {mode === 'login' ? 'Welcome back' : 'Create your account'}
           </h1>
-          <p className="text-hb-muted text-sm mb-8">
+          <p className="text-sm mb-8" style={{ color: 'var(--text-secondary)' }}>
             {mode === 'login'
               ? 'Good to see you again. Nova missed you.'
               : 'Takes 30 seconds. No credit card.'}
@@ -196,16 +196,15 @@ export default function Login() {
 
           {/* Toggle */}
           <div className="flex gap-1 p-1 rounded-2xl mb-8"
-               style={{ background: '#EDE9FE' }}>
+               style={{ background: 'var(--bg-input)' }}>
             {['login', 'register'].map(m => (
               <button
                 key={m}
                 onClick={() => { setMode(m); setError(''); }}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
-                  mode === m
-                    ? 'bg-white text-hb-text shadow-ios'
-                    : 'text-hb-muted hover:text-hb-text'
-                }`}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200`}
+                style={mode === m
+                  ? { background: 'var(--bg-card)', color: 'var(--text-primary)', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }
+                  : { color: 'var(--text-muted)' }}
               >
                 {m === 'login' ? 'Sign in' : 'Sign up'}
               </button>
@@ -228,10 +227,10 @@ export default function Login() {
                     value={name}
                     onChange={e => setName(e.target.value)}
                     required
-                    className="w-full px-4 py-3.5 rounded-2xl text-sm text-hb-text placeholder:text-hb-muted focus:outline-none transition-all duration-200 bg-white border-2"
-                    style={{ borderColor: '#EDE9FE', boxShadow: '0 1px 4px rgba(139,92,246,0.06)' }}
+                    className="w-full px-4 py-3.5 rounded-2xl text-sm focus:outline-none transition-all duration-200 border-2"
+                    style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', borderColor: 'var(--border)', boxShadow: '0 1px 4px rgba(139,92,246,0.06)' }}
                     onFocus={e => e.target.style.borderColor = '#8B5CF6'}
-                    onBlur={e => e.target.style.borderColor = '#EDE9FE'}
+                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
                   />
                 </motion.div>
               )}
@@ -243,10 +242,10 @@ export default function Login() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
-              className="w-full px-4 py-3.5 rounded-2xl text-sm text-hb-text placeholder:text-hb-muted focus:outline-none transition-all duration-200 bg-white border-2"
-              style={{ borderColor: '#EDE9FE', boxShadow: '0 1px 4px rgba(139,92,246,0.06)' }}
+              className="w-full px-4 py-3.5 rounded-2xl text-sm focus:outline-none transition-all duration-200 border-2"
+              style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', borderColor: 'var(--border)', boxShadow: '0 1px 4px rgba(139,92,246,0.06)' }}
               onFocus={e => e.target.style.borderColor = '#8B5CF6'}
-              onBlur={e => e.target.style.borderColor = '#EDE9FE'}
+              onBlur={e => e.target.style.borderColor = 'var(--border)'}
             />
 
             <div className="relative">
@@ -256,16 +255,16 @@ export default function Login() {
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
-                className="w-full px-4 py-3.5 pr-12 rounded-2xl text-sm text-hb-text placeholder:text-hb-muted focus:outline-none transition-all duration-200 bg-white border-2"
-                style={{ borderColor: '#EDE9FE', boxShadow: '0 1px 4px rgba(139,92,246,0.06)' }}
+                className="w-full px-4 py-3.5 pr-12 rounded-2xl text-sm focus:outline-none transition-all duration-200 border-2"
+                style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', borderColor: 'var(--border)', boxShadow: '0 1px 4px rgba(139,92,246,0.06)' }}
                 onFocus={e => e.target.style.borderColor = '#8B5CF6'}
-                onBlur={e => e.target.style.borderColor = '#EDE9FE'}
+                onBlur={e => e.target.style.borderColor = 'var(--border)'}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(v => !v)}
                 className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors"
-                style={{ color: '#6B6285' }}
+                style={{ color: 'var(--text-muted)' }}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
@@ -277,7 +276,7 @@ export default function Login() {
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="text-red-500 text-xs text-center py-2 px-4 rounded-xl bg-red-50"
+                  className="text-red-500 text-xs text-center py-2 px-4 rounded-xl bg-red-50 dark:bg-red-900/20"
                 >
                   {error}
                 </motion.p>
@@ -303,9 +302,9 @@ export default function Login() {
 
           {/* Divider */}
           <div className="flex items-center gap-3 my-5">
-            <div className="flex-1 h-px" style={{ background: '#E2E0EC' }} />
-            <span className="text-xs font-medium" style={{ color: '#A09AB8' }}>or continue with</span>
-            <div className="flex-1 h-px" style={{ background: '#E2E0EC' }} />
+            <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+            <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>or continue with</span>
+            <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
           </div>
 
           {/* Social buttons */}
@@ -324,7 +323,7 @@ export default function Login() {
           </div>
 
           {mode === 'register' && (
-            <p className="text-center text-xs mt-6" style={{ color: '#6B6285' }}>
+            <p className="text-center text-xs mt-6" style={{ color: 'var(--text-secondary)' }}>
               By signing up you agree to our{' '}
               <span className="underline cursor-pointer" style={{ color: '#8B5CF6' }}>Terms</span>
               {' '}and{' '}

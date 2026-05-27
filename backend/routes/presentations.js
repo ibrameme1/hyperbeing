@@ -6,6 +6,21 @@ import { authenticateToken } from '../middleware/auth.js';
 import { chat, regenerateSlide, analyzePresentation, streamSlidePlan, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
 import { generateSlideImage } from '../services/imageGeneration.js';
 import { deductCredits, getOrCreateSubscription, CREDIT_COSTS } from '../services/stripeService.js';
+import { validate, isString, isOptionalString, isEnum, isArray, isIntBetween } from '../middleware/validate.js';
+import { createPresentationLimiter, addSlidesLimiter, analyzeLimiter } from '../middleware/rateLimits.js';
+
+// Validates a single attachment object
+function validateAttachment(a) {
+  if (typeof a !== 'object' || a === null) return 'Must be an object';
+  if (!['image', 'file'].includes(a.type)) return 'Invalid type';
+  if (typeof a.name !== 'string' || a.name.length > 255) return 'Invalid name';
+  if (typeof a.data !== 'string') return 'Missing data';
+  // Base64 data URIs can be large — cap at ~10MB per attachment
+  if (a.data.length > 14_000_000) return 'Attachment too large (max ~10MB)';
+  return null;
+}
+
+const VALID_ASPECT_RATIOS = ['16:9', '9:16', '1:1', '4:3'];
 
 const router = Router();
 
@@ -33,25 +48,46 @@ router.get('/', authenticateToken, (req, res) => {
 });
 
 // ─── Analyze brief and return contextual questions ─────────────────────────
-router.post('/analyze', authenticateToken, async (req, res) => {
+router.post('/analyze', authenticateToken, analyzeLimiter, async (req, res) => {
   const { message, attachments = [] } = req.body;
   if (!message?.trim() && attachments.length === 0) {
     return res.status(400).json({ error: 'Message or attachment required' });
+  }
+  if (typeof message !== 'undefined' && typeof message !== 'string') {
+    return res.status(400).json({ error: 'Message must be a string' });
+  }
+  if (message && message.length > 50_000) {
+    return res.status(400).json({ error: 'Message too long (max 50,000 characters)' });
+  }
+  if (!Array.isArray(attachments) || attachments.length > 10) {
+    return res.status(400).json({ error: 'Attachments must be an array of max 10 items' });
   }
   try {
     const analysis = await analyzePresentation(message, attachments);
     res.json(analysis);
   } catch (err) {
     console.error('Analysis error:', err);
-    res.status(500).json({ error: 'Analysis failed', detail: err.message });
+    res.status(500).json({ error: 'Analysis failed' });
   }
 });
 
 // ─── Create presentation + kick off async full flow ───────────────────────
-router.post('/', authenticateToken, (req, res) => {
+router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
   const { message, attachments = [], aspectRatio = '16:9' } = req.body;
   if (!message?.trim() && attachments.length === 0) {
     return res.status(400).json({ error: 'Message or attachment required' });
+  }
+  if (typeof message !== 'undefined' && typeof message !== 'string') {
+    return res.status(400).json({ error: 'Message must be a string' });
+  }
+  if (message && message.length > 50_000) {
+    return res.status(400).json({ error: 'Message too long (max 50,000 characters)' });
+  }
+  if (!Array.isArray(attachments) || attachments.length > 10) {
+    return res.status(400).json({ error: 'Too many attachments (max 10)' });
+  }
+  if (!VALID_ASPECT_RATIOS.includes(aspectRatio)) {
+    return res.status(400).json({ error: `Invalid aspect ratio. Must be one of: ${VALID_ASPECT_RATIOS.join(', ')}` });
   }
 
   // Check + deduct credits before starting
@@ -273,7 +309,7 @@ router.post('/:id/messages', authenticateToken, async (req, res) => {
     });
   } catch (err) {
     console.error('Agent error:', err);
-    res.status(500).json({ error: 'AI agent failed', detail: err.message });
+    res.status(500).json({ error: 'AI agent failed' });
   }
 });
 
@@ -314,7 +350,8 @@ router.get('/:id/events', (req, res) => {
     if (presState.status === 'processing' || presState.status === 'generating') {
       if (presState.slide_plan) {
         const plan = JSON.parse(presState.slide_plan);
-        res.write(`data: ${JSON.stringify({ type: 'plan_ready', total_slides: plan.slides.length })}\n\n`);
+        const totalSlides = plan.total_slides || plan.slides?.length || 0;
+        res.write(`data: ${JSON.stringify({ type: 'plan_ready', total_slides: totalSlides })}\n\n`);
       }
       if (presState.slides_data) {
         const doneSlides = JSON.parse(presState.slides_data);
@@ -532,15 +569,17 @@ router.post('/:id/reorder', authenticateToken, (req, res) => {
 });
 
 // ─── Update title ─────────────────────────────────────────────────────────
-router.patch('/:id/title', authenticateToken, (req, res) => {
-  const { title } = req.body;
-  if (!title?.trim()) return res.status(400).json({ error: 'Title required' });
-  const result = getDb()
-    .prepare(`UPDATE presentations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`)
-    .run(title.trim(), req.params.id, req.user.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
-  res.json({ title: title.trim() });
-});
+router.patch('/:id/title', authenticateToken,
+  validate({ title: isString(1, 500) }),
+  (req, res) => {
+    const { title } = req.body;
+    const result = getDb()
+      .prepare(`UPDATE presentations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`)
+      .run(title, req.params.id, req.user.id);
+    if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+    res.json({ title });
+  },
+);
 
 // ─── Suggest title via AI ─────────────────────────────────────────────────
 router.post('/:id/suggest-title', authenticateToken, async (req, res) => {
@@ -560,14 +599,25 @@ router.post('/:id/suggest-title', authenticateToken, async (req, res) => {
     const title = await suggestTitle(context);
     res.json({ title });
   } catch (err) {
-    res.status(500).json({ error: 'Could not suggest title', detail: err.message });
+    res.status(500).json({ error: 'Could not suggest title' });
   }
 });
 
 // ─── Add more slides ──────────────────────────────────────────────────────
-router.post('/:id/add-slides', authenticateToken, (req, res) => {
+router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) => {
   const { description, count = 1, attachments: reqAttachments = [] } = req.body;
-  if (!description?.trim()) return res.status(400).json({ error: 'Description required' });
+  if (!description?.trim() || typeof description !== 'string') {
+    return res.status(400).json({ error: 'Description required' });
+  }
+  if (description.length > 10_000) {
+    return res.status(400).json({ error: 'Description too long (max 10,000 characters)' });
+  }
+  if (!Array.isArray(reqAttachments) || reqAttachments.length > 10) {
+    return res.status(400).json({ error: 'Too many attachments (max 10)' });
+  }
+  if (count !== 'auto' && (isNaN(parseInt(count)) || parseInt(count) < 1 || parseInt(count) > 10)) {
+    return res.status(400).json({ error: 'Count must be 1–10 or "auto"' });
+  }
   const isAuto = count === 'auto';
   const slideCount = isAuto ? null : Math.min(Math.max(parseInt(count) || 1, 1), 10);
 

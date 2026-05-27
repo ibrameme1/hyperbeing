@@ -7,6 +7,8 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 import axios from 'axios';
 import { getDb } from '../database.js';
+import { validate, isString, isEmail } from '../middleware/validate.js';
+import { authLimiter, loginLimiter } from '../middleware/rateLimits.js';
 
 const router = Router();
 
@@ -50,10 +52,15 @@ if (process.env.META_APP_ID) {
 passport.serializeUser((user, done) => done(null, user));
 passport.deserializeUser((user, done) => done(null, user));
 
+// Whitelist mapping — prevents SQL injection from provider string in column names
+const PROVIDER_COL = { google: 'google_id', meta: 'meta_id', tiktok: 'tiktok_id' };
+
 // ── Helper: upsert OAuth user ─────────────────────────────────────────────────
 function upsertOAuthUser({ provider, providerId, name, email, avatar }) {
+  const col = PROVIDER_COL[provider];
+  if (!col) throw new Error(`Unknown OAuth provider: ${provider}`);
+
   const db = getDb();
-  const col = `${provider}_id`;
 
   let user = db.prepare(`SELECT id, name, email FROM users WHERE ${col} = ?`).get(providerId);
   if (user) return { user, isNew: false };
@@ -165,46 +172,55 @@ router.get('/tiktok/callback', async (req, res) => {
 });
 
 // ── Email / password ──────────────────────────────────────────────────────────
-router.post('/register', async (req, res) => {
-  const { name, email, password } = req.body;
-  if (!name || !email || !password)
-    return res.status(400).json({ error: 'Name, email and password are required' });
-  if (password.length < 6)
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+router.post('/register',
+  authLimiter,
+  validate({
+    name:     isString(2, 100),
+    email:    isEmail(),
+    password: isString(8, 128),
+  }),
+  async (req, res) => {
+    const { name, email, password } = req.body;
+    const db = getDb();
+    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase());
+    if (existing) return res.status(409).json({ error: 'Email already in use' });
 
-  const db = getDb();
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
-  if (existing) return res.status(409).json({ error: 'Email already in use' });
+    const password_hash = await bcrypt.hash(password, 12);
+    const id = uuid();
+    db.prepare(
+      'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)'
+    ).run(id, name, email.toLowerCase(), password_hash);
 
-  const password_hash = await bcrypt.hash(password, 10);
-  const id = uuid();
-  db.prepare(
-    'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)'
-  ).run(id, name.trim(), email.toLowerCase(), password_hash);
+    const user = { id, name, email: email.toLowerCase() };
+    res.status(201).json({ token: signToken(id), user });
+  },
+);
 
-  const user = { id, name: name.trim(), email: email.toLowerCase() };
-  res.status(201).json({ token: signToken(id), user });
-});
+router.post('/login',
+  loginLimiter,
+  validate({
+    email:    isEmail(),
+    password: isString(1, 128),
+  }),
+  async (req, res) => {
+    const { email, password } = req.body;
+    const db = getDb();
+    const user = db
+      .prepare('SELECT id, name, email, password_hash FROM users WHERE email = ?')
+      .get(email.toLowerCase());
 
-router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password)
-    return res.status(400).json({ error: 'Email and password are required' });
+    // Use constant-time comparison even when user not found (timing attack prevention)
+    const dummyHash = '$2a$12$invalidhashpadding000000000000000000000000000000000000000';
+    const valid = await bcrypt.compare(password, user?.password_hash || dummyHash);
 
-  const db = getDb();
-  const user = db
-    .prepare('SELECT id, name, email, password_hash FROM users WHERE email = ?')
-    .get(email.toLowerCase());
+    if (!user || !user.password_hash || !valid) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
-  if (!user || !user.password_hash)
-    return res.status(401).json({ error: 'Invalid credentials' });
-
-  const valid = await bcrypt.compare(password, user.password_hash);
-  if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
-
-  const { password_hash: _, ...safeUser } = user;
-  res.json({ token: signToken(user.id), user: safeUser });
-});
+    const { password_hash: _, ...safeUser } = user;
+    res.json({ token: signToken(user.id), user: safeUser });
+  },
+);
 
 router.get('/me', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
