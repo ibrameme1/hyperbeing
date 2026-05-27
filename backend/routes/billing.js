@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import {
-  stripe, PLANS, getOrCreateSubscription, resetCreditsForPlan, grantCredits, getDb,
+  stripe, PLANS, getOrCreateSubscription, resetCreditsForPlan, grantCredits,
 } from '../services/stripeService.js';
+import { getDb } from '../database.js';
 
 const router = Router();
 

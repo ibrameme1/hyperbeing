@@ -2,8 +2,16 @@ import Stripe from 'stripe';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2024-12-18.acacia',
+let _stripe = null;
+export function getStripe() {
+  if (!_stripe) {
+    if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY not set');
+    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-12-18.acacia' });
+  }
+  return _stripe;
+}
+export const stripe = new Proxy({}, {
+  get: (_, prop) => getStripe()[prop],
 });
 
 export const PLANS = {
