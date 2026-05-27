@@ -24,8 +24,12 @@ export function initDatabase() {
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
+      email TEXT UNIQUE,
+      password_hash TEXT,
+      google_id TEXT UNIQUE,
+      meta_id TEXT UNIQUE,
+      tiktok_id TEXT UNIQUE,
+      avatar TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -61,6 +65,16 @@ export function initDatabase() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
   `);
+
+  // Migrate: OAuth columns
+  for (const col of [
+    'ALTER TABLE users ADD COLUMN google_id TEXT UNIQUE',
+    'ALTER TABLE users ADD COLUMN meta_id TEXT UNIQUE',
+    'ALTER TABLE users ADD COLUMN tiktok_id TEXT UNIQUE',
+    'ALTER TABLE users ADD COLUMN avatar TEXT',
+  ]) {
+    try { db.exec(col); } catch { /* already exists */ }
+  }
 
   // Migrate: add aspect_ratio column if it doesn't exist
   try {

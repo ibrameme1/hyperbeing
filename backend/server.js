@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import session from 'express-session';
+import passport from 'passport';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initDatabase } from './database.js';
@@ -18,6 +20,15 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+app.use(session({
+  secret: process.env.JWT_SECRET || 'dev-session-secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: process.env.NODE_ENV === 'production', maxAge: 5 * 60 * 1000 },
+}));
+app.use(passport.initialize());
+app.use(passport.session());
 
 app.use('/api/auth', authRoutes);
 app.use('/api/presentations', presentationRoutes);

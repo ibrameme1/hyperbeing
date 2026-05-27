@@ -2,7 +2,36 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Eye, EyeOff, Loader2, ArrowRight, Zap, Layers, TrendingUp } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+      <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+      <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+      <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+    </svg>
+  );
+}
+
+function MetaIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.989C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z" fill="#1877F2"/>
+    </svg>
+  );
+}
+
+function TikTokIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.75a8.17 8.17 0 004.78 1.52V6.82a4.85 4.85 0 01-1.01-.13z"/>
+    </svg>
+  );
+}
 
 const FEATURES = [
   { icon: Zap, title: 'Instant generation', desc: 'Full deck in under 60 seconds', color: '#7B5EFF' },
@@ -21,6 +50,18 @@ export default function Login() {
 
   const { login, register } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Show error if OAuth failed
+  useState(() => {
+    if (searchParams.get('error') === 'oauth') setError('Sign-in failed. Please try again.');
+  });
+
+  const SOCIAL = [
+    { id: 'google', label: 'Continue with Google', Icon: GoogleIcon, bg: '#fff', border: '#E2E0EC', color: '#18132E' },
+    { id: 'meta', label: 'Continue with Instagram', Icon: MetaIcon, bg: '#fff', border: '#E2E0EC', color: '#18132E' },
+    { id: 'tiktok', label: 'Continue with TikTok', Icon: TikTokIcon, bg: '#010101', border: '#010101', color: '#fff' },
+  ];
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -259,6 +300,28 @@ export default function Login() {
               )}
             </button>
           </form>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 my-5">
+            <div className="flex-1 h-px" style={{ background: '#E2E0EC' }} />
+            <span className="text-xs font-medium" style={{ color: '#A09AB8' }}>or continue with</span>
+            <div className="flex-1 h-px" style={{ background: '#E2E0EC' }} />
+          </div>
+
+          {/* Social buttons */}
+          <div className="space-y-2.5">
+            {SOCIAL.map(({ id, label, Icon, bg, border, color }) => (
+              <a
+                key={id}
+                href={`${API_BASE}/api/auth/${id}`}
+                className="w-full py-3 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2.5 transition-all duration-200 active:scale-[0.97] border-2"
+                style={{ background: bg, borderColor: border, color, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+              >
+                <Icon />
+                {label}
+              </a>
+            ))}
+          </div>
 
           {mode === 'register' && (
             <p className="text-center text-xs mt-6" style={{ color: '#6B6285' }}>
