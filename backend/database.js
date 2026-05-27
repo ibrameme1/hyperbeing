@@ -4,8 +4,10 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, 'data');
-const DB_PATH = path.join(DATA_DIR, 'hyperbeing.db');
+const DATA_DIR = process.env.DB_PATH
+  ? path.dirname(process.env.DB_PATH)
+  : path.join(__dirname, 'data');
+const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'hyperbeing.db');
 
 let db;
 
@@ -22,8 +24,12 @@ export function initDatabase() {
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
+      email TEXT UNIQUE,
+      password_hash TEXT,
+      google_id TEXT UNIQUE,
+      meta_id TEXT UNIQUE,
+      tiktok_id TEXT UNIQUE,
+      avatar TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -58,11 +64,53 @@ export function initDatabase() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT UNIQUE NOT NULL,
+      plan TEXT DEFAULT 'free',
+      stripe_customer_id TEXT UNIQUE,
+      stripe_subscription_id TEXT UNIQUE,
+      status TEXT DEFAULT 'active',
+      credits_remaining INTEGER DEFAULT 5,
+      credits_total INTEGER DEFAULT 5,
+      current_period_end DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS credit_transactions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      balance_after INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      description TEXT,
+      presentation_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
+
+  // Migrate: OAuth columns
+  for (const col of [
+    'ALTER TABLE users ADD COLUMN google_id TEXT UNIQUE',
+    'ALTER TABLE users ADD COLUMN meta_id TEXT UNIQUE',
+    'ALTER TABLE users ADD COLUMN tiktok_id TEXT UNIQUE',
+    'ALTER TABLE users ADD COLUMN avatar TEXT',
+  ]) {
+    try { db.exec(col); } catch { /* already exists */ }
+  }
 
   // Migrate: add aspect_ratio column if it doesn't exist
   try {
     db.exec('ALTER TABLE presentations ADD COLUMN aspect_ratio TEXT DEFAULT "16:9"');
+  } catch { /* column already exists */ }
+
+  // Migrate: add thumbnail column for dashboard card previews
+  try {
+    db.exec('ALTER TABLE presentations ADD COLUMN thumbnail TEXT');
   } catch { /* column already exists */ }
 
   console.log('✅ Database ready');

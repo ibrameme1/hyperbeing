@@ -131,7 +131,7 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
         {sending && (
           <div className="flex gap-3">
             <div className="flex-shrink-0 w-8 h-8 rounded-2xl flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                 style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
               <Sparkles size={14} className="text-white" />
             </div>
             <div className="bubble-ai flex items-center gap-2 text-ios-gray1">
@@ -156,7 +156,7 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
             <button
               onClick={() => onGenerate(presentation)}
               className="ios-btn py-3 px-8 text-base shadow-ios-lg"
-              style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
             >
               <Wand2 size={18} />
               Generate Presentation
@@ -323,7 +323,8 @@ export default function PresentationPage() {
     }
 
     const token = localStorage.getItem('hb_token');
-    const sse = new EventSource(`/api/presentations/${presId}/events?token=${encodeURIComponent(token)}`);
+    const apiBase = import.meta.env.VITE_API_URL || '';
+    const sse = new EventSource(`${apiBase}/api/presentations/${presId}/events?token=${encodeURIComponent(token)}`);
     sseRef.current = sse;
 
     let stageTimer = 0;
@@ -338,6 +339,19 @@ export default function PresentationPage() {
 
       if (event.type === 'plan_ready') {
         setTotalSlides(event.total_slides);
+        // Create placeholder slides so viewer can show immediately
+        setGeneratedSlides(prev => {
+          if (prev.length >= event.total_slides) return prev;
+          const placeholders = Array.from({ length: event.total_slides }, (_, i) => ({
+            index: i, type: 'content', title: `Slide ${i + 1}`, status: 'generating', image_data: null,
+          }));
+          // Keep any real slides already arrived
+          const merged = [...placeholders];
+          for (const s of prev) {
+            if (s.status === 'complete') merged[s.index] = s;
+          }
+          return merged;
+        });
       }
 
       if (event.type === 'chat_needed') {
@@ -366,10 +380,23 @@ export default function PresentationPage() {
 
       if (event.type === 'slide_ready') {
         setGeneratedSlides(prev => {
-          if (prev.some(s => s.index === event.slide.index)) return prev;
-          return [...prev, event.slide].sort((a, b) => a.index - b.index);
+          const next = prev.map(s => s.index === event.slide.index ? event.slide : s);
+          if (!prev.some(s => s.index === event.slide.index)) next.push(event.slide);
+          return next.sort((a, b) => a.index - b.index);
         });
         setGenerationStage(5);
+        // Switch to viewer as soon as we have 1 real slide with an image
+        setPhase(p => p === 'generating' ? 'viewing' : p);
+      }
+
+      if (event.type === 'slide_error') {
+        setGeneratedSlides(prev =>
+          prev.map(s => s.index === event.index ? { ...s, status: 'error' } : s)
+        );
+      }
+
+      if (event.type === 'slides_adding') {
+        setGeneratedSlides(prev => [...prev, ...(event.placeholders || [])].sort((a, b) => a.index - b.index));
       }
 
       if (event.type === 'slide_updated') {
@@ -378,10 +405,14 @@ export default function PresentationPage() {
         );
       }
 
+      if (event.type === 'title_updated') {
+        setPresentation(p => p ? { ...p, title: event.title } : p);
+      }
+
       if (event.type === 'complete') {
         clearInterval(stageTimer);
         stopPolling();
-        setTimeout(() => setPhase('viewing'), 800);
+        setPhase('viewing');
       }
 
       if (event.type === 'error') {
@@ -432,7 +463,7 @@ export default function PresentationPage() {
       <div className="h-screen flex items-center justify-center" style={{ background: '#F2F2F7' }}>
         <div className="flex flex-col items-center gap-3">
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center animate-pulse"
-               style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
             <Sparkles size={24} className="text-white" />
           </div>
           <p className="text-ios-gray1 text-sm">Loading…</p>
@@ -462,6 +493,7 @@ export default function PresentationPage() {
           navigate('/dashboard');
         }}
         onSlidesUpdate={setGeneratedSlides}
+        onTitleChange={(t) => setPresentation(p => ({ ...p, title: t }))}
       />
     );
   }

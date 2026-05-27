@@ -2,13 +2,58 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Download, Loader2, ArrowLeft,
-  Sparkles, Send, Images, FileDown, Paperclip, X,
+  Sparkles, Send, Images, FileDown, Paperclip, X, Plus,
+  AlertTriangle, RefreshCw, Check, Pencil,
 } from 'lucide-react';
 import SlideRenderer from './SlideRenderer';
 import { exportToPDF, exportImages } from '../utils/pdfExport';
 import api from '../api/client';
 
-export default function PresentationViewer({ slides, presentationId, title, onBack, onSlidesUpdate }) {
+// Separate component so each item has its own wasDragging ref
+function FilmstripItem({ slide, idx, isCurrent, onGoTo }) {
+  const wasDragging = useRef(false);
+
+  return (
+    <Reorder.Item
+      key={slide.index}
+      value={slide}
+      className="flex flex-col items-center gap-1.5 flex-shrink-0"
+      style={{ listStyle: 'none', cursor: 'grab' }}
+      whileDrag={{ scale: 1.06, zIndex: 50, cursor: 'grabbing' }}
+      onDragStart={() => { wasDragging.current = true; }}
+      onDragEnd={() => { setTimeout(() => { wasDragging.current = false; }, 80); }}
+    >
+      <div
+        onPointerUp={() => { if (!wasDragging.current) onGoTo(idx); }}
+        className={`w-24 rounded-lg overflow-hidden transition-all duration-150 relative select-none ${
+          isCurrent ? 'ring-2 ring-purple-500 shadow-md' : 'opacity-60 hover:opacity-90'
+        }`}
+        style={{ aspectRatio: '16/9' }}
+      >
+        {slide.image_data && !slide.image_data.startsWith('data:image/svg') ? (
+          <img src={slide.image_data} alt={slide.title} className="w-full h-full object-cover pointer-events-none" draggable={false} />
+        ) : (
+          <div className="w-full h-full bg-gray-200 animate-pulse" />
+        )}
+        {slide.status === 'generating' && (
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
+            <Loader2 size={14} className="text-white animate-spin" />
+          </div>
+        )}
+        {slide.status === 'error' && (
+          <div className="absolute inset-0 bg-red-900/60 flex items-center justify-center rounded-lg">
+            <AlertTriangle size={14} className="text-red-300" />
+          </div>
+        )}
+      </div>
+      <span className={`text-xs font-medium transition-colors select-none ${isCurrent ? 'text-purple-600' : 'text-gray-400'}`}>
+        {idx + 1}
+      </span>
+    </Reorder.Item>
+  );
+}
+
+export default function PresentationViewer({ slides, presentationId, title, onBack, onSlidesUpdate, onTitleChange }) {
   const [current, setCurrent] = useState(0);
   const [editInstruction, setEditInstruction] = useState('');
   const [editLoading, setEditLoading] = useState(false);
@@ -18,17 +63,29 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [localSlides, setLocalSlides] = useState(slides);
   const [editAttachments, setEditAttachments] = useState([]);
+
+  // Title editing
+  const [titleEditing, setTitleEditing] = useState(false);
+  const [titleValue, setTitleValue] = useState(title);
+  const [titleSuggesting, setTitleSuggesting] = useState(false);
+  const titleInputRef = useRef(null);
+
+  // Add slides modal
+  const [showAddSlides, setShowAddSlides] = useState(false);
+  const [addDesc, setAddDesc] = useState('');
+  const [addCount, setAddCount] = useState(1); // number 1-5 or 'auto'
+  const [addAttachments, setAddAttachments] = useState([]);
+  const [addLoading, setAddLoading] = useState(false);
+  const addFileRef = useRef(null);
+
   const editRef = useRef(null);
   const filmstripRef = useRef(null);
   const exportMenuRef = useRef(null);
   const editFileRef = useRef(null);
 
-  // Sync localSlides when slides prop changes
-  useEffect(() => {
-    setLocalSlides(slides);
-  }, [slides]);
+  useEffect(() => { setLocalSlides(slides); }, [slides]);
+  useEffect(() => { setTitleValue(title); }, [title]);
 
-  // Clear updating indicator when slide SSE update arrives
   useEffect(() => {
     setUpdatingSlides(prev => {
       if (prev.size === 0) return prev;
@@ -41,7 +98,6 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
     });
   }, [localSlides]);
 
-  // Scroll filmstrip to keep active slide visible
   useEffect(() => {
     const strip = filmstripRef.current;
     if (!strip) return;
@@ -49,16 +105,17 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
     if (thumb) thumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   }, [current]);
 
-  // Close export menu on outside click
   useEffect(() => {
     function onClick(e) {
-      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) {
-        setShowExportMenu(false);
-      }
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) setShowExportMenu(false);
     }
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
+
+  useEffect(() => {
+    if (titleEditing) titleInputRef.current?.select();
+  }, [titleEditing]);
 
   const goTo = useCallback((idx) => {
     if (idx >= 0 && idx < localSlides.length) setCurrent(idx);
@@ -103,44 +160,121 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
     if (!editInstruction.trim() || editLoading) return;
     const slideIndex = localSlides[current]?.index;
     setEditLoading(true);
+    setUpdatingSlides(prev => new Set([...prev, current]));
+    setLocalSlides(prev => prev.map((s, i) => i === current ? { ...s, status: 'generating' } : s));
     try {
       await api.post(`/presentations/${presentationId}/slides/${slideIndex}/regenerate`, {
         instruction: editInstruction.trim(),
         attachments: editAttachments.map(a => ({ data: a.data, mimeType: a.mimeType, name: a.name })),
       });
-      setUpdatingSlides(prev => new Set([...prev, current]));
       setEditInstruction('');
       setEditAttachments([]);
     } catch (err) {
       console.error('Edit failed:', err);
+      setLocalSlides(prev => prev.map((s, i) => i === current ? { ...s, status: 'error' } : s));
+      setUpdatingSlides(prev => { const n = new Set(prev); n.delete(current); return n; });
     } finally {
       setEditLoading(false);
     }
   }
 
+  async function handleRetrySlide(slideIdx) {
+    const slide = localSlides[slideIdx];
+    if (!slide) return;
+    setLocalSlides(prev => prev.map((s, i) => i === slideIdx ? { ...s, status: 'generating' } : s));
+    setUpdatingSlides(prev => new Set([...prev, slideIdx]));
+    try {
+      await api.post(`/presentations/${presentationId}/slides/${slide.index}/regenerate`, {
+        instruction: 'Regenerate this slide exactly as originally planned. Keep the same content and style.',
+      });
+    } catch (err) {
+      console.error('Retry failed:', err);
+      setLocalSlides(prev => prev.map((s, i) => i === slideIdx ? { ...s, status: 'error' } : s));
+      setUpdatingSlides(prev => { const n = new Set(prev); n.delete(slideIdx); return n; });
+    }
+  }
+
   async function handleExportPDF() {
-    setExportingPDF(true);
-    setShowExportMenu(false);
-    try { await exportToPDF(localSlides, title); }
-    finally { setExportingPDF(false); }
+    setExportingPDF(true); setShowExportMenu(false);
+    try { await exportToPDF(localSlides, titleValue); } finally { setExportingPDF(false); }
   }
 
   async function handleExportImages() {
-    setExportingImages(true);
-    setShowExportMenu(false);
-    try { exportImages(localSlides, title); }
-    finally { setExportingImages(false); }
+    setExportingImages(true); setShowExportMenu(false);
+    try { exportImages(localSlides, titleValue); } finally { setExportingImages(false); }
+  }
+
+  async function handleTitleSave() {
+    if (!titleValue.trim()) { setTitleValue(title); setTitleEditing(false); return; }
+    setTitleEditing(false);
+    try {
+      await api.patch(`/presentations/${presentationId}/title`, { title: titleValue.trim() });
+      onTitleChange?.(titleValue.trim());
+    } catch { setTitleValue(title); }
+  }
+
+  async function handleSuggestTitle() {
+    setTitleSuggesting(true);
+    try {
+      const { data } = await api.post(`/presentations/${presentationId}/suggest-title`);
+      setTitleValue(data.title);
+      setTitleEditing(true);
+    } catch {} finally { setTitleSuggesting(false); }
+  }
+
+  function handleAddAttach(files) {
+    Array.from(files).forEach(file => {
+      if (!file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = e => setAddAttachments(prev => [...prev, {
+        id: Math.random().toString(36).slice(2),
+        name: file.name, data: e.target.result, mimeType: file.type,
+      }]);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function handleAddDrop(e) {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length) handleAddAttach(files);
+  }
+
+  function handleEditDrop(e) {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length) handleEditAttach(files);
+  }
+
+  async function handleAddSlides() {
+    if (!addDesc.trim() || addLoading) return;
+    setAddLoading(true);
+    try {
+      await api.post(`/presentations/${presentationId}/add-slides`, {
+        description: addDesc.trim(),
+        count: addCount,
+        attachments: addAttachments.map(a => ({ data: a.data, mimeType: a.mimeType, name: a.name })),
+      });
+      setShowAddSlides(false);
+      setAddDesc('');
+      setAddCount(1);
+      setAddAttachments([]);
+    } catch (err) {
+      console.error('Add slides failed:', err);
+    } finally {
+      setAddLoading(false);
+    }
   }
 
   const activeSlide = localSlides[current];
-  const isUpdating = updatingSlides.has(current);
+  const isUpdating = updatingSlides.has(current) || activeSlide?.status === 'generating';
+  const isFailed = activeSlide?.status === 'error' && !updatingSlides.has(current);
 
   return (
     <div className="h-screen flex flex-col bg-white overflow-hidden">
 
-      {/* ── Top bar (Canva-style) ─────────────────────────────────── */}
+      {/* ── Top bar ─────────────────────────────────────────── */}
       <div className="flex items-center gap-3 px-4 h-14 border-b border-gray-200 flex-shrink-0 bg-white">
-        {/* Left: back + logo + title */}
         <button
           onClick={onBack}
           className="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 transition-colors text-sm font-medium flex-shrink-0"
@@ -153,28 +287,69 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
 
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-               style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
             <Sparkles size={13} className="text-white" />
           </div>
-          <p className="font-semibold text-gray-900 text-sm truncate">{title}</p>
+
+          {/* Editable title */}
+          {titleEditing ? (
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <input
+                ref={titleInputRef}
+                value={titleValue}
+                onChange={e => setTitleValue(e.target.value)}
+                onBlur={handleTitleSave}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleTitleSave();
+                  if (e.key === 'Escape') { setTitleValue(title); setTitleEditing(false); }
+                }}
+                className="font-semibold text-gray-900 text-sm bg-gray-100 rounded-lg px-2 py-1 outline-none flex-1 min-w-0"
+                style={{ maxWidth: 260 }}
+              />
+              <button
+                onClick={handleTitleSave}
+                className="w-6 h-6 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600 hover:bg-purple-200 flex-shrink-0"
+              >
+                <Check size={12} />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <button
+                onClick={() => setTitleEditing(true)}
+                className="font-semibold text-gray-900 text-sm truncate hover:text-purple-700 transition-colors group flex items-center gap-1"
+                title="Click to rename"
+              >
+                {titleValue}
+                <Pencil size={11} className="text-gray-400 opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity" />
+              </button>
+              <button
+                onClick={handleSuggestTitle}
+                disabled={titleSuggesting}
+                className="flex-shrink-0 w-6 h-6 rounded-lg bg-purple-50 flex items-center justify-center hover:bg-purple-100 transition-colors"
+                title="AI suggest title"
+              >
+                {titleSuggesting
+                  ? <Loader2 size={11} className="animate-spin text-purple-500" />
+                  : <Sparkles size={11} className="text-purple-500" />}
+              </button>
+            </div>
+          )}
+
           <span className="text-xs text-gray-400 flex-shrink-0 hidden sm:inline">
             {current + 1} / {localSlides.length}
           </span>
         </div>
 
-        {/* Right: export */}
+        {/* Export */}
         <div className="relative flex-shrink-0" ref={exportMenuRef}>
           <button
             onClick={() => setShowExportMenu(v => !v)}
             disabled={exportingPDF || exportingImages}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold text-white transition-all duration-150 active:scale-95"
-            style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+            style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
           >
-            {(exportingPDF || exportingImages) ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Download size={14} />
-            )}
+            {(exportingPDF || exportingImages) ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             Export
           </button>
 
@@ -187,17 +362,11 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 transition={{ duration: 0.15 }}
                 className="absolute right-0 top-10 bg-white rounded-2xl shadow-ios-xl border border-gray-100 py-2 w-48 z-50"
               >
-                <button
-                  onClick={handleExportImages}
-                  className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-ios-gray6 transition-colors text-sm text-gray-800"
-                >
-                  <Images size={15} className="text-ios-blue" />
+                <button onClick={handleExportImages} className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 transition-colors text-sm text-gray-800">
+                  <Images size={15} className="text-blue-500" />
                   Download as Images
                 </button>
-                <button
-                  onClick={handleExportPDF}
-                  className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-ios-gray6 transition-colors text-sm text-gray-800"
-                >
+                <button onClick={handleExportPDF} className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 transition-colors text-sm text-gray-800">
                   <FileDown size={15} className="text-purple-600" />
                   Export as PDF
                 </button>
@@ -207,11 +376,9 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
         </div>
       </div>
 
-      {/* ── Main canvas area ──────────────────────────────────────── */}
-      <div className="flex-1 flex items-center justify-center relative min-h-0"
-           style={{ background: '#E8E8E8' }}>
+      {/* ── Main canvas ──────────────────────────────────────── */}
+      <div className="flex-1 flex items-center justify-center relative min-h-0" style={{ background: '#E8E8E8' }}>
 
-        {/* Prev arrow */}
         <button
           onClick={() => goTo(current - 1)}
           disabled={current === 0}
@@ -220,7 +387,6 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
           <ChevronLeft size={20} />
         </button>
 
-        {/* Slide */}
         <div className="px-16 py-6 w-full flex items-center justify-center min-h-0">
           <AnimatePresence mode="wait">
             <motion.div
@@ -231,23 +397,42 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
               className="relative w-full max-w-4xl"
             >
-              <SlideRenderer
-                slide={activeSlide}
-                className="rounded-xl shadow-2xl"
-              />
+              <SlideRenderer slide={activeSlide} className="rounded-xl shadow-2xl" />
 
+              {/* Generating overlay */}
               {isUpdating && (
                 <div className="absolute inset-0 rounded-xl flex flex-col items-center justify-center gap-3"
-                     style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}>
-                  <Loader2 size={28} className="text-white animate-spin" />
-                  <p className="text-white text-sm font-medium">Regenerating slide…</p>
+                     style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}>
+                  <Loader2 size={32} className="text-white animate-spin" />
+                  <p className="text-white text-sm font-semibold">Generating slide…</p>
+                  <p className="text-white/60 text-xs">This may take a moment</p>
+                </div>
+              )}
+
+              {/* Error overlay */}
+              {isFailed && (
+                <div className="absolute inset-0 rounded-xl flex flex-col items-center justify-center gap-4"
+                     style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}>
+                  <div className="w-12 h-12 rounded-2xl bg-red-500/20 flex items-center justify-center">
+                    <AlertTriangle size={24} className="text-red-400" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-white text-sm font-semibold">Slide generation failed</p>
+                    <p className="text-white/50 text-xs mt-1">Something went wrong with this slide</p>
+                  </div>
+                  <button
+                    onClick={() => handleRetrySlide(current)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-gray-900 text-sm font-semibold hover:bg-gray-100 transition-colors active:scale-95"
+                  >
+                    <RefreshCw size={14} />
+                    Regenerate
+                  </button>
                 </div>
               )}
             </motion.div>
           </AnimatePresence>
         </div>
 
-        {/* Next arrow */}
         <button
           onClick={() => goTo(current + 1)}
           disabled={current === localSlides.length - 1}
@@ -257,52 +442,46 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
         </button>
       </div>
 
-      {/* ── Bottom panel ─────────────────────────────────────────── */}
+      {/* ── Bottom panel ─────────────────────────────────────── */}
       <div className="flex-shrink-0 bg-white border-t border-gray-200">
 
-        {/* Slide filmstrip */}
+        {/* Filmstrip */}
         <Reorder.Group
           as="div"
           axis="x"
           values={localSlides}
           onReorder={handleReorder}
           ref={filmstripRef}
-          className="flex gap-3 overflow-x-auto px-4 py-3"
+          className="flex gap-3 overflow-x-auto"
           style={{ scrollbarWidth: 'thin', listStyle: 'none', margin: 0, padding: '12px 16px' }}
         >
           {localSlides.map((slide, idx) => (
-            <Reorder.Item
+            <FilmstripItem
               key={slide.index}
-              value={slide}
-              className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-grab active:cursor-grabbing"
-              style={{ listStyle: 'none' }}
-              whileDrag={{ scale: 1.05, zIndex: 50 }}
-            >
-              <div
-                onClick={() => goTo(idx)}
-                className={`w-24 rounded-lg overflow-hidden transition-all duration-150 ${
-                  idx === current
-                    ? 'ring-2 ring-purple-500 shadow-md'
-                    : 'opacity-60 hover:opacity-90'
-                }`}
-                style={{ aspectRatio: '16/9' }}
-              >
-                {slide.image_data ? (
-                  <img src={slide.image_data} alt={slide.title} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full bg-gray-200 animate-pulse" />
-                )}
-              </div>
-              <span className={`text-xs font-medium transition-colors ${idx === current ? 'text-purple-600' : 'text-gray-400'}`}>
-                {idx + 1}
-              </span>
-            </Reorder.Item>
+              slide={slide}
+              idx={idx}
+              isCurrent={idx === current}
+              onGoTo={goTo}
+            />
           ))}
+
+          {/* Add slides button at end of filmstrip */}
+          <div className="flex flex-col items-center gap-1.5 flex-shrink-0" style={{ listStyle: 'none' }}>
+            <button
+              onClick={() => setShowAddSlides(true)}
+              className="w-24 rounded-lg border-2 border-dashed border-gray-300 hover:border-purple-400 transition-colors flex flex-col items-center justify-center gap-1 hover:bg-purple-50 text-gray-400 hover:text-purple-500"
+              style={{ aspectRatio: '16/9' }}
+              title="Add more slides"
+            >
+              <Plus size={18} />
+              <span className="text-[10px] font-semibold leading-none">Add slide</span>
+            </button>
+            <span className="text-xs text-transparent select-none">+</span>
+          </div>
         </Reorder.Group>
 
         {/* Edit bar */}
         <div className="border-t border-gray-100 px-4 py-3 space-y-2">
-          {/* Attachment previews */}
           {editAttachments.length > 0 && (
             <div className="flex gap-2 flex-wrap">
               {editAttachments.map(att => (
@@ -320,25 +499,18 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
           )}
 
           <div className="flex items-center gap-3">
-            <input
-              ref={editFileRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={e => handleEditAttach(e.target.files)}
-            />
+            <input ref={editFileRef} type="file" accept="image/*" multiple className="hidden"
+                   onChange={e => handleEditAttach(e.target.files)} />
             <div className="flex-1 flex items-center gap-3 bg-gray-100 rounded-2xl px-4 py-2.5">
               <textarea
                 ref={editRef}
                 value={editInstruction}
                 onChange={e => setEditInstruction(e.target.value)}
                 onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleEditSubmit();
-                  }
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEditSubmit(); }
                 }}
+                onDragOver={e => e.preventDefault()}
+                onDrop={handleEditDrop}
                 placeholder={`Describe changes to slide ${current + 1}…`}
                 rows={1}
                 className="flex-1 bg-transparent text-sm outline-none text-gray-800 placeholder:text-gray-400 resize-none leading-relaxed"
@@ -355,13 +527,152 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               onClick={handleEditSubmit}
               disabled={!editInstruction.trim() || editLoading || isUpdating}
               className="w-10 h-10 rounded-2xl flex items-center justify-center text-white transition-all duration-150 active:scale-95 disabled:opacity-40 flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
             >
               {editLoading ? <Loader2 size={16} className="animate-spin" /> : <Send size={15} />}
             </button>
           </div>
         </div>
       </div>
+
+      {/* ── Add Slides Modal ─────────────────────────────────── */}
+      <AnimatePresence>
+        {showAddSlides && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)' }}
+            onClick={e => { if (e.target === e.currentTarget) setShowAddSlides(false); }}
+          >
+            <motion.div
+              initial={{ y: 60, opacity: 0, scale: 0.97 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 60, opacity: 0, scale: 0.97 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-6 pt-6 pb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-2xl flex items-center justify-center"
+                       style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
+                    <Plus size={15} className="text-white" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-gray-900 text-base">Add More Slides</h2>
+                    <p className="text-xs text-gray-400">Nova already knows your deck's context</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowAddSlides(false)}
+                        className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors">
+                  <X size={15} className="text-gray-500" />
+                </button>
+              </div>
+
+              <div className="px-6 pb-6 space-y-4">
+                <div>
+                  <p className="text-sm font-semibold text-gray-700 mb-2">How many slides?</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {[1, 2, 3, 4, 5].map(n => (
+                      <button
+                        key={n}
+                        onClick={() => setAddCount(n)}
+                        className={`w-10 py-2 rounded-xl text-sm font-semibold border-2 transition-all ${
+                          addCount === n
+                            ? 'border-transparent text-white'
+                            : 'border-gray-200 text-gray-600 bg-gray-50 hover:border-gray-300'
+                        }`}
+                        style={addCount === n ? { background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' } : {}}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setAddCount('auto')}
+                      className={`flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all ${
+                        addCount === 'auto'
+                          ? 'border-transparent text-white'
+                          : 'border-gray-200 text-gray-600 bg-gray-50 hover:border-gray-300'
+                      }`}
+                      style={addCount === 'auto' ? { background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' } : {}}
+                    >
+                      ✦ Nova decides
+                    </button>
+                  </div>
+                  {addCount === 'auto' && (
+                    <p className="text-[11px] text-purple-500 mt-1.5">Nova will pick the right number of slides based on your content</p>
+                  )}
+                </div>
+
+                <div>
+                  <p className="text-sm font-semibold text-gray-700 mb-2">What should they cover?</p>
+                  <textarea
+                    value={addDesc}
+                    onChange={e => setAddDesc(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAddSlides(); }}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={handleAddDrop}
+                    placeholder={`e.g. "A competitive analysis comparing the top 3 rivals" or "A closing call-to-action with next steps"`}
+                    rows={3}
+                    className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm text-gray-800 placeholder:text-gray-400 outline-none resize-none leading-relaxed"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">⌘+Enter to generate · drag images below to attach</p>
+                </div>
+
+                {/* Attachment row */}
+                <div>
+                  <input
+                    ref={addFileRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={e => handleAddAttach(e.target.files)}
+                  />
+                  {addAttachments.length > 0 && (
+                    <div className="flex gap-2 flex-wrap mb-2">
+                      {addAttachments.map(att => (
+                        <div key={att.id} className="relative group">
+                          <img src={att.data} alt={att.name} className="h-12 w-12 rounded-xl object-cover border border-gray-200" />
+                          <button
+                            onClick={() => setAddAttachments(prev => prev.filter(a => a.id !== att.id))}
+                            className="absolute -top-1 -right-1 w-4 h-4 bg-gray-800 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X size={8} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => addFileRef.current?.click()}
+                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-purple-600 transition-colors"
+                  >
+                    <Paperclip size={12} />
+                    Attach reference images
+                  </button>
+                </div>
+
+                <button
+                  onClick={handleAddSlides}
+                  disabled={!addDesc.trim() || addLoading}
+                  className="w-full py-3 rounded-2xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-40"
+                  style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+                >
+                  {addLoading ? (
+                    <><Loader2 size={16} className="animate-spin" /> Generating…</>
+                  ) : addCount === 'auto' ? (
+                    <><Sparkles size={15} /> Let Nova decide &amp; generate</>
+                  ) : (
+                    <><Sparkles size={15} /> Generate {addCount} Slide{addCount > 1 ? 's' : ''}</>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

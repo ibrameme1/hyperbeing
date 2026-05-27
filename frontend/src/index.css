@@ -11,79 +11,126 @@
 
   html, body {
     @apply font-sans;
-    background-color: #F2F2F7;
-    color: #1C1C1E;
+    background-color: #F5F3FF;
+    color: #18132E;
+  }
+
+  h1, h2, h3 {
+    @apply font-display;
   }
 
   ::selection {
-    background-color: rgba(0, 122, 255, 0.2);
+    background-color: rgba(139,92,246,0.25);
   }
 
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb {
-    background: rgba(0,0,0,0.15);
-    border-radius: 99px;
-  }
+  ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 99px; }
   ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
 }
 
 @layer components {
-  /* iOS-style input */
   .ios-input {
     @apply w-full px-4 py-3 rounded-2xl bg-ios-gray5 border border-transparent
            text-base text-gray-900 placeholder:text-ios-gray2
-           focus:outline-none focus:border-ios-blue focus:bg-white
+           focus:outline-none focus:border-hb-primary focus:bg-white
            transition-all duration-200;
   }
 
-  /* iOS primary button */
   .ios-btn {
     @apply inline-flex items-center justify-center gap-2 px-6 py-3
-           rounded-2xl bg-ios-blue text-white font-semibold text-sm
+           rounded-2xl text-white font-semibold text-sm
            shadow-ios active:scale-[0.97] transition-all duration-150
-           disabled:opacity-40 disabled:pointer-events-none
-           hover:bg-blue-600;
+           disabled:opacity-40 disabled:pointer-events-none;
+    background: linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%);
+  }
+  .ios-btn:hover {
+    background: linear-gradient(135deg, #7C3AED 0%, #00C4D4 100%);
   }
 
-  /* iOS secondary button */
   .ios-btn-secondary {
     @apply inline-flex items-center justify-center gap-2 px-6 py-3
            rounded-2xl bg-ios-gray5 text-gray-800 font-semibold text-sm
            shadow-ios active:scale-[0.97] transition-all duration-150
-           disabled:opacity-40 disabled:pointer-events-none
-           hover:bg-ios-gray4;
+           disabled:opacity-40 disabled:pointer-events-none hover:bg-ios-gray4;
   }
 
-  /* Glass card */
   .glass-card {
-    background: rgba(255, 255, 255, 0.72);
+    background: rgba(255,255,255,0.72);
     backdrop-filter: blur(40px) saturate(180%);
     -webkit-backdrop-filter: blur(40px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(255,255,255,0.6);
     @apply rounded-3xl shadow-ios-lg;
   }
 
-  /* Chat bubble — user */
   .bubble-user {
-    @apply bg-ios-blue text-white rounded-3xl rounded-br-md px-4 py-3 text-sm leading-relaxed;
+    @apply bg-hb-primary text-white rounded-3xl rounded-br-md px-4 py-3 text-sm leading-relaxed;
   }
-
-  /* Chat bubble — ai */
   .bubble-ai {
     @apply bg-white text-gray-800 rounded-3xl rounded-bl-md px-4 py-3 text-sm leading-relaxed shadow-ios border border-ios-gray5;
   }
 }
 
+@layer components {
+  .hb-gradient {
+    background: linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%);
+  }
+  .hb-gradient-text {
+    background: linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hb-surface {
+    background: rgba(24,24,27,0.75);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(139,92,246,0.15);
+  }
+  .hb-btn {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3
+           rounded-2xl text-white font-semibold text-sm
+           active:scale-[0.97] transition-all duration-150
+           disabled:opacity-40 disabled:pointer-events-none;
+    background: linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%);
+    box-shadow: 0 4px 24px rgba(139,92,246,0.35);
+  }
+  .hb-btn:hover {
+    background: linear-gradient(135deg, #7C3AED 0%, #00C4D4 100%);
+    box-shadow: 0 6px 32px rgba(139,92,246,0.45);
+  }
+  .hb-chip {
+    @apply px-4 py-3 rounded-2xl text-sm font-semibold border-2 transition-all duration-200 cursor-pointer text-left;
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(139,92,246,0.2);
+    color: rgba(255,255,255,0.75);
+  }
+  .hb-chip:hover {
+    border-color: rgba(139,92,246,0.5);
+    background: rgba(139,92,246,0.1);
+    color: white;
+  }
+  .hb-chip.selected {
+    background: linear-gradient(135deg, rgba(139,92,246,0.25) 0%, rgba(0,240,255,0.15) 100%);
+    border-color: #8B5CF6;
+    color: white;
+    box-shadow: 0 0 20px rgba(139,92,246,0.2);
+  }
+}
+
 @layer utilities {
   .animate-in {
-    animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: slideUp 0.4s cubic-bezier(0.16,1,0.3,1) both;
   }
 
-  /* Shimmer skeleton */
+  @keyframes aurora {
+    0%, 100% { transform: translate(0,0) scale(1); opacity: 0.5; }
+    33%       { transform: translate(30px,-20px) scale(1.1); opacity: 0.7; }
+    66%       { transform: translate(-20px,10px) scale(0.9); opacity: 0.4; }
+  }
+  .animate-aurora   { animation: aurora 8s ease-in-out infinite; }
+  .animate-aurora-2 { animation: aurora 11s ease-in-out infinite reverse; }
+  .animate-aurora-3 { animation: aurora 14s ease-in-out infinite 3s; }
+
   .skeleton {
     background: linear-gradient(90deg, #e8e8e8 25%, #f5f5f5 50%, #e8e8e8 75%);
     background-size: 200% 100%;

@@ -4,10 +4,79 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import {
   Sparkles, Send, LogOut, X, Clock, Trash2, Loader2,
-  ImageIcon, Palette, Plus, ChevronDown, ChevronUp,
+  ImageIcon, Palette, Plus, ChevronDown, ChevronUp, Paperclip, Zap,
 } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
+
+const ANALYZING_MESSAGES = [
+  'Reading your brief…',
+  'Identifying key themes…',
+  'Understanding your audience…',
+  'Crafting the right questions…',
+  'Almost there…',
+];
+
+function AnalyzingOverlay() {
+  const [msgIdx, setMsgIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setMsgIdx(i => (i + 1) % ANALYZING_MESSAGES.length), 2200);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(16px)' }}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+        transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+        className="bg-white rounded-3xl px-10 py-10 max-w-xs w-full mx-4 text-center shadow-2xl"
+      >
+        <div
+          className="w-16 h-16 rounded-2xl mx-auto mb-5 flex items-center justify-center"
+          style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+        >
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+          >
+            <Sparkles size={26} className="text-white" />
+          </motion.div>
+        </div>
+        <h3 className="font-bold text-xl text-gray-900 mb-2">Analysing your brief</h3>
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={msgIdx}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.3 }}
+            className="text-sm text-gray-500 min-h-[20px]"
+          >
+            {ANALYZING_MESSAGES[msgIdx]}
+          </motion.p>
+        </AnimatePresence>
+        <div className="flex justify-center gap-1.5 mt-5">
+          {[0, 1, 2].map(i => (
+            <motion.div
+              key={i}
+              animate={{ scale: [1, 1.4, 1], opacity: [0.4, 1, 0.4] }}
+              transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+              className="w-2 h-2 rounded-full"
+              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+            />
+          ))}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+import { useAuth } from '../contexts/AuthContext';
 import QuestionFlow from '../components/QuestionFlow';
 
 
@@ -16,6 +85,19 @@ function greeting(name) {
   const time = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
   return `Good ${time}, ${name.split(' ')[0]}`;
 }
+
+const VIBE_SUBTITLES = {
+  'dark-editorial': 'Ready to make something that looks like a magazine cover?',
+  'clean-minimal': 'Clean, sharp, minimal — just how you like it.',
+  'bold-punchy': 'Time to make something that gets a reaction.',
+  'colorful': 'Let\'s make something that brings the energy.',
+};
+const PRIORITY_SUBTITLES = {
+  speed: 'Nova\'s warmed up and ready to move fast.',
+  quality: 'Nova\'s in full art-director mode today.',
+  storytelling: 'Let\'s build a narrative that lands.',
+  automation: 'Describe it. Nova handles the rest.',
+};
 
 // ─── Attachment Drop Zone ──────────────────────────────────────────────────
 function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove }) {
@@ -119,9 +201,15 @@ function PresentationCard({ pres, onDelete }) {
       onClick={() => navigate(`/presentations/${pres.id}`)}
       className="bg-white rounded-2xl overflow-hidden shadow-ios cursor-pointer group relative"
     >
-      <div className="aspect-[16/9] flex items-center justify-center"
-           style={{ background: 'linear-gradient(135deg, #667eea22 0%, #764ba222 100%)' }}>
-        <Sparkles className="w-7 h-7 text-ios-indigo opacity-40" />
+      <div className="aspect-[16/9] overflow-hidden"
+           style={{ background: 'linear-gradient(135deg, #8B5CF622 0%, #00F0FF22 100%)' }}>
+        {pres.thumbnail ? (
+          <img src={pres.thumbnail} alt={pres.title} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Sparkles className="w-7 h-7 text-ios-indigo opacity-40" />
+          </div>
+        )}
       </div>
 
       <div className="p-4">
@@ -155,6 +243,11 @@ export default function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [input, setInput] = useState('');
+
+  const prefs = (() => { try { return JSON.parse(localStorage.getItem('hb_prefs') || 'null'); } catch { return null; } })();
+  const heroSubtitle = prefs
+    ? (VIBE_SUBTITLES[prefs.design_vibe] || PRIORITY_SUBTITLES[prefs.priority] || 'What will you create today?')
+    : 'What will you create today?';
   const [moodboardFiles, setMoodboardFiles] = useState([]);
   const [brandingFiles, setBrandingFiles] = useState([]);
   const [showZones, setShowZones] = useState(false);
@@ -167,12 +260,22 @@ export default function Dashboard() {
   const [pendingAttachments, setPendingAttachments] = useState([]);
   const [pendingInput, setPendingInput] = useState('');
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('16:9');
+  const [credits, setCredits] = useState(null);
+  const [currentPlan, setCurrentPlan] = useState('free');
+  const [isAdmin, setIsAdmin] = useState(false);
   const textareaRef = useRef(null);
 
   useEffect(() => {
     api.get('/presentations')
       .then(r => setPresentations(r.data.presentations || []))
       .finally(() => setPresLoading(false));
+    api.get('/billing/subscription')
+      .then(r => {
+        setCredits(r.data.subscription.credits_remaining);
+        setCurrentPlan(r.data.subscription.plan);
+        setIsAdmin(r.data.subscription.is_admin || false);
+      })
+      .catch(() => {});
   }, []);
 
   const allAttachments = [
@@ -216,6 +319,10 @@ export default function Dashboard() {
       });
       navigate(`/presentations/${data.presentation.id}`);
     } catch (err) {
+      if (err.response?.status === 402) {
+        navigate('/pricing');
+        return;
+      }
       const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong';
       setSubmitError(msg);
     }
@@ -231,39 +338,84 @@ export default function Dashboard() {
 
   const totalAttachments = allAttachments.length;
 
+  function handleTextareaDrop(e) {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (!files.length) return;
+    setShowZones(true);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = ev => setMoodboardFiles(prev => [...prev, {
+        id: Math.random().toString(36).slice(2),
+        name: file.name, type: 'image', mimeType: file.type, data: ev.target.result,
+      }]);
+      reader.readAsDataURL(file);
+    });
+  }
+
   return (
     <>
+    <AnimatePresence>
+      {analyzing && <AnalyzingOverlay />}
+    </AnimatePresence>
     <AnimatePresence>
       {showQuestionFlow && analysis && (
         <QuestionFlow
           analysis={analysis}
           onComplete={handleQuestionComplete}
-          onCancel={() => { setShowQuestionFlow(false); setLoading(false); }}
+          onCancel={() => setShowQuestionFlow(false)}
         />
       )}
     </AnimatePresence>
-    <div className="min-h-screen" style={{ background: '#F2F2F7' }}>
+    <div className="min-h-screen" style={{ background: '#F5F3FF' }}>
       {/* Nav */}
       <nav className="sticky top-0 z-50 flex items-center justify-between px-6 py-3"
-           style={{ background: 'rgba(242,242,247,0.85)', backdropFilter: 'blur(20px)' }}>
+           style={{ background: 'rgba(247,245,255,0.88)', backdropFilter: 'blur(20px)', borderBottom: '1px solid #EDE9FE' }}>
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
             <Sparkles size={16} className="text-white" />
           </div>
           <span className="font-bold text-gray-900 text-lg tracking-tight">HyperBeing</span>
         </div>
-        <button
-          onClick={logout}
-          className="flex items-center gap-1.5 text-ios-gray1 hover:text-gray-900 transition-colors text-sm font-medium"
-        >
-          <LogOut size={15} />
-          Sign out
-        </button>
+        <div className="flex items-center gap-3">
+          {isAdmin && (
+            <span className="text-xs font-bold px-3 py-1.5 rounded-xl text-white"
+                  style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
+              Admin
+            </span>
+          )}
+          {!isAdmin && credits !== null && (
+            <button
+              onClick={() => navigate('/pricing')}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl transition-all duration-200 hover:opacity-80"
+              style={{ background: credits < 10 ? 'rgba(0,240,255,0.12)' : 'rgba(139,92,246,0.10)', color: credits < 10 ? '#00F0FF' : '#8B5CF6', border: `1px solid ${credits < 10 ? 'rgba(0,240,255,0.25)' : 'rgba(139,92,246,0.2)'}` }}
+            >
+              <Zap size={12} />
+              {credits} credits
+            </button>
+          )}
+          {!isAdmin && currentPlan === 'free' && (
+            <button
+              onClick={() => navigate('/pricing')}
+              className="text-xs font-bold px-3 py-1.5 rounded-xl text-white transition-all duration-200 hover:opacity-90"
+              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+            >
+              Upgrade
+            </button>
+          )}
+          <button
+            onClick={logout}
+            className="flex items-center gap-1.5 text-ios-gray1 hover:text-gray-900 transition-colors text-sm font-medium"
+          >
+            <LogOut size={15} />
+            Sign out
+          </button>
+        </div>
       </nav>
 
       {/* Hero gradient section */}
-      <div style={{ background: 'linear-gradient(160deg, #ece9ff 0%, #e8f0ff 40%, #fce8f4 100%)' }}>
+      <div style={{ background: 'linear-gradient(160deg, #EDE9FE 0%, #F0EEFF 40%, #FFE8F3 100%)' }}>
         <div className="max-w-3xl mx-auto px-4 pt-12 pb-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -271,13 +423,14 @@ export default function Dashboard() {
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             className="text-center mb-8"
           >
-            <p className="text-xs font-semibold tracking-widest text-purple-500 uppercase mb-2">
+            <p className="text-xs font-semibold tracking-widest uppercase mb-2" style={{ color: '#8B5CF6' }}>
               {greeting(user?.name || 'there')}
             </p>
             <h1 className="text-5xl font-bold leading-tight tracking-tight"
-                style={{ background: 'linear-gradient(135deg, #5b4fcf 0%, #9333ea 50%, #ec4899 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               What will you<br />create today?
             </h1>
+            <p className="text-sm mt-3" style={{ color: '#6B6285' }}>{heroSubtitle}</p>
           </motion.div>
 
           {/* Composer card */}
@@ -293,7 +446,9 @@ export default function Dashboard() {
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Describe your presentation — paste your brief, add your content, mention your audience and tone…"
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={handleTextareaDrop}
+                  placeholder="Describe your presentation — paste your brief, add your content, mention your audience and tone… (drag images here to attach)"
                   rows={4}
                   className="w-full resize-none border-none outline-none text-gray-800 placeholder:text-ios-gray2 text-base bg-transparent leading-relaxed"
                 />
@@ -343,11 +498,7 @@ export default function Dashboard() {
                     disabled={analyzing || (!input.trim() && allAttachments.length === 0)}
                     className="ios-btn py-2 px-5 text-sm"
                   >
-                    {analyzing ? (
-                      <><Loader2 size={15} className="animate-spin" /> Analyzing…</>
-                    ) : (
-                      <><Send size={15} /> Create</>
-                    )}
+                    <Send size={15} /> Create
                   </button>
                 </div>
               </div>
@@ -430,7 +581,7 @@ export default function Dashboard() {
         {!presLoading && presentations.length === 0 && (
           <div className="text-center py-16">
             <div className="w-16 h-16 rounded-3xl mx-auto mb-4 flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #667eea22 0%, #764ba222 100%)' }}>
+                 style={{ background: 'linear-gradient(135deg, #8B5CF622 0%, #00F0FF22 100%)' }}>
               <Sparkles size={28} className="text-ios-indigo opacity-60" />
             </div>
             <p className="text-gray-500 text-sm">Your presentations will appear here.</p>

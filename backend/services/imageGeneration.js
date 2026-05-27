@@ -3,7 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 const MOCK_MODE = !process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY === 'demo';
 
 // Nano Banana — Google AI Studio image generation model
-const IMAGE_GEN_MULTIMODAL = 'gemini-3.0-flash-preview-image-generation';
+const IMAGE_GEN_MULTIMODAL = 'gemini-3.1-flash-image-preview';
 
 let ai;
 function getClient() {
@@ -41,21 +41,32 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
   console.log(`Attached images: ${attachedImages.length}`);
   console.log('─'.repeat(60));
 
-  try {
-    const response = await getClient().models.generateContent({
-      model: IMAGE_GEN_MULTIMODAL,
-      contents: [{ role: 'user', parts }],
-      config: { responseModalities: ['IMAGE', 'TEXT'], aspectRatio },
-    });
-    const imagePart = (response.candidates?.[0]?.content?.parts ?? [])
-      .find(p => p.inlineData?.mimeType?.startsWith('image/'));
-    if (imagePart) {
-      console.log(`✅ Nano Banana success — slide ${slideIndex}\n`);
-      return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+  const maxAttempts = 4;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await getClient().models.generateContent({
+        model: IMAGE_GEN_MULTIMODAL,
+        contents: [{ role: 'user', parts }],
+        config: { responseModalities: ['IMAGE', 'TEXT'], aspectRatio },
+      });
+      const imagePart = (response.candidates?.[0]?.content?.parts ?? [])
+        .find(p => p.inlineData?.mimeType?.startsWith('image/'));
+      if (imagePart) {
+        console.log(`✅ Nano Banana success — slide ${slideIndex}\n`);
+        return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+      }
+      console.warn(`⚠️  Nano Banana returned no image for slide ${slideIndex} (attempt ${attempt})`);
+    } catch (err) {
+      const isTransient = err.message.includes('fetch failed') || err.message.includes('429') || err.message.includes('503');
+      console.warn(`❌ Nano Banana failed for slide ${slideIndex} (attempt ${attempt}/${maxAttempts}):`, err.message);
+      if (attempt < maxAttempts && isTransient) {
+        const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+        console.log(`   Retrying in ${delay / 1000}s…`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
     }
-    console.warn(`⚠️  Nano Banana returned no image for slide ${slideIndex}`);
-  } catch (err) {
-    console.warn(`❌ Nano Banana failed for slide ${slideIndex}:`, err.message);
+    break;
   }
 
   return generateRichPlaceholder(slideType, theme, slideIndex);

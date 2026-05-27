@@ -3,8 +3,9 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { chat, regenerateSlide, analyzePresentation, streamSlidePlan } from '../services/claudeAgent.js';
+import { chat, regenerateSlide, analyzePresentation, streamSlidePlan, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
 import { generateSlideImage } from '../services/imageGeneration.js';
+import { deductCredits, getOrCreateSubscription, CREDIT_COSTS } from '../services/stripeService.js';
 
 const router = Router();
 
@@ -24,7 +25,7 @@ function broadcast(presentationId, event) {
 router.get('/', authenticateToken, (req, res) => {
   const rows = getDb()
     .prepare(
-      `SELECT id, title, status, created_at, updated_at
+      `SELECT id, title, status, thumbnail, created_at, updated_at
        FROM presentations WHERE user_id = ? ORDER BY updated_at DESC`
     )
     .all(req.user.id);
@@ -51,6 +52,16 @@ router.post('/', authenticateToken, (req, res) => {
   const { message, attachments = [], aspectRatio = '16:9' } = req.body;
   if (!message?.trim() && attachments.length === 0) {
     return res.status(400).json({ error: 'Message or attachment required' });
+  }
+
+  // Check + deduct credits before starting
+  try {
+    deductCredits(req.user.id, CREDIT_COSTS.create_presentation, 'create_presentation', 'Create presentation');
+  } catch (err) {
+    if (err.message === 'INSUFFICIENT_CREDITS') {
+      return res.status(402).json({ error: 'Insufficient credits', code: 'INSUFFICIENT_CREDITS' });
+    }
+    throw err;
   }
 
   const db = getDb();
@@ -128,17 +139,11 @@ async function runFullFlow(presentationId, message, attachments) {
     onSlide(slide) {
       broadcast(presentationId, { type: 'slide_generating', index: slide.index });
 
-      const categories = slide.attach_image_categories || [];
-      let attachedImages = [];
-      if (categories.includes('all')) {
-        attachedImages = allImages;
-      } else {
-        if (categories.includes('moodboard')) attachedImages.push(...moodboardImages);
-        if (categories.includes('branding'))  attachedImages.push(...brandingImages);
-      }
-      attachedImages = attachedImages.slice(0, 3);
+      // Always attach all user reference images to every slide
+      const attachedImages = allImages.slice(0, 3);
 
-      const promise = generateSlideImage(
+      const staggerDelay = slide.index * 800;
+      const promise = new Promise(r => setTimeout(r, staggerDelay)).then(() => generateSlideImage(
         slide.nano_banana_prompt || slide.title,
         slide.type,
         header?.theme        || 'modern-minimal',
@@ -146,10 +151,14 @@ async function runFullFlow(presentationId, message, attachments) {
         slide.index,
         attachedImages,
         aspectRatio
-      ).then(imageData => {
+      )).then(imageData => {
         const done = { ...slide, image_data: imageData, status: 'complete' };
         completedSlides.set(slide.index, done);
         persistProgress();
+        // Save thumbnail from first slide
+        if (slide.index === 0 && imageData && !imageData.startsWith('data:image/svg')) {
+          db.prepare(`UPDATE presentations SET thumbnail = ? WHERE id = ?`).run(imageData, presentationId);
+        }
         broadcast(presentationId, { type: 'slide_ready', slide: done });
       }).catch(err => {
         console.error(`Slide ${slide.index} image failed:`, err.message);
@@ -178,6 +187,16 @@ async function runFullFlow(presentationId, message, attachments) {
   db.prepare(
     `UPDATE presentations SET status = 'completed', slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
   ).run(JSON.stringify(allSlides), presentationId);
+
+  // Auto-suggest a contextual title after generation completes
+  try {
+    const titleCtx = { slides: allSlides.map(s => ({ title: s.title, type: s.type, key_points: s.key_points?.slice(0, 2) })) };
+    const autoTitle = await suggestTitle(titleCtx);
+    if (autoTitle) {
+      db.prepare(`UPDATE presentations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(autoTitle, presentationId);
+      broadcast(presentationId, { type: 'title_updated', title: autoTitle });
+    }
+  } catch {}
 
   broadcast(presentationId, { type: 'complete', total_slides: allSlides.length });
 }
@@ -402,6 +421,11 @@ async function runGeneration(presentationId, slidePlan) {
         `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
       ).run(JSON.stringify(slides), presentationId);
 
+      // Save thumbnail from first slide
+      if (slide.index === 0 && imageData && !imageData.startsWith('data:image/svg')) {
+        db.prepare(`UPDATE presentations SET thumbnail = ? WHERE id = ?`).run(imageData, presentationId);
+      }
+
       broadcast(presentationId, { type: 'slide_ready', slide: completedSlide });
     } catch (err) {
       console.error(`Slide ${slide.index} image failed:`, err.message);
@@ -451,38 +475,15 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
         presentation_title: slidePlan.presentation_title,
       });
 
-      const firstUserMsg = db
-        .prepare(`SELECT attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
-        .get(req.params.id);
-      let userAttachments = [];
-      try { userAttachments = JSON.parse(firstUserMsg?.attachments || '[]'); } catch {}
-
-      // User-supplied extra images from the edit request
-      const reqAttachments = (reqBodyAttachments || []).filter(a => a.data);
-
-      const categories = updatedSlide.attach_image_categories || slide.attach_image_categories || [];
-      let attachedImages = userAttachments.filter(a => a.data);
-      if (!categories.includes('all')) {
-        attachedImages = attachedImages.filter(a =>
-          (categories.includes('moodboard') && a.category === 'moodboard') ||
-          (categories.includes('branding') && a.category === 'branding')
-        );
-      }
-
-      // Include extra images from the request (user uploaded alongside their instruction)
-      for (const a of reqAttachments) {
-        attachedImages.push(a);
-      }
-
-      // Include current slide's rendered image as a visual reference for Nano Banana
+      // Only the current slide's rendered image + any new attachments the user added in the edit bar
+      let attachedImages = [];
       if (slide.image_data && !slide.image_data.startsWith('data:image/svg')) {
-        attachedImages.unshift({
-          data: slide.image_data,
-          mimeType: 'image/jpeg',
-        });
+        const mimeType = slide.image_data.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg';
+        attachedImages.push({ data: slide.image_data, mimeType });
       }
-
-      attachedImages = attachedImages.slice(0, 4); // allow 1 extra since current slide is a reference
+      const reqAttachments = (reqBodyAttachments || []).filter(a => a.data);
+      attachedImages.push(...reqAttachments);
+      attachedImages = attachedImages.slice(0, 4);
 
       const imageData = await generateSlideImage(
         updatedSlide.nano_banana_prompt || updatedSlide.image_prompt || slide.nano_banana_prompt || slide.image_prompt,
@@ -528,6 +529,154 @@ router.post('/:id/reorder', authenticateToken, (req, res) => {
     .run(JSON.stringify(reordered), req.params.id);
 
   res.json({ message: 'Reordered' });
+});
+
+// ─── Update title ─────────────────────────────────────────────────────────
+router.patch('/:id/title', authenticateToken, (req, res) => {
+  const { title } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'Title required' });
+  const result = getDb()
+    .prepare(`UPDATE presentations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`)
+    .run(title.trim(), req.params.id, req.user.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+  res.json({ title: title.trim() });
+});
+
+// ─── Suggest title via AI ─────────────────────────────────────────────────
+router.post('/:id/suggest-title', authenticateToken, async (req, res) => {
+  const db = getDb();
+  const pres = db.prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!pres) return res.status(404).json({ error: 'Not found' });
+
+  const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : null;
+  const slidesData = pres.slides_data ? JSON.parse(pres.slides_data) : null;
+
+  const context = {
+    presentation_title: slidePlan?.presentation_title || pres.title,
+    slides: (slidesData || []).map(s => ({ title: s.title, type: s.type, key_points: s.key_points?.slice(0, 2) })),
+  };
+
+  try {
+    const title = await suggestTitle(context);
+    res.json({ title });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not suggest title', detail: err.message });
+  }
+});
+
+// ─── Add more slides ──────────────────────────────────────────────────────
+router.post('/:id/add-slides', authenticateToken, (req, res) => {
+  const { description, count = 1, attachments: reqAttachments = [] } = req.body;
+  if (!description?.trim()) return res.status(400).json({ error: 'Description required' });
+  const isAuto = count === 'auto';
+  const slideCount = isAuto ? null : Math.min(Math.max(parseInt(count) || 1, 1), 10);
+
+  try {
+    deductCredits(req.user.id, CREDIT_COSTS.add_slides, 'add_slides', 'Add slides', req.params.id);
+  } catch (err) {
+    if (err.message === 'INSUFFICIENT_CREDITS') {
+      return res.status(402).json({ error: 'Insufficient credits', code: 'INSUFFICIENT_CREDITS' });
+    }
+    throw err;
+  }
+
+  const db = getDb();
+  const pres = db.prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!pres) return res.status(404).json({ error: 'Not found' });
+  if (!pres.slides_data) return res.status(400).json({ error: 'No slides yet' });
+
+  const slides = JSON.parse(pres.slides_data);
+  const startIndex = slides.length;
+  const presRow = db.prepare('SELECT aspect_ratio FROM presentations WHERE id = ?').get(req.params.id);
+  const aspectRatio = presRow?.aspect_ratio || '16:9';
+  const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
+
+  // Create placeholder slides immediately (for auto, use 3 as optimistic placeholder count)
+  const placeholderCount = slideCount ?? 3;
+  const placeholders = Array.from({ length: placeholderCount }, (_, i) => ({
+    index: startIndex + i,
+    type: 'content',
+    title: `New Slide ${startIndex + i + 1}`,
+    status: 'generating',
+    image_data: null,
+  }));
+  const newSlides = [...slides, ...placeholders];
+  db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .run(JSON.stringify(newSlides), req.params.id);
+  broadcast(req.params.id, { type: 'slides_adding', placeholders });
+
+  res.json({ message: 'Adding slides…', startIndex, count: slideCount, auto: isAuto });
+
+  // Run async
+  (async () => {
+    try {
+      const firstUserMsg = db
+        .prepare(`SELECT attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
+        .get(req.params.id);
+      let userAttachments = [];
+      try { userAttachments = JSON.parse(firstUserMsg?.attachments || '[]'); } catch {}
+      const allUserImages = userAttachments.filter(a => a.data);
+      // Merge user's original images + any images attached to this add-slides request
+      const extraImages = (reqAttachments || []).filter(a => a.data);
+      const combinedImages = [...extraImages, ...allUserImages].slice(0, 3);
+
+      const presentationContext = {
+        presentation_title: slidePlan.presentation_title || pres.title,
+        theme: slidePlan.theme,
+        color_palette: slidePlan.color_palette,
+        existing_slides: slides.map(s => ({ index: s.index, type: s.type, title: s.title, key_points: s.key_points })),
+      };
+
+      const newSlideDefs = [];
+      await streamNewSlides(description, slideCount, startIndex, presentationContext, (slideDef) => {
+        newSlideDefs.push(slideDef);
+      });
+
+      // Remove excess optimistic placeholders if Nova generated fewer than 3
+      const current0 = JSON.parse(db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id).slides_data);
+      const trimmed = current0.filter(s => s.status !== 'generating' || newSlideDefs.some(d => d.index === s.index));
+      if (trimmed.length !== current0.length) {
+        db.prepare(`UPDATE presentations SET slides_data = ? WHERE id = ?`).run(JSON.stringify(trimmed), req.params.id);
+        broadcast(req.params.id, { type: 'slides_trimmed', keep_indices: newSlideDefs.map(d => d.index) });
+      }
+
+      // Generate images for each new slide with stagger
+      const imagePromises = newSlideDefs.map((slideDef, i) =>
+        new Promise(r => setTimeout(r, i * 800)).then(() => {
+          const attachedImages = combinedImages;
+
+          return generateSlideImage(
+            slideDef.nano_banana_prompt || slideDef.title,
+            slideDef.type, slidePlan.theme, slidePlan.color_palette,
+            slideDef.index, attachedImages, aspectRatio
+          ).then(imageData => {
+            const done = { ...slideDef, image_data: imageData, status: 'complete' };
+            // Persist: replace placeholder with done slide
+            const current = JSON.parse(db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id).slides_data);
+            const idx = current.findIndex(s => s.index === done.index);
+            if (idx !== -1) current[idx] = done; else current.push(done);
+            db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+              .run(JSON.stringify(current), req.params.id);
+            broadcast(req.params.id, { type: 'slide_ready', slide: done });
+          }).catch(err => {
+            const errSlide = { ...slideDef, image_data: null, status: 'error' };
+            const current = JSON.parse(db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id).slides_data);
+            const idx = current.findIndex(s => s.index === errSlide.index);
+            if (idx !== -1) current[idx] = errSlide;
+            db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+              .run(JSON.stringify(current), req.params.id);
+            broadcast(req.params.id, { type: 'slide_error', index: errSlide.index, message: err.message });
+          });
+        })
+      );
+
+      await Promise.all(imagePromises);
+      broadcast(req.params.id, { type: 'slides_added', count: slideCount });
+    } catch (err) {
+      console.error('Add slides error:', err);
+      broadcast(req.params.id, { type: 'error', message: err.message });
+    }
+  })();
 });
 
 // ─── Delete presentation ──────────────────────────────────────────────────
