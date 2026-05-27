@@ -262,6 +262,7 @@ export default function Dashboard() {
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('16:9');
   const [credits, setCredits] = useState(null);
   const [currentPlan, setCurrentPlan] = useState('free');
+  const [isAdmin, setIsAdmin] = useState(false);
   const textareaRef = useRef(null);
 
   useEffect(() => {
@@ -272,6 +273,7 @@ export default function Dashboard() {
       .then(r => {
         setCredits(r.data.subscription.credits_remaining);
         setCurrentPlan(r.data.subscription.plan);
+        setIsAdmin(r.data.subscription.is_admin || false);
       })
       .catch(() => {});
   }, []);
@@ -377,7 +379,13 @@ export default function Dashboard() {
           <span className="font-bold text-gray-900 text-lg tracking-tight">HyperBeing</span>
         </div>
         <div className="flex items-center gap-3">
-          {credits !== null && (
+          {isAdmin && (
+            <span className="text-xs font-bold px-3 py-1.5 rounded-xl text-white"
+                  style={{ background: 'linear-gradient(135deg, #7B5EFF 0%, #FF4B8C 100%)' }}>
+              Admin
+            </span>
+          )}
+          {!isAdmin && credits !== null && (
             <button
               onClick={() => navigate('/pricing')}
               className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl transition-all duration-200 hover:opacity-80"
@@ -387,7 +395,7 @@ export default function Dashboard() {
               {credits} credits
             </button>
           )}
-          {currentPlan === 'free' && (
+          {!isAdmin && currentPlan === 'free' && (
             <button
               onClick={() => navigate('/pricing')}
               className="text-xs font-bold px-3 py-1.5 rounded-xl text-white transition-all duration-200 hover:opacity-90"

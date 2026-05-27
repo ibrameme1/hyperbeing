@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import {
-  stripe, PLANS, getOrCreateSubscription, resetCreditsForPlan, grantCredits,
+  stripe, PLANS, getOrCreateSubscription, resetCreditsForPlan, grantCredits, isAdmin,
 } from '../services/stripeService.js';
 import { getDb } from '../database.js';
 
@@ -15,7 +15,8 @@ function frontendUrl() {
 router.get('/subscription', authMiddleware, (req, res) => {
   const sub = getOrCreateSubscription(req.userId);
   const plan = PLANS[sub.plan] || PLANS.free;
-  res.json({ subscription: sub, plan });
+  const admin = isAdmin(req.userId);
+  res.json({ subscription: { ...sub, is_admin: admin }, plan });
 });
 
 // ── POST /api/billing/checkout ────────────────────────────────────────────────

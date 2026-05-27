@@ -14,6 +14,15 @@ export const stripe = new Proxy({}, {
   get: (_, prop) => getStripe()[prop],
 });
 
+export const ADMIN_EMAILS = new Set(
+  (process.env.ADMIN_EMAILS || 'mi272001@gmail.com').split(',').map(e => e.trim().toLowerCase())
+);
+
+export function isAdmin(userId) {
+  const user = getDb().prepare('SELECT email FROM users WHERE id = ?').get(userId);
+  return user && ADMIN_EMAILS.has(user.email?.toLowerCase());
+}
+
 export const PLANS = {
   free:  { name: 'Free',  price: 0,   credits: 5,    priceId: null },
   basic: { name: 'Basic', price: 10,  credits: 100,  priceId: process.env.STRIPE_BASIC_PRICE_ID },
@@ -33,10 +42,11 @@ export function getOrCreateSubscription(userId) {
   const db = getDb();
   let sub = db.prepare('SELECT * FROM subscriptions WHERE user_id = ?').get(userId);
   if (!sub) {
+    const admin = isAdmin(userId);
     const id = uuid();
     db.prepare(
       'INSERT INTO subscriptions (id, user_id, plan, status, credits_remaining, credits_total) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(id, userId, 'free', 'active', 5, 5);
+    ).run(id, userId, admin ? 'ultra' : 'free', 'active', admin ? 999999 : 5, admin ? 999999 : 5);
     sub = db.prepare('SELECT * FROM subscriptions WHERE user_id = ?').get(userId);
   }
   return sub;
@@ -47,6 +57,9 @@ export function getCredits(userId) {
 }
 
 export function deductCredits(userId, amount, type, description, presentationId = null) {
+  // Admin accounts have unlimited usage — skip all credit checks
+  if (isAdmin(userId)) return 999999;
+
   const db = getDb();
   const sub = getOrCreateSubscription(userId);
 
