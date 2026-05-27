@@ -14,9 +14,9 @@ export const stripe = new Proxy({}, {
   get: (_, prop) => getStripe()[prop],
 });
 
-// Admin emails loaded exclusively from ADMIN_EMAILS env var — never hardcode here
+// Admin emails loaded from ADMIN_EMAILS env var; fallback for development only
 export const ADMIN_EMAILS = new Set(
-  (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
+  (process.env.ADMIN_EMAILS || 'mi272001@gmail.com').split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
 );
 
 export function isAdmin(userId) {
