@@ -7,6 +7,52 @@ if (!MOCK_MODE) {
   client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 }
 
+// Extracts complete SLIDE:/HEADER: prefixed JSON objects from a streaming buffer
+// using bracket counting so embedded newlines in string values don't break parsing.
+function extractPrefixedObjects(text) {
+  const objects = [];
+  let pos = 0;
+
+  while (pos < text.length) {
+    const slideIdx = text.indexOf('SLIDE:', pos);
+    const headerIdx = text.indexOf('HEADER:', pos);
+
+    let prefix, start;
+    if (slideIdx === -1 && headerIdx === -1) break;
+    if (slideIdx === -1)        { prefix = 'HEADER:'; start = headerIdx; }
+    else if (headerIdx === -1)  { prefix = 'SLIDE:';  start = slideIdx; }
+    else if (slideIdx < headerIdx) { prefix = 'SLIDE:'; start = slideIdx; }
+    else                        { prefix = 'HEADER:'; start = headerIdx; }
+
+    const jsonStart = start + prefix.length;
+    if (jsonStart >= text.length || text[jsonStart] !== '{') {
+      pos = start + 1;
+      continue;
+    }
+
+    let depth = 0, inString = false, escaped = false, end = -1;
+    for (let i = jsonStart; i < text.length; i++) {
+      const ch = text[i];
+      if (escaped)                  { escaped = false; continue; }
+      if (ch === '\\' && inString)  { escaped = true;  continue; }
+      if (ch === '"')               { inString = !inString; continue; }
+      if (inString)                 continue;
+      if (ch === '{')               depth++;
+      else if (ch === '}' && --depth === 0) { end = i; break; }
+    }
+
+    if (end === -1) {
+      // Incomplete object — leave everything from `start` in the buffer
+      return { objects, remaining: text.slice(start) };
+    }
+
+    objects.push({ prefix, jsonStr: text.slice(jsonStart, end + 1) });
+    pos = end + 1;
+  }
+
+  return { objects, remaining: '' };
+}
+
 // ─── Mock mode ─────────────────────────────────────────────────────────────
 
 const DEMO_SLIDE_PLAN = {
@@ -739,39 +785,39 @@ export async function streamSlidePlan(message, attachments, callbacks) {
   for await (const event of stream) {
     if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
       buffer += event.delta.text;
-      const lines = buffer.split('\n');
-      buffer = lines.pop(); // keep incomplete last line in buffer
+      const { objects, remaining } = extractPrefixedObjects(buffer);
+      buffer = remaining;
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('HEADER:')) {
+      for (const { prefix, jsonStr } of objects) {
+        if (prefix === 'HEADER:') {
           try {
-            const header = JSON.parse(trimmed.slice(7));
+            const header = JSON.parse(jsonStr);
             console.log(`🎯 HEADER parsed: "${header.presentation_title}", ${header.total_slides} slides`);
             onHeader(header);
           } catch (e) {
-            console.warn('Failed to parse HEADER line:', e.message, trimmed.slice(0, 100));
+            console.warn('Failed to parse HEADER:', e.message, jsonStr.slice(0, 100));
           }
-        } else if (trimmed.startsWith('SLIDE:')) {
+        } else {
           try {
-            const slide = JSON.parse(trimmed.slice(6));
+            const slide = JSON.parse(jsonStr);
             console.log(`📊 SLIDE ${slide.index} parsed: "${slide.title}"`);
             onSlide(slide);
           } catch (e) {
-            console.warn('Failed to parse SLIDE line:', e.message, trimmed.slice(0, 100));
+            console.warn('Failed to parse SLIDE:', e.message, jsonStr.slice(0, 100));
           }
         }
       }
     }
   }
 
-  // Process remaining buffer
+  // Flush anything left in buffer after stream ends
   if (buffer.trim()) {
-    const trimmed = buffer.trim();
-    if (trimmed.startsWith('SLIDE:')) {
-      try { onSlide(JSON.parse(trimmed.slice(6))); } catch {}
-    } else if (trimmed.startsWith('HEADER:')) {
-      try { onHeader(JSON.parse(trimmed.slice(7))); } catch {}
+    const { objects } = extractPrefixedObjects(buffer + '\n');
+    for (const { prefix, jsonStr } of objects) {
+      try {
+        if (prefix === 'SLIDE:') onSlide(JSON.parse(jsonStr));
+        else onHeader(JSON.parse(jsonStr));
+      } catch {}
     }
   }
 }
@@ -864,25 +910,29 @@ ${countInstruction} Start index at ${startIndex}.`;
   for await (const event of stream) {
     if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
       buffer += event.delta.text;
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
+      const { objects, remaining } = extractPrefixedObjects(buffer);
+      buffer = remaining;
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('SLIDE:')) {
+      for (const { prefix, jsonStr } of objects) {
+        if (prefix === 'SLIDE:') {
           try {
-            const slide = JSON.parse(trimmed.slice(6));
+            const slide = JSON.parse(jsonStr);
             console.log(`📊 NEW SLIDE ${slide.index} parsed: "${slide.title}"`);
             onSlide(slide);
           } catch (e) {
-            console.warn('Failed to parse new SLIDE line:', e.message);
+            console.warn('Failed to parse new SLIDE:', e.message);
           }
         }
       }
     }
   }
 
-  if (buffer.trim().startsWith('SLIDE:')) {
-    try { onSlide(JSON.parse(buffer.trim().slice(6))); } catch {}
+  if (buffer.trim()) {
+    const { objects } = extractPrefixedObjects(buffer + '\n');
+    for (const { prefix, jsonStr } of objects) {
+      if (prefix === 'SLIDE:') {
+        try { onSlide(JSON.parse(jsonStr)); } catch {}
+      }
+    }
   }
 }
