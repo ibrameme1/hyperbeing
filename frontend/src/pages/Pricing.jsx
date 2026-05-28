@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Check, Sparkles, Zap, Crown, Rocket, ArrowRight, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
 
+const DISCOUNTS = { basic: 0.20, pro: 0.25, ultra: 0.30 };
+
 const PLANS = [
   {
     key: 'basic',
     name: 'Basic',
-    price: 10,
+    monthlyPrice: 25,
     credits: 100,
     icon: Zap,
     color: '#8B5CF6',
@@ -28,7 +30,7 @@ const PLANS = [
   {
     key: 'pro',
     name: 'Pro',
-    price: 49,
+    monthlyPrice: 65,
     credits: 500,
     icon: Crown,
     color: '#00F0FF',
@@ -50,7 +52,7 @@ const PLANS = [
   {
     key: 'ultra',
     name: 'Ultra',
-    price: 150,
+    monthlyPrice: 149,
     credits: 2000,
     icon: Rocket,
     color: '#00D4FF',
@@ -78,9 +80,14 @@ const CREDIT_TABLE = [
   { action: 'Regenerate a slide', cost: 1 },
 ];
 
+function annualPrice(plan) {
+  return Math.round(plan.monthlyPrice * (1 - DISCOUNTS[plan.key]));
+}
+
 export default function Pricing() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [billing, setBilling] = useState('monthly');
   const [currentPlan, setCurrentPlan] = useState('free');
   const [creditsLeft, setCreditsLeft] = useState(null);
   const [loading, setLoading] = useState(null);
@@ -101,7 +108,7 @@ export default function Pricing() {
     if (planKey === currentPlan) return;
     setLoading(planKey);
     try {
-      const { data } = await api.post('/billing/checkout', { planKey });
+      const { data } = await api.post('/billing/checkout', { planKey, billing });
       window.location.href = data.url;
     } catch (err) {
       alert(err.response?.data?.error || 'Something went wrong');
@@ -158,7 +165,7 @@ export default function Pricing() {
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="text-center mb-16"
+          className="text-center mb-10"
         >
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold mb-6"
                style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.25)' }}>
@@ -170,9 +177,32 @@ export default function Pricing() {
               start creating
             </span>
           </h1>
-          <p className="text-white/50 text-lg max-w-xl mx-auto">
+          <p className="text-white/50 text-lg max-w-xl mx-auto mb-10">
             Every plan includes AI image generation, PDF export, and Nova's full art direction engine.
           </p>
+
+          {/* Billing toggle */}
+          <div className="inline-flex items-center gap-1 p-1 rounded-2xl" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+            {['monthly', 'annual'].map(b => (
+              <button
+                key={b}
+                onClick={() => setBilling(b)}
+                className="relative px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-200"
+                style={billing === b
+                  ? { background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', color: '#fff' }
+                  : { color: 'rgba(255,255,255,0.45)' }}
+              >
+                {b === 'monthly' ? 'Monthly' : (
+                  <span className="flex items-center gap-2">
+                    Annual
+                    <span className="text-xs font-bold px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(0,240,255,0.2)', color: '#00F0FF' }}>
+                      Save up to 30%
+                    </span>
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </motion.div>
 
         {/* Plan cards */}
@@ -181,6 +211,8 @@ export default function Pricing() {
             const Icon = plan.icon;
             const isCurrent = currentPlan === plan.key;
             const isLoading = loading === plan.key;
+            const displayPrice = billing === 'annual' ? annualPrice(plan) : plan.monthlyPrice;
+            const discount = DISCOUNTS[plan.key];
 
             return (
               <motion.div
@@ -219,11 +251,32 @@ export default function Pricing() {
 
                 {/* Price */}
                 <div className="mb-6">
-                  <div className="flex items-end gap-1">
-                    <span className="text-4xl font-bold text-white">${plan.price}</span>
+                  <div className="flex items-end gap-2">
+                    <AnimatePresence mode="wait">
+                      <motion.span
+                        key={`${plan.key}-${billing}`}
+                        initial={{ opacity: 0, y: -8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 8 }}
+                        transition={{ duration: 0.2 }}
+                        className="text-4xl font-bold text-white"
+                      >
+                        ${displayPrice}
+                      </motion.span>
+                    </AnimatePresence>
                     <span className="text-white/40 text-sm mb-1.5">/month</span>
+                    {billing === 'annual' && (
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-lg mb-1.5" style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80' }}>
+                        {Math.round(discount * 100)}% off
+                      </span>
+                    )}
                   </div>
-                  <p className="text-sm mt-1" style={{ color: plan.color }}>{plan.credits.toLocaleString()} credits included</p>
+                  {billing === 'annual' && (
+                    <p className="text-xs text-white/30 mt-0.5">
+                      Billed ${displayPrice * 12}/year · <span className="line-through">${plan.monthlyPrice}/mo</span>
+                    </p>
+                  )}
+                  <p className="text-sm mt-1.5" style={{ color: plan.color }}>{plan.credits.toLocaleString()} credits included</p>
                 </div>
 
                 {/* CTA */}

@@ -25,10 +25,10 @@ export function isAdmin(userId) {
 }
 
 export const PLANS = {
-  free:  { name: 'Free',  price: 0,   credits: 5,    priceId: null },
-  basic: { name: 'Basic', price: 10,  credits: 100,  priceId: process.env.STRIPE_BASIC_PRICE_ID },
-  pro:   { name: 'Pro',   price: 49,  credits: 500,  priceId: process.env.STRIPE_PRO_PRICE_ID },
-  ultra: { name: 'Ultra', price: 150, credits: 2000, priceId: process.env.STRIPE_ULTRA_PRICE_ID },
+  free:  { name: 'Free',  price: 0,   credits: 5,    priceId: null,                                 annualPriceId: null },
+  basic: { name: 'Basic', price: 25,  credits: 100,  priceId: process.env.STRIPE_BASIC_PRICE_ID,    annualPriceId: process.env.STRIPE_BASIC_ANNUAL_PRICE_ID },
+  pro:   { name: 'Pro',   price: 65,  credits: 500,  priceId: process.env.STRIPE_PRO_PRICE_ID,      annualPriceId: process.env.STRIPE_PRO_ANNUAL_PRICE_ID },
+  ultra: { name: 'Ultra', price: 149, credits: 2000, priceId: process.env.STRIPE_ULTRA_PRICE_ID,    annualPriceId: process.env.STRIPE_ULTRA_ANNUAL_PRICE_ID },
 };
 
 export const CREDIT_COSTS = {

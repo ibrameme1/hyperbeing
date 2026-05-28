@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Eye, EyeOff, Loader2, ArrowRight, Zap, Layers, TrendingUp } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -345,9 +345,9 @@ export default function Login() {
           {mode === 'register' && (
             <p className="text-center text-xs mt-6" style={{ color: 'var(--text-secondary)' }}>
               By signing up you agree to our{' '}
-              <span className="underline cursor-pointer" style={{ color: '#8B5CF6' }}>Terms</span>
+              <Link to="/terms" className="underline" style={{ color: '#8B5CF6' }}>Terms</Link>
               {' '}and{' '}
-              <span className="underline cursor-pointer" style={{ color: '#8B5CF6' }}>Privacy Policy</span>
+              <Link to="/privacy" className="underline" style={{ color: '#8B5CF6' }}>Privacy Policy</Link>
             </p>
           )}
         </motion.div>

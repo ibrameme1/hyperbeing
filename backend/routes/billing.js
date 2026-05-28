@@ -25,9 +25,11 @@ router.get('/subscription', authMiddleware, (req, res) => {
 router.post('/checkout', authMiddleware, billingLimiter,
   validate({ planKey: isEnum('basic', 'pro', 'ultra') }),
   async (req, res) => {
-  const { planKey } = req.body;
+  const { planKey, billing = 'monthly' } = req.body;
   const plan = PLANS[planKey];
-  if (!plan || !plan.priceId) return res.status(400).json({ error: 'Plan not available for purchase' });
+  const isAnnual = billing === 'annual';
+  const priceId = isAnnual ? plan?.annualPriceId : plan?.priceId;
+  if (!plan || !priceId) return res.status(400).json({ error: 'Plan not available for purchase' });
   if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments not configured' });
 
   const sub = getOrCreateSubscription(req.userId);
@@ -49,7 +51,7 @@ router.post('/checkout', authMiddleware, billingLimiter,
   const session = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: 'subscription',
-    line_items: [{ price: plan.priceId, quantity: 1 }],
+    line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${frontendUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${frontendUrl()}/pricing`,
     metadata: { userId: req.userId, planKey },

@@ -9,6 +9,8 @@ import Onboarding from './pages/Onboarding';
 import AuthCallback from './pages/AuthCallback';
 import Pricing from './pages/Pricing';
 import BillingSuccess from './pages/BillingSuccess';
+import Terms from './pages/Terms';
+import Privacy from './pages/Privacy';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -45,6 +47,8 @@ export default function App() {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/billing/success" element={<ProtectedRoute><BillingSuccess /></ProtectedRoute>} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/privacy" element={<Privacy />} />
       </Routes>
     </AuthProvider>
     </ThemeProvider>
