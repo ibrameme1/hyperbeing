@@ -403,9 +403,35 @@ export default function Pricing() {
           </div>
         </motion.div>
 
-        <p className="text-center text-white/25 text-sm">
+        <p className="text-center text-white/25 text-sm mb-14">
           New accounts get <span className="text-white/55 font-semibold">50 free credits</span> to try HyperBeing — no card required.
         </p>
+
+        {/* Enterprise */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.5 }}
+          className="rounded-3xl p-10 flex flex-col md:flex-row items-center justify-between gap-8"
+          style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.1) 0%, rgba(0,240,255,0.06) 100%)', border: '1px solid rgba(139,92,246,0.2)' }}
+        >
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold mb-4"
+                 style={{ background: 'rgba(139,92,246,0.2)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.3)' }}>
+              Enterprise
+            </div>
+            <h3 className="text-white font-bold text-2xl mb-2">Need a custom plan for your team?</h3>
+            <p className="text-white/45 text-sm max-w-lg">
+              Custom credit volumes, shared team workspaces, priority onboarding, SLA support, and flexible billing.
+              Reach out and we'll build a plan around your needs.
+            </p>
+          </div>
+          <a
+            href="mailto:support@hyperbeing.com?subject=Enterprise Plan Enquiry"
+            className="flex-shrink-0 px-8 py-4 rounded-2xl font-bold text-sm text-white transition-all duration-200 hover:opacity-90 active:scale-[0.97] whitespace-nowrap"
+            style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 4px 24px rgba(139,92,246,0.35)' }}
+          >
+            Contact us →
+          </a>
+        </motion.div>
       </div>
     </div>
   );
