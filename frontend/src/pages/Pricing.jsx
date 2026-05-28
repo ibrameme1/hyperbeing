@@ -193,7 +193,7 @@ export default function Pricing() {
           )}
           {user && currentPlan !== 'free' && (
             <button onClick={handleManage} className="text-sm text-white/50 hover:text-white/80 transition-colors">
-              {loading === 'portal' ? <Loader2 size={14} className="animate-spin" /> : 'Manage billing →'}
+              {loading === 'portal' ? <Loader2 size={14} className="animate-spin" /> : 'Manage / downgrade →'}
             </button>
           )}
         </div>

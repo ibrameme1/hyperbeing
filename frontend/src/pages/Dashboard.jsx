@@ -8,6 +8,7 @@ import {
   Sun, Moon, CreditCard, User,
 } from 'lucide-react';
 import api from '../api/client';
+import OutOfCreditsModal from '../components/OutOfCreditsModal';
 import { useTheme } from '../contexts/ThemeContext';
 
 const ANALYZING_MESSAGES = [
@@ -332,7 +333,7 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
                     />
                   </div>
                   {low && (
-                    <p className="text-xs mt-1.5" style={{ color: '#f87171' }}>Running low — top up to keep creating</p>
+                    <p className="text-xs mt-1.5" style={{ color: '#f87171' }}>Running low — upgrade to keep creating</p>
                   )}
                   <div className="mt-2 flex items-center justify-between">
                     <span className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>
@@ -404,6 +405,7 @@ export default function Dashboard() {
   const [credits, setCredits] = useState(null);
   const [currentPlan, setCurrentPlan] = useState('free');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [showOutOfCredits, setShowOutOfCredits] = useState(false);
   const textareaRef = useRef(null);
 
   useEffect(() => {
@@ -461,7 +463,7 @@ export default function Dashboard() {
       navigate(`/presentations/${data.presentation.id}`);
     } catch (err) {
       if (err.response?.status === 402) {
-        navigate('/pricing');
+        setShowOutOfCredits(true);
         return;
       }
       const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong';
@@ -498,6 +500,14 @@ export default function Dashboard() {
     <>
     <AnimatePresence>
       {analyzing && <AnalyzingOverlay />}
+    </AnimatePresence>
+    <AnimatePresence>
+      {showOutOfCredits && (
+        <OutOfCreditsModal
+          currentPlan={currentPlan}
+          onClose={() => setShowOutOfCredits(false)}
+        />
+      )}
     </AnimatePresence>
     <AnimatePresence>
       {showQuestionFlow && analysis && (
