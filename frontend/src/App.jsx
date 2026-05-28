@@ -11,6 +11,7 @@ import Pricing from './pages/Pricing';
 import BillingSuccess from './pages/BillingSuccess';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
+import Homepage from './pages/Homepage';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -29,7 +30,7 @@ export default function App() {
     <ThemeProvider>
     <AuthProvider>
       <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<Homepage />} />
         <Route
           path="/login"
           element={<PublicRoute><Login /></PublicRoute>}

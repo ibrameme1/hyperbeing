@@ -29,7 +29,7 @@ const PLANS = [
     border: 'rgba(107,114,128,0.3)',
     glow: 'rgba(107,114,128,0.2)',
     speed: { label: 'Standard Speed', emoji: '🐢', color: '#9CA3AF' },
-    parallel: 'Up to 3 slides at once',
+    parallel: { label: 'Up to 3 slides at once', emoji: '⬛' },
     features: [
       'AI image generation',
       'PDF & PNG export',
@@ -54,7 +54,7 @@ const PLANS = [
     border: 'rgba(139,92,246,0.5)',
     glow: 'rgba(139,92,246,0.3)',
     speed: { label: 'Fast Generation', emoji: '⚡', color: '#F59E0B' },
-    parallel: 'Up to 6 slides at once',
+    parallel: { label: 'Up to 6 slides at once', emoji: '⬛' },
     popular: true,
     features: [
       'AI image generation',
@@ -79,7 +79,7 @@ const PLANS = [
     border: 'rgba(0,240,255,0.45)',
     glow: 'rgba(0,240,255,0.25)',
     speed: { label: 'Fastest Generation', emoji: '🚀', color: '#10B981' },
-    parallel: 'Unlimited parallel generation',
+    parallel: { label: 'Unlimited parallel generation', emoji: '⬛' },
     bestValue: true,
     features: [
       'AI image generation',
@@ -286,9 +286,6 @@ export default function Pricing() {
                       <span className="text-xl font-bold text-white">{credits.toLocaleString()} credits/mo</span>
                     </div>
                     <p className="text-xs text-white/35 ml-7">= {(credits / 100).toFixed(0)} full presentations</p>
-                    <p className="text-xs font-semibold ml-7 mt-2" style={{ color: plan.speed.color }}>
-                      {plan.parallel}
-                    </p>
                   </div>
 
                   {/* Ultra slider */}
@@ -365,6 +362,16 @@ export default function Pricing() {
 
                   {/* Features */}
                   <ul className="space-y-2.5 flex-1">
+                    {/* Speed & parallel at top */}
+                    <li className="flex items-center gap-2.5 text-sm">
+                      <span style={{ flexShrink: 0 }}>{plan.speed.emoji}</span>
+                      <span className="font-semibold" style={{ color: plan.speed.color }}>{plan.speed.label}</span>
+                    </li>
+                    <li className="flex items-center gap-2.5 text-sm">
+                      <span style={{ flexShrink: 0 }}>🔀</span>
+                      <span className="text-white/70">{plan.parallel.label}</span>
+                    </li>
+                    <li className="h-px my-1" style={{ background: 'rgba(255,255,255,0.06)' }} />
                     {plan.features.map(f => (
                       <li key={f} className="flex items-center gap-2.5 text-sm">
                         <Check size={13} style={{ color: plan.color, flexShrink: 0 }} />
