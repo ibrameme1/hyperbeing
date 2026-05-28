@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
 
-const DISCOUNTS = { basic: 0.20, pro: 0.25, ultra: 0.30 };
+const DISCOUNTS = { basic: 0.20, pro: 0.225, ultra: 0.25 };
 
 const PLANS = [
   {
@@ -196,7 +196,7 @@ export default function Pricing() {
                   <span className="flex items-center gap-2">
                     Annual
                     <span className="text-xs font-bold px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(0,240,255,0.2)', color: '#00F0FF' }}>
-                      Save up to 30%
+                      Save up to 25%
                     </span>
                   </span>
                 )}
