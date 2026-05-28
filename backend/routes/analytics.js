@@ -1,8 +1,26 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { getDb } from '../database.js';
+import { isAdmin } from '../services/stripeService.js';
 
 const router = Router();
+
+// ── Admin-only guard — every analytics route requires a valid JWT + admin flag ─
+function requireAdmin(req, res, next) {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Authentication required' });
+  try {
+    const { userId } = jwt.verify(token, process.env.JWT_SECRET);
+    if (!isAdmin(userId)) return res.status(403).json({ error: 'Admin access required' });
+    req.userId = userId;
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
+// Apply admin guard to every route in this router
+router.use(requireAdmin);
 
 // ── SSE clients registry ──────────────────────────────────────────────────────
 const liveClients = new Set();

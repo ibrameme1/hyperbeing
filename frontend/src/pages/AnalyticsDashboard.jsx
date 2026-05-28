@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
@@ -170,6 +171,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function AnalyticsDashboard() {
+  const navigate = useNavigate();
   const [overview,  setOverview]  = useState(null);
   const [timeseries, setTimeseries] = useState([]);
   const [users,     setUsers]     = useState(null);
@@ -180,6 +182,7 @@ export default function AnalyticsDashboard() {
   const [liveConnected, setLiveConnected] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const sseRef = useRef(null);
   const refreshTimer = useRef(null);
@@ -202,6 +205,9 @@ export default function AnalyticsDashboard() {
       setEventsData(ev.data);
       setLastRefresh(new Date());
     } catch (e) {
+      if (e.response?.status === 403 || e.response?.status === 401) {
+        setAccessDenied(true);
+      }
       console.error('Analytics fetch failed', e);
     } finally {
       setLoading(false);
@@ -246,6 +252,22 @@ export default function AnalyticsDashboard() {
           <RefreshCw size={24} className="text-purple-400" />
         </motion.div>
         <span className="ml-3 text-gray-400">Loading analytics…</span>
+      </div>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-gray-950 text-white gap-4">
+        <div className="text-5xl">🔒</div>
+        <h1 className="text-2xl font-bold">Admin access required</h1>
+        <p className="text-gray-500 text-sm">This dashboard is restricted to administrators.</p>
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="mt-2 rounded-xl bg-purple-600 px-6 py-2.5 text-sm font-semibold hover:bg-purple-500 transition"
+        >
+          Back to dashboard
+        </button>
       </div>
     );
   }
