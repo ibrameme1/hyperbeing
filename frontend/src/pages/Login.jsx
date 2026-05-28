@@ -91,7 +91,7 @@ export default function Login() {
     <div className="min-h-screen flex" style={{ background: '#0A0A0B' }}>
 
       {/* ── Left brand panel ── */}
-      <div className="hidden lg:flex lg:flex-1 relative overflow-hidden flex-col justify-between p-12"
+      <div className="hidden lg:flex lg:flex-1 relative overflow-hidden flex-col p-12"
            style={{ background: 'linear-gradient(145deg, #0A0A0B 0%, #111113 50%, #0E0B1F 100%)' }}>
 
         {/* Aurora blobs */}
@@ -114,7 +114,7 @@ export default function Login() {
         </div>
 
         {/* Hero copy */}
-        <div className="relative z-10 max-w-md">
+        <div className="relative z-10 max-w-md flex-1 flex flex-col justify-center py-8">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -132,7 +132,7 @@ export default function Login() {
                 "wait, how?"
               </span>
             </h2>
-            <p className="text-white/50 text-lg leading-relaxed mb-10">
+            <p className="text-white/50 text-lg leading-relaxed mb-6">
               Nova designs every slide like a senior art director. You just describe what you need.
             </p>
 

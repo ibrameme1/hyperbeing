@@ -42,7 +42,7 @@ const PLANS = [
     tagline: 'For first-time AI presentation creators',
     monthlyPrice: 25,
     backendCredits: 100,
-    annualDiscount: null,
+    annualDiscount: 0.20,
     icon: Zap,
     color: '#9CA3AF',
     gradient: 'linear-gradient(135deg, #374151 0%, #4B5563 100%)',
@@ -124,7 +124,7 @@ const CREDIT_TABLE = [
 export default function Pricing() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [billing, setBilling] = useState('monthly');
+  const [billing, setBilling] = useState('annual');
   const [currentPlan, setCurrentPlan] = useState('free');
   const [creditsLeft, setCreditsLeft] = useState(null);
   const [loading, setLoading] = useState(null);
@@ -281,13 +281,14 @@ export default function Pricing() {
                 className="relative rounded-3xl flex flex-col overflow-hidden"
                 style={{ border: `1px solid ${plan.border}`, background: 'rgba(255,255,255,0.03)' }}
               >
-                {/* Top badge */}
-                {(plan.popular || plan.bestValue) && (
-                  <div className="py-2.5 text-center text-xs font-bold text-white tracking-widest uppercase"
-                       style={{ background: plan.gradient }}>
-                    {plan.popular ? '♦ MOST POPULAR' : '♦ BEST VALUE'}
-                  </div>
-                )}
+                {/* Top badge — always rendered so plan names align across all 3 cards */}
+                <div className="py-2.5 text-center text-xs font-bold text-white tracking-widest uppercase"
+                     style={{
+                       background: (plan.popular || plan.bestValue) ? plan.gradient : 'transparent',
+                       opacity: (plan.popular || plan.bestValue) ? 1 : 0,
+                     }}>
+                  {plan.popular ? '♦ MOST POPULAR' : '♦ BEST VALUE'}
+                </div>
 
                 <div className="p-7 flex flex-col flex-1">
                   {/* Plan name + speed */}
@@ -308,53 +309,6 @@ export default function Pricing() {
                     </div>
                     <p className="text-xs text-white/35 ml-7">= {(credits / 100).toFixed(0)} full presentations</p>
                   </div>
-
-                  {/* Ultra credit slider */}
-                  {plan.key === 'ultra' && (
-                    <div className="mb-5 rounded-2xl p-4" style={{ background: 'rgba(0,240,255,0.05)', border: '1px solid rgba(0,240,255,0.15)' }}>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-xs font-semibold text-white/50">Credits / month</span>
-                        <span className="text-sm font-bold" style={{ color: '#00F0FF' }}>
-                          {ULTRA_TIERS[ultraTier].credits.toLocaleString()}
-                        </span>
-                      </div>
-
-                      {/* Slider track */}
-                      <div className="relative mb-3">
-                        <input
-                          type="range" min={0} max={ULTRA_TIERS.length - 1} step={1}
-                          value={ultraTier}
-                          onChange={e => setUltraTier(Number(e.target.value))}
-                          className="ultra-slider w-full h-2 rounded-full appearance-none cursor-pointer"
-                          style={{
-                            background: `linear-gradient(to right, #00F0FF ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%, rgba(255,255,255,0.1) ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%)`,
-                            WebkitAppearance: 'none',
-                          }}
-                        />
-                      </div>
-
-                      {/* Tick labels */}
-                      <div className="flex justify-between">
-                        {ULTRA_TIERS.map((t, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => setUltraTier(idx)}
-                            className="flex flex-col items-center gap-0.5 transition-all duration-150"
-                          >
-                            <span className="text-xs font-semibold" style={{ color: ultraTier === idx ? '#00F0FF' : 'rgba(255,255,255,0.3)' }}>
-                              {(t.credits / 1000).toFixed(0)}k
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-
-                      {billing === 'annual' && (
-                        <p className="text-xs text-center mt-2.5 font-semibold" style={{ color: '#34D399' }}>
-                          {Math.round(ULTRA_TIERS[ultraTier].annualDiscount * 100)}% off on annual — more credits = bigger discount
-                        </p>
-                      )}
-                    </div>
-                  )}
 
                   {/* Price */}
                   <div className="mb-5">
@@ -384,8 +338,6 @@ export default function Pricing() {
                     </div>
                     {showDiscount ? (
                       <p className="text-xs text-white/30 mt-0.5">Billed ${price * 12}/year</p>
-                    ) : !plan.annualDiscount && billing === 'annual' ? (
-                      <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Monthly billing only</p>
                     ) : (
                       <p className="text-xs text-white/25 mt-0.5">Billed monthly</p>
                     )}
@@ -405,6 +357,48 @@ export default function Pricing() {
                      isCurrent ? 'Current plan' :
                      <><span>Get {plan.name}</span><ArrowRight size={14} /></>}
                   </button>
+
+                  {/* Ultra credit slider — below CTA so prices/buttons align across cards */}
+                  {plan.key === 'ultra' && (
+                    <div className="mb-5 rounded-2xl p-4" style={{ background: 'rgba(0,240,255,0.05)', border: '1px solid rgba(0,240,255,0.15)' }}>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-semibold text-white/50">Customize credits / month</span>
+                        <span className="text-sm font-bold" style={{ color: '#00F0FF' }}>
+                          {ULTRA_TIERS[ultraTier].credits.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="relative mb-3">
+                        <input
+                          type="range" min={0} max={ULTRA_TIERS.length - 1} step={1}
+                          value={ultraTier}
+                          onChange={e => setUltraTier(Number(e.target.value))}
+                          className="ultra-slider w-full h-2 rounded-full appearance-none cursor-pointer"
+                          style={{
+                            background: `linear-gradient(to right, #00F0FF ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%, rgba(255,255,255,0.1) ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%)`,
+                            WebkitAppearance: 'none',
+                          }}
+                        />
+                      </div>
+                      <div className="flex justify-between">
+                        {ULTRA_TIERS.map((t, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setUltraTier(idx)}
+                            className="flex flex-col items-center gap-0.5 transition-all duration-150"
+                          >
+                            <span className="text-xs font-semibold" style={{ color: ultraTier === idx ? '#00F0FF' : 'rgba(255,255,255,0.3)' }}>
+                              {(t.credits / 1000).toFixed(0)}k
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      {billing === 'annual' && (
+                        <p className="text-xs text-center mt-2.5 font-semibold" style={{ color: '#34D399' }}>
+                          {Math.round(ULTRA_TIERS[ultraTier].annualDiscount * 100)}% off on annual — more credits = bigger discount
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Features */}
                   <ul className="space-y-2.5 flex-1">
