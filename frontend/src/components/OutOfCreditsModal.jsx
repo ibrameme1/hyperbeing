@@ -1,8 +1,9 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Zap, Crown, Rocket, ArrowRight, Loader2, Settings } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
+import { track } from '../utils/track';
 
 const UPGRADE_OPTIONS = {
   free:  [{ key: 'basic', name: 'Basic', price: 25 }, { key: 'pro', name: 'Pro', price: 65 }],
@@ -23,6 +24,7 @@ export default function OutOfCreditsModal({ currentPlan = 'free', onClose }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(null);
   const upgrades = UPGRADE_OPTIONS[currentPlan] || [];
+  useEffect(() => { track('out_of_credits', { current_plan: currentPlan }); }, []);
 
   async function handleUpgrade(planKey) {
     setLoading(planKey);
