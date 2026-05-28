@@ -5,6 +5,26 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
 
+const sliderThumbStyle = `
+  input[type='range'].ultra-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    border: 3px solid #00F0FF;
+    box-shadow: 0 0 10px rgba(0,240,255,0.5);
+    cursor: pointer;
+  }
+  input[type='range'].ultra-slider::-moz-range-thumb {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    border: 3px solid #00F0FF;
+    box-shadow: 0 0 10px rgba(0,240,255,0.5);
+    cursor: pointer;
+  }
+`;
+
 // All credits displayed ×10 vs backend — same ratios, bigger numbers
 const CM = 10;
 
@@ -176,6 +196,7 @@ export default function Pricing() {
       <div className="fixed bottom-0 right-1/4 w-[500px] h-[500px] rounded-full pointer-events-none"
            style={{ background: 'radial-gradient(circle, rgba(0,240,255,0.08) 0%, transparent 65%)', filter: 'blur(80px)' }} />
 
+      <style>{sliderThumbStyle}</style>
       {/* Nav */}
       <div className="relative z-10 flex items-center justify-between px-8 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2.5">
@@ -288,23 +309,48 @@ export default function Pricing() {
                     <p className="text-xs text-white/35 ml-7">= {(credits / 100).toFixed(0)} full presentations</p>
                   </div>
 
-                  {/* Ultra slider */}
+                  {/* Ultra credit slider */}
                   {plan.key === 'ultra' && (
-                    <div className="mb-4">
-                      <div className="flex justify-between text-xs text-white/40 mb-2">
-                        <span>{ULTRA_TIERS[0].credits.toLocaleString()}</span>
-                        <span>{ULTRA_TIERS[ULTRA_TIERS.length - 1].credits.toLocaleString()}</span>
+                    <div className="mb-5 rounded-2xl p-4" style={{ background: 'rgba(0,240,255,0.05)', border: '1px solid rgba(0,240,255,0.15)' }}>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-semibold text-white/50">Credits / month</span>
+                        <span className="text-sm font-bold" style={{ color: '#00F0FF' }}>
+                          {ULTRA_TIERS[ultraTier].credits.toLocaleString()}
+                        </span>
                       </div>
-                      <input
-                        type="range" min={0} max={ULTRA_TIERS.length - 1} step={1}
-                        value={ultraTier}
-                        onChange={e => setUltraTier(Number(e.target.value))}
-                        className="w-full accent-cyan-400"
-                        style={{ cursor: 'pointer' }}
-                      />
+
+                      {/* Slider track */}
+                      <div className="relative mb-3">
+                        <input
+                          type="range" min={0} max={ULTRA_TIERS.length - 1} step={1}
+                          value={ultraTier}
+                          onChange={e => setUltraTier(Number(e.target.value))}
+                          className="ultra-slider w-full h-2 rounded-full appearance-none cursor-pointer"
+                          style={{
+                            background: `linear-gradient(to right, #00F0FF ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%, rgba(255,255,255,0.1) ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%)`,
+                            WebkitAppearance: 'none',
+                          }}
+                        />
+                      </div>
+
+                      {/* Tick labels */}
+                      <div className="flex justify-between">
+                        {ULTRA_TIERS.map((t, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setUltraTier(idx)}
+                            className="flex flex-col items-center gap-0.5 transition-all duration-150"
+                          >
+                            <span className="text-xs font-semibold" style={{ color: ultraTier === idx ? '#00F0FF' : 'rgba(255,255,255,0.3)' }}>
+                              {(t.credits / 1000).toFixed(0)}k
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+
                       {billing === 'annual' && (
-                        <p className="text-xs text-center mt-1.5" style={{ color: '#34D399' }}>
-                          {Math.round(discount * 100)}% off on annual — slide for more credits & bigger discount
+                        <p className="text-xs text-center mt-2.5 font-semibold" style={{ color: '#34D399' }}>
+                          {Math.round(ULTRA_TIERS[ultraTier].annualDiscount * 100)}% off on annual — more credits = bigger discount
                         </p>
                       )}
                     </div>
