@@ -2,6 +2,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Sparkles, ArrowRight, Zap, Layers, TrendingUp, ImageIcon, Download, Plus } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import BackgroundVideo from '../components/BackgroundVideo';
 
 const FEATURES = [
   {
@@ -54,94 +55,136 @@ export default function Homepage() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen" style={{ background: '#07070A', color: '#fff' }}>
-      {/* Aurora bg */}
-      <div className="fixed top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
-        <div className="absolute top-0 left-1/4 w-[800px] h-[800px] rounded-full opacity-100"
-             style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 60%)', filter: 'blur(80px)' }} />
-        <div className="absolute top-1/2 right-0 w-[600px] h-[600px] rounded-full"
-             style={{ background: 'radial-gradient(circle, rgba(0,240,255,0.10) 0%, transparent 60%)', filter: 'blur(80px)' }} />
-        <div className="absolute bottom-0 left-1/3 w-[500px] h-[500px] rounded-full"
-             style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.08) 0%, transparent 60%)', filter: 'blur(80px)' }} />
-      </div>
+    <div style={{ background: '#000000', color: '#fff' }}>
 
-      {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-8 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
-            <Sparkles size={16} className="text-white" />
+      {/* ── Full-viewport hero with video background ── */}
+      <div className="relative h-screen flex flex-col overflow-hidden">
+        <BackgroundVideo />
+
+        {/* Navbar */}
+        <motion.nav
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="relative z-20 px-6 py-6 w-full shrink-0"
+        >
+          <div className="liquid-glass rounded-full px-6 py-3 flex items-center justify-between max-w-5xl mx-auto">
+            <div className="flex items-center gap-8">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center"
+                  style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+                >
+                  <Sparkles size={16} className="text-white" />
+                </div>
+                <span className="font-bold text-lg text-white">HyperBeing</span>
+              </div>
+              <div className="hidden md:flex items-center gap-8 text-white/80 text-sm font-medium">
+                <Link to="/pricing" className="hover:text-white transition-colors duration-300">Pricing</Link>
+                <Link to="/terms" className="hover:text-white transition-colors duration-300">Terms</Link>
+                <Link to="/privacy" className="hover:text-white transition-colors duration-300">Privacy</Link>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              {user ? (
+                <button
+                  onClick={() => navigate('/dashboard')}
+                  className="liquid-glass rounded-full px-6 py-2 text-sm font-medium text-white hover:opacity-90 transition-opacity cursor-pointer"
+                >
+                  Dashboard →
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => navigate('/login')}
+                    className="text-white hover:text-white/80 transition-colors text-sm font-medium cursor-pointer"
+                  >
+                    Sign in
+                  </button>
+                  <button
+                    onClick={() => navigate('/login')}
+                    className="liquid-glass rounded-full px-6 py-2 text-sm font-medium text-white hover:opacity-90 transition-opacity cursor-pointer"
+                  >
+                    Get started free
+                  </button>
+                </>
+              )}
+            </div>
           </div>
-          <span className="font-bold text-lg text-white">HyperBeing</span>
-        </div>
-        <div className="hidden md:flex items-center gap-8">
-          <Link to="/pricing" className="text-sm text-white/50 hover:text-white transition-colors">Pricing</Link>
-          <Link to="/terms" className="text-sm text-white/50 hover:text-white transition-colors">Terms</Link>
-          <Link to="/privacy" className="text-sm text-white/50 hover:text-white transition-colors">Privacy</Link>
-        </div>
-        <div className="flex items-center gap-3">
-          {user ? (
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90"
-              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+        </motion.nav>
+
+        {/* Hero content */}
+        <section className="relative z-10 flex-1 flex flex-col items-center justify-center px-6">
+          <div className="text-center max-w-5xl mx-auto flex flex-col items-center gap-6">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
             >
-              Go to Dashboard →
-            </button>
-          ) : (
-            <>
-              <button onClick={() => navigate('/login')} className="px-4 py-2 rounded-xl text-sm font-medium text-white/60 hover:text-white transition-colors">
-                Sign in
-              </button>
+              <div
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold"
+                style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.25)' }}
+              >
+                <Sparkles size={12} /> AI Presentation Maker
+              </div>
+            </motion.div>
+
+            <motion.h1
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+              style={{ fontFamily: "'Instrument Serif', serif" }}
+              className="text-5xl md:text-[72px] font-medium tracking-[-0.01em] leading-[1.05] bg-gradient-to-b from-white via-white/95 to-white/70 bg-clip-text text-transparent max-w-4xl"
+            >
+              Presentations that make<br />
+              people go{' '}
+              <span style={{ fontStyle: 'italic' }}>"wait, how?"</span>
+            </motion.h1>
+
+            <motion.p
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2, duration: 0.7 }}
+              className="text-white/50 text-xl max-w-2xl mx-auto leading-relaxed"
+            >
+              Describe what you need. Nova — our AI — designs every slide like a senior art director,
+              writes your narrative like a strategist, and generates custom visuals in under a minute.
+            </motion.p>
+
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.35 }}
+              className="flex items-center justify-center gap-4 flex-wrap"
+            >
               <button
                 onClick={() => navigate('/login')}
-                className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90"
-                style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+                className="px-8 py-4 rounded-2xl font-bold text-white flex items-center gap-2 transition-all duration-200 hover:opacity-90 active:scale-[0.97]"
+                style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 8px 32px rgba(139,92,246,0.4)' }}
               >
-                Get started free
+                Start for free <ArrowRight size={16} />
               </button>
-            </>
-          )}
-        </div>
-      </nav>
+              <button
+                onClick={() => navigate('/pricing')}
+                className="px-8 py-4 rounded-2xl font-semibold text-white/70 hover:text-white transition-colors"
+                style={{ border: '1px solid rgba(255,255,255,0.1)' }}
+              >
+                See pricing
+              </button>
+            </motion.div>
 
-      {/* Hero */}
-      <section className="relative z-10 max-w-5xl mx-auto px-6 pt-24 pb-20 text-center">
-        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}>
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold mb-8"
-               style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.25)' }}>
-            <Sparkles size={12} /> AI Presentation Maker
-          </div>
-          <h1 className="font-display text-6xl md:text-7xl font-bold text-white leading-[1.05] mb-6">
-            Presentations that make<br />people go{' '}
-            <span style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              "wait, how?"
-            </span>
-          </h1>
-          <p className="text-white/50 text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
-            Describe what you need. Nova — our AI — designs every slide like a senior art director, writes your narrative like a strategist, and generates custom visuals in under a minute.
-          </p>
-          <div className="flex items-center justify-center gap-4 flex-wrap">
-            <button
-              onClick={() => navigate('/login')}
-              className="px-8 py-4 rounded-2xl font-bold text-white flex items-center gap-2 transition-all duration-200 hover:opacity-90 active:scale-[0.97]"
-              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 8px 32px rgba(139,92,246,0.4)' }}
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="text-white/25 text-sm"
             >
-              Start for free <ArrowRight size={16} />
-            </button>
-            <button
-              onClick={() => navigate('/pricing')}
-              className="px-8 py-4 rounded-2xl font-semibold text-white/70 hover:text-white transition-colors"
-              style={{ border: '1px solid rgba(255,255,255,0.1)' }}
-            >
-              See pricing
-            </button>
+              50 free credits on signup · No card required
+            </motion.p>
           </div>
-          <p className="text-white/25 text-sm mt-5">50 free credits on signup · No card required</p>
-        </motion.div>
-      </section>
+        </section>
+      </div>
 
-      {/* How it works */}
+      {/* ── How it works ── */}
       <section className="relative z-10 max-w-5xl mx-auto px-6 py-20">
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
           <p className="text-center text-xs font-semibold tracking-[0.2em] uppercase mb-4" style={{ color: '#8B5CF6' }}>How it works</p>
@@ -168,7 +211,7 @@ export default function Homepage() {
         </motion.div>
       </section>
 
-      {/* Features grid */}
+      {/* ── Features grid ── */}
       <section className="relative z-10 max-w-5xl mx-auto px-6 py-20">
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
           <p className="text-center text-xs font-semibold tracking-[0.2em] uppercase mb-4" style={{ color: '#00F0FF' }}>Everything included</p>
@@ -199,7 +242,7 @@ export default function Homepage() {
         </motion.div>
       </section>
 
-      {/* CTA banner */}
+      {/* ── CTA banner ── */}
       <section className="relative z-10 max-w-5xl mx-auto px-6 py-10 mb-20">
         <motion.div
           initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}
@@ -218,7 +261,7 @@ export default function Homepage() {
         </motion.div>
       </section>
 
-      {/* Footer */}
+      {/* ── Footer ── */}
       <footer className="relative z-10 border-t px-8 py-8" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
@@ -237,6 +280,7 @@ export default function Homepage() {
           <p className="text-white/20 text-xs">© {new Date().getFullYear()} HyperBeing. All rights reserved.</p>
         </div>
       </footer>
+
     </div>
   );
 }
