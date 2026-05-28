@@ -5,7 +5,7 @@ import { useDropzone } from 'react-dropzone';
 import {
   Sparkles, Send, LogOut, X, Clock, Trash2, Loader2,
   ImageIcon, Palette, Plus, ChevronDown, ChevronUp, Paperclip, Zap,
-  Sun, Moon,
+  Sun, Moon, CreditCard, User,
 } from 'lucide-react';
 import api from '../api/client';
 import { useTheme } from '../contexts/ThemeContext';
@@ -240,6 +240,144 @@ function PresentationCard({ pres, onDelete }) {
   );
 }
 
+// ─── Account menu ──────────────────────────────────────────────────────────
+function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const initials = (user?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const totalCredits = currentPlan === 'basic' ? 100 : currentPlan === 'pro' ? 500 : currentPlan === 'ultra' ? 2000 : 5;
+  const pct = isAdmin ? 100 : totalCredits > 0 ? Math.min(100, Math.round((credits / totalCredits) * 100)) : 0;
+  const low = !isAdmin && credits !== null && credits < 10;
+
+  const ringColor = isAdmin ? '#8B5CF6' : low ? '#f87171' : '#8B5CF6';
+  const circumference = 2 * Math.PI * 16;
+  const dash = circumference * (pct / 100);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="relative w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white transition-all duration-200 hover:scale-105"
+        style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+        title="Account"
+      >
+        {/* Credit ring */}
+        <svg className="absolute inset-0 w-10 h-10 -rotate-90" viewBox="0 0 40 40">
+          <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="2.5" />
+          <circle
+            cx="20" cy="20" r="18" fill="none"
+            stroke={ringColor} strokeWidth="2.5"
+            strokeDasharray={`${circumference * (pct / 100)} ${circumference}`}
+            strokeLinecap="round"
+            style={{ transition: 'stroke-dasharray 0.6s ease' }}
+          />
+        </svg>
+        <span className="relative z-10 text-xs font-bold">{initials}</span>
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: -4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -4 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            className="absolute right-0 mt-2 w-72 rounded-2xl overflow-hidden shadow-2xl z-50"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
+          >
+            {/* User info */}
+            <div className="px-5 pt-5 pb-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white flex-shrink-0"
+                     style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
+                  {initials}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{user?.name}</p>
+                  <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{user?.email}</p>
+                </div>
+                {isAdmin && (
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-lg text-white flex-shrink-0"
+                        style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>Admin</span>
+                )}
+              </div>
+
+              {/* Credits bar */}
+              {!isAdmin && credits !== null && (
+                <div className="rounded-xl p-3" style={{ background: 'var(--bg-input)' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Credits remaining</span>
+                    <span className="text-xs font-bold" style={{ color: low ? '#f87171' : '#8B5CF6' }}>
+                      {credits} / {isAdmin ? '∞' : totalCredits}
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${pct}%`,
+                        background: low
+                          ? 'linear-gradient(90deg, #f87171 0%, #fca5a5 100%)'
+                          : 'linear-gradient(90deg, #8B5CF6 0%, #00F0FF 100%)',
+                      }}
+                    />
+                  </div>
+                  {low && (
+                    <p className="text-xs mt-1.5" style={{ color: '#f87171' }}>Running low — top up to keep creating</p>
+                  )}
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>
+                      {currentPlan} plan
+                    </span>
+                    <button
+                      onClick={() => { onUpgrade(); setOpen(false); }}
+                      className="text-xs font-semibold transition-colors hover:opacity-80"
+                      style={{ color: '#8B5CF6' }}
+                    >
+                      {currentPlan === 'free' ? 'Upgrade →' : 'Manage plan →'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="h-px" style={{ background: 'var(--border)' }} />
+
+            {/* Actions */}
+            <div className="p-2">
+              <button
+                onClick={() => { onUpgrade(); setOpen(false); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:opacity-80 text-left"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <CreditCard size={15} style={{ color: '#8B5CF6' }} />
+                {currentPlan === 'free' ? 'Upgrade plan' : 'Billing & plans'}
+              </button>
+              <button
+                onClick={() => { onLogout(); setOpen(false); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:opacity-80 text-left"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <LogOut size={15} style={{ color: '#f87171' }} />
+                Sign out
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // ─── Dashboard ─────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { user, logout } = useAuth();
@@ -382,31 +520,6 @@ export default function Dashboard() {
           <span className="font-bold text-gray-900 dark:text-white text-lg tracking-tight">HyperBeing</span>
         </div>
         <div className="flex items-center gap-3">
-          {isAdmin && (
-            <span className="text-xs font-bold px-3 py-1.5 rounded-xl text-white"
-                  style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
-              Admin
-            </span>
-          )}
-          {!isAdmin && credits !== null && (
-            <button
-              onClick={() => navigate('/pricing')}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl transition-all duration-200 hover:opacity-80"
-              style={{ background: credits < 10 ? 'rgba(0,240,255,0.12)' : 'rgba(139,92,246,0.10)', color: credits < 10 ? '#00F0FF' : '#8B5CF6', border: `1px solid ${credits < 10 ? 'rgba(0,240,255,0.25)' : 'rgba(139,92,246,0.2)'}` }}
-            >
-              <Zap size={12} />
-              {credits} credits
-            </button>
-          )}
-          {!isAdmin && currentPlan === 'free' && (
-            <button
-              onClick={() => navigate('/pricing')}
-              className="text-xs font-bold px-3 py-1.5 rounded-xl text-white transition-all duration-200 hover:opacity-90"
-              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
-            >
-              Upgrade
-            </button>
-          )}
           {/* Theme toggle */}
           <button
             onClick={toggleTheme}
@@ -418,13 +531,14 @@ export default function Dashboard() {
               ? <Sun size={15} className="text-yellow-400" />
               : <Moon size={15} className="text-hb-primary" />}
           </button>
-          <button
-            onClick={logout}
-            className="flex items-center gap-1.5 text-ios-gray1 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white transition-colors text-sm font-medium"
-          >
-            <LogOut size={15} />
-            Sign out
-          </button>
+          <AccountMenu
+            user={user}
+            credits={credits}
+            currentPlan={currentPlan}
+            isAdmin={isAdmin}
+            onLogout={logout}
+            onUpgrade={() => navigate('/pricing')}
+          />
         </div>
       </nav>
 
