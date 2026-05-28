@@ -12,6 +12,7 @@ import presentationRoutes from './routes/presentations.js';
 import promptChatRoutes from './routes/promptChat.js';
 import billingRoutes from './routes/billing.js';
 import { apiLimiter } from './middleware/rateLimits.js';
+import analyticsRoutes from './routes/analytics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -75,6 +76,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/presentations', presentationRoutes);
 app.use('/api/prompt-chat', promptChatRoutes);
 app.use('/api/billing', billingRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 

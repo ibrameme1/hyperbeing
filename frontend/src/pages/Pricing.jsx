@@ -4,6 +4,7 @@ import { Check, X, Sparkles, Zap, Crown, Rocket, ArrowRight, Loader2 } from 'luc
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
+import { track } from '../utils/track';
 
 const sliderThumbStyle = `
   input[type='range'].ultra-slider::-webkit-slider-thumb {
@@ -126,6 +127,8 @@ export default function Pricing() {
   const [creditsLeft, setCreditsLeft] = useState(null);
   const [loading, setLoading] = useState(null);
   const [ultraTier, setUltraTier] = useState(0);
+
+  useEffect(() => { track('pricing_viewed'); }, []);
 
   useEffect(() => {
     if (user) {

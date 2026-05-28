@@ -113,6 +113,23 @@ export function initDatabase() {
     db.exec('ALTER TABLE presentations ADD COLUMN thumbnail TEXT');
   } catch { /* column already exists */ }
 
+  // Analytics events table for custom event tracking
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS analytics_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL,
+      user_id TEXT,
+      session_id TEXT,
+      page TEXT,
+      metadata TEXT DEFAULT '{}',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_analytics_events_type ON analytics_events(event_type);
+    CREATE INDEX IF NOT EXISTS idx_analytics_events_created ON analytics_events(created_at);
+    CREATE INDEX IF NOT EXISTS idx_analytics_events_user ON analytics_events(user_id);
+  `);
+
   console.log('✅ Database ready');
   return db;
 }

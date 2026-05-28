@@ -9,6 +9,7 @@ import api from '../api/client';
 import MessageBubble from '../components/MessageBubble';
 import LoadingScreen from '../components/LoadingScreen';
 import PresentationViewer from '../components/PresentationViewer';
+import { track } from '../utils/track';
 
 // ─── Chat Phase ────────────────────────────────────────────────────────────
 function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
@@ -51,6 +52,7 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
     setSending(true);
     setSendError('');
     setSendingLabel('Thinking…');
+    track('chat_message_sent', { presentation_id: presentation.id, has_attachments: attachments.length > 0 });
     const userMsg = {
       id: Date.now().toString(),
       role: 'user',

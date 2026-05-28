@@ -1,6 +1,8 @@
 import jsPDF from 'jspdf';
+import { track } from './track';
 
 export function exportImages(slides, title = 'Presentation') {
+  track('pdf_exported', { format: 'images', slide_count: slides.length, title });
   const safeName = title.replace(/[^a-z0-9]/gi, '_');
   slides.forEach((slide, i) => {
     if (!slide.image_data) return;
@@ -14,6 +16,7 @@ export function exportImages(slides, title = 'Presentation') {
 }
 
 export async function exportToPDF(slides, title = 'Presentation') {
+  track('pdf_exported', { format: 'pdf', slide_count: slides.length, title });
   const pdf = new jsPDF({
     orientation: 'landscape',
     unit: 'pt',

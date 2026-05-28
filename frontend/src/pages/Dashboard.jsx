@@ -5,11 +5,12 @@ import { useDropzone } from 'react-dropzone';
 import {
   Sparkles, Send, LogOut, X, Clock, Trash2, Loader2,
   ImageIcon, Palette, Plus, ChevronDown, ChevronUp, Paperclip, Zap,
-  Sun, Moon, CreditCard, User,
+  Sun, Moon, CreditCard, User, BarChart2,
 } from 'lucide-react';
 import api from '../api/client';
 import OutOfCreditsModal from '../components/OutOfCreditsModal';
 import { useTheme } from '../contexts/ThemeContext';
+import { track } from '../utils/track';
 
 const ANALYZING_MESSAGES = [
   'Reading your brief…',
@@ -356,6 +357,14 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
             {/* Actions */}
             <div className="p-2">
               <button
+                onClick={() => { window.location.href = '/analytics'; setOpen(false); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:opacity-80 text-left"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <BarChart2 size={15} style={{ color: '#06b6d4' }} />
+                Analytics
+              </button>
+              <button
                 onClick={() => { onUpgrade(); setOpen(false); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:opacity-80 text-left"
                 style={{ color: 'var(--text-secondary)' }}
@@ -460,10 +469,12 @@ export default function Dashboard() {
         attachments: pendingAttachments,
         aspectRatio: selectedAspectRatio,
       });
+      track('presentation_created', { presentation_id: data.presentation.id, aspect_ratio: selectedAspectRatio });
       navigate(`/presentations/${data.presentation.id}`);
     } catch (err) {
       if (err.response?.status === 402) {
         setShowOutOfCredits(true);
+        track('out_of_credits', { page: 'dashboard' });
         return;
       }
       const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong';

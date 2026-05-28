@@ -14,6 +14,7 @@ import BillingSuccess from './pages/BillingSuccess';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
 import Homepage from './pages/Homepage';
+import AnalyticsDashboard from './pages/AnalyticsDashboard';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="/billing/success" element={<ProtectedRoute><BillingSuccess /></ProtectedRoute>} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/privacy" element={<Privacy />} />
+        <Route path="/analytics" element={<ProtectedRoute><AnalyticsDashboard /></ProtectedRoute>} />
       </Routes>
       <Analytics />
       <SpeedInsights />
