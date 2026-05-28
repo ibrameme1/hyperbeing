@@ -13,6 +13,7 @@
     "@vercel/speed-insights": "^2.0.0",
     "axios": "^1.7.7",
     "framer-motion": "^11.11.0",
+    "hls.js": "^1.6.16",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.2",
     "lucide-react": "^0.460.0",
