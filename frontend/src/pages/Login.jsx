@@ -59,8 +59,6 @@ export default function Login() {
 
   const SOCIAL = [
     { id: 'google', label: 'Continue with Google', Icon: GoogleIcon, bg: '#fff', border: '#E2E0EC', color: '#18132E' },
-    { id: 'meta', label: 'Continue with Instagram', Icon: MetaIcon, bg: '#fff', border: '#E2E0EC', color: '#18132E' },
-    { id: 'tiktok', label: 'Continue with TikTok', Icon: TikTokIcon, bg: '#010101', border: '#010101', color: '#fff' },
   ];
 
   async function handleSubmit(e) {
@@ -91,7 +89,7 @@ export default function Login() {
     <div className="min-h-screen flex" style={{ background: '#0A0A0B' }}>
 
       {/* ── Left brand panel ── */}
-      <div className="hidden lg:flex lg:flex-1 relative overflow-hidden flex-col p-12"
+      <div className="hidden lg:flex lg:flex-1 relative overflow-hidden flex-col p-10"
            style={{ background: 'linear-gradient(145deg, #0A0A0B 0%, #111113 50%, #0E0B1F 100%)' }}>
 
         {/* Aurora blobs */}
@@ -114,7 +112,7 @@ export default function Login() {
         </div>
 
         {/* Hero copy */}
-        <div className="relative z-10 max-w-md flex-1 flex flex-col justify-center py-8">
+        <div className="relative z-10 max-w-md flex-1 flex flex-col justify-center py-4">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -122,7 +120,7 @@ export default function Login() {
           >
             <p className="text-xs font-semibold tracking-[0.2em] uppercase mb-4"
                style={{ color: '#8B5CF6' }}>AI Presentation Maker</p>
-            <h2 className="font-display text-5xl font-bold text-white leading-tight mb-6">
+            <h2 className="font-display text-4xl font-bold text-white leading-tight mb-4">
               Presentations that make people go{' '}
               <span style={{
                 background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)',
@@ -136,14 +134,14 @@ export default function Login() {
               Nova designs every slide like a senior art director. You just describe what you need.
             </p>
 
-            <div className="space-y-4">
+            <div className="space-y-3">
               {FEATURES.map(({ icon: Icon, title, desc, color }, i) => (
                 <motion.div
                   key={title}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.3 + i * 0.1, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                  className="flex items-center gap-4 p-4 rounded-2xl"
+                  className="flex items-center gap-3 p-3.5 rounded-2xl"
                   style={{
                     background: 'rgba(255,255,255,0.04)',
                     border: '1px solid rgba(255,255,255,0.06)',
@@ -173,7 +171,7 @@ export default function Login() {
       </div>
 
       {/* ── Right form panel ── */}
-      <div className="flex-1 lg:max-w-[480px] flex items-center justify-center p-6 lg:p-12"
+      <div className="flex-1 lg:max-w-[480px] flex items-center justify-center p-6 lg:p-8"
            style={{ background: 'var(--bg-page)' }}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -193,14 +191,14 @@ export default function Login() {
           <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
             {mode === 'login' ? 'Welcome back' : 'Create your account'}
           </h1>
-          <p className="text-sm mb-8" style={{ color: 'var(--text-secondary)' }}>
+          <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
             {mode === 'login'
               ? 'Good to see you again. Nova missed you.'
               : 'Takes 30 seconds. No credit card.'}
           </p>
 
           {/* Toggle */}
-          <div className="flex gap-1 p-1 rounded-2xl mb-8"
+          <div className="flex gap-1 p-1 rounded-2xl mb-6"
                style={{ background: 'var(--bg-input)' }}>
             {['login', 'register'].map(m => (
               <button

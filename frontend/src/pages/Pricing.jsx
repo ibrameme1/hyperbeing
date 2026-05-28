@@ -49,9 +49,8 @@ const PLANS = [
     border: 'rgba(107,114,128,0.3)',
     glow: 'rgba(107,114,128,0.2)',
     speed: { label: 'Standard Speed', emoji: '🐢', color: '#9CA3AF' },
-    parallel: { label: 'Up to 3 slides at once', emoji: '⬛' },
+    parallel: { label: '3 slides in parallel', emoji: '🔀' },
     features: [
-      'AI image generation',
       'PDF & PNG export',
       'Add slides feature',
       'Reference image uploads',
@@ -74,10 +73,9 @@ const PLANS = [
     border: 'rgba(139,92,246,0.5)',
     glow: 'rgba(139,92,246,0.3)',
     speed: { label: 'Fast Generation', emoji: '⚡', color: '#F59E0B' },
-    parallel: { label: 'Up to 6 slides at once', emoji: '⬛' },
+    parallel: { label: '6 slides in parallel', emoji: '🔀' },
     popular: true,
     features: [
-      'AI image generation',
       'PDF & PNG export',
       'Add slides feature',
       'Reference image uploads',
@@ -99,10 +97,9 @@ const PLANS = [
     border: 'rgba(0,240,255,0.45)',
     glow: 'rgba(0,240,255,0.25)',
     speed: { label: 'Fastest Generation', emoji: '🚀', color: '#10B981' },
-    parallel: { label: 'Unlimited parallel generation', emoji: '⬛' },
+    parallel: { label: 'Unlimited parallel generation', emoji: '🔀' },
     bestValue: true,
     features: [
-      'AI image generation',
       'PDF & PNG export',
       'Add slides feature',
       'Reference image uploads',
@@ -261,7 +258,7 @@ export default function Pricing() {
         </motion.div>
 
         {/* Plan cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-14">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-14" style={{ paddingTop: '20px' }}>
           {PLANS.map((plan, i) => {
             const Icon = plan.icon;
             const isCurrent = currentPlan === plan.key;
@@ -279,7 +276,13 @@ export default function Pricing() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 className="relative rounded-3xl flex flex-col overflow-hidden"
-                style={{ border: `1px solid ${plan.border}`, background: 'rgba(255,255,255,0.03)' }}
+                style={{
+                  border: `1px solid ${plan.border}`,
+                  background: 'rgba(255,255,255,0.03)',
+                  transform: (plan.popular || plan.bestValue) ? 'translateY(-20px)' : 'none',
+                  boxShadow: (plan.popular || plan.bestValue) ? `0 24px 64px ${plan.glow}` : 'none',
+                  zIndex: (plan.popular || plan.bestValue) ? 1 : 0,
+                }}
               >
                 {/* Top badge — always rendered so plan names align across all 3 cards */}
                 <div className="py-2.5 text-center text-xs font-bold text-white tracking-widest uppercase"
@@ -431,33 +434,10 @@ export default function Pricing() {
           })}
         </div>
 
-        {/* Credit cost table */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.5 }}
-          className="rounded-3xl p-8 mb-10"
-          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
-        >
-          <h3 className="text-white font-bold text-xl mb-1.5">How credits work</h3>
-          <p className="text-white/35 text-sm mb-6">Each AI action deducts credits from your monthly balance. Unused credits don't roll over.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {CREDIT_TABLE.map(({ action, cost }) => (
-              <div key={action} className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <p className="text-2xl font-bold mb-0.5" style={{ color: '#8B5CF6' }}>{cost}</p>
-                <p className="text-xs font-semibold text-white/70 mb-0.5">credits</p>
-                <p className="text-xs text-white/35">{action}</p>
-              </div>
-            ))}
-          </div>
-        </motion.div>
-
-        <p className="text-center text-white/25 text-sm mb-14">
-          New accounts get <span className="text-white/55 font-semibold">50 free credits</span> to try HyperBeing — no card required.
-        </p>
-
         {/* Enterprise */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.5 }}
-          className="rounded-3xl p-10 flex flex-col md:flex-row items-center justify-between gap-8"
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.5 }}
+          className="rounded-3xl p-10 flex flex-col md:flex-row items-center justify-between gap-8 mb-10"
           style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.1) 0%, rgba(0,240,255,0.06) 100%)', border: '1px solid rgba(139,92,246,0.2)' }}
         >
           <div>
@@ -479,6 +459,29 @@ export default function Pricing() {
             Contact us →
           </a>
         </motion.div>
+
+        {/* Credit cost table */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.5 }}
+          className="rounded-3xl p-8 mb-10"
+          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+        >
+          <h3 className="text-white font-bold text-xl mb-1.5">How credits work</h3>
+          <p className="text-white/35 text-sm mb-6">Each AI action deducts credits from your monthly balance. Unused credits don't roll over.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {CREDIT_TABLE.map(({ action, cost }) => (
+              <div key={action} className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <p className="text-2xl font-bold mb-0.5" style={{ color: '#8B5CF6' }}>{cost}</p>
+                <p className="text-xs font-semibold text-white/70 mb-0.5">credits</p>
+                <p className="text-xs text-white/35">{action}</p>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+
+        <p className="text-center text-white/25 text-sm mb-14">
+          New accounts get <span className="text-white/55 font-semibold">50 free credits</span> to try HyperBeing — no card required.
+        </p>
       </div>
     </div>
   );

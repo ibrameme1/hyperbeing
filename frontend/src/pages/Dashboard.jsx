@@ -657,20 +657,20 @@ export default function Dashboard() {
                   className="grid grid-cols-2 gap-3 overflow-hidden"
                 >
                   <AttachZone
-                    label="Moodboard"
-                    icon={Palette}
-                    accentColor="#764ba2"
-                    files={moodboardFiles}
-                    onAdd={f => setMoodboardFiles(prev => [...prev, f])}
-                    onRemove={id => setMoodboardFiles(prev => prev.filter(f => f.id !== id))}
-                  />
-                  <AttachZone
                     label="Branding & Pictures"
                     icon={ImageIcon}
                     accentColor="#007AFF"
                     files={brandingFiles}
                     onAdd={f => setBrandingFiles(prev => [...prev, f])}
                     onRemove={id => setBrandingFiles(prev => prev.filter(f => f.id !== id))}
+                  />
+                  <AttachZone
+                    label="Moodboard"
+                    icon={Palette}
+                    accentColor="#764ba2"
+                    files={moodboardFiles}
+                    onAdd={f => setMoodboardFiles(prev => [...prev, f])}
+                    onRemove={id => setMoodboardFiles(prev => prev.filter(f => f.id !== id))}
                   />
                 </motion.div>
               )}
