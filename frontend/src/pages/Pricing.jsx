@@ -33,11 +33,11 @@ const PLANS = [
     features: [
       'AI image generation',
       'PDF & PNG export',
+      'Add slides feature',
+      'Reference image uploads',
       'Email support',
     ],
     locked: [
-      'Add slides feature',
-      'Reference image uploads',
       'Early feature access',
     ],
   },
