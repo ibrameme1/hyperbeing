@@ -32,7 +32,7 @@ export default function Privacy() {
 
           <section>
             <h2 className="text-white font-semibold text-xl mb-3">2. Age Restriction — No Data from Minors</h2>
-            <p>HyperBeing is strictly intended for users who are 18 years of age or older. We do not knowingly collect, solicit, or store personal information from anyone under 18. If we learn that we have collected personal data from a person under 18, we will delete that data immediately. If you believe a minor has created an account, please contact us at <span style={{ color: '#8B5CF6' }}>support@hyperbeing.com</span>.</p>
+            <p>HyperBeing is strictly intended for users who are 18 years of age or older. We do not knowingly collect, solicit, or store personal information from anyone under 18. If we learn that we have collected personal data from a person under 18, we will delete that data immediately. If you believe a minor has created an account, please contact us at <span style={{ color: '#8B5CF6' }}>team@hyperbeing.co</span>.</p>
           </section>
 
           <section>
@@ -86,7 +86,7 @@ export default function Privacy() {
               <li>Object to or restrict certain processing</li>
               <li>Data portability (receive a copy of your data in a structured format)</li>
             </ul>
-            <p className="mt-3">To exercise any of these rights, email <span style={{ color: '#8B5CF6' }}>support@hyperbeing.com</span>.</p>
+            <p className="mt-3">To exercise any of these rights, email <span style={{ color: '#8B5CF6' }}>team@hyperbeing.co</span>.</p>
           </section>
 
           <section>
@@ -106,7 +106,7 @@ export default function Privacy() {
 
           <section>
             <h2 className="text-white font-semibold text-xl mb-3">11. Contact</h2>
-            <p>Questions or requests regarding this Privacy Policy: <span style={{ color: '#8B5CF6' }}>support@hyperbeing.com</span></p>
+            <p>Questions or requests regarding this Privacy Policy: <span style={{ color: '#8B5CF6' }}>team@hyperbeing.co</span></p>
           </section>
 
         </div>

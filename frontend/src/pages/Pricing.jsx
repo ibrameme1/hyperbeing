@@ -425,7 +425,7 @@ export default function Pricing() {
             </p>
           </div>
           <a
-            href="mailto:support@hyperbeing.com?subject=Enterprise Plan Enquiry"
+            href="mailto:team@hyperbeing.co?subject=Enterprise Plan Enquiry"
             className="flex-shrink-0 px-8 py-4 rounded-2xl font-bold text-sm text-white transition-all duration-200 hover:opacity-90 active:scale-[0.97] whitespace-nowrap"
             style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 4px 24px rgba(139,92,246,0.35)' }}
           >

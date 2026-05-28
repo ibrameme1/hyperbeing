@@ -88,7 +88,7 @@ export default function Terms() {
 
           <section>
             <h2 className="text-white font-semibold text-xl mb-3">12. Contact</h2>
-            <p>For questions about these Terms, contact us at <span style={{ color: '#8B5CF6' }}>support@hyperbeing.com</span>.</p>
+            <p>For questions about these Terms, contact us at <span style={{ color: '#8B5CF6' }}>team@hyperbeing.co</span>.</p>
           </section>
 
         </div>
