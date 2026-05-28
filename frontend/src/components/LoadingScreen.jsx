@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+
+const SPEED_BADGE = {
+  free:  { emoji: '🐢', label: 'Standard Speed', color: '#9CA3AF', bg: 'rgba(156,163,175,0.12)' },
+  basic: { emoji: '🐢', label: 'Standard Speed', color: '#9CA3AF', bg: 'rgba(156,163,175,0.12)' },
+  pro:   { emoji: '⚡', label: 'Fast Generation', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
+  ultra: { emoji: '🚀', label: 'Priority Generation', color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
+};
 
 const PLANNING_MESSAGES = [
   'Nova is crafting your slide plan…',
@@ -19,6 +27,9 @@ const GENERATING_MESSAGES = [
 ];
 
 export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 }) {
+  const { subscription } = useAuth();
+  const plan = subscription?.plan || 'free';
+  const speed = SPEED_BADGE[plan] || SPEED_BADGE.free;
   const [msgIndex, setMsgIndex] = useState(0);
   const isGenerating = totalSlides > 0;
   const messages = isGenerating ? GENERATING_MESSAGES : PLANNING_MESSAGES;
@@ -72,6 +83,12 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
             <Sparkles size={36} className="text-white" />
           </div>
         </div>
+
+        {/* Speed badge */}
+        <span className="text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"
+              style={{ background: speed.bg, color: speed.color, border: `1px solid ${speed.color}30` }}>
+          {speed.emoji} {speed.label}
+        </span>
 
         {/* Headline */}
         <p className="text-white/60 text-sm font-semibold uppercase tracking-widest">

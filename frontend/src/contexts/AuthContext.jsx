@@ -5,16 +5,29 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [subscription, setSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const fetchSubscription = useCallback(async () => {
+    try {
+      const { data } = await api.get('/billing/subscription');
+      setSubscription(data.subscription);
+    } catch {
+      setSubscription(null);
+    }
+  }, []);
 
   useEffect(() => {
     const stored = localStorage.getItem('hb_user');
     const token = localStorage.getItem('hb_token');
-    if (stored && token) {
-      setUser(JSON.parse(stored));
-    }
+    if (stored && token) setUser(JSON.parse(stored));
     setLoading(false);
   }, []);
+
+  useEffect(() => {
+    if (user) fetchSubscription();
+    else setSubscription(null);
+  }, [user?.id]);
 
   const login = useCallback(async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password });
@@ -36,10 +49,11 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('hb_token');
     localStorage.removeItem('hb_user');
     setUser(null);
+    setSubscription(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, subscription, loading, login, register, logout, refreshSubscription: fetchSubscription }}>
       {children}
     </AuthContext.Provider>
   );

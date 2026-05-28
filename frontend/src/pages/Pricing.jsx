@@ -1,88 +1,105 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Sparkles, Zap, Crown, Rocket, ArrowRight, Loader2 } from 'lucide-react';
+import { Check, X, Sparkles, Zap, Crown, Rocket, ArrowRight, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
 
-const DISCOUNTS = { basic: 0.20, pro: 0.225, ultra: 0.25 };
+// All credits displayed ×10 vs backend — same ratios, bigger numbers
+const CM = 10;
+
+const ULTRA_TIERS = [
+  { credits: 20000, price: 149, annualDiscount: 0.22 },
+  { credits: 35000, price: 209, annualDiscount: 0.25 },
+  { credits: 50000, price: 269, annualDiscount: 0.28 },
+  { credits: 60000, price: 299, annualDiscount: 0.30 },
+];
 
 const PLANS = [
   {
     key: 'basic',
     name: 'Basic',
+    tagline: 'For first-time AI presentation creators',
     monthlyPrice: 25,
-    credits: 100,
+    backendCredits: 100,
+    annualDiscount: null,
     icon: Zap,
-    color: '#8B5CF6',
-    gradient: 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)',
-    glow: 'rgba(139,92,246,0.35)',
-    presentations: '~10',
+    color: '#9CA3AF',
+    gradient: 'linear-gradient(135deg, #374151 0%, #4B5563 100%)',
+    border: 'rgba(107,114,128,0.3)',
+    glow: 'rgba(107,114,128,0.2)',
+    speed: { label: 'Standard Speed', emoji: '🐢', color: '#9CA3AF' },
+    parallel: 'Up to 3 slides at once',
     features: [
-      '100 credits / month',
-      '~10 full presentations',
-      'Up to 10 slides each',
       'AI image generation',
       'PDF & PNG export',
       'Email support',
+    ],
+    locked: [
+      'Add slides feature',
+      'Reference image uploads',
+      'Early feature access',
     ],
   },
   {
     key: 'pro',
     name: 'Pro',
+    tagline: 'For consistent AI presentation creators',
     monthlyPrice: 65,
-    credits: 500,
+    backendCredits: 500,
+    annualDiscount: 0.20,
     icon: Crown,
-    color: '#00F0FF',
-    gradient: 'linear-gradient(135deg, #00F0FF 0%, #FF7BAC 100%)',
-    glow: 'rgba(0,240,255,0.35)',
-    presentations: '~50',
+    color: '#8B5CF6',
+    gradient: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
+    border: 'rgba(139,92,246,0.5)',
+    glow: 'rgba(139,92,246,0.3)',
+    speed: { label: 'Fast Generation', emoji: '⚡', color: '#F59E0B' },
+    parallel: 'Up to 6 slides at once',
     popular: true,
     features: [
-      '500 credits / month',
-      '~50 full presentations',
-      'Up to 10 slides each',
       'AI image generation',
       'PDF & PNG export',
       'Add slides feature',
       'Reference image uploads',
+      'Early feature access',
       'Priority support',
     ],
+    locked: [],
   },
   {
     key: 'ultra',
     name: 'Ultra',
+    tagline: 'For power users and agencies',
     monthlyPrice: 149,
-    credits: 2000,
+    backendCredits: 2000,
+    annualDiscount: 0.22,
     icon: Rocket,
-    color: '#00D4FF',
-    gradient: 'linear-gradient(135deg, #00D4FF 0%, #0095CC 100%)',
-    glow: 'rgba(0,212,255,0.35)',
-    presentations: '~200',
+    color: '#00F0FF',
+    gradient: 'linear-gradient(135deg, #0891B2 0%, #06B6D4 100%)',
+    border: 'rgba(0,240,255,0.45)',
+    glow: 'rgba(0,240,255,0.25)',
+    speed: { label: 'Fastest Generation', emoji: '🚀', color: '#10B981' },
+    parallel: 'Unlimited parallel generation',
+    bestValue: true,
     features: [
-      '2,000 credits / month',
-      '~200 full presentations',
-      'Up to 10 slides each',
       'AI image generation',
       'PDF & PNG export',
       'Add slides feature',
       'Reference image uploads',
+      'Early feature access',
       'Custom brand kits',
       'Team workspace (soon)',
       'Dedicated support',
     ],
+    locked: [],
   },
 ];
 
 const CREDIT_TABLE = [
-  { action: 'Create full presentation (10 slides)', cost: 10 },
-  { action: 'Add slides (per batch)', cost: 3 },
-  { action: 'Regenerate a slide', cost: 1 },
+  { action: 'Create full presentation (10 slides)', cost: 100 },
+  { action: 'Add slides (per batch)', cost: 30 },
+  { action: 'Regenerate a slide', cost: 10 },
 ];
-
-function annualPrice(plan) {
-  return Math.round(plan.monthlyPrice * (1 - DISCOUNTS[plan.key]));
-}
 
 export default function Pricing() {
   const { user } = useAuth();
@@ -91,6 +108,7 @@ export default function Pricing() {
   const [currentPlan, setCurrentPlan] = useState('free');
   const [creditsLeft, setCreditsLeft] = useState(null);
   const [loading, setLoading] = useState(null);
+  const [ultraTier, setUltraTier] = useState(0);
 
   useEffect(() => {
     if (user) {
@@ -127,16 +145,39 @@ export default function Pricing() {
     }
   }
 
+  function getPlanPrice(plan) {
+    if (plan.key === 'ultra') {
+      const tier = ULTRA_TIERS[ultraTier];
+      if (billing === 'annual') {
+        return Math.round(tier.price * (1 - tier.annualDiscount));
+      }
+      return tier.price;
+    }
+    if (billing === 'annual' && plan.annualDiscount) {
+      return Math.round(plan.monthlyPrice * (1 - plan.annualDiscount));
+    }
+    return plan.monthlyPrice;
+  }
+
+  function getPlanCredits(plan) {
+    if (plan.key === 'ultra') return ULTRA_TIERS[ultraTier].credits;
+    return plan.backendCredits * CM;
+  }
+
+  function getAnnualDiscount(plan) {
+    if (plan.key === 'ultra') return ULTRA_TIERS[ultraTier].annualDiscount;
+    return plan.annualDiscount;
+  }
+
   return (
-    <div className="min-h-screen" style={{ background: '#0A0A0B' }}>
-      {/* Aurora bg */}
-      <div className="fixed top-0 left-1/4 w-[700px] h-[700px] rounded-full pointer-events-none"
-           style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 65%)', filter: 'blur(80px)' }} />
+    <div className="min-h-screen" style={{ background: '#07070A' }}>
+      <div className="fixed top-0 left-1/4 w-[600px] h-[600px] rounded-full pointer-events-none"
+           style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.12) 0%, transparent 65%)', filter: 'blur(80px)' }} />
       <div className="fixed bottom-0 right-1/4 w-[500px] h-[500px] rounded-full pointer-events-none"
-           style={{ background: 'radial-gradient(circle, rgba(0,240,255,0.12) 0%, transparent 65%)', filter: 'blur(80px)' }} />
+           style={{ background: 'radial-gradient(circle, rgba(0,240,255,0.08) 0%, transparent 65%)', filter: 'blur(80px)' }} />
 
       {/* Nav */}
-      <div className="relative z-10 flex items-center justify-between px-8 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+      <div className="relative z-10 flex items-center justify-between px-8 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center"
                style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
@@ -147,7 +188,7 @@ export default function Pricing() {
         <div className="flex items-center gap-3">
           {creditsLeft !== null && (
             <span className="text-sm px-3 py-1.5 rounded-xl" style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.3)' }}>
-              {creditsLeft} credits left
+              {(creditsLeft * CM).toLocaleString()} credits left
             </span>
           )}
           {user && currentPlan !== 'free' && (
@@ -158,16 +199,11 @@ export default function Pricing() {
         </div>
       </div>
 
-      <div className="relative z-10 max-w-6xl mx-auto px-6 py-16">
+      <div className="relative z-10 max-w-6xl mx-auto px-6 py-14">
 
         {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="text-center mb-10"
-        >
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold mb-6"
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="text-center mb-10">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold mb-5"
                style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.25)' }}>
             <Sparkles size={12} /> Simple, transparent pricing
           </div>
@@ -177,139 +213,172 @@ export default function Pricing() {
               start creating
             </span>
           </h1>
-          <p className="text-white/50 text-lg max-w-xl mx-auto mb-10">
+          <p className="text-white/45 text-lg max-w-xl mx-auto mb-9">
             Every plan includes AI image generation, PDF export, and Nova's full art direction engine.
           </p>
 
           {/* Billing toggle */}
-          <div className="inline-flex items-center gap-1 p-1 rounded-2xl" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
-            {['monthly', 'annual'].map(b => (
-              <button
-                key={b}
-                onClick={() => setBilling(b)}
-                className="relative px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-200"
-                style={billing === b
-                  ? { background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', color: '#fff' }
-                  : { color: 'rgba(255,255,255,0.45)' }}
-              >
-                {b === 'monthly' ? 'Monthly' : (
-                  <span className="flex items-center gap-2">
-                    Annual
-                    <span className="text-xs font-bold px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(0,240,255,0.2)', color: '#00F0FF' }}>
-                      Save up to 25%
-                    </span>
-                  </span>
-                )}
-              </button>
-            ))}
+          <div className="inline-flex items-center gap-1 p-1 rounded-2xl" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <button
+              onClick={() => setBilling('monthly')}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
+              style={billing === 'monthly' ? { background: 'rgba(255,255,255,0.1)', color: '#fff' } : { color: 'rgba(255,255,255,0.4)' }}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setBilling('annual')}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
+              style={billing === 'annual' ? { background: 'rgba(255,255,255,0.1)', color: '#fff' } : { color: 'rgba(255,255,255,0.4)' }}
+            >
+              Annual
+              <span className="text-xs font-bold px-2 py-0.5 rounded-lg" style={{ background: 'rgba(16,185,129,0.2)', color: '#34D399' }}>
+                Save up to 30%
+              </span>
+            </button>
           </div>
         </motion.div>
 
         {/* Plan cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-14">
           {PLANS.map((plan, i) => {
             const Icon = plan.icon;
             const isCurrent = currentPlan === plan.key;
             const isLoading = loading === plan.key;
-            const displayPrice = billing === 'annual' ? annualPrice(plan) : plan.monthlyPrice;
-            const discount = DISCOUNTS[plan.key];
+            const price = getPlanPrice(plan);
+            const credits = getPlanCredits(plan);
+            const discount = getAnnualDiscount(plan);
+            const showDiscount = billing === 'annual' && discount;
+            const originalPrice = plan.key === 'ultra' ? ULTRA_TIERS[ultraTier].price : plan.monthlyPrice;
 
             return (
               <motion.div
                 key={plan.key}
-                initial={{ opacity: 0, y: 32 }}
+                initial={{ opacity: 0, y: 28 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1, duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
-                className="relative rounded-3xl p-7 flex flex-col"
-                style={{
-                  background: plan.popular
-                    ? 'linear-gradient(145deg, rgba(0,240,255,0.12) 0%, rgba(139,92,246,0.08) 100%)'
-                    : 'rgba(255,255,255,0.04)',
-                  border: plan.popular
-                    ? '1.5px solid rgba(0,240,255,0.4)'
-                    : '1px solid rgba(255,255,255,0.08)',
-                }}
+                transition={{ delay: i * 0.1, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                className="relative rounded-3xl flex flex-col overflow-hidden"
+                style={{ border: `1px solid ${plan.border}`, background: 'rgba(255,255,255,0.03)' }}
               >
-                {plan.popular && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full text-xs font-bold text-white"
-                       style={{ background: 'linear-gradient(135deg, #00F0FF 0%, #8B5CF6 100%)', boxShadow: `0 4px 20px ${plan.glow}` }}>
-                    Most popular
+                {/* Top badge */}
+                {(plan.popular || plan.bestValue) && (
+                  <div className="py-2.5 text-center text-xs font-bold text-white tracking-widest uppercase"
+                       style={{ background: plan.gradient }}>
+                    {plan.popular ? '♦ MOST POPULAR' : '♦ BEST VALUE'}
                   </div>
                 )}
 
-                {/* Icon + name */}
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="w-11 h-11 rounded-2xl flex items-center justify-center"
-                       style={{ background: plan.gradient, boxShadow: `0 4px 20px ${plan.glow}` }}>
-                    <Icon size={20} className="text-white" />
+                <div className="p-7 flex flex-col flex-1">
+                  {/* Plan name + speed */}
+                  <div className="flex items-start justify-between mb-1">
+                    <h3 className="text-2xl font-bold text-white">{plan.name}</h3>
+                    <span className="text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1"
+                          style={{ background: `${plan.speed.color}18`, color: plan.speed.color, border: `1px solid ${plan.speed.color}30` }}>
+                      {plan.speed.emoji} {plan.speed.label}
+                    </span>
                   </div>
-                  <div>
-                    <p className="text-white font-bold text-lg leading-none">{plan.name}</p>
-                    <p className="text-white/40 text-xs mt-0.5">{plan.presentations} presentations/mo</p>
-                  </div>
-                </div>
+                  <p className="text-white/40 text-xs mb-5">{plan.tagline}</p>
 
-                {/* Price */}
-                <div className="mb-6">
-                  <div className="flex items-end gap-2">
-                    <AnimatePresence mode="wait">
-                      <motion.span
-                        key={`${plan.key}-${billing}`}
-                        initial={{ opacity: 0, y: -8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 8 }}
-                        transition={{ duration: 0.2 }}
-                        className="text-4xl font-bold text-white"
-                      >
-                        ${displayPrice}
-                      </motion.span>
-                    </AnimatePresence>
-                    <span className="text-white/40 text-sm mb-1.5">/month</span>
-                    {billing === 'annual' && (
-                      <span className="text-xs font-bold px-2 py-0.5 rounded-lg mb-1.5" style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80' }}>
-                        {Math.round(discount * 100)}% off
-                      </span>
+                  {/* Credits */}
+                  <div className="rounded-2xl p-4 mb-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">✦</span>
+                      <span className="text-xl font-bold text-white">{credits.toLocaleString()} credits/mo</span>
+                    </div>
+                    <p className="text-xs text-white/35 ml-7">= {(credits / 100).toFixed(0)} full presentations</p>
+                    <p className="text-xs font-semibold ml-7 mt-2" style={{ color: plan.speed.color }}>
+                      {plan.parallel}
+                    </p>
+                  </div>
+
+                  {/* Ultra slider */}
+                  {plan.key === 'ultra' && (
+                    <div className="mb-4">
+                      <div className="flex justify-between text-xs text-white/40 mb-2">
+                        <span>{ULTRA_TIERS[0].credits.toLocaleString()}</span>
+                        <span>{ULTRA_TIERS[ULTRA_TIERS.length - 1].credits.toLocaleString()}</span>
+                      </div>
+                      <input
+                        type="range" min={0} max={ULTRA_TIERS.length - 1} step={1}
+                        value={ultraTier}
+                        onChange={e => setUltraTier(Number(e.target.value))}
+                        className="w-full accent-cyan-400"
+                        style={{ cursor: 'pointer' }}
+                      />
+                      {billing === 'annual' && (
+                        <p className="text-xs text-center mt-1.5" style={{ color: '#34D399' }}>
+                          {Math.round(discount * 100)}% off on annual — slide for more credits & bigger discount
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Price */}
+                  <div className="mb-5">
+                    <div className="flex items-end gap-2">
+                      {showDiscount && (
+                        <span className="text-xl font-semibold text-white/30 line-through mb-1">${originalPrice}</span>
+                      )}
+                      <AnimatePresence mode="wait">
+                        <motion.span
+                          key={`${plan.key}-${billing}-${ultraTier}`}
+                          initial={{ opacity: 0, y: -6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 6 }}
+                          transition={{ duration: 0.2 }}
+                          className="text-4xl font-bold text-white"
+                        >
+                          ${price}
+                        </motion.span>
+                      </AnimatePresence>
+                      <span className="text-white/35 text-sm mb-1.5">/month</span>
+                      {showDiscount && (
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-lg mb-1.5"
+                              style={{ background: 'rgba(16,185,129,0.15)', color: '#34D399', border: '1px solid rgba(16,185,129,0.2)' }}>
+                          {Math.round(discount * 100)}% OFF
+                        </span>
+                      )}
+                    </div>
+                    {showDiscount ? (
+                      <p className="text-xs text-white/30 mt-0.5">Billed ${price * 12}/year</p>
+                    ) : !plan.annualDiscount && billing === 'annual' ? (
+                      <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Monthly billing only</p>
+                    ) : (
+                      <p className="text-xs text-white/25 mt-0.5">Billed monthly</p>
                     )}
                   </div>
-                  {billing === 'annual' && (
-                    <p className="text-xs text-white/30 mt-0.5">
-                      Billed ${displayPrice * 12}/year · <span className="line-through">${plan.monthlyPrice}/mo</span>
-                    </p>
-                  )}
-                  <p className="text-sm mt-1.5" style={{ color: plan.color }}>{plan.credits.toLocaleString()} credits included</p>
+
+                  {/* CTA */}
+                  <button
+                    onClick={() => isCurrent ? handleManage() : handleSubscribe(plan.key)}
+                    disabled={isLoading}
+                    className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mb-6 disabled:opacity-60"
+                    style={isCurrent
+                      ? { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }
+                      : { background: plan.gradient, color: '#fff', boxShadow: `0 4px 20px ${plan.glow}` }
+                    }
+                  >
+                    {isLoading ? <Loader2 size={16} className="animate-spin" /> :
+                     isCurrent ? 'Current plan' :
+                     <><span>Get {plan.name}</span><ArrowRight size={14} /></>}
+                  </button>
+
+                  {/* Features */}
+                  <ul className="space-y-2.5 flex-1">
+                    {plan.features.map(f => (
+                      <li key={f} className="flex items-center gap-2.5 text-sm">
+                        <Check size={13} style={{ color: plan.color, flexShrink: 0 }} />
+                        <span className="text-white/70">{f}</span>
+                      </li>
+                    ))}
+                    {plan.locked?.map(f => (
+                      <li key={f} className="flex items-center gap-2.5 text-sm">
+                        <X size={13} className="text-white/20 flex-shrink-0" />
+                        <span className="text-white/25 line-through">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-
-                {/* CTA */}
-                <button
-                  onClick={() => isCurrent ? handleManage() : handleSubscribe(plan.key)}
-                  disabled={isLoading}
-                  className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mb-7 disabled:opacity-60"
-                  style={isCurrent
-                    ? { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.12)' }
-                    : { background: plan.gradient, color: '#fff', boxShadow: `0 4px 24px ${plan.glow}` }
-                  }
-                >
-                  {isLoading ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : isCurrent ? (
-                    'Current plan'
-                  ) : (
-                    <><span>Get {plan.name}</span> <ArrowRight size={15} /></>
-                  )}
-                </button>
-
-                {/* Features */}
-                <ul className="space-y-3 flex-1">
-                  {plan.features.map(f => (
-                    <li key={f} className="flex items-start gap-2.5 text-sm">
-                      <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
-                           style={{ background: `${plan.color}25` }}>
-                        <Check size={10} style={{ color: plan.color }} />
-                      </div>
-                      <span className="text-white/65">{f}</span>
-                    </li>
-                  ))}
-                </ul>
               </motion.div>
             );
           })}
@@ -317,28 +386,25 @@ export default function Pricing() {
 
         {/* Credit cost table */}
         <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, duration: 0.5 }}
-          className="rounded-3xl p-8 mb-12"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.5 }}
+          className="rounded-3xl p-8 mb-10"
+          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
         >
-          <h3 className="text-white font-bold text-xl mb-2">How credits work</h3>
-          <p className="text-white/40 text-sm mb-6">Each AI action deducts credits from your monthly balance. Unused credits don't roll over.</p>
+          <h3 className="text-white font-bold text-xl mb-1.5">How credits work</h3>
+          <p className="text-white/35 text-sm mb-6">Each AI action deducts credits from your monthly balance. Unused credits don't roll over.</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {CREDIT_TABLE.map(({ action, cost }) => (
               <div key={action} className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <p className="text-2xl font-bold mb-1" style={{ color: '#8B5CF6' }}>{cost}</p>
-                <p className="text-xs font-semibold text-white/80 mb-0.5">credits</p>
-                <p className="text-xs text-white/40">{action}</p>
+                <p className="text-2xl font-bold mb-0.5" style={{ color: '#8B5CF6' }}>{cost}</p>
+                <p className="text-xs font-semibold text-white/70 mb-0.5">credits</p>
+                <p className="text-xs text-white/35">{action}</p>
               </div>
             ))}
           </div>
         </motion.div>
 
-        {/* Free tier note */}
-        <p className="text-center text-white/30 text-sm">
-          New accounts get <span className="text-white/60 font-semibold">5 free credits</span> to try HyperBeing — no card required.
+        <p className="text-center text-white/25 text-sm">
+          New accounts get <span className="text-white/55 font-semibold">50 free credits</span> to try HyperBeing — no card required.
         </p>
       </div>
     </div>

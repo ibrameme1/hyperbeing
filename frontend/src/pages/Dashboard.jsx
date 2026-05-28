@@ -254,8 +254,8 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
   }, []);
 
   const initials = (user?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-  const totalCredits = currentPlan === 'basic' ? 100 : currentPlan === 'pro' ? 500 : currentPlan === 'ultra' ? 2000 : 5;
-  const pct = isAdmin ? 100 : totalCredits > 0 ? Math.min(100, Math.round((credits / totalCredits) * 100)) : 0;
+  const planMax = currentPlan === 'basic' ? 100 : currentPlan === 'pro' ? 500 : currentPlan === 'ultra' ? 2000 : 5;
+  const pct = isAdmin ? 100 : planMax > 0 ? Math.min(100, Math.round((credits / planMax) * 100)) : 0;
   const low = !isAdmin && credits !== null && credits < 10;
 
   const ringColor = isAdmin ? '#8B5CF6' : low ? '#f87171' : '#8B5CF6';
@@ -317,7 +317,7 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Credits remaining</span>
                     <span className="text-xs font-bold" style={{ color: low ? '#f87171' : '#8B5CF6' }}>
-                      {credits} / {isAdmin ? '∞' : totalCredits}
+                      {isAdmin ? '∞' : (credits * 10).toLocaleString()} / {isAdmin ? '∞' : (planMax * 10).toLocaleString()}
                     </span>
                   </div>
                   <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
