@@ -17,6 +17,8 @@ export default function AuthCallback() {
     }
 
     localStorage.setItem('hb_token', token);
+    const refresh = params.get('refresh');
+    if (refresh) localStorage.setItem('hb_refresh_token', refresh);
 
     // Fetch user info then route
     fetch(`${import.meta.env.VITE_API_URL || ''}/api/auth/me`, {

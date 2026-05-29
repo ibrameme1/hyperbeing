@@ -5,6 +5,13 @@ import { isAdmin } from '../services/stripeService.js';
 
 const router = Router();
 
+function maskEmail(email) {
+  if (!email) return null;
+  const [local, domain] = email.split('@');
+  const visible = local.slice(0, 2);
+  return `${visible}${'*'.repeat(Math.max(local.length - 2, 3))}@${domain}`;
+}
+
 // ── Admin-only guard — every analytics route requires a valid JWT + admin flag ─
 function requireAdmin(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
@@ -194,7 +201,7 @@ router.get('/users', (req, res) => {
   `).all();
 
   const topUsers = db.prepare(`
-    SELECT u.id, u.name, u.email, u.created_at, u.profile_data,
+    SELECT u.id, u.name, u.email, u.created_at,
            COUNT(DISTINCT p.id) as presentation_count,
            COALESCE(s.plan,'free') as plan,
            COALESCE(s.credits_remaining,0) as credits_remaining
@@ -204,7 +211,7 @@ router.get('/users', (req, res) => {
     GROUP BY u.id
     ORDER BY presentation_count DESC
     LIMIT 20
-  `).all().map(u => ({ ...u, profile_data: u.profile_data ? JSON.parse(u.profile_data) : null }));
+  `).all().map(u => ({ ...u, email: maskEmail(u.email) }));
 
   const recentSignups = db.prepare(`
     SELECT id, name, email, created_at,
@@ -213,7 +220,7 @@ router.get('/users', (req, res) => {
                 WHEN tiktok_id IS NOT NULL THEN 'TikTok'
                 ELSE 'Email' END as provider
     FROM users ORDER BY created_at DESC LIMIT 10
-  `).all();
+  `).all().map(u => ({ ...u, email: maskEmail(u.email) }));
 
   const planDistribution = db.prepare(`
     SELECT COALESCE(plan,'free') as plan, COUNT(*) as count

@@ -250,17 +250,18 @@ router.get('/:id', authenticateToken, (req, res) => {
     .prepare('SELECT * FROM messages WHERE presentation_id = ? ORDER BY created_at ASC')
     .all(req.params.id);
 
+  let slide_plan = null, slides_data = null;
+  try { slide_plan = pres.slide_plan ? JSON.parse(pres.slide_plan) : null; } catch {}
+  try { slides_data = pres.slides_data ? JSON.parse(pres.slides_data) : null; } catch {}
+
   res.json({
-    presentation: {
-      ...pres,
-      slide_plan: pres.slide_plan ? JSON.parse(pres.slide_plan) : null,
-      slides_data: pres.slides_data ? JSON.parse(pres.slides_data) : null,
-    },
-    messages: messages.map(m => ({
-      ...m,
-      attachments: JSON.parse(m.attachments || '[]'),
-      metadata: JSON.parse(m.metadata || '{}'),
-    })),
+    presentation: { ...pres, slide_plan, slides_data },
+    messages: messages.map(m => {
+      let attachments = [], metadata = {};
+      try { attachments = JSON.parse(m.attachments || '[]'); } catch {}
+      try { metadata = JSON.parse(m.metadata || '{}'); } catch {}
+      return { ...m, attachments, metadata };
+    }),
   });
 });
 

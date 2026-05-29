@@ -7,21 +7,28 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 import axios from 'axios';
 import { getDb } from '../database.js';
+import { authenticateToken } from '../middleware/auth.js';
 import { validate, isString, isEmail } from '../middleware/validate.js';
 import { authLimiter, loginLimiter, authBackoff } from '../middleware/rateLimits.js';
 
 const router = Router();
 
 function signToken(userId) {
-  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '15m' });
+}
+
+function signRefreshToken(userId) {
+  return jwt.sign({ userId, type: 'refresh' }, process.env.JWT_SECRET, { expiresIn: '7d' });
 }
 
 function frontendUrl() {
   return process.env.FRONTEND_URL || 'http://localhost:5173';
 }
 
-function redirectWithToken(res, token, isNew = false) {
-  res.redirect(`${frontendUrl()}/auth/callback?token=${token}&new=${isNew}`);
+function redirectWithToken(res, userId, isNew = false) {
+  const token = signToken(userId);
+  const refreshToken = signRefreshToken(userId);
+  res.redirect(`${frontendUrl()}/auth/callback?token=${token}&refresh=${refreshToken}&new=${isNew}`);
 }
 
 // ── Passport: Google ─────────────────────────────────────────────────────────
@@ -97,7 +104,7 @@ router.get('/google/callback',
       email: profile.emails?.[0]?.value,
       avatar: profile.photos?.[0]?.value,
     });
-    redirectWithToken(res, signToken(user.id), isNew);
+    redirectWithToken(res, user.id, isNew);
   },
 );
 
@@ -117,7 +124,7 @@ router.get('/meta/callback',
       email: profile.emails?.[0]?.value,
       avatar: profile.photos?.[0]?.value,
     });
-    redirectWithToken(res, signToken(user.id), isNew);
+    redirectWithToken(res, user.id, isNew);
   },
 );
 
@@ -173,7 +180,7 @@ router.get('/tiktok/callback', async (req, res) => {
       email: null,
       avatar: tiktokUser.avatar_url,
     });
-    redirectWithToken(res, signToken(user.id), isNew);
+    redirectWithToken(res, user.id, isNew);
   } catch (err) {
     console.error('TikTok OAuth error:', err.message);
     res.redirect(`${frontendUrl()}/login?error=oauth`);
@@ -206,7 +213,7 @@ router.post('/register',
 
     req.clearAuthBackoff?.();
     const user = { id, name, email: email.toLowerCase() };
-    res.status(201).json({ token: signToken(id), user });
+    res.status(201).json({ token: signToken(id), refreshToken: signRefreshToken(id), user });
   },
 );
 
@@ -239,7 +246,7 @@ router.post('/login',
 
     req.clearAuthBackoff?.();
     const { password_hash: _, ...safeUser } = user;
-    res.json({ token: signToken(user.id), user: safeUser });
+    res.json({ token: signToken(user.id), refreshToken: signRefreshToken(user.id), user: safeUser });
   },
 );
 
@@ -255,6 +262,28 @@ router.post('/onboarding', (req, res) => {
   } catch {
     res.status(401).json({ error: 'Invalid token' });
   }
+});
+
+router.post('/refresh', (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(401).json({ error: 'Refresh token required' });
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+    if (decoded.type !== 'refresh') return res.status(401).json({ error: 'Invalid token type' });
+    const user = getDb().prepare('SELECT id FROM users WHERE id = ?').get(decoded.userId);
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    res.json({
+      token: signToken(decoded.userId),
+      refreshToken: signRefreshToken(decoded.userId),
+    });
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired refresh token' });
+  }
+});
+
+router.delete('/account', authenticateToken, (req, res) => {
+  getDb().prepare('DELETE FROM users WHERE id = ?').run(req.user.id);
+  res.json({ message: 'Account deleted' });
 });
 
 router.get('/me', (req, res) => {

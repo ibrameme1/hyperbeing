@@ -14,7 +14,9 @@ const backoffStore = new Map();
 const BACKOFF_TTL_MS = 15 * 60 * 1000; // entries expire after 15 min of inactivity
 
 function getBackoffKey(req) {
-  return ipKeyGenerator(req);
+  // Prefer email-based key so IP spoofing cannot bypass per-account limits
+  const email = req.body?.email?.toLowerCase?.();
+  return email ? `email:${email}` : `ip:${ipKeyGenerator(req)}`;
 }
 
 export function authBackoff(req, res, next) {

@@ -24,7 +24,12 @@ app.set('trust proxy', 1);
 // Security headers (HSTS, X-Frame-Options, CSP, etc.)
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow image CDN assets
-  contentSecurityPolicy: false, // frontend handles its own CSP via Vite
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'none'"],      // pure JSON API — no resources should load from here
+      frameAncestors: ["'none'"],  // prevent embedding this API origin in iframes
+    },
+  },
   hsts: {
     maxAge: 63072000, // 2 years
     includeSubDomains: true,

@@ -135,6 +135,16 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_analytics_events_user ON analytics_events(user_id);
   `);
 
+  // GDPR: anonymise analytics events older than 90 days by nullifying user_id
+  function anonymiseOldAnalytics() {
+    db.prepare(
+      `UPDATE analytics_events SET user_id = NULL
+       WHERE user_id IS NOT NULL AND created_at < datetime('now', '-90 days')`
+    ).run();
+  }
+  anonymiseOldAnalytics();
+  setInterval(anonymiseOldAnalytics, 24 * 60 * 60 * 1000);
+
   console.log('✅ Database ready');
   return db;
 }
