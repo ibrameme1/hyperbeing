@@ -85,7 +85,8 @@ router.post('/webhook', async (req, res) => {
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
-    return res.status(400).send(`Webhook error: ${err.message}`);
+    console.error('Stripe webhook signature error:', err.message);
+    return res.status(400).send('Webhook signature verification failed');
   }
 
   const db = getDb();

@@ -500,8 +500,7 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
 
   res.json({ message: 'Regenerating…', index: idx });
 
-  const regenPresRow = db.prepare('SELECT aspect_ratio FROM presentations WHERE id = ?').get(req.params.id);
-  const regenAspectRatio = regenPresRow?.aspect_ratio || '16:9';
+  const regenAspectRatio = pres.aspect_ratio || '16:9';
 
   // Run async — client watches SSE for result
   (async () => {
@@ -637,8 +636,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
 
   const slides = JSON.parse(pres.slides_data);
   const startIndex = slides.length;
-  const presRow = db.prepare('SELECT aspect_ratio FROM presentations WHERE id = ?').get(req.params.id);
-  const aspectRatio = presRow?.aspect_ratio || '16:9';
+  const aspectRatio = pres.aspect_ratio || '16:9';
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
 
   // Create placeholder slides immediately (for auto, use 3 as optimistic placeholder count)
@@ -683,7 +681,9 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       });
 
       // Remove excess optimistic placeholders if Nova generated fewer than 3
-      const current0 = JSON.parse(db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id).slides_data);
+      const presRow0 = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+      if (!presRow0?.slides_data) return;
+      const current0 = JSON.parse(presRow0.slides_data);
       const trimmed = current0.filter(s => s.status !== 'generating' || newSlideDefs.some(d => d.index === s.index));
       if (trimmed.length !== current0.length) {
         db.prepare(`UPDATE presentations SET slides_data = ? WHERE id = ?`).run(JSON.stringify(trimmed), req.params.id);
@@ -702,7 +702,9 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
           ).then(imageData => {
             const done = { ...slideDef, image_data: imageData, status: 'complete' };
             // Persist: replace placeholder with done slide
-            const current = JSON.parse(db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id).slides_data);
+            const currentRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+            if (!currentRow?.slides_data) return;
+            const current = JSON.parse(currentRow.slides_data);
             const idx = current.findIndex(s => s.index === done.index);
             if (idx !== -1) current[idx] = done; else current.push(done);
             db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
@@ -710,7 +712,9 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
             broadcast(req.params.id, { type: 'slide_ready', slide: done });
           }).catch(err => {
             const errSlide = { ...slideDef, image_data: null, status: 'error' };
-            const current = JSON.parse(db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id).slides_data);
+            const errRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+            if (!errRow?.slides_data) return;
+            const current = JSON.parse(errRow.slides_data);
             const idx = current.findIndex(s => s.index === errSlide.index);
             if (idx !== -1) current[idx] = errSlide;
             db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)

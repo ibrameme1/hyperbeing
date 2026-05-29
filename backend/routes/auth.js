@@ -8,7 +8,7 @@ import { Strategy as FacebookStrategy } from 'passport-facebook';
 import axios from 'axios';
 import { getDb } from '../database.js';
 import { validate, isString, isEmail } from '../middleware/validate.js';
-import { authLimiter, loginLimiter } from '../middleware/rateLimits.js';
+import { authLimiter, loginLimiter, authBackoff } from '../middleware/rateLimits.js';
 
 const router = Router();
 
@@ -126,19 +126,28 @@ router.get('/tiktok', (req, res) => {
   if (!process.env.TIKTOK_CLIENT_KEY) {
     return res.redirect(`${frontendUrl()}/login?error=tiktok_not_configured`);
   }
+  const state = uuid();
+  req.session.tiktokOAuthState = state;
   const params = new URLSearchParams({
     client_key: process.env.TIKTOK_CLIENT_KEY,
     scope: 'user.info.basic',
     response_type: 'code',
     redirect_uri: `${process.env.API_URL || 'http://localhost:3001'}/api/auth/tiktok/callback`,
-    state: uuid(),
+    state,
   });
   res.redirect(`https://www.tiktok.com/v2/auth/authorize/?${params}`);
 });
 
 router.get('/tiktok/callback', async (req, res) => {
-  const { code } = req.query;
+  const { code, state } = req.query;
   if (!code) return res.redirect(`${frontendUrl()}/login?error=oauth`);
+
+  // Validate CSRF state
+  const expectedState = req.session.tiktokOAuthState;
+  delete req.session.tiktokOAuthState;
+  if (!state || !expectedState || state !== expectedState) {
+    return res.redirect(`${frontendUrl()}/login?error=oauth`);
+  }
 
   try {
     const tokenRes = await axios.post('https://open.tiktokapis.com/v2/oauth/token/', new URLSearchParams({
@@ -173,6 +182,7 @@ router.get('/tiktok/callback', async (req, res) => {
 
 // ── Email / password ──────────────────────────────────────────────────────────
 router.post('/register',
+  authBackoff,
   authLimiter,
   validate({
     name:     isString(2, 100),
@@ -183,7 +193,10 @@ router.post('/register',
     const { name, email, password } = req.body;
     const db = getDb();
     const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase());
-    if (existing) return res.status(409).json({ error: 'Email already in use' });
+    if (existing) {
+      req.recordAuthFailure?.();
+      return res.status(409).json({ error: 'Email already in use' });
+    }
 
     const password_hash = await bcrypt.hash(password, 12);
     const id = uuid();
@@ -191,12 +204,14 @@ router.post('/register',
       'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)'
     ).run(id, name, email.toLowerCase(), password_hash);
 
+    req.clearAuthBackoff?.();
     const user = { id, name, email: email.toLowerCase() };
     res.status(201).json({ token: signToken(id), user });
   },
 );
 
 router.post('/login',
+  authBackoff,
   loginLimiter,
   validate({
     email:    isEmail(),
@@ -214,13 +229,15 @@ router.post('/login',
     const valid = await bcrypt.compare(password, user?.password_hash || dummyHash);
 
     if (!user || !user.password_hash) {
-      // bcrypt ran (timing-safe), but no account exists for this email
+      req.recordAuthFailure?.();
       return res.status(401).json({ error: 'No account found with that email.', code: 'USER_NOT_FOUND' });
     }
     if (!valid) {
+      req.recordAuthFailure?.();
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    req.clearAuthBackoff?.();
     const { password_hash: _, ...safeUser } = user;
     res.json({ token: signToken(user.id), user: safeUser });
   },

@@ -7,7 +7,50 @@ function handler(res, options) {
   });
 }
 
-// 10 attempts per 15 min — login & register (brute-force protection)
+// ── Exponential backoff for auth endpoints ────────────────────────────────────
+// Tracks failed attempts per IP. On success, caller must invoke req.clearAuthBackoff().
+// Delays: 0, 0, 1s, 2s, 4s, 8s, 16s, 32s, …  (cap: 5 min)
+const backoffStore = new Map();
+const BACKOFF_TTL_MS = 15 * 60 * 1000; // entries expire after 15 min of inactivity
+
+function getBackoffKey(req) {
+  return ipKeyGenerator(req);
+}
+
+export function authBackoff(req, res, next) {
+  const key = getBackoffKey(req);
+  const entry = backoffStore.get(key);
+  if (entry && entry.blockedUntil > Date.now()) {
+    const retryAfter = Math.ceil((entry.blockedUntil - Date.now()) / 1000);
+    res.setHeader('Retry-After', retryAfter);
+    return res.status(429).json({
+      error: 'Too many failed attempts. Please wait before trying again.',
+      retryAfter,
+    });
+  }
+  // Attach helpers so the route can record outcomes
+  req.recordAuthFailure = () => {
+    const existing = backoffStore.get(key);
+    const failures = (existing?.failures ?? 0) + 1;
+    // First 2 failures: no delay. Afterwards: 2^(n-2) seconds, capped at 5 min.
+    const delayMs = failures > 2 ? Math.min(Math.pow(2, failures - 2) * 1000, 5 * 60 * 1000) : 0;
+    backoffStore.set(key, { failures, blockedUntil: Date.now() + delayMs, lastSeen: Date.now() });
+  };
+  req.clearAuthBackoff = () => backoffStore.delete(key);
+  next();
+}
+
+// Periodically evict stale entries to prevent unbounded memory growth
+setInterval(() => {
+  const cutoff = Date.now() - BACKOFF_TTL_MS;
+  for (const [k, v] of backoffStore) {
+    if (v.lastSeen < cutoff) backoffStore.delete(k);
+  }
+}, 5 * 60 * 1000);
+
+// ── Hard rate limits ──────────────────────────────────────────────────────────
+
+// 10 attempts per 15 min — login & register (absolute cap)
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -27,7 +70,7 @@ export const loginLimiter = rateLimit({
   handler: (req, res, next, options) => handler(res, options),
 });
 
-// 10 presentations per hour per IP (AI generation is expensive)
+// 10 presentations per hour per user/IP (AI generation is expensive)
 export const createPresentationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,

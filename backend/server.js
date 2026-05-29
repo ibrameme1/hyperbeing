@@ -25,6 +25,11 @@ app.set('trust proxy', 1);
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow image CDN assets
   contentSecurityPolicy: false, // frontend handles its own CSP via Vite
+  hsts: {
+    maxAge: 63072000, // 2 years
+    includeSubDomains: true,
+    preload: true,
+  },
 }));
 
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
