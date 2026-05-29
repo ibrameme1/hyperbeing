@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { recordTokenUsage } from './stripeService.js';
 
 const MOCK_MODE = !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'demo';
 
@@ -245,15 +246,18 @@ IMPORTANT: When the user's message contains the section "PREFLIGHT ANSWERS:", yo
 
 Once you have enough context — stop asking and generate the full slide plan.
 
-CRITICAL: You ALWAYS respond with VALID JSON in EXACTLY this format:
+CRITICAL: You ALWAYS respond in EXACTLY this two-part format:
 
-{
-  "message": "Your warm conversational message to the user (markdown OK)",
-  "state": "gathering_info" | "ready",
-  "slide_plan": null
-}
+[Your warm conversational message to the user — markdown OK, no length limit]
+---
+{"state":"gathering_info","slide_plan":null}
 
-When state is "ready", set slide_plan to:
+Use a line containing exactly "---" to separate your message from the JSON metadata below it. Never write "---" in your message text.
+
+When state is "ready", the metadata line becomes:
+{"state":"ready","slide_plan":{...}}
+
+Where slide_plan contains:
 {
   "presentation_title": "Title",
   "total_slides": <number — user-specified OR your intelligent decision>,
@@ -394,7 +398,7 @@ ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 - [] — attach nothing (e.g., pure text quote slides)
 
 CRITICAL RULES:
-1. Always return valid JSON — nothing outside the JSON object
+1. Always use the two-part format: message text, then "---", then JSON metadata on the next line. Nothing outside this structure.
 2. Never make up facts about the user's business — only use what they provide
 3. When state = "ready", slide_plan MUST be fully populated with ALL slides
 4. nano_banana_prompt must be 250-300 words — specific, art-directed, cinematically written
@@ -404,7 +408,7 @@ CRITICAL RULES:
 
 // ─── Exports ────────────────────────────────────────────────────────────────
 
-export async function chat(conversationHistory, userMessage, attachments = []) {
+export async function chat(conversationHistory, userMessage, attachments = [], userId = null) {
   if (MOCK_MODE) return mockChat(conversationHistory);
 
   const userContent = buildUserContent(userMessage, attachments);
@@ -430,19 +434,28 @@ export async function chat(conversationHistory, userMessage, attachments = []) {
     messages,
   });
 
-  const raw = response.content[0].text.trim();
-  const jsonText = raw.startsWith('```')
-    ? raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
-    : raw;
+  if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
 
-  let parsed;
+  const raw = response.content[0].text.trim();
+  const SEP = '\n---\n';
+  const sepIdx = raw.indexOf(SEP);
+  const messageText = (sepIdx !== -1 ? raw.slice(0, sepIdx) : raw).trim();
+  const metadataStr = (sepIdx !== -1 ? raw.slice(sepIdx + SEP.length) : '').trim();
+
+  let metadata = { state: 'gathering_info', slide_plan: null };
   try {
-    parsed = JSON.parse(jsonText);
+    if (metadataStr) {
+      const jsonText = metadataStr.startsWith('```')
+        ? metadataStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+        : metadataStr;
+      metadata = JSON.parse(jsonText);
+    }
   } catch {
-    const match = jsonText.match(/\{[\s\S]*\}/);
-    if (match) parsed = JSON.parse(match[0]);
-    else parsed = { message: raw, state: 'gathering_info', slide_plan: null };
+    const match = metadataStr.match(/\{[\s\S]*\}/);
+    if (match) try { metadata = JSON.parse(match[0]); } catch {}
   }
+
+  const parsed = { message: messageText, ...metadata };
 
   console.log('\n' + '═'.repeat(60));
   console.log('🤖 CLAUDE API OUTPUT');
@@ -460,6 +473,88 @@ export async function chat(conversationHistory, userMessage, attachments = []) {
   console.log('═'.repeat(60) + '\n');
 
   return parsed;
+}
+
+export async function streamChat(conversationHistory, userMessage, attachments = [], onChunk, userId = null) {
+  if (MOCK_MODE) {
+    const result = await mockChat(conversationHistory);
+    const parts = result.message.split(/(\s+)/);
+    for (const part of parts) {
+      if (part) {
+        await new Promise(r => setTimeout(r, 30));
+        onChunk(part);
+      }
+    }
+    return result;
+  }
+
+  const userContent = buildUserContent(userMessage, attachments);
+  const messages = [
+    ...conversationHistory.map(m => ({ role: m.role, content: buildHistoryContent(m) })),
+    { role: 'user', content: userContent },
+  ];
+
+  const stream = client.messages.stream({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 16000,
+    system: SYSTEM_PROMPT,
+    messages,
+  });
+
+  let buffer = '';
+  let streamedIdx = 0;
+  let separatorFound = false;
+  const SEP = '\n---\n';
+
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+      buffer += event.delta.text;
+
+      if (!separatorFound) {
+        const sepIdx = buffer.indexOf(SEP);
+        if (sepIdx !== -1) {
+          if (sepIdx > streamedIdx) onChunk(buffer.slice(streamedIdx, sepIdx));
+          streamedIdx = sepIdx;
+          separatorFound = true;
+        } else {
+          const safeLen = Math.max(streamedIdx, buffer.length - SEP.length);
+          if (safeLen > streamedIdx) {
+            onChunk(buffer.slice(streamedIdx, safeLen));
+            streamedIdx = safeLen;
+          }
+        }
+      }
+    }
+  }
+
+  const sepIdx = buffer.indexOf(SEP);
+  const messageText = (sepIdx !== -1 ? buffer.slice(0, sepIdx) : buffer).trim();
+  const metadataStr = (sepIdx !== -1 ? buffer.slice(sepIdx + SEP.length) : '').trim();
+  const msgEnd = sepIdx !== -1 ? sepIdx : buffer.length;
+  if (streamedIdx < msgEnd) onChunk(buffer.slice(streamedIdx, msgEnd));
+
+  let metadata = { state: 'gathering_info', slide_plan: null };
+  try {
+    if (metadataStr) {
+      const jsonText = metadataStr.startsWith('```')
+        ? metadataStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+        : metadataStr;
+      metadata = JSON.parse(jsonText);
+    }
+  } catch (e) {
+    console.error('Failed to parse streamChat metadata:', e.message, metadataStr.slice(0, 200));
+    const match = metadataStr.match(/\{[\s\S]*\}/);
+    if (match) try { metadata = JSON.parse(match[0]); } catch {}
+  }
+
+  if (userId) {
+    try {
+      const finalMsg = await stream.finalMessage();
+      recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
+    } catch {}
+  }
+
+  return { message: messageText, ...metadata };
 }
 
 const ANALYZE_PROMPT = `You are a presentation intelligence system. A user has submitted a brief to create a presentation. Analyze their input and return a JSON object with contextual questions to gather exactly what's needed.
@@ -486,7 +581,7 @@ Rules:
 - NEVER ask generic questions like "how many slides" — use suggested_slide_count instead
 - Questions and options must be directly relevant to the specific brief provided`;
 
-export async function analyzePresentation(message, attachments = []) {
+export async function analyzePresentation(message, attachments = [], userId = null) {
   if (MOCK_MODE) {
     await new Promise(r => setTimeout(r, 800));
     return {
@@ -510,6 +605,8 @@ export async function analyzePresentation(message, attachments = []) {
     messages: [{ role: 'user', content: userContent }],
   });
 
+  if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+
   const raw = response.content[0].text.trim();
   const jsonText = raw.startsWith('```') ? raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '') : raw;
 
@@ -522,7 +619,7 @@ export async function analyzePresentation(message, attachments = []) {
   }
 }
 
-export async function regenerateSlide(slide, instruction, presentationContext) {
+export async function regenerateSlide(slide, instruction, presentationContext, userId = null) {
   if (MOCK_MODE) return mockRegenerateSlide(slide, instruction);
 
   const slideInfo = { ...slide };
@@ -570,6 +667,8 @@ Return ONLY the JSON object, nothing else.`,
     max_tokens: 1024,
     messages: [{ role: 'user', content }],
   });
+
+  if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
 
   const raw = response.content[0].text.trim();
   const jsonText = raw.startsWith('```')
@@ -747,7 +846,7 @@ ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 - "all" — attach all uploaded images
 - [] — attach nothing (e.g., pure text quote slides)`;
 
-export async function streamSlidePlan(message, attachments, callbacks) {
+export async function streamSlidePlan(message, attachments, callbacks, userId = null) {
   const { onHeader, onSlide } = callbacks;
 
   if (MOCK_MODE) {
@@ -820,11 +919,18 @@ export async function streamSlidePlan(message, attachments, callbacks) {
       } catch {}
     }
   }
+
+  if (userId) {
+    try {
+      const finalMsg = await stream.finalMessage();
+      recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
+    } catch {}
+  }
 }
 
 // ─── Suggest presentation title ──────────────────────────────────────────────
 
-export async function suggestTitle(context) {
+export async function suggestTitle(context, userId = null) {
   if (MOCK_MODE) return 'Untitled Presentation';
 
   const response = await client.messages.create({
@@ -840,6 +946,8 @@ ${JSON.stringify(context, null, 2)}
 Return only the title text, nothing else.`,
     }],
   });
+
+  if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
 
   return response.content[0].text.trim().replace(/^["']|["']$/g, '');
 }
@@ -860,7 +968,7 @@ Rules:
 - Maintain the same visual style, theme, and tone as the existing deck
 - Each nano_banana_prompt must follow the mandatory 5-layer structure (Background → Top/Header → Main Body → Callout Cards → Bottom Strip) at 250–600 words`;
 
-export async function streamNewSlides(description, count, startIndex, presentationContext, onSlide) {
+export async function streamNewSlides(description, count, startIndex, presentationContext, onSlide, userId = null) {
   const isAuto = count === null || count === 'auto';
 
   if (MOCK_MODE) {
@@ -934,5 +1042,12 @@ ${countInstruction} Start index at ${startIndex}.`;
         try { onSlide(JSON.parse(jsonStr)); } catch {}
       }
     }
+  }
+
+  if (userId) {
+    try {
+      const finalMsg = await stream.finalMessage();
+      recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
+    } catch {}
   }
 }

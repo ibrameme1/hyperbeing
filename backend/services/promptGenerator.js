@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { recordTokenUsage } from './stripeService.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -11,7 +12,7 @@ const SYSTEM_PROMPT = fs.readFileSync(
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-export async function generatePromptResponse(history, userMessage, attachedImages = []) {
+export async function generatePromptResponse(history, userMessage, attachedImages = [], userId = null) {
   const userContent = [];
 
   for (const img of attachedImages) {
@@ -40,6 +41,8 @@ export async function generatePromptResponse(history, userMessage, attachedImage
     system: SYSTEM_PROMPT,
     messages,
   });
+
+  if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
 
   const rawText = response.content
     .filter(b => b.type === 'text')

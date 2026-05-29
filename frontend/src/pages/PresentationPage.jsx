@@ -18,12 +18,13 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
   const [sending, setSending] = useState(false);
   const [sendingLabel, setSendingLabel] = useState('Thinking…');
   const [sendError, setSendError] = useState('');
+  const [streamingContent, setStreamingContent] = useState(null);
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, streamingContent]);
 
   const onDrop = useCallback(acceptedFiles => {
     acceptedFiles.forEach(file => {
@@ -63,22 +64,72 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
     onNewMessage(userMsg);
     setInput('');
     setAttachments([]);
+    setStreamingContent('');
 
-    // Show a more descriptive label after 8s in case Claude is building the slide plan
     const labelTimer = setTimeout(() => setSendingLabel('Building your slide plan…'), 8000);
 
     try {
-      const { data } = await api.post(`/presentations/${presentation.id}/messages`, {
-        message: userMsg.content,
-        attachments: userMsg.attachments.map(a => ({
-          type: a.type, name: a.name, data: a.data, mimeType: a.mimeType,
-        })),
+      const token = localStorage.getItem('hb_token');
+      const apiBase = import.meta.env.VITE_API_URL || '';
+      const response = await fetch(`${apiBase}/api/presentations/${presentation.id}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          message: userMsg.content,
+          attachments: userMsg.attachments.map(a => ({
+            type: a.type, name: a.name, data: a.data, mimeType: a.mimeType,
+          })),
+        }),
       });
-      onNewMessage(data.aiMessage);
 
-      if (data.aiMessage.metadata?.state === 'ready') {
-        const presResp = await api.get(`/presentations/${presentation.id}`);
-        onGenerate(presResp.data.presentation);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const status = response.status;
+        setSendError(
+          errorData.error ||
+          (status === 429 ? 'You\'re sending messages too quickly. Please wait a moment.' :
+           status === 402 ? 'You\'ve reached your monthly token limit. Please upgrade your plan.' :
+           status === 503 ? 'Nova is temporarily unavailable. Please try again in a few seconds.' :
+           'Message failed to send. Please try again.')
+        );
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let sseBuffer = '';
+      let streamText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        sseBuffer += decoder.decode(value, { stream: true });
+
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let event;
+          try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (event.type === 'chunk') {
+            streamText += event.text;
+            setStreamingContent(streamText);
+          } else if (event.type === 'done') {
+            setStreamingContent(null);
+            onNewMessage(event.aiMessage);
+            if (event.aiMessage.metadata?.state === 'ready') {
+              const { data: presData } = await api.get(`/presentations/${presentation.id}`);
+              onGenerate(presData.presentation);
+            }
+          } else if (event.type === 'error') {
+            setSendError(event.error || 'Message failed to send. Please try again.');
+          }
+        }
       }
     } catch (err) {
       console.error('Send failed:', err);
@@ -86,12 +137,14 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
       setSendError(
         err.response?.data?.error ||
         (status === 429 ? 'You\'re sending messages too quickly. Please wait a moment.' :
+         status === 402 ? 'You\'ve reached your monthly token limit. Please upgrade your plan.' :
          status === 503 ? 'Nova is temporarily unavailable. Please try again in a few seconds.' :
          'Message failed to send. Please try again.')
       );
     } finally {
       clearTimeout(labelTimer);
       setSending(false);
+      setStreamingContent(null);
     }
   }
 
@@ -135,7 +188,11 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
           <MessageBubble key={msg.id || i} message={msg} />
         ))}
 
-        {sending && (
+        {streamingContent !== null && (
+          <MessageBubble message={{ role: 'assistant', content: streamingContent || '…', streaming: true }} />
+        )}
+
+        {sending && streamingContent === null && (
           <div className="flex gap-3">
             <div className="flex-shrink-0 w-8 h-8 rounded-2xl flex items-center justify-center"
                  style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>

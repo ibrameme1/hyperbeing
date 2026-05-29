@@ -3,9 +3,9 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { chat, regenerateSlide, analyzePresentation, streamSlidePlan, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
+import { streamChat, regenerateSlide, analyzePresentation, streamSlidePlan, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
 import { generateSlideImage } from '../services/imageGeneration.js';
-import { deductCredits, getOrCreateSubscription, CREDIT_COSTS } from '../services/stripeService.js';
+import { deductCredits, getOrCreateSubscription, CREDIT_COSTS, checkTokenBudget } from '../services/stripeService.js';
 import { validate, isString, isOptionalString, isEnum, isArray, isIntBetween } from '../middleware/validate.js';
 import { createPresentationLimiter, addSlidesLimiter, analyzeLimiter } from '../middleware/rateLimits.js';
 
@@ -62,8 +62,13 @@ router.post('/analyze', authenticateToken, analyzeLimiter, async (req, res) => {
   if (!Array.isArray(attachments) || attachments.length > 10) {
     return res.status(400).json({ error: 'Attachments must be an array of max 10 items' });
   }
+  try { checkTokenBudget(req.user.id); } catch (err) {
+    if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
+    throw err;
+  }
+
   try {
-    const analysis = await analyzePresentation(message, attachments);
+    const analysis = await analyzePresentation(message, attachments, req.user.id);
     res.json(analysis);
   } catch (err) {
     console.error('Analysis error:', err);
@@ -88,6 +93,11 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
   }
   if (!VALID_ASPECT_RATIOS.includes(aspectRatio)) {
     return res.status(400).json({ error: `Invalid aspect ratio. Must be one of: ${VALID_ASPECT_RATIOS.join(', ')}` });
+  }
+
+  try { checkTokenBudget(req.user.id); } catch (err) {
+    if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
+    throw err;
   }
 
   // Check + deduct credits before starting
@@ -119,14 +129,15 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
     presentation: db.prepare('SELECT * FROM presentations WHERE id = ?').get(id),
   });
 
-  runFullFlow(id, message, attachments).catch(err => {
+  const userId = req.user.id;
+  runFullFlow(id, message, attachments, userId).catch(err => {
     console.error('Full flow error:', err);
     broadcast(id, { type: 'error', message: err.message });
     getDb().prepare(`UPDATE presentations SET status = 'error', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(id);
   });
 });
 
-async function runFullFlow(presentationId, message, attachments) {
+async function runFullFlow(presentationId, message, attachments, userId = null) {
   const db = getDb();
 
   broadcast(presentationId, { type: 'plan_generating' });
@@ -205,7 +216,7 @@ async function runFullFlow(presentationId, message, attachments) {
 
       slidePromises.push(promise);
     },
-  });
+  }, userId);
 
   // Wait for all Nano Banana calls (they started as Claude was streaming)
   await Promise.all(slidePromises);
@@ -227,7 +238,7 @@ async function runFullFlow(presentationId, message, attachments) {
   // Auto-suggest a contextual title after generation completes
   try {
     const titleCtx = { slides: allSlides.map(s => ({ title: s.title, type: s.type, key_points: s.key_points?.slice(0, 2) })) };
-    const autoTitle = await suggestTitle(titleCtx);
+    const autoTitle = await suggestTitle(titleCtx, userId);
     if (autoTitle) {
       db.prepare(`UPDATE presentations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(autoTitle, presentationId);
       broadcast(presentationId, { type: 'title_updated', title: autoTitle });
@@ -265,7 +276,7 @@ router.get('/:id', authenticateToken, (req, res) => {
   });
 });
 
-// ─── Continue chat ────────────────────────────────────────────────────────
+// ─── Continue chat (streaming SSE) ───────────────────────────────────────
 router.post('/:id/messages', authenticateToken, async (req, res) => {
   const { message, attachments = [] } = req.body;
   if (!message?.trim() && attachments.length === 0) {
@@ -278,6 +289,11 @@ router.post('/:id/messages', authenticateToken, async (req, res) => {
     .get(req.params.id, req.user.id);
   if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
 
+  try { checkTokenBudget(req.user.id); } catch (err) {
+    if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
+    throw err;
+  }
+
   const history = db
     .prepare('SELECT * FROM messages WHERE presentation_id = ? ORDER BY created_at ASC')
     .all(req.params.id);
@@ -288,10 +304,18 @@ router.post('/:id/messages', authenticateToken, async (req, res) => {
      VALUES (?, ?, 'user', ?, ?)`
   ).run(msgId, req.params.id, message, JSON.stringify(attachments));
 
-  try {
-    const agentResponse = await chat(history, message, attachments);
-    const aiMsgId = uuid();
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
 
+  try {
+    const agentResponse = await streamChat(history, message, attachments, (chunk) => {
+      res.write(`data: ${JSON.stringify({ type: 'chunk', text: chunk })}\n\n`);
+    }, req.user.id);
+
+    const aiMsgId = uuid();
     db.prepare(
       `INSERT INTO messages (id, presentation_id, role, content, metadata)
        VALUES (?, ?, 'assistant', ?, ?)`
@@ -305,12 +329,12 @@ router.post('/:id/messages', authenticateToken, async (req, res) => {
       ).run(presentation_title || pres.title, JSON.stringify(agentResponse.slide_plan), req.params.id);
     }
 
-    res.json({
-      aiMessage: { id: aiMsgId, role: 'assistant', content: agentResponse.message, metadata: agentResponse },
-    });
+    res.write(`data: ${JSON.stringify({ type: 'done', aiMessage: { id: aiMsgId, role: 'assistant', content: agentResponse.message, metadata: agentResponse } })}\n\n`);
+    res.end();
   } catch (err) {
     console.error('Agent error:', err);
-    res.status(500).json({ error: 'Nova couldn\'t process your message right now. Please try again.' });
+    res.write(`data: ${JSON.stringify({ type: 'error', error: 'Nova couldn\'t process your message right now. Please try again.' })}\n\n`);
+    res.end();
   }
 });
 
@@ -492,6 +516,11 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
   if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
   if (!pres.slides_data) return res.status(400).json({ error: 'No slides have been generated yet. Generate your presentation first.' });
 
+  try { checkTokenBudget(req.user.id); } catch (err) {
+    if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
+    throw err;
+  }
+
   const slides = JSON.parse(pres.slides_data);
   const idx = parseInt(req.params.index, 10);
   const slide = slides[idx];
@@ -510,7 +539,7 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
         theme: slidePlan.theme,
         color_palette: slidePlan.color_palette,
         presentation_title: slidePlan.presentation_title,
-      });
+      }, req.user.id);
 
       // Only the current slide's rendered image + any new attachments the user added in the edit bar
       let attachedImages = [];
@@ -596,7 +625,7 @@ router.post('/:id/suggest-title', authenticateToken, async (req, res) => {
   };
 
   try {
-    const title = await suggestTitle(context);
+    const title = await suggestTitle(context, req.user.id);
     res.json({ title });
   } catch (err) {
     res.status(500).json({ error: 'Could not generate a title suggestion right now. You can rename it manually.' });
