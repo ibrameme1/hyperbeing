@@ -1,4 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import Login from './pages/Login';
@@ -11,6 +13,8 @@ import Pricing from './pages/Pricing';
 import BillingSuccess from './pages/BillingSuccess';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
+import Homepage from './pages/Homepage';
+import AnalyticsDashboard from './pages/AnalyticsDashboard';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -29,7 +33,7 @@ export default function App() {
     <ThemeProvider>
     <AuthProvider>
       <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<Homepage />} />
         <Route
           path="/login"
           element={<PublicRoute><Login /></PublicRoute>}
@@ -49,7 +53,10 @@ export default function App() {
         <Route path="/billing/success" element={<ProtectedRoute><BillingSuccess /></ProtectedRoute>} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/privacy" element={<Privacy />} />
+        <Route path="/analytics" element={<ProtectedRoute><AnalyticsDashboard /></ProtectedRoute>} />
       </Routes>
+      <Analytics />
+      <SpeedInsights />
     </AuthProvider>
     </ThemeProvider>
   );

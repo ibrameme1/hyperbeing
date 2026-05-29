@@ -5,10 +5,12 @@ import { useDropzone } from 'react-dropzone';
 import {
   Sparkles, Send, LogOut, X, Clock, Trash2, Loader2,
   ImageIcon, Palette, Plus, ChevronDown, ChevronUp, Paperclip, Zap,
-  Sun, Moon, CreditCard, User,
+  Sun, Moon, CreditCard, User, BarChart2,
 } from 'lucide-react';
 import api from '../api/client';
+import OutOfCreditsModal from '../components/OutOfCreditsModal';
 import { useTheme } from '../contexts/ThemeContext';
+import { track } from '../utils/track';
 
 const ANALYZING_MESSAGES = [
   'Reading your brief…',
@@ -258,7 +260,10 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
   const pct = isAdmin ? 100 : planMax > 0 ? Math.min(100, Math.round((credits / planMax) * 100)) : 0;
   const low = !isAdmin && credits !== null && credits < 10;
 
-  const ringColor = isAdmin ? '#8B5CF6' : low ? '#f87171' : '#8B5CF6';
+  const ringColor = isAdmin ? '#8B5CF6'
+    : pct <= 20 ? '#f87171'
+    : pct <= 50 ? '#f59e0b'
+    : '#22c55e';
   const circumference = 2 * Math.PI * 16;
   const dash = circumference * (pct / 100);
 
@@ -332,7 +337,7 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
                     />
                   </div>
                   {low && (
-                    <p className="text-xs mt-1.5" style={{ color: '#f87171' }}>Running low — top up to keep creating</p>
+                    <p className="text-xs mt-1.5" style={{ color: '#f87171' }}>Running low — upgrade to keep creating</p>
                   )}
                   <div className="mt-2 flex items-center justify-between">
                     <span className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>
@@ -354,6 +359,16 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
 
             {/* Actions */}
             <div className="p-2">
+              {isAdmin && (
+                <button
+                  onClick={() => { window.location.href = '/analytics'; setOpen(false); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:opacity-80 text-left"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  <BarChart2 size={15} style={{ color: '#06b6d4' }} />
+                  Analytics
+                </button>
+              )}
               <button
                 onClick={() => { onUpgrade(); setOpen(false); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:opacity-80 text-left"
@@ -404,12 +419,10 @@ export default function Dashboard() {
   const [credits, setCredits] = useState(null);
   const [currentPlan, setCurrentPlan] = useState('free');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [showOutOfCredits, setShowOutOfCredits] = useState(false);
   const textareaRef = useRef(null);
 
-  useEffect(() => {
-    api.get('/presentations')
-      .then(r => setPresentations(r.data.presentations || []))
-      .finally(() => setPresLoading(false));
+  function refreshCredits() {
     api.get('/billing/subscription')
       .then(r => {
         setCredits(r.data.subscription.credits_remaining);
@@ -417,6 +430,15 @@ export default function Dashboard() {
         setIsAdmin(r.data.subscription.is_admin || false);
       })
       .catch(() => {});
+  }
+
+  useEffect(() => {
+    api.get('/presentations')
+      .then(r => setPresentations(r.data.presentations || []))
+      .finally(() => setPresLoading(false));
+    refreshCredits();
+    const interval = setInterval(refreshCredits, 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   const allAttachments = [
@@ -458,10 +480,12 @@ export default function Dashboard() {
         attachments: pendingAttachments,
         aspectRatio: selectedAspectRatio,
       });
+      track('presentation_created', { presentation_id: data.presentation.id, aspect_ratio: selectedAspectRatio });
       navigate(`/presentations/${data.presentation.id}`);
     } catch (err) {
       if (err.response?.status === 402) {
-        navigate('/pricing');
+        setShowOutOfCredits(true);
+        track('out_of_credits', { page: 'dashboard' });
         return;
       }
       const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong';
@@ -498,6 +522,14 @@ export default function Dashboard() {
     <>
     <AnimatePresence>
       {analyzing && <AnalyzingOverlay />}
+    </AnimatePresence>
+    <AnimatePresence>
+      {showOutOfCredits && (
+        <OutOfCreditsModal
+          currentPlan={currentPlan}
+          onClose={() => setShowOutOfCredits(false)}
+        />
+      )}
     </AnimatePresence>
     <AnimatePresence>
       {showQuestionFlow && analysis && (
@@ -647,20 +679,20 @@ export default function Dashboard() {
                   className="grid grid-cols-2 gap-3 overflow-hidden"
                 >
                   <AttachZone
-                    label="Moodboard"
-                    icon={Palette}
-                    accentColor="#764ba2"
-                    files={moodboardFiles}
-                    onAdd={f => setMoodboardFiles(prev => [...prev, f])}
-                    onRemove={id => setMoodboardFiles(prev => prev.filter(f => f.id !== id))}
-                  />
-                  <AttachZone
                     label="Branding & Pictures"
                     icon={ImageIcon}
                     accentColor="#007AFF"
                     files={brandingFiles}
                     onAdd={f => setBrandingFiles(prev => [...prev, f])}
                     onRemove={id => setBrandingFiles(prev => prev.filter(f => f.id !== id))}
+                  />
+                  <AttachZone
+                    label="Moodboard"
+                    icon={Palette}
+                    accentColor="#764ba2"
+                    files={moodboardFiles}
+                    onAdd={f => setMoodboardFiles(prev => [...prev, f])}
+                    onRemove={id => setMoodboardFiles(prev => prev.filter(f => f.id !== id))}
                   />
                 </motion.div>
               )}

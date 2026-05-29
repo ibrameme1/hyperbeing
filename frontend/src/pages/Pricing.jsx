@@ -4,6 +4,27 @@ import { Check, X, Sparkles, Zap, Crown, Rocket, ArrowRight, Loader2 } from 'luc
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
+import { track } from '../utils/track';
+
+const sliderThumbStyle = `
+  input[type='range'].ultra-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    border: 3px solid #00F0FF;
+    box-shadow: 0 0 10px rgba(0,240,255,0.5);
+    cursor: pointer;
+  }
+  input[type='range'].ultra-slider::-moz-range-thumb {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    border: 3px solid #00F0FF;
+    box-shadow: 0 0 10px rgba(0,240,255,0.5);
+    cursor: pointer;
+  }
+`;
 
 // All credits displayed ×10 vs backend — same ratios, bigger numbers
 const CM = 10;
@@ -22,22 +43,21 @@ const PLANS = [
     tagline: 'For first-time AI presentation creators',
     monthlyPrice: 25,
     backendCredits: 100,
-    annualDiscount: null,
+    annualDiscount: 0.20,
     icon: Zap,
     color: '#9CA3AF',
     gradient: 'linear-gradient(135deg, #374151 0%, #4B5563 100%)',
     border: 'rgba(107,114,128,0.3)',
     glow: 'rgba(107,114,128,0.2)',
     speed: { label: 'Standard Speed', emoji: '🐢', color: '#9CA3AF' },
-    parallel: 'Up to 3 slides at once',
+    parallel: { label: '3 slides in parallel', emoji: '🔀' },
     features: [
-      'AI image generation',
       'PDF & PNG export',
+      'Add slides feature',
+      'Reference image uploads',
       'Email support',
     ],
     locked: [
-      'Add slides feature',
-      'Reference image uploads',
       'Early feature access',
     ],
   },
@@ -54,10 +74,9 @@ const PLANS = [
     border: 'rgba(139,92,246,0.5)',
     glow: 'rgba(139,92,246,0.3)',
     speed: { label: 'Fast Generation', emoji: '⚡', color: '#F59E0B' },
-    parallel: 'Up to 6 slides at once',
+    parallel: { label: '6 slides in parallel', emoji: '🔀' },
     popular: true,
     features: [
-      'AI image generation',
       'PDF & PNG export',
       'Add slides feature',
       'Reference image uploads',
@@ -79,10 +98,9 @@ const PLANS = [
     border: 'rgba(0,240,255,0.45)',
     glow: 'rgba(0,240,255,0.25)',
     speed: { label: 'Fastest Generation', emoji: '🚀', color: '#10B981' },
-    parallel: 'Unlimited parallel generation',
+    parallel: { label: 'Unlimited parallel generation', emoji: '🔀' },
     bestValue: true,
     features: [
-      'AI image generation',
       'PDF & PNG export',
       'Add slides feature',
       'Reference image uploads',
@@ -104,11 +122,13 @@ const CREDIT_TABLE = [
 export default function Pricing() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [billing, setBilling] = useState('monthly');
+  const [billing, setBilling] = useState('annual');
   const [currentPlan, setCurrentPlan] = useState('free');
   const [creditsLeft, setCreditsLeft] = useState(null);
   const [loading, setLoading] = useState(null);
   const [ultraTier, setUltraTier] = useState(0);
+
+  useEffect(() => { track('pricing_viewed'); }, []);
 
   useEffect(() => {
     if (user) {
@@ -176,6 +196,7 @@ export default function Pricing() {
       <div className="fixed bottom-0 right-1/4 w-[500px] h-[500px] rounded-full pointer-events-none"
            style={{ background: 'radial-gradient(circle, rgba(0,240,255,0.08) 0%, transparent 65%)', filter: 'blur(80px)' }} />
 
+      <style>{sliderThumbStyle}</style>
       {/* Nav */}
       <div className="relative z-10 flex items-center justify-between px-8 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2.5">
@@ -193,7 +214,7 @@ export default function Pricing() {
           )}
           {user && currentPlan !== 'free' && (
             <button onClick={handleManage} className="text-sm text-white/50 hover:text-white/80 transition-colors">
-              {loading === 'portal' ? <Loader2 size={14} className="animate-spin" /> : 'Manage billing →'}
+              {loading === 'portal' ? <Loader2 size={14} className="animate-spin" /> : 'Manage / downgrade →'}
             </button>
           )}
         </div>
@@ -240,7 +261,7 @@ export default function Pricing() {
         </motion.div>
 
         {/* Plan cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-14">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-14" style={{ paddingTop: '20px' }}>
           {PLANS.map((plan, i) => {
             const Icon = plan.icon;
             const isCurrent = currentPlan === plan.key;
@@ -258,15 +279,22 @@ export default function Pricing() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 className="relative rounded-3xl flex flex-col overflow-hidden"
-                style={{ border: `1px solid ${plan.border}`, background: 'rgba(255,255,255,0.03)' }}
+                style={{
+                  border: `1px solid ${plan.border}`,
+                  background: 'rgba(255,255,255,0.03)',
+                  transform: (plan.popular || plan.bestValue) ? 'translateY(-20px)' : 'none',
+                  boxShadow: (plan.popular || plan.bestValue) ? `0 24px 64px ${plan.glow}` : 'none',
+                  zIndex: (plan.popular || plan.bestValue) ? 1 : 0,
+                }}
               >
-                {/* Top badge */}
-                {(plan.popular || plan.bestValue) && (
-                  <div className="py-2.5 text-center text-xs font-bold text-white tracking-widest uppercase"
-                       style={{ background: plan.gradient }}>
-                    {plan.popular ? '♦ MOST POPULAR' : '♦ BEST VALUE'}
-                  </div>
-                )}
+                {/* Top badge — always rendered so plan names align across all 3 cards */}
+                <div className="py-2.5 text-center text-xs font-bold text-white tracking-widest uppercase"
+                     style={{
+                       background: (plan.popular || plan.bestValue) ? plan.gradient : 'transparent',
+                       opacity: (plan.popular || plan.bestValue) ? 1 : 0,
+                     }}>
+                  {plan.popular ? '♦ MOST POPULAR' : '♦ BEST VALUE'}
+                </div>
 
                 <div className="p-7 flex flex-col flex-1">
                   {/* Plan name + speed */}
@@ -286,32 +314,7 @@ export default function Pricing() {
                       <span className="text-xl font-bold text-white">{credits.toLocaleString()} credits/mo</span>
                     </div>
                     <p className="text-xs text-white/35 ml-7">= {(credits / 100).toFixed(0)} full presentations</p>
-                    <p className="text-xs font-semibold ml-7 mt-2" style={{ color: plan.speed.color }}>
-                      {plan.parallel}
-                    </p>
                   </div>
-
-                  {/* Ultra slider */}
-                  {plan.key === 'ultra' && (
-                    <div className="mb-4">
-                      <div className="flex justify-between text-xs text-white/40 mb-2">
-                        <span>{ULTRA_TIERS[0].credits.toLocaleString()}</span>
-                        <span>{ULTRA_TIERS[ULTRA_TIERS.length - 1].credits.toLocaleString()}</span>
-                      </div>
-                      <input
-                        type="range" min={0} max={ULTRA_TIERS.length - 1} step={1}
-                        value={ultraTier}
-                        onChange={e => setUltraTier(Number(e.target.value))}
-                        className="w-full accent-cyan-400"
-                        style={{ cursor: 'pointer' }}
-                      />
-                      {billing === 'annual' && (
-                        <p className="text-xs text-center mt-1.5" style={{ color: '#34D399' }}>
-                          {Math.round(discount * 100)}% off on annual — slide for more credits & bigger discount
-                        </p>
-                      )}
-                    </div>
-                  )}
 
                   {/* Price */}
                   <div className="mb-5">
@@ -341,8 +344,6 @@ export default function Pricing() {
                     </div>
                     {showDiscount ? (
                       <p className="text-xs text-white/30 mt-0.5">Billed ${price * 12}/year</p>
-                    ) : !plan.annualDiscount && billing === 'annual' ? (
-                      <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Monthly billing only</p>
                     ) : (
                       <p className="text-xs text-white/25 mt-0.5">Billed monthly</p>
                     )}
@@ -363,8 +364,60 @@ export default function Pricing() {
                      <><span>Get {plan.name}</span><ArrowRight size={14} /></>}
                   </button>
 
+                  {/* Ultra credit slider — below CTA so prices/buttons align across cards */}
+                  {plan.key === 'ultra' && (
+                    <div className="mb-5 rounded-2xl p-4" style={{ background: 'rgba(0,240,255,0.05)', border: '1px solid rgba(0,240,255,0.15)' }}>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-semibold text-white/50">Customize credits / month</span>
+                        <span className="text-sm font-bold" style={{ color: '#00F0FF' }}>
+                          {ULTRA_TIERS[ultraTier].credits.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="relative mb-3">
+                        <input
+                          type="range" min={0} max={ULTRA_TIERS.length - 1} step={1}
+                          value={ultraTier}
+                          onChange={e => setUltraTier(Number(e.target.value))}
+                          className="ultra-slider w-full h-2 rounded-full appearance-none cursor-pointer"
+                          style={{
+                            background: `linear-gradient(to right, #00F0FF ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%, rgba(255,255,255,0.1) ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%)`,
+                            WebkitAppearance: 'none',
+                          }}
+                        />
+                      </div>
+                      <div className="flex justify-between">
+                        {ULTRA_TIERS.map((t, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setUltraTier(idx)}
+                            className="flex flex-col items-center gap-0.5 transition-all duration-150"
+                          >
+                            <span className="text-xs font-semibold" style={{ color: ultraTier === idx ? '#00F0FF' : 'rgba(255,255,255,0.3)' }}>
+                              {(t.credits / 1000).toFixed(0)}k
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      {billing === 'annual' && (
+                        <p className="text-xs text-center mt-2.5 font-semibold" style={{ color: '#34D399' }}>
+                          {Math.round(ULTRA_TIERS[ultraTier].annualDiscount * 100)}% off on annual — more credits = bigger discount
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {/* Features */}
                   <ul className="space-y-2.5 flex-1">
+                    {/* Speed & parallel at top */}
+                    <li className="flex items-center gap-2.5 text-sm">
+                      <span style={{ flexShrink: 0 }}>{plan.speed.emoji}</span>
+                      <span className="font-semibold" style={{ color: plan.speed.color }}>{plan.speed.label}</span>
+                    </li>
+                    <li className="flex items-center gap-2.5 text-sm">
+                      <span style={{ flexShrink: 0 }}>🔀</span>
+                      <span className="text-white/70">{plan.parallel.label}</span>
+                    </li>
+                    <li className="h-px my-1" style={{ background: 'rgba(255,255,255,0.06)' }} />
                     {plan.features.map(f => (
                       <li key={f} className="flex items-center gap-2.5 text-sm">
                         <Check size={13} style={{ color: plan.color, flexShrink: 0 }} />
@@ -384,33 +437,10 @@ export default function Pricing() {
           })}
         </div>
 
-        {/* Credit cost table */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.5 }}
-          className="rounded-3xl p-8 mb-10"
-          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
-        >
-          <h3 className="text-white font-bold text-xl mb-1.5">How credits work</h3>
-          <p className="text-white/35 text-sm mb-6">Each AI action deducts credits from your monthly balance. Unused credits don't roll over.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {CREDIT_TABLE.map(({ action, cost }) => (
-              <div key={action} className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <p className="text-2xl font-bold mb-0.5" style={{ color: '#8B5CF6' }}>{cost}</p>
-                <p className="text-xs font-semibold text-white/70 mb-0.5">credits</p>
-                <p className="text-xs text-white/35">{action}</p>
-              </div>
-            ))}
-          </div>
-        </motion.div>
-
-        <p className="text-center text-white/25 text-sm mb-14">
-          New accounts get <span className="text-white/55 font-semibold">50 free credits</span> to try HyperBeing — no card required.
-        </p>
-
         {/* Enterprise */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.5 }}
-          className="rounded-3xl p-10 flex flex-col md:flex-row items-center justify-between gap-8"
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.5 }}
+          className="rounded-3xl p-10 flex flex-col md:flex-row items-center justify-between gap-8 mb-10"
           style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.1) 0%, rgba(0,240,255,0.06) 100%)', border: '1px solid rgba(139,92,246,0.2)' }}
         >
           <div>
@@ -432,6 +462,29 @@ export default function Pricing() {
             Contact us →
           </a>
         </motion.div>
+
+        {/* Credit cost table */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.5 }}
+          className="rounded-3xl p-8 mb-10"
+          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+        >
+          <h3 className="text-white font-bold text-xl mb-1.5">How credits work</h3>
+          <p className="text-white/35 text-sm mb-6">Each AI action deducts credits from your monthly balance. Unused credits don't roll over.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {CREDIT_TABLE.map(({ action, cost }) => (
+              <div key={action} className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <p className="text-2xl font-bold mb-0.5" style={{ color: '#8B5CF6' }}>{cost}</p>
+                <p className="text-xs font-semibold text-white/70 mb-0.5">credits</p>
+                <p className="text-xs text-white/35">{action}</p>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+
+        <p className="text-center text-white/25 text-sm mb-14">
+          New accounts get <span className="text-white/55 font-semibold">50 free credits</span> to try HyperBeing — no card required.
+        </p>
       </div>
     </div>
   );
