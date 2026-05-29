@@ -12,7 +12,7 @@ router.post('/:sessionId', authenticateToken, async (req, res) => {
   const { message, images = [] } = req.body;
 
   if (!message?.trim() && images.length === 0) {
-    return res.status(400).json({ error: 'Message or image required' });
+    return res.status(400).json({ error: 'Please type a message or attach an image to continue.' });
   }
 
   const db = getDb();
@@ -46,7 +46,7 @@ router.post('/:sessionId', authenticateToken, async (req, res) => {
     });
   } catch (err) {
     console.error('Prompt chat error:', err);
-    res.status(500).json({ error: 'Failed to generate response' });
+    res.status(500).json({ error: 'Nova couldn\'t generate a response right now. Please try again.' });
   }
 });
 

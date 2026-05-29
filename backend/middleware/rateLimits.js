@@ -1,9 +1,11 @@
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
 function handler(res, options) {
+  const retryAfter = Math.ceil(options.windowMs / 1000 / 60);
+  res.setHeader('Retry-After', retryAfter * 60);
   res.status(429).json({
-    error: 'Too many requests',
-    retryAfter: Math.ceil(options.windowMs / 1000 / 60),
+    error: `You've made too many requests. Please wait ${retryAfter} minute${retryAfter !== 1 ? 's' : ''} before trying again.`,
+    retryAfter: retryAfter * 60,
   });
 }
 

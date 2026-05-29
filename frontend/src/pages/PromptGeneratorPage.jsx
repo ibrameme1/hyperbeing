@@ -173,7 +173,11 @@ export default function PromptGeneratorPage() {
         readyToGenerate: data.readyToGenerate,
       }]);
     } catch (err) {
-      const errMsg = err.response?.data?.detail || err.response?.data?.error || 'Something went wrong — please try again';
+      const status = err.response?.status;
+      const errMsg = err.response?.data?.error ||
+        (status === 429 ? 'Too many messages. Please wait a moment before continuing.' :
+         status === 503 ? 'The AI is temporarily unavailable. Please try again shortly.' :
+         'Failed to get a response. Please try again.');
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',

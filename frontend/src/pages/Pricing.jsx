@@ -149,7 +149,13 @@ export default function Pricing() {
       const { data } = await api.post('/billing/checkout', { planKey, billing });
       window.location.href = data.url;
     } catch (err) {
-      alert(err.response?.data?.error || 'Something went wrong');
+      const status = err.response?.status;
+      alert(
+        err.response?.data?.error ||
+        (status === 503 ? 'Payments are not available right now. Please try again later.' :
+         status === 429 ? 'Too many requests. Please wait a moment and try again.' :
+         'Could not start checkout. Please try again.')
+      );
     } finally {
       setLoading(null);
     }

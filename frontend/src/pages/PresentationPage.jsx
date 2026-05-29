@@ -82,8 +82,13 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
       }
     } catch (err) {
       console.error('Send failed:', err);
-      const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong — please try again';
-      setSendError(msg);
+      const status = err.response?.status;
+      setSendError(
+        err.response?.data?.error ||
+        (status === 429 ? 'You\'re sending messages too quickly. Please wait a moment.' :
+         status === 503 ? 'Nova is temporarily unavailable. Please try again in a few seconds.' :
+         'Message failed to send. Please try again.')
+      );
     } finally {
       clearTimeout(labelTimer);
       setSending(false);

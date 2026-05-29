@@ -67,7 +67,7 @@ router.post('/analyze', authenticateToken, analyzeLimiter, async (req, res) => {
     res.json(analysis);
   } catch (err) {
     console.error('Analysis error:', err);
-    res.status(500).json({ error: 'Analysis failed' });
+    res.status(500).json({ error: 'Brief analysis failed. Please try again — if the problem persists, try shortening your description.' });
   }
 });
 
@@ -244,7 +244,7 @@ router.get('/:id', authenticateToken, (req, res) => {
     .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
     .get(req.params.id, req.user.id);
 
-  if (!pres) return res.status(404).json({ error: 'Not found' });
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
 
   const messages = db
     .prepare('SELECT * FROM messages WHERE presentation_id = ? ORDER BY created_at ASC')
@@ -276,7 +276,7 @@ router.post('/:id/messages', authenticateToken, async (req, res) => {
   const pres = db
     .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
     .get(req.params.id, req.user.id);
-  if (!pres) return res.status(404).json({ error: 'Not found' });
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
 
   const history = db
     .prepare('SELECT * FROM messages WHERE presentation_id = ? ORDER BY created_at ASC')
@@ -310,7 +310,7 @@ router.post('/:id/messages', authenticateToken, async (req, res) => {
     });
   } catch (err) {
     console.error('Agent error:', err);
-    res.status(500).json({ error: 'AI agent failed' });
+    res.status(500).json({ error: 'Nova couldn\'t process your message right now. Please try again.' });
   }
 });
 
@@ -382,8 +382,8 @@ router.post('/:id/generate', authenticateToken, async (req, res) => {
     .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
     .get(req.params.id, req.user.id);
 
-  if (!pres) return res.status(404).json({ error: 'Not found' });
-  if (!pres.slide_plan) return res.status(400).json({ error: 'No slide plan — complete the chat first' });
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
+  if (!pres.slide_plan) return res.status(400).json({ error: 'Your slide plan isn\'t ready yet — finish the chat with Nova first.' });
 
   const slidePlan = JSON.parse(pres.slide_plan);
 
@@ -482,20 +482,20 @@ async function runGeneration(presentationId, slidePlan) {
 // ─── Regenerate a single slide ────────────────────────────────────────────
 router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res) => {
   const { instruction, attachments: reqBodyAttachments } = req.body;
-  if (!instruction?.trim()) return res.status(400).json({ error: 'Instruction required' });
+  if (!instruction?.trim()) return res.status(400).json({ error: 'Please describe what you\'d like to change about this slide.' });
 
   const db = getDb();
   const pres = db
     .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
     .get(req.params.id, req.user.id);
 
-  if (!pres) return res.status(404).json({ error: 'Not found' });
-  if (!pres.slides_data) return res.status(400).json({ error: 'No slides generated yet' });
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
+  if (!pres.slides_data) return res.status(400).json({ error: 'No slides have been generated yet. Generate your presentation first.' });
 
   const slides = JSON.parse(pres.slides_data);
   const idx = parseInt(req.params.index, 10);
   const slide = slides[idx];
-  if (!slide) return res.status(404).json({ error: 'Slide not found' });
+  if (!slide) return res.status(404).json({ error: 'Slide not found. It may have been removed or the index is out of range.' });
 
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
 
@@ -551,12 +551,12 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
 // ─── Reorder slides ───────────────────────────────────────────────────────
 router.post('/:id/reorder', authenticateToken, (req, res) => {
   const { order } = req.body; // array of slide indexes in new order
-  if (!Array.isArray(order)) return res.status(400).json({ error: 'order array required' });
+  if (!Array.isArray(order)) return res.status(400).json({ error: 'Invalid request: expected an array of slide indices.' });
 
   const db = getDb();
   const pres = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?')
     .get(req.params.id, req.user.id);
-  if (!pres || !pres.slides_data) return res.status(404).json({ error: 'Not found' });
+  if (!pres || !pres.slides_data) return res.status(404).json({ error: 'Presentation not found or no slides to reorder.' });
 
   const slides = JSON.parse(pres.slides_data);
   const byIndex = new Map(slides.map(s => [s.index, s]));
@@ -576,7 +576,7 @@ router.patch('/:id/title', authenticateToken,
     const result = getDb()
       .prepare(`UPDATE presentations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`)
       .run(title, req.params.id, req.user.id);
-    if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+    if (result.changes === 0) return res.status(404).json({ error: 'Presentation not found or you don\'t have permission to rename it.' });
     res.json({ title });
   },
 );
@@ -585,7 +585,7 @@ router.patch('/:id/title', authenticateToken,
 router.post('/:id/suggest-title', authenticateToken, async (req, res) => {
   const db = getDb();
   const pres = db.prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-  if (!pres) return res.status(404).json({ error: 'Not found' });
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
 
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : null;
   const slidesData = pres.slides_data ? JSON.parse(pres.slides_data) : null;
@@ -599,7 +599,7 @@ router.post('/:id/suggest-title', authenticateToken, async (req, res) => {
     const title = await suggestTitle(context);
     res.json({ title });
   } catch (err) {
-    res.status(500).json({ error: 'Could not suggest title' });
+    res.status(500).json({ error: 'Could not generate a title suggestion right now. You can rename it manually.' });
   }
 });
 
@@ -607,7 +607,7 @@ router.post('/:id/suggest-title', authenticateToken, async (req, res) => {
 router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) => {
   const { description, count = 1, attachments: reqAttachments = [] } = req.body;
   if (!description?.trim() || typeof description !== 'string') {
-    return res.status(400).json({ error: 'Description required' });
+    return res.status(400).json({ error: 'Please describe the slides you\'d like to add.' });
   }
   if (description.length > 10_000) {
     return res.status(400).json({ error: 'Description too long (max 10,000 characters)' });
@@ -632,8 +632,8 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
 
   const db = getDb();
   const pres = db.prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-  if (!pres) return res.status(404).json({ error: 'Not found' });
-  if (!pres.slides_data) return res.status(400).json({ error: 'No slides yet' });
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
+  if (!pres.slides_data) return res.status(400).json({ error: 'No slides have been generated yet. Generate your presentation before adding more slides.' });
 
   const slides = JSON.parse(pres.slides_data);
   const startIndex = slides.length;
@@ -739,7 +739,7 @@ router.delete('/:id', authenticateToken, (req, res) => {
   const result = getDb()
     .prepare('DELETE FROM presentations WHERE id = ? AND user_id = ?')
     .run(req.params.id, req.user.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+  if (result.changes === 0) return res.status(404).json({ error: 'Presentation not found or you don\'t have permission to delete it.' });
   res.json({ message: 'Deleted' });
 });
 

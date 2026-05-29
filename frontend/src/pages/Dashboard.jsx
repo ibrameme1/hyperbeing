@@ -460,8 +460,13 @@ export default function Dashboard() {
       setAnalysis(data);
       setShowQuestionFlow(true);
     } catch (err) {
-      const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong';
-      setSubmitError(msg);
+      const status = err.response?.status;
+      setSubmitError(
+        err.response?.data?.error ||
+        (status === 429 ? `You're creating presentations too quickly. Please wait ${err.response?.data?.retryAfter ?? 60} seconds.` :
+         status === 413 ? 'Your brief or attachments are too large. Try shortening your description or using fewer images.' :
+         'Could not analyse your brief. Please try again.')
+      );
     } finally {
       setAnalyzing(false);
     }
@@ -488,8 +493,13 @@ export default function Dashboard() {
         track('out_of_credits', { page: 'dashboard' });
         return;
       }
-      const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong';
-      setSubmitError(msg);
+      const status = err.response?.status;
+      setSubmitError(
+        err.response?.data?.error ||
+        (status === 429 ? `You're generating too many presentations. Please wait ${err.response?.data?.retryAfter ?? 60} seconds before trying again.` :
+         status === 503 ? 'The AI service is temporarily unavailable. Please try again in a moment.' :
+         'Failed to start your presentation. Please try again.')
+      );
     }
   }
 

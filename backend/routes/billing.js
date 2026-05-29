@@ -29,8 +29,8 @@ router.post('/checkout', authMiddleware, billingLimiter,
   const plan = PLANS[planKey];
   const isAnnual = billing === 'annual';
   const priceId = isAnnual ? plan?.annualPriceId : plan?.priceId;
-  if (!plan || !priceId) return res.status(400).json({ error: 'Plan not available for purchase' });
-  if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments not configured' });
+  if (!plan || !priceId) return res.status(400).json({ error: 'This plan isn\'t available for purchase. Please choose a different plan or contact support.' });
+  if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not available right now. Please contact support.' });
 
   const sub = getOrCreateSubscription(req.userId);
   const db = getDb();
@@ -64,10 +64,10 @@ router.post('/checkout', authMiddleware, billingLimiter,
 
 // ── POST /api/billing/portal ──────────────────────────────────────────────────
 router.post('/portal', authMiddleware, async (req, res) => {
-  if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments not configured' });
+  if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not available right now. Please contact support.' });
 
   const sub = getOrCreateSubscription(req.userId);
-  if (!sub.stripe_customer_id) return res.status(400).json({ error: 'No active subscription' });
+  if (!sub.stripe_customer_id) return res.status(400).json({ error: 'No active subscription found. Purchase a plan first to access the billing portal.' });
 
   const session = await stripe.billingPortal.sessions.create({
     customer: sub.stripe_customer_id,

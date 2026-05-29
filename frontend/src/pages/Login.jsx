@@ -54,7 +54,7 @@ export default function Login() {
 
   // Show error if OAuth failed
   useState(() => {
-    if (searchParams.get('error') === 'oauth') setError('Sign-in failed. Please try again.');
+    if (searchParams.get('error') === 'oauth') setError('Sign-in with that provider failed. Please try again or use email instead.');
   });
 
   const SOCIAL = [
@@ -78,7 +78,14 @@ export default function Login() {
       if (mode === 'login' && code === 'USER_NOT_FOUND') {
         setError('__no_account__');
       } else {
-        setError(err.response?.data?.error || 'Something went wrong');
+        const status = err.response?.status;
+      setError(
+        err.response?.data?.error ||
+        (status === 429 ? `Too many attempts. Please wait ${err.response?.data?.retryAfter ?? 'a moment'} seconds and try again.` :
+         status === 409 ? 'An account with that email already exists. Try signing in.' :
+         mode === 'register' ? 'Could not create your account. Please check your details and try again.' :
+         'Sign-in failed. Please check your email and password.')
+      );
       }
     } finally {
       setLoading(false);
