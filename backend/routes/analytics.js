@@ -194,7 +194,7 @@ router.get('/users', (req, res) => {
   `).all();
 
   const topUsers = db.prepare(`
-    SELECT u.id, u.name, u.email, u.created_at,
+    SELECT u.id, u.name, u.email, u.created_at, u.profile_data,
            COUNT(DISTINCT p.id) as presentation_count,
            COALESCE(s.plan,'free') as plan,
            COALESCE(s.credits_remaining,0) as credits_remaining
@@ -204,7 +204,7 @@ router.get('/users', (req, res) => {
     GROUP BY u.id
     ORDER BY presentation_count DESC
     LIMIT 20
-  `).all();
+  `).all().map(u => ({ ...u, profile_data: u.profile_data ? JSON.parse(u.profile_data) : null }));
 
   const recentSignups = db.prepare(`
     SELECT id, name, email, created_at,

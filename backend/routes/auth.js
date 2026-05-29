@@ -226,6 +226,20 @@ router.post('/login',
   },
 );
 
+router.post('/onboarding', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Authentication required' });
+  try {
+    const { userId } = jwt.verify(token, process.env.JWT_SECRET);
+    const db = getDb();
+    db.prepare('UPDATE users SET profile_data = ? WHERE id = ?')
+      .run(JSON.stringify(req.body), userId);
+    res.json({ ok: true });
+  } catch {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+});
+
 router.get('/me', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'No token' });

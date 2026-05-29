@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ArrowLeft, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import api from '../api/client';
 
 const QUESTIONS = [
   {
@@ -65,6 +66,42 @@ const QUESTIONS = [
       { value: 'automation', label: '🤖 Full automation', desc: 'AI does it, I approve it. Perfect.' },
     ],
   },
+  {
+    id: 'role',
+    emoji: '🏷️',
+    question: 'What best describes your role?',
+    subtext: 'Helps us tailor the experience to how you actually work.',
+    options: [
+      { value: 'founder', label: '🚀 Founder / CEO', desc: 'Building something from scratch.' },
+      { value: 'marketing', label: '📣 Marketing / Growth', desc: 'Campaigns, content, and conversions.' },
+      { value: 'student', label: '🎓 Student', desc: 'Assignments, projects, and presentations.' },
+      { value: 'freelancer', label: '💼 Freelancer / Consultant', desc: 'Pitching clients and delivering work.' },
+    ],
+  },
+  {
+    id: 'team_size',
+    emoji: '👥',
+    question: 'How big is your team or organisation?',
+    subtext: 'Just you, or a whole operation?',
+    options: [
+      { value: 'solo', label: '🙋 Just me', desc: 'Solo operator. All decisions, all glory.' },
+      { value: 'small', label: '🤝 2–10 people', desc: 'Small team, big ambitions.' },
+      { value: 'medium', label: '🏢 11–50 people', desc: 'Growing fast, need to move faster.' },
+      { value: 'large', label: '🏛️ 50+ people', desc: 'Enterprise scale. Lots of stakeholders.' },
+    ],
+  },
+  {
+    id: 'referral',
+    emoji: '📡',
+    question: 'How did you hear about HyperBeing?',
+    subtext: 'We\'re genuinely curious.',
+    options: [
+      { value: 'social', label: '📱 Social media', desc: 'TikTok, Instagram, X, or LinkedIn.' },
+      { value: 'search', label: '🔍 Google / search', desc: 'Found us while looking for something.' },
+      { value: 'friend', label: '🗣️ Friend or colleague', desc: 'Someone who has taste sent me here.' },
+      { value: 'other', label: '✨ Somewhere else', desc: 'The internet is a wild place.' },
+    ],
+  },
 ];
 
 const COMPLETION_MESSAGES = {
@@ -98,13 +135,14 @@ export default function Onboarding() {
     setSelected(value);
   }
 
-  function handleNext() {
+  async function handleNext() {
     if (!selected) return;
     const newAnswers = { ...answers, [q.id]: selected };
     setAnswers(newAnswers);
 
     if (isLast) {
       localStorage.setItem('hb_prefs', JSON.stringify(newAnswers));
+      api.post('/auth/onboarding', newAnswers).catch(() => {});
       setDone(true);
     } else {
       setDirection(1);
