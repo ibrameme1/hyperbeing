@@ -260,7 +260,10 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
   const pct = isAdmin ? 100 : planMax > 0 ? Math.min(100, Math.round((credits / planMax) * 100)) : 0;
   const low = !isAdmin && credits !== null && credits < 10;
 
-  const ringColor = isAdmin ? '#8B5CF6' : low ? '#f87171' : '#8B5CF6';
+  const ringColor = isAdmin ? '#8B5CF6'
+    : pct <= 20 ? '#f87171'
+    : pct <= 50 ? '#f59e0b'
+    : '#22c55e';
   const circumference = 2 * Math.PI * 16;
   const dash = circumference * (pct / 100);
 
@@ -356,14 +359,16 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
 
             {/* Actions */}
             <div className="p-2">
-              <button
-                onClick={() => { window.location.href = '/analytics'; setOpen(false); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:opacity-80 text-left"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                <BarChart2 size={15} style={{ color: '#06b6d4' }} />
-                Analytics
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => { window.location.href = '/analytics'; setOpen(false); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:opacity-80 text-left"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  <BarChart2 size={15} style={{ color: '#06b6d4' }} />
+                  Analytics
+                </button>
+              )}
               <button
                 onClick={() => { onUpgrade(); setOpen(false); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:opacity-80 text-left"
@@ -417,10 +422,7 @@ export default function Dashboard() {
   const [showOutOfCredits, setShowOutOfCredits] = useState(false);
   const textareaRef = useRef(null);
 
-  useEffect(() => {
-    api.get('/presentations')
-      .then(r => setPresentations(r.data.presentations || []))
-      .finally(() => setPresLoading(false));
+  function refreshCredits() {
     api.get('/billing/subscription')
       .then(r => {
         setCredits(r.data.subscription.credits_remaining);
@@ -428,6 +430,15 @@ export default function Dashboard() {
         setIsAdmin(r.data.subscription.is_admin || false);
       })
       .catch(() => {});
+  }
+
+  useEffect(() => {
+    api.get('/presentations')
+      .then(r => setPresentations(r.data.presentations || []))
+      .finally(() => setPresLoading(false));
+    refreshCredits();
+    const interval = setInterval(refreshCredits, 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   const allAttachments = [

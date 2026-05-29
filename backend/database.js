@@ -113,6 +113,11 @@ export function initDatabase() {
     db.exec('ALTER TABLE presentations ADD COLUMN thumbnail TEXT');
   } catch { /* column already exists */ }
 
+  // Migrate: add profile_data for onboarding answers
+  try {
+    db.exec('ALTER TABLE users ADD COLUMN profile_data TEXT DEFAULT NULL');
+  } catch { /* already exists */ }
+
   // Analytics events table for custom event tracking
   db.exec(`
     CREATE TABLE IF NOT EXISTS analytics_events (
