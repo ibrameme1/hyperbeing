@@ -118,6 +118,11 @@ export function initDatabase() {
     db.exec('ALTER TABLE users ADD COLUMN profile_data TEXT DEFAULT NULL');
   } catch { /* already exists */ }
 
+  // Migrate: per-user token usage tracking
+  try {
+    db.exec('ALTER TABLE subscriptions ADD COLUMN tokens_used INTEGER DEFAULT 0');
+  } catch { /* already exists */ }
+
   // Analytics events table for custom event tracking
   db.exec(`
     CREATE TABLE IF NOT EXISTS analytics_events (
