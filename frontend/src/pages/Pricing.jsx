@@ -31,10 +31,10 @@ const sliderThumbStyle = `
 const CM = 10;
 
 const ULTRA_TIERS = [
-  { credits: 20000, price: 149, annualDiscount: 0.22 },
-  { credits: 35000, price: 209, annualDiscount: 0.25 },
-  { credits: 50000, price: 269, annualDiscount: 0.28 },
-  { credits: 60000, price: 299, annualDiscount: 0.30 },
+  { credits: 20000, price: 149, annualDiscount: 0.22, priceId: 'price_1TcS5nH6y4qMy1njJ7HBxru4', annualPriceId: 'price_1TcS5mH6y4qMy1njb3Q7qjx1' },
+  { credits: 35000, price: 209, annualDiscount: 0.25, priceId: 'price_1TcS5mH6y4qMy1njpOcFGDZF', annualPriceId: 'price_1TcS5mH6y4qMy1njXuz8DsYS' },
+  { credits: 50000, price: 269, annualDiscount: 0.28, priceId: 'price_1TcS5lH6y4qMy1nj1qmu3xH7', annualPriceId: 'price_1TcS5lH6y4qMy1nj9SNG1F0j' },
+  { credits: 60000, price: 299, annualDiscount: 0.30, priceId: 'price_1TcS5lH6y4qMy1njTN2KsM4G', annualPriceId: 'price_1TcS5kH6y4qMy1njwOzdstwh' },
 ];
 
 const PLANS = [
@@ -147,7 +147,10 @@ export default function Pricing() {
     if (planKey === currentPlan) return;
     setLoading(planKey);
     try {
-      const { data } = await api.post('/billing/checkout', { planKey, billing });
+      const ultraPriceId = planKey === 'ultra'
+        ? (billing === 'annual' ? ULTRA_TIERS[ultraTier].annualPriceId : ULTRA_TIERS[ultraTier].priceId)
+        : undefined;
+      const { data } = await api.post('/billing/checkout', { planKey, billing, ultraPriceId });
       window.location.href = data.url;
     } catch (err) {
       const status = err.response?.status;

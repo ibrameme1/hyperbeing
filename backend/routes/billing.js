@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import {
-  stripe, PLANS, getOrCreateSubscription, resetCreditsForPlan, grantCredits, isAdmin,
+  stripe, PLANS, ULTRA_PRICE_IDS, getOrCreateSubscription, resetCreditsForPlan, grantCredits, isAdmin,
 } from '../services/stripeService.js';
 import { logger } from '../services/logger.js';
 import { getDb } from '../database.js';
@@ -26,10 +26,12 @@ router.get('/subscription', authMiddleware, (req, res) => {
 router.post('/checkout', authMiddleware, billingLimiter,
   validate({ planKey: isEnum('basic', 'pro', 'ultra') }),
   async (req, res) => {
-  const { planKey, billing = 'monthly' } = req.body;
+  const { planKey, billing = 'monthly', ultraPriceId } = req.body;
   const plan = PLANS[planKey];
   const isAnnual = billing === 'annual';
-  const priceId = isAnnual ? plan?.annualPriceId : plan?.priceId;
+  // Ultra uses a caller-supplied price ID (slider tier); other plans use env-configured IDs
+  const priceId = planKey === 'ultra' ? ultraPriceId : (isAnnual ? plan?.annualPriceId : plan?.priceId);
+  if (planKey === 'ultra' && !ULTRA_PRICE_IDS.has(priceId)) return res.status(400).json({ error: 'Invalid Ultra tier selected.' });
   if (!plan || !priceId) return res.status(400).json({ error: 'This plan isn\'t available for purchase. Please choose a different plan or contact support.' });
   if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not available right now. Please contact support.' });
 
