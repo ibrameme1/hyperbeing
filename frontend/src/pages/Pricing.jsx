@@ -357,19 +357,31 @@ export default function Pricing() {
                   </div>
 
                   {/* CTA */}
-                  <button
-                    onClick={() => isCurrent ? handleManage() : handleSubscribe(plan.key)}
-                    disabled={isLoading}
-                    className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mb-6 disabled:opacity-60"
-                    style={isCurrent
-                      ? { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }
-                      : { background: plan.gradient, color: '#fff', boxShadow: `0 4px 20px ${plan.glow}` }
-                    }
-                  >
-                    {isLoading ? <Loader2 size={16} className="animate-spin" /> :
-                     isCurrent ? 'Current plan' :
-                     <><span>Get {plan.name}</span><ArrowRight size={14} /></>}
-                  </button>
+                  {(() => {
+                    const RANK = { free: 0, basic: 1, pro: 2, ultra: 3 };
+                    const currentRank = RANK[currentPlan] ?? 0;
+                    const planRank = RANK[plan.key] ?? 0;
+                    const isUpgrade = planRank > currentRank;
+                    const isDowngrade = planRank < currentRank;
+                    const label = isCurrent ? 'Manage subscription'
+                      : isUpgrade ? `Upgrade to ${plan.name}`
+                      : isDowngrade ? `Downgrade to ${plan.name}`
+                      : `Get ${plan.name}`;
+                    return (
+                      <button
+                        onClick={() => isCurrent ? handleManage() : handleSubscribe(plan.key)}
+                        disabled={isLoading}
+                        className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mb-6 disabled:opacity-60"
+                        style={isCurrent
+                          ? { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }
+                          : { background: plan.gradient, color: '#fff', boxShadow: `0 4px 20px ${plan.glow}` }
+                        }
+                      >
+                        {isLoading ? <Loader2 size={16} className="animate-spin" /> :
+                         <><span>{label}</span>{!isCurrent && <ArrowRight size={14} />}</>}
+                      </button>
+                    );
+                  })()}
 
                   {/* Ultra credit slider — below CTA so prices/buttons align across cards */}
                   {plan.key === 'ultra' && (

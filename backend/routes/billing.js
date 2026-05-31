@@ -41,12 +41,43 @@ router.post('/checkout', authMiddleware, billingLimiter,
   } else {
     priceId = isAnnual ? plan?.annualPriceId : plan?.priceId;
   }
-  logger.info('checkout debug', { planKey, billing, isAnnual, priceId, annualPriceId: plan?.annualPriceId, monthlyPriceId: plan?.priceId });
   if (!plan || !priceId) return res.status(400).json({ error: 'This plan isn\'t available for purchase. Please choose a different plan or contact support.' });
   if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not available right now. Please contact support.' });
 
   try {
     const sub = getOrCreateSubscription(req.userId);
+
+    // If user already has an active paid subscription, use Stripe to update it
+    // instead of creating a new checkout session (prevents duplicate subscriptions)
+    if (sub.stripe_subscription_id && sub.status === 'active') {
+      const stripeSub = await stripe.subscriptions.retrieve(sub.stripe_subscription_id);
+      const currentItemId = stripeSub.items.data[0]?.id;
+
+      const PLAN_RANK = { free: 0, basic: 1, pro: 2, ultra: 3 };
+      const isDowngrade = (PLAN_RANK[planKey] || 0) < (PLAN_RANK[sub.plan] || 0);
+
+      await stripe.subscriptions.update(sub.stripe_subscription_id, {
+        items: [{ id: currentItemId, price: priceId }],
+        // Downgrades take effect at period end; upgrades apply immediately with proration
+        proration_behavior: isDowngrade ? 'none' : 'create_prorations',
+        billing_cycle_anchor: isDowngrade ? 'unchanged' : 'now',
+        ...(isDowngrade && { cancel_at_period_end: false }),
+        metadata: { userId: req.userId, planKey },
+      });
+
+      // For downgrades: store pending plan change, don't change credits yet
+      // For upgrades: apply immediately
+      if (isDowngrade) {
+        const db = getDb();
+        db.prepare(
+          'UPDATE subscriptions SET pending_plan = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
+        ).run(planKey, req.userId);
+        return res.json({ upgraded: true, message: 'Plan will change at the end of your billing period.' });
+      } else {
+        resetCreditsForPlan(req.userId, planKey);
+        return res.json({ upgraded: true, message: 'Plan upgraded successfully.' });
+      }
+    }
     const db = getDb();
     const user = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(req.userId);
 
@@ -144,9 +175,23 @@ router.post('/webhook', async (req, res) => {
       const sub = db.prepare('SELECT * FROM subscriptions WHERE stripe_subscription_id = ?').get(stripeSub.id);
       if (!sub) break;
 
-      db.prepare(
-        'UPDATE subscriptions SET status = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE stripe_subscription_id = ?'
-      ).run(stripeSub.status, new Date(stripeSub.current_period_end * 1000).toISOString(), stripeSub.id);
+      const periodEnd = new Date(stripeSub.current_period_end * 1000).toISOString();
+
+      // Check if a plan change took effect (price changed on the subscription)
+      const newPriceId = stripeSub.items.data[0]?.price?.id;
+      const planFromStripe = stripeSub.metadata?.planKey;
+
+      if (planFromStripe && planFromStripe !== sub.plan) {
+        // Plan change applied — update plan and reset credits
+        db.prepare(
+          'UPDATE subscriptions SET plan = ?, status = ?, current_period_end = ?, pending_plan = NULL, updated_at = CURRENT_TIMESTAMP WHERE stripe_subscription_id = ?'
+        ).run(planFromStripe, stripeSub.status, periodEnd, stripeSub.id);
+        resetCreditsForPlan(sub.user_id, planFromStripe);
+      } else {
+        db.prepare(
+          'UPDATE subscriptions SET status = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE stripe_subscription_id = ?'
+        ).run(stripeSub.status, periodEnd, stripeSub.id);
+      }
       break;
     }
 
