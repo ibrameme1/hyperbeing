@@ -9,7 +9,7 @@ import { Strategy as FacebookStrategy } from 'passport-facebook';
 import axios from 'axios';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { validate, isString, isEmail } from '../middleware/validate.js';
+import { validate, isString, isEmail, isOptionalString } from '../middleware/validate.js';
 import { authLimiter, loginLimiter, authBackoff } from '../middleware/rateLimits.js';
 
 const router = Router();
@@ -294,13 +294,38 @@ router.get('/me', (req, res) => {
   try {
     const { userId } = jwt.verify(token, process.env.JWT_SECRET);
     const user = getDb()
-      .prepare('SELECT id, name, email, avatar FROM users WHERE id = ?')
+      .prepare('SELECT id, name, email, avatar, profile_data FROM users WHERE id = ?')
       .get(userId);
     if (!user) return res.status(401).json({ error: 'User not found' });
-    res.json({ user });
+    res.json({ user: { ...user, profile_data: user.profile_data ? JSON.parse(user.profile_data) : null } });
   } catch {
     res.status(401).json({ error: 'Invalid token' });
   }
 });
+
+router.get('/profile', authenticateToken, (req, res) => {
+  const user = getDb()
+    .prepare('SELECT id, name, email, avatar, profile_data FROM users WHERE id = ?')
+    .get(req.user.id);
+  res.json({ ...user, profile_data: user.profile_data ? JSON.parse(user.profile_data) : null });
+});
+
+router.put('/profile', authenticateToken,
+  validate({
+    name: isString(1, 100),
+    bio:      isOptionalString(300),
+    company:  isOptionalString(100),
+    jobTitle: isOptionalString(100),
+    useCase:  isOptionalString(200),
+    industry: isOptionalString(100),
+  }),
+  (req, res) => {
+    const { name, ...profileFields } = req.body;
+    const profile_data = JSON.stringify(profileFields);
+    getDb().prepare('UPDATE users SET name = ?, profile_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .run(name, profile_data, req.user.id);
+    res.json({ message: 'Profile updated' });
+  }
+);
 
 export default router;

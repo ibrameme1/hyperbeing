@@ -123,6 +123,11 @@ export function initDatabase() {
     db.exec('ALTER TABLE subscriptions ADD COLUMN tokens_used INTEGER DEFAULT 0');
   } catch { /* already exists */ }
 
+  // Migrate: pending plan for scheduled downgrades
+  try {
+    db.exec('ALTER TABLE subscriptions ADD COLUMN pending_plan TEXT DEFAULT NULL');
+  } catch { /* already exists */ }
+
   // Structured application logs (rolling — capped at 10 K rows by logger.js)
   db.exec(`
     CREATE TABLE IF NOT EXISTS app_logs (
