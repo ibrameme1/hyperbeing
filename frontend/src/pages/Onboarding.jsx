@@ -4,6 +4,7 @@ import { ArrowRight, ArrowLeft, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
+import Logo from '../components/Logo';
 
 const QUESTIONS = [
   {
@@ -177,12 +178,8 @@ export default function Onboarding() {
            style={{ background: 'radial-gradient(circle, rgba(0,240,255,0.14) 0%, transparent 65%)', filter: 'blur(60px)' }} />
 
       {/* Logo */}
-      <div className="absolute top-6 left-6 flex items-center gap-2">
-        <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-             style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
-          <Sparkles size={14} className="text-white" />
-        </div>
-        <span className="text-white/60 font-semibold text-sm">HyperBeing</span>
+      <div className="absolute top-6 left-6">
+        <Logo dark height={22} />
       </div>
 
       {/* Skip */}

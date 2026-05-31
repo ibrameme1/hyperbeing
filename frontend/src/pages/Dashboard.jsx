@@ -11,6 +11,7 @@ import api from '../api/client';
 import OutOfCreditsModal from '../components/OutOfCreditsModal';
 import { useTheme } from '../contexts/ThemeContext';
 import { track } from '../utils/track';
+import Logo from '../components/Logo';
 
 const ANALYZING_MESSAGES = [
   'Reading your brief…',
@@ -554,12 +555,8 @@ export default function Dashboard() {
       {/* Nav */}
       <nav className="sticky top-0 z-50 flex items-center justify-between px-6 py-3"
            style={{ background: 'var(--bg-nav)', backdropFilter: 'blur(20px)', borderBottom: '1px solid var(--border)' }}>
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
-            <Sparkles size={16} className="text-white" />
-          </div>
-          <span className="font-bold text-gray-900 dark:text-white text-lg tracking-tight">HyperBeing</span>
+        <div className="flex items-center">
+          <Logo dark={isDark} height={26} />
         </div>
         <div className="flex items-center gap-3">
           {/* Theme toggle */}
