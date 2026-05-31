@@ -20,16 +20,28 @@ router.get('/subscription', authMiddleware, async (req, res) => {
   const plan = PLANS[sub.plan] || PLANS.free;
   const admin = isAdmin(req.userId);
 
-  // Fetch next invoice date from Stripe if available
   let next_payment_date = null;
+  let current_period_end = sub.current_period_end;
+
   if (sub.stripe_subscription_id && process.env.STRIPE_SECRET_KEY) {
     try {
-      const upcoming = await stripe.invoices.retrieveUpcoming({ subscription: sub.stripe_subscription_id });
-      next_payment_date = new Date(upcoming.next_payment_attempt * 1000).toISOString();
-    } catch { /* subscription may be cancelled or in trial */ }
+      const [stripeSub, upcoming] = await Promise.all([
+        // Always fetch period_end from Stripe so it's never stale/null
+        stripe.subscriptions.retrieve(sub.stripe_subscription_id),
+        stripe.invoices.retrieveUpcoming({ subscription: sub.stripe_subscription_id }).catch(() => null),
+      ]);
+      current_period_end = new Date(stripeSub.current_period_end * 1000).toISOString();
+      if (upcoming?.next_payment_attempt) {
+        next_payment_date = new Date(upcoming.next_payment_attempt * 1000).toISOString();
+      }
+      // Persist if DB was stale/null
+      if (current_period_end !== sub.current_period_end) {
+        getDb().prepare('UPDATE subscriptions SET current_period_end = ? WHERE user_id = ?').run(current_period_end, req.userId);
+      }
+    } catch { /* subscription may be cancelled or Stripe unavailable */ }
   }
 
-  res.json({ subscription: { ...sub, is_admin: admin, next_payment_date }, plan });
+  res.json({ subscription: { ...sub, current_period_end, is_admin: admin, next_payment_date }, plan });
 });
 
 // ── POST /api/billing/checkout ────────────────────────────────────────────────
@@ -65,6 +77,19 @@ router.post('/checkout', authMiddleware, billingLimiter,
 
       const PLAN_RANK = { free: 0, basic: 1, pro: 2, ultra: 3 };
       const isDowngrade = (PLAN_RANK[planKey] || 0) < (PLAN_RANK[sub.plan] || 0);
+
+      // Cancel a pending downgrade — user re-subscribes to their current plan
+      if (planKey === sub.plan && sub.pending_plan) {
+        await stripe.subscriptions.update(sub.stripe_subscription_id, {
+          items: [{ id: currentItemId, price: priceId }],
+          proration_behavior: 'none',
+          billing_cycle_anchor: 'unchanged',
+          metadata: { userId: req.userId, planKey },
+        });
+        const db = getDb();
+        db.prepare('UPDATE subscriptions SET pending_plan = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?').run(req.userId);
+        return res.json({ upgraded: true, cancelledDowngrade: true, keptPlan: planKey });
+      }
 
       await stripe.subscriptions.update(sub.stripe_subscription_id, {
         items: [{ id: currentItemId, price: priceId }],
