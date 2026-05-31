@@ -155,32 +155,15 @@ export default function Pricing() {
     // Allow re-subscribing to current plan only when cancelling a pending downgrade
     if (planKey === currentPlan && !subInfo?.pending_plan) return;
     setLoading(planKey);
+
+    let data;
     try {
-      const { data } = await api.post('/billing/checkout', {
+      const res = await api.post('/billing/checkout', {
         planKey,
         billing,
         ...(planKey === 'ultra' && { ultraTier }),
       });
-      if (data.upgraded) {
-        if (data.isDowngrade) {
-          // Refresh sub state in-place so cards update immediately, then show modal
-          const subRes = await api.get('/billing/subscription');
-          setCurrentPlan(subRes.data.subscription.plan);
-          setCreditsLeft(subRes.data.subscription.credits_remaining);
-          setSubInfo(subRes.data.subscription);
-          setDowngradeModal({ pendingPlan: data.pendingPlan, periodEnd: data.periodEnd, fromPlan: data.currentPlan });
-        } else if (data.cancelledDowngrade) {
-          const subRes = await api.get('/billing/subscription');
-          setCurrentPlan(subRes.data.subscription.plan);
-          setCreditsLeft(subRes.data.subscription.credits_remaining);
-          setSubInfo(subRes.data.subscription);
-        } else {
-          alert(data.message || 'Plan upgraded successfully.');
-          window.location.reload();
-        }
-      } else {
-        window.location.href = data.url;
-      }
+      data = res.data;
     } catch (err) {
       const status = err.response?.status;
       alert(
@@ -189,9 +172,31 @@ export default function Pricing() {
          status === 429 ? 'Too many requests. Please wait a moment and try again.' :
          'Could not start checkout. Please try again.')
       );
-    } finally {
       setLoading(null);
+      return;
     }
+
+    if (!data.upgraded) {
+      // New checkout session — redirect to Stripe
+      window.location.href = data.url;
+      return;
+    }
+
+    if (data.isDowngrade) {
+      setDowngradeModal({ pendingPlan: data.pendingPlan, periodEnd: data.periodEnd, fromPlan: data.currentPlan });
+    }
+
+    // Refresh subscription state in-place after any successful action.
+    // Intentionally separated from the POST try-catch so Stripe latency on the
+    // GET /subscription call never surfaces as a "Could not start checkout" error.
+    try {
+      const subRes = await api.get('/billing/subscription');
+      setCurrentPlan(subRes.data.subscription.plan);
+      setCreditsLeft(subRes.data.subscription.credits_remaining);
+      setSubInfo(subRes.data.subscription);
+    } catch { /* state stays as-is; will update on next navigation */ }
+
+    setLoading(null);
   }
 
   async function handleManage() {
