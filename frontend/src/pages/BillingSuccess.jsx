@@ -44,7 +44,7 @@ export default function BillingSuccess() {
           <p className="text-white/50 mb-2">Payment confirmed. Nova is ready to create.</p>
           {credits !== null && (
             <p className="text-white/35 text-sm mb-8">
-              <span style={{ color: '#C4B5FD', fontWeight: 600 }}>{credits} credits</span> added to your account.
+              <span style={{ color: '#C4B5FD', fontWeight: 600 }}>{(credits * 10).toLocaleString()} credits</span> added to your account.
             </p>
           )}
 

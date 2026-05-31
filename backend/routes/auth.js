@@ -3,25 +3,33 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import passport from 'passport';
+import { logger } from '../services/logger.js';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 import axios from 'axios';
 import { getDb } from '../database.js';
-import { validate, isString, isEmail } from '../middleware/validate.js';
-import { authLimiter, loginLimiter } from '../middleware/rateLimits.js';
+import { authenticateToken } from '../middleware/auth.js';
+import { validate, isString, isEmail, isOptionalString } from '../middleware/validate.js';
+import { authLimiter, loginLimiter, authBackoff } from '../middleware/rateLimits.js';
 
 const router = Router();
 
 function signToken(userId) {
-  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '15m' });
+}
+
+function signRefreshToken(userId) {
+  return jwt.sign({ userId, type: 'refresh' }, process.env.JWT_SECRET, { expiresIn: '7d' });
 }
 
 function frontendUrl() {
   return process.env.FRONTEND_URL || 'http://localhost:5173';
 }
 
-function redirectWithToken(res, token, isNew = false) {
-  res.redirect(`${frontendUrl()}/auth/callback?token=${token}&new=${isNew}`);
+function redirectWithToken(res, userId, isNew = false) {
+  const token = signToken(userId);
+  const refreshToken = signRefreshToken(userId);
+  res.redirect(`${frontendUrl()}/auth/callback?token=${token}&refresh=${refreshToken}&new=${isNew}`);
 }
 
 // ── Passport: Google ─────────────────────────────────────────────────────────
@@ -97,7 +105,7 @@ router.get('/google/callback',
       email: profile.emails?.[0]?.value,
       avatar: profile.photos?.[0]?.value,
     });
-    redirectWithToken(res, signToken(user.id), isNew);
+    redirectWithToken(res, user.id, isNew);
   },
 );
 
@@ -117,7 +125,7 @@ router.get('/meta/callback',
       email: profile.emails?.[0]?.value,
       avatar: profile.photos?.[0]?.value,
     });
-    redirectWithToken(res, signToken(user.id), isNew);
+    redirectWithToken(res, user.id, isNew);
   },
 );
 
@@ -126,19 +134,28 @@ router.get('/tiktok', (req, res) => {
   if (!process.env.TIKTOK_CLIENT_KEY) {
     return res.redirect(`${frontendUrl()}/login?error=tiktok_not_configured`);
   }
+  const state = uuid();
+  req.session.tiktokOAuthState = state;
   const params = new URLSearchParams({
     client_key: process.env.TIKTOK_CLIENT_KEY,
     scope: 'user.info.basic',
     response_type: 'code',
     redirect_uri: `${process.env.API_URL || 'http://localhost:3001'}/api/auth/tiktok/callback`,
-    state: uuid(),
+    state,
   });
   res.redirect(`https://www.tiktok.com/v2/auth/authorize/?${params}`);
 });
 
 router.get('/tiktok/callback', async (req, res) => {
-  const { code } = req.query;
+  const { code, state } = req.query;
   if (!code) return res.redirect(`${frontendUrl()}/login?error=oauth`);
+
+  // Validate CSRF state
+  const expectedState = req.session.tiktokOAuthState;
+  delete req.session.tiktokOAuthState;
+  if (!state || !expectedState || state !== expectedState) {
+    return res.redirect(`${frontendUrl()}/login?error=oauth`);
+  }
 
   try {
     const tokenRes = await axios.post('https://open.tiktokapis.com/v2/oauth/token/', new URLSearchParams({
@@ -164,15 +181,16 @@ router.get('/tiktok/callback', async (req, res) => {
       email: null,
       avatar: tiktokUser.avatar_url,
     });
-    redirectWithToken(res, signToken(user.id), isNew);
+    redirectWithToken(res, user.id, isNew);
   } catch (err) {
-    console.error('TikTok OAuth error:', err.message);
+    logger.error('tiktok oauth failed', { errorMessage: err.message });
     res.redirect(`${frontendUrl()}/login?error=oauth`);
   }
 });
 
 // ── Email / password ──────────────────────────────────────────────────────────
 router.post('/register',
+  authBackoff,
   authLimiter,
   validate({
     name:     isString(2, 100),
@@ -183,7 +201,10 @@ router.post('/register',
     const { name, email, password } = req.body;
     const db = getDb();
     const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase());
-    if (existing) return res.status(409).json({ error: 'Email already in use' });
+    if (existing) {
+      req.recordAuthFailure?.();
+      return res.status(409).json({ error: 'Email already in use' });
+    }
 
     const password_hash = await bcrypt.hash(password, 12);
     const id = uuid();
@@ -191,12 +212,14 @@ router.post('/register',
       'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)'
     ).run(id, name, email.toLowerCase(), password_hash);
 
+    req.clearAuthBackoff?.();
     const user = { id, name, email: email.toLowerCase() };
-    res.status(201).json({ token: signToken(id), user });
+    res.status(201).json({ token: signToken(id), refreshToken: signRefreshToken(id), user });
   },
 );
 
 router.post('/login',
+  authBackoff,
   loginLimiter,
   validate({
     email:    isEmail(),
@@ -214,15 +237,17 @@ router.post('/login',
     const valid = await bcrypt.compare(password, user?.password_hash || dummyHash);
 
     if (!user || !user.password_hash) {
-      // bcrypt ran (timing-safe), but no account exists for this email
+      req.recordAuthFailure?.();
       return res.status(401).json({ error: 'No account found with that email.', code: 'USER_NOT_FOUND' });
     }
     if (!valid) {
+      req.recordAuthFailure?.();
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    req.clearAuthBackoff?.();
     const { password_hash: _, ...safeUser } = user;
-    res.json({ token: signToken(user.id), user: safeUser });
+    res.json({ token: signToken(user.id), refreshToken: signRefreshToken(user.id), user: safeUser });
   },
 );
 
@@ -240,6 +265,28 @@ router.post('/onboarding', (req, res) => {
   }
 });
 
+router.post('/refresh', (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(401).json({ error: 'Refresh token required' });
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+    if (decoded.type !== 'refresh') return res.status(401).json({ error: 'Invalid token type' });
+    const user = getDb().prepare('SELECT id FROM users WHERE id = ?').get(decoded.userId);
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    res.json({
+      token: signToken(decoded.userId),
+      refreshToken: signRefreshToken(decoded.userId),
+    });
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired refresh token' });
+  }
+});
+
+router.delete('/account', authenticateToken, (req, res) => {
+  getDb().prepare('DELETE FROM users WHERE id = ?').run(req.user.id);
+  res.json({ message: 'Account deleted' });
+});
+
 router.get('/me', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'No token' });
@@ -247,13 +294,38 @@ router.get('/me', (req, res) => {
   try {
     const { userId } = jwt.verify(token, process.env.JWT_SECRET);
     const user = getDb()
-      .prepare('SELECT id, name, email, avatar FROM users WHERE id = ?')
+      .prepare('SELECT id, name, email, avatar, profile_data FROM users WHERE id = ?')
       .get(userId);
     if (!user) return res.status(401).json({ error: 'User not found' });
-    res.json({ user });
+    res.json({ user: { ...user, profile_data: user.profile_data ? JSON.parse(user.profile_data) : null } });
   } catch {
     res.status(401).json({ error: 'Invalid token' });
   }
 });
+
+router.get('/profile', authenticateToken, (req, res) => {
+  const user = getDb()
+    .prepare('SELECT id, name, email, avatar, profile_data FROM users WHERE id = ?')
+    .get(req.user.id);
+  res.json({ ...user, profile_data: user.profile_data ? JSON.parse(user.profile_data) : null });
+});
+
+router.put('/profile', authenticateToken,
+  validate({
+    name: isString(1, 100),
+    bio:      isOptionalString(300),
+    company:  isOptionalString(100),
+    jobTitle: isOptionalString(100),
+    useCase:  isOptionalString(200),
+    industry: isOptionalString(100),
+  }),
+  (req, res) => {
+    const { name, ...profileFields } = req.body;
+    const profile_data = JSON.stringify(profileFields);
+    getDb().prepare('UPDATE users SET name = ?, profile_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .run(name, profile_data, req.user.id);
+    res.json({ message: 'Profile updated' });
+  }
+);
 
 export default router;

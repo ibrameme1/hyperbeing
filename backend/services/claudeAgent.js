@@ -1,4 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { recordTokenUsage } from './stripeService.js';
+import { logger } from './logger.js';
+import { metrics } from './metrics.js';
 
 const MOCK_MODE = !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'demo';
 
@@ -245,15 +248,18 @@ IMPORTANT: When the user's message contains the section "PREFLIGHT ANSWERS:", yo
 
 Once you have enough context — stop asking and generate the full slide plan.
 
-CRITICAL: You ALWAYS respond with VALID JSON in EXACTLY this format:
+CRITICAL: You ALWAYS respond in EXACTLY this two-part format:
 
-{
-  "message": "Your warm conversational message to the user (markdown OK)",
-  "state": "gathering_info" | "ready",
-  "slide_plan": null
-}
+[Your warm conversational message to the user — markdown OK, no length limit]
+---
+{"state":"gathering_info","slide_plan":null}
 
-When state is "ready", set slide_plan to:
+Use a line containing exactly "---" to separate your message from the JSON metadata below it. Never write "---" in your message text.
+
+When state is "ready", the metadata line becomes:
+{"state":"ready","slide_plan":{...}}
+
+Where slide_plan contains:
 {
   "presentation_title": "Title",
   "total_slides": <number — user-specified OR your intelligent decision>,
@@ -394,7 +400,7 @@ ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 - [] — attach nothing (e.g., pure text quote slides)
 
 CRITICAL RULES:
-1. Always return valid JSON — nothing outside the JSON object
+1. Always use the two-part format: message text, then "---", then JSON metadata on the next line. Nothing outside this structure.
 2. Never make up facts about the user's business — only use what they provide
 3. When state = "ready", slide_plan MUST be fully populated with ALL slides
 4. nano_banana_prompt must be 250-300 words — specific, art-directed, cinematically written
@@ -404,7 +410,7 @@ CRITICAL RULES:
 
 // ─── Exports ────────────────────────────────────────────────────────────────
 
-export async function chat(conversationHistory, userMessage, attachments = []) {
+export async function chat(conversationHistory, userMessage, attachments = [], userId = null) {
   if (MOCK_MODE) return mockChat(conversationHistory);
 
   const userContent = buildUserContent(userMessage, attachments);
@@ -413,15 +419,8 @@ export async function chat(conversationHistory, userMessage, attachments = []) {
     { role: 'user', content: userContent },
   ];
 
-  console.log('\n' + '═'.repeat(60));
-  console.log('📨 CLAUDE API INPUT');
-  console.log('═'.repeat(60));
-  console.log(`Turn: ${messages.length} messages`);
-  messages.forEach((m, i) => {
-    const content = typeof m.content === 'string' ? m.content : `[multipart: ${Array.isArray(m.content) ? m.content.map(p => p.type).join(', ') : 'object'}]`;
-    console.log(`  [${i}] ${m.role}: ${content.slice(0, 200)}${content.length > 200 ? '…' : ''}`);
-  });
-  console.log('═'.repeat(60));
+  const t0 = Date.now();
+  logger.debug('claude chat request', { turns: messages.length });
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -430,36 +429,119 @@ export async function chat(conversationHistory, userMessage, attachments = []) {
     messages,
   });
 
+  const durationMs = Date.now() - t0;
+  if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+  metrics.recordAICall({ fn: 'chat', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs });
+  logger.info('claude chat complete', { durationMs, state: undefined, inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens });
+
   const raw = response.content[0].text.trim();
-  const jsonText = raw.startsWith('```')
-    ? raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
-    : raw;
+  const SEP = '\n---\n';
+  const sepIdx = raw.indexOf(SEP);
+  const messageText = (sepIdx !== -1 ? raw.slice(0, sepIdx) : raw).trim();
+  const metadataStr = (sepIdx !== -1 ? raw.slice(sepIdx + SEP.length) : '').trim();
 
-  let parsed;
+  let metadata = { state: 'gathering_info', slide_plan: null };
   try {
-    parsed = JSON.parse(jsonText);
+    if (metadataStr) {
+      const jsonText = metadataStr.startsWith('```')
+        ? metadataStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+        : metadataStr;
+      metadata = JSON.parse(jsonText);
+    }
   } catch {
-    const match = jsonText.match(/\{[\s\S]*\}/);
-    if (match) parsed = JSON.parse(match[0]);
-    else parsed = { message: raw, state: 'gathering_info', slide_plan: null };
+    const match = metadataStr.match(/\{[\s\S]*\}/);
+    if (match) try { metadata = JSON.parse(match[0]); } catch {}
   }
 
-  console.log('\n' + '═'.repeat(60));
-  console.log('🤖 CLAUDE API OUTPUT');
-  console.log('═'.repeat(60));
-  console.log(`State: ${parsed.state}`);
-  console.log(`Message: ${parsed.message?.slice(0, 300)}${(parsed.message?.length ?? 0) > 300 ? '…' : ''}`);
-  if (parsed.slide_plan) {
-    console.log(`Slide plan: ${parsed.slide_plan.total_slides} slides — "${parsed.slide_plan.presentation_title}"`);
-    parsed.slide_plan.slides?.forEach(s => {
-      console.log(`\n  Slide ${s.index} [${s.type}]: ${s.title}`);
-      console.log(`  Nano Banana prompt: ${(s.nano_banana_prompt || '—').slice(0, 200)}…`);
-      console.log(`  Attach categories: ${JSON.stringify(s.attach_image_categories)}`);
-    });
-  }
-  console.log('═'.repeat(60) + '\n');
+  const parsed = { message: messageText, ...metadata };
+  logger.debug('claude chat parsed', { state: parsed.state, slideCount: parsed.slide_plan?.slides?.length });
 
   return parsed;
+}
+
+export async function streamChat(conversationHistory, userMessage, attachments = [], onChunk, userId = null) {
+  if (MOCK_MODE) {
+    const result = await mockChat(conversationHistory);
+    const parts = result.message.split(/(\s+)/);
+    for (const part of parts) {
+      if (part) {
+        await new Promise(r => setTimeout(r, 30));
+        onChunk(part);
+      }
+    }
+    return result;
+  }
+
+  const userContent = buildUserContent(userMessage, attachments);
+  const messages = [
+    ...conversationHistory.map(m => ({ role: m.role, content: buildHistoryContent(m) })),
+    { role: 'user', content: userContent },
+  ];
+
+  const stream = client.messages.stream({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 16000,
+    system: SYSTEM_PROMPT,
+    messages,
+  });
+
+  let buffer = '';
+  let streamedIdx = 0;
+  let separatorFound = false;
+  const SEP = '\n---\n';
+
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+      buffer += event.delta.text;
+
+      if (!separatorFound) {
+        const sepIdx = buffer.indexOf(SEP);
+        if (sepIdx !== -1) {
+          if (sepIdx > streamedIdx) onChunk(buffer.slice(streamedIdx, sepIdx));
+          streamedIdx = sepIdx;
+          separatorFound = true;
+        } else {
+          const safeLen = Math.max(streamedIdx, buffer.length - SEP.length);
+          if (safeLen > streamedIdx) {
+            onChunk(buffer.slice(streamedIdx, safeLen));
+            streamedIdx = safeLen;
+          }
+        }
+      }
+    }
+  }
+
+  const sepIdx = buffer.indexOf(SEP);
+  const messageText = (sepIdx !== -1 ? buffer.slice(0, sepIdx) : buffer).trim();
+  const metadataStr = (sepIdx !== -1 ? buffer.slice(sepIdx + SEP.length) : '').trim();
+  const msgEnd = sepIdx !== -1 ? sepIdx : buffer.length;
+  if (streamedIdx < msgEnd) onChunk(buffer.slice(streamedIdx, msgEnd));
+
+  let metadata = { state: 'gathering_info', slide_plan: null };
+  try {
+    if (metadataStr) {
+      const jsonText = metadataStr.startsWith('```')
+        ? metadataStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+        : metadataStr;
+      metadata = JSON.parse(jsonText);
+    }
+  } catch (e) {
+    logger.warn('failed to parse streamChat metadata', { errorMessage: e.message, preview: metadataStr.slice(0, 200) });
+    const match = metadataStr.match(/\{[\s\S]*\}/);
+    if (match) try { metadata = JSON.parse(match[0]); } catch {}
+  }
+
+  const t0Chat = Date.now();
+  if (userId) {
+    try {
+      const finalMsg = await stream.finalMessage();
+      recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
+      metrics.recordAICall({ fn: 'streamChat', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - t0Chat });
+    } catch {}
+  }
+  logger.info('claude stream chat complete', { durationMs: Date.now() - t0Chat });
+
+  return { message: messageText, ...metadata };
 }
 
 const ANALYZE_PROMPT = `You are a presentation intelligence system. A user has submitted a brief to create a presentation. Analyze their input and return a JSON object with contextual questions to gather exactly what's needed.
@@ -486,7 +568,7 @@ Rules:
 - NEVER ask generic questions like "how many slides" — use suggested_slide_count instead
 - Questions and options must be directly relevant to the specific brief provided`;
 
-export async function analyzePresentation(message, attachments = []) {
+export async function analyzePresentation(message, attachments = [], userId = null) {
   if (MOCK_MODE) {
     await new Promise(r => setTimeout(r, 800));
     return {
@@ -502,6 +584,7 @@ export async function analyzePresentation(message, attachments = []) {
   }
 
   const userContent = buildUserContent(message, attachments);
+  const t0 = Date.now();
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -509,6 +592,11 @@ export async function analyzePresentation(message, attachments = []) {
     system: ANALYZE_PROMPT,
     messages: [{ role: 'user', content: userContent }],
   });
+
+  const durationMs = Date.now() - t0;
+  if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+  metrics.recordAICall({ fn: 'analyzePresentation', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs });
+  logger.info('claude analyze complete', { durationMs, inputTokens: response.usage?.input_tokens });
 
   const raw = response.content[0].text.trim();
   const jsonText = raw.startsWith('```') ? raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '') : raw;
@@ -522,7 +610,7 @@ export async function analyzePresentation(message, attachments = []) {
   }
 }
 
-export async function regenerateSlide(slide, instruction, presentationContext) {
+export async function regenerateSlide(slide, instruction, presentationContext, userId = null) {
   if (MOCK_MODE) return mockRegenerateSlide(slide, instruction);
 
   const slideInfo = { ...slide };
@@ -565,11 +653,17 @@ The nano_banana_prompt must follow the mandatory 5-layer structure: (1) BACKGROU
 Return ONLY the JSON object, nothing else.`,
   });
 
+  const t0 = Date.now();
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     messages: [{ role: 'user', content }],
   });
+
+  const durationMs = Date.now() - t0;
+  if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+  metrics.recordAICall({ fn: 'regenerateSlide', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs });
+  logger.info('claude regen slide complete', { durationMs });
 
   const raw = response.content[0].text.trim();
   const jsonText = raw.startsWith('```')
@@ -747,7 +841,7 @@ ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 - "all" — attach all uploaded images
 - [] — attach nothing (e.g., pure text quote slides)`;
 
-export async function streamSlidePlan(message, attachments, callbacks) {
+export async function streamSlidePlan(message, attachments, callbacks, userId = null) {
   const { onHeader, onSlide } = callbacks;
 
   if (MOCK_MODE) {
@@ -767,11 +861,8 @@ export async function streamSlidePlan(message, attachments, callbacks) {
 
   const userContent = buildUserContent(message, attachments);
 
-  console.log('\n' + '═'.repeat(60));
-  console.log('📨 CLAUDE STREAM INPUT');
-  console.log('═'.repeat(60));
-  console.log(`Message: ${message.slice(0, 200)}...`);
-  console.log('═'.repeat(60));
+  const t0 = Date.now();
+  logger.info('claude slide plan stream start', { messageLen: message.length, attachments: attachments.length });
 
   const stream = client.messages.stream({
     model: 'claude-sonnet-4-6',
@@ -792,18 +883,18 @@ export async function streamSlidePlan(message, attachments, callbacks) {
         if (prefix === 'HEADER:') {
           try {
             const header = JSON.parse(jsonStr);
-            console.log(`🎯 HEADER parsed: "${header.presentation_title}", ${header.total_slides} slides`);
+            logger.debug('slide plan header parsed', { title: header.presentation_title, totalSlides: header.total_slides });
             onHeader(header);
           } catch (e) {
-            console.warn('Failed to parse HEADER:', e.message, jsonStr.slice(0, 100));
+            logger.warn('failed to parse slide plan header', { errorMessage: e.message });
           }
         } else {
           try {
             const slide = JSON.parse(jsonStr);
-            console.log(`📊 SLIDE ${slide.index} parsed: "${slide.title}"`);
+            logger.debug('slide parsed', { index: slide.index, title: slide.title });
             onSlide(slide);
           } catch (e) {
-            console.warn('Failed to parse SLIDE:', e.message, jsonStr.slice(0, 100));
+            logger.warn('failed to parse slide', { errorMessage: e.message });
           }
         }
       }
@@ -820,13 +911,23 @@ export async function streamSlidePlan(message, attachments, callbacks) {
       } catch {}
     }
   }
+
+  if (userId) {
+    try {
+      const finalMsg = await stream.finalMessage();
+      recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
+      metrics.recordAICall({ fn: 'streamSlidePlan', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - t0 });
+    } catch {}
+  }
+  logger.info('claude slide plan stream complete', { durationMs: Date.now() - t0 });
 }
 
 // ─── Suggest presentation title ──────────────────────────────────────────────
 
-export async function suggestTitle(context) {
+export async function suggestTitle(context, userId = null) {
   if (MOCK_MODE) return 'Untitled Presentation';
 
+  const tTitle = Date.now();
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 60,
@@ -840,6 +941,13 @@ ${JSON.stringify(context, null, 2)}
 Return only the title text, nothing else.`,
     }],
   });
+
+  const durationMsTitle = Date.now() - tTitle;
+  if (userId) {
+    recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+    metrics.recordAICall({ fn: 'suggestTitle', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs: durationMsTitle });
+  }
+  logger.info('claude suggest title complete', { durationMs: durationMsTitle });
 
   return response.content[0].text.trim().replace(/^["']|["']$/g, '');
 }
@@ -860,7 +968,7 @@ Rules:
 - Maintain the same visual style, theme, and tone as the existing deck
 - Each nano_banana_prompt must follow the mandatory 5-layer structure (Background → Top/Header → Main Body → Callout Cards → Bottom Strip) at 250–600 words`;
 
-export async function streamNewSlides(description, count, startIndex, presentationContext, onSlide) {
+export async function streamNewSlides(description, count, startIndex, presentationContext, onSlide, userId = null) {
   const isAuto = count === null || count === 'auto';
 
   if (MOCK_MODE) {
@@ -892,11 +1000,8 @@ USER REQUEST: ${description}
 
 ${countInstruction} Start index at ${startIndex}.`;
 
-  console.log('\n' + '═'.repeat(60));
-  console.log('📨 CLAUDE ADD-SLIDES STREAM');
-  console.log('═'.repeat(60));
-  console.log(`Adding ${count} slide(s) starting at index ${startIndex}`);
-  console.log('═'.repeat(60));
+  logger.info('claude add-slides stream start', { count, startIndex });
+  const tSlides = Date.now();
 
   const stream = client.messages.stream({
     model: 'claude-sonnet-4-6',
@@ -917,10 +1022,10 @@ ${countInstruction} Start index at ${startIndex}.`;
         if (prefix === 'SLIDE:') {
           try {
             const slide = JSON.parse(jsonStr);
-            console.log(`📊 NEW SLIDE ${slide.index} parsed: "${slide.title}"`);
+            logger.debug('new slide parsed', { index: slide.index, title: slide.title });
             onSlide(slide);
           } catch (e) {
-            console.warn('Failed to parse new SLIDE:', e.message);
+            logger.warn('failed to parse new slide', { errorMessage: e.message });
           }
         }
       }
@@ -935,4 +1040,13 @@ ${countInstruction} Start index at ${startIndex}.`;
       }
     }
   }
+
+  if (userId) {
+    try {
+      const finalMsg = await stream.finalMessage();
+      recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
+      metrics.recordAICall({ fn: 'streamNewSlides', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - tSlides });
+    } catch {}
+  }
+  logger.info('claude add-slides stream complete', { durationMs: Date.now() - tSlides });
 }

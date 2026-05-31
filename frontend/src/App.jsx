@@ -15,6 +15,8 @@ import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
 import Homepage from './pages/Homepage';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
+import Profile from './pages/Profile';
+import CookieConsent from './components/CookieConsent';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -54,7 +56,9 @@ export default function App() {
         <Route path="/terms" element={<Terms />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/analytics" element={<ProtectedRoute><AnalyticsDashboard /></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       </Routes>
+      <CookieConsent />
       <Analytics />
       <SpeedInsights />
     </AuthProvider>

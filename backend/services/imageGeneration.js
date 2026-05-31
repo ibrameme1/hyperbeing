@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { logger } from './logger.js';
 
 const MOCK_MODE = !process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY === 'demo';
 
@@ -34,12 +35,7 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
     parts.push({ text: 'Use the reference images above to match the visual style, layout energy, brand colours, and design language. Generate a premium presentation-ready slide image.' });
   }
 
-  console.log('\n' + '─'.repeat(60));
-  console.log(`🍌 NANO BANANA — Slide ${slideIndex} [${slideType}]`);
-  console.log('─'.repeat(60));
-  console.log(`Full prompt:\n${fullPrompt}`);
-  console.log(`Attached images: ${attachedImages.length}`);
-  console.log('─'.repeat(60));
+  logger.debug('nano banana image gen start', { slideIndex, slideType, attachedImages: attachedImages.length });
 
   const maxAttempts = 4;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -52,17 +48,14 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
       const imagePart = (response.candidates?.[0]?.content?.parts ?? [])
         .find(p => p.inlineData?.mimeType?.startsWith('image/'));
       if (imagePart) {
-        console.log(`✅ Nano Banana success — slide ${slideIndex}\n`);
+        logger.debug('nano banana image gen success', { slideIndex });
         return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
       }
-      console.warn(`⚠️  Nano Banana returned no image for slide ${slideIndex} (attempt ${attempt})`);
+      logger.warn('nano banana returned no image', { slideIndex, attempt });
     } catch (err) {
       const isTransient = err.message.includes('fetch failed') || err.message.includes('429') || err.message.includes('503');
-      console.warn(`❌ Nano Banana failed for slide ${slideIndex} (attempt ${attempt}/${maxAttempts}):`, err.message);
-      if (attempt < maxAttempts && isTransient) {
-        console.log(`   Retrying immediately (attempt ${attempt + 1})…`);
-        continue;
-      }
+      logger.warn('nano banana image gen failed', { slideIndex, attempt, maxAttempts, errorMessage: err.message, isTransient });
+      if (attempt < maxAttempts && isTransient) continue;
     }
     break;
   }

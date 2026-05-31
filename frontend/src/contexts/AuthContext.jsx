@@ -32,6 +32,7 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password });
     localStorage.setItem('hb_token', data.token);
+    localStorage.setItem('hb_refresh_token', data.refreshToken);
     localStorage.setItem('hb_user', JSON.stringify(data.user));
     setUser(data.user);
     return data.user;
@@ -40,6 +41,7 @@ export function AuthProvider({ children }) {
   const register = useCallback(async (name, email, password) => {
     const { data } = await api.post('/auth/register', { name, email, password });
     localStorage.setItem('hb_token', data.token);
+    localStorage.setItem('hb_refresh_token', data.refreshToken);
     localStorage.setItem('hb_user', JSON.stringify(data.user));
     setUser(data.user);
     return data.user;
@@ -47,13 +49,23 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem('hb_token');
+    localStorage.removeItem('hb_refresh_token');
     localStorage.removeItem('hb_user');
     setUser(null);
     setSubscription(null);
   }, []);
 
+  const deleteAccount = useCallback(async () => {
+    await api.delete('/auth/account');
+    logout();
+  }, [logout]);
+
+  const setAuthUser = useCallback((userData) => {
+    setUser(userData);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, subscription, loading, login, register, logout, refreshSubscription: fetchSubscription }}>
+    <AuthContext.Provider value={{ user, subscription, loading, login, register, logout, deleteAccount, setAuthUser, refreshSubscription: fetchSubscription }}>
       {children}
     </AuthContext.Provider>
   );

@@ -25,11 +25,19 @@ export function isAdmin(userId) {
 }
 
 export const PLANS = {
-  free:  { name: 'Free',  price: 0,   credits: 5,    priceId: null,                                 annualPriceId: null }, // displays as 50 (×10 multiplier in frontend)
-  basic: { name: 'Basic', price: 25,  credits: 100,  priceId: process.env.STRIPE_BASIC_PRICE_ID,    annualPriceId: process.env.STRIPE_BASIC_ANNUAL_PRICE_ID },
-  pro:   { name: 'Pro',   price: 65,  credits: 500,  priceId: process.env.STRIPE_PRO_PRICE_ID,      annualPriceId: process.env.STRIPE_PRO_ANNUAL_PRICE_ID },
-  ultra: { name: 'Ultra', price: 149, credits: 2000, priceId: process.env.STRIPE_ULTRA_PRICE_ID,    annualPriceId: process.env.STRIPE_ULTRA_ANNUAL_PRICE_ID },
+  free:  { name: 'Free',  price: 0,   credits: 5,    tokenLimit:  500_000, priceId: null,                                 annualPriceId: null },
+  basic: { name: 'Basic', price: 25,  credits: 100,  tokenLimit:  5_000_000, priceId: process.env.STRIPE_BASIC_PRICE_ID,  annualPriceId: process.env.STRIPE_BASIC_ANNUAL_PRICE_ID },
+  pro:   { name: 'Pro',   price: 65,  credits: 500,  tokenLimit: 20_000_000, priceId: process.env.STRIPE_PRO_PRICE_ID,    annualPriceId: process.env.STRIPE_PRO_ANNUAL_PRICE_ID },
+  ultra: { name: 'Ultra', price: 149, credits: 2000, tokenLimit: 100_000_000, priceId: null, annualPriceId: null },
 };
+
+// Ultra tier price IDs indexed by slider position (0–3).
+export const ULTRA_TIERS = [
+  { priceId: process.env.STRIPE_ULTRA_T1_PRICE_ID,       annualPriceId: process.env.STRIPE_ULTRA_T1_ANNUAL_PRICE_ID },
+  { priceId: process.env.STRIPE_ULTRA_T2_PRICE_ID,       annualPriceId: process.env.STRIPE_ULTRA_T2_ANNUAL_PRICE_ID },
+  { priceId: process.env.STRIPE_ULTRA_T3_PRICE_ID,       annualPriceId: process.env.STRIPE_ULTRA_T3_ANNUAL_PRICE_ID },
+  { priceId: process.env.STRIPE_ULTRA_T4_PRICE_ID,       annualPriceId: process.env.STRIPE_ULTRA_T4_ANNUAL_PRICE_ID },
+];
 
 export const CREDIT_COSTS = {
   create_presentation: 10,
@@ -80,6 +88,26 @@ export function deductCredits(userId, amount, type, description, presentationId 
   return newBalance;
 }
 
+// ── Token usage tracking ──────────────────────────────────────────────────────
+
+export function checkTokenBudget(userId) {
+  if (isAdmin(userId)) return;
+  const sub = getOrCreateSubscription(userId);
+  const plan = PLANS[sub.plan] || PLANS.free;
+  if ((sub.tokens_used || 0) >= plan.tokenLimit) {
+    throw new Error('TOKEN_LIMIT_EXCEEDED');
+  }
+}
+
+export function recordTokenUsage(userId, inputTokens, outputTokens) {
+  if (isAdmin(userId)) return;
+  const total = (inputTokens || 0) + (outputTokens || 0);
+  if (!total) return;
+  getDb().prepare(
+    'UPDATE subscriptions SET tokens_used = tokens_used + ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
+  ).run(total, userId);
+}
+
 export function grantCredits(userId, amount, type, description) {
   const db = getDb();
   const sub = getOrCreateSubscription(userId);
@@ -102,7 +130,7 @@ export function resetCreditsForPlan(userId, planKey) {
   if (!plan) return;
 
   db.prepare(
-    'UPDATE subscriptions SET credits_remaining = ?, credits_total = ?, plan = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
+    'UPDATE subscriptions SET credits_remaining = ?, credits_total = ?, tokens_used = 0, plan = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
   ).run(plan.credits, plan.credits, planKey, userId);
 
   db.prepare(

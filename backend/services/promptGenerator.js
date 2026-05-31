@@ -1,4 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { recordTokenUsage } from './stripeService.js';
+import { logger } from './logger.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -11,7 +13,7 @@ const SYSTEM_PROMPT = fs.readFileSync(
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-export async function generatePromptResponse(history, userMessage, attachedImages = []) {
+export async function generatePromptResponse(history, userMessage, attachedImages = [], userId = null) {
   const userContent = [];
 
   for (const img of attachedImages) {
@@ -41,6 +43,8 @@ export async function generatePromptResponse(history, userMessage, attachedImage
     messages,
   });
 
+  if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+
   const rawText = response.content
     .filter(b => b.type === 'text')
     .map(b => b.text)
@@ -50,7 +54,7 @@ export async function generatePromptResponse(history, userMessage, attachedImage
   try {
     parsed = JSON.parse(rawText);
   } catch {
-    console.error('Prompt generator returned non-JSON:', rawText);
+    logger.warn('prompt generator returned non-JSON', { preview: rawText?.slice(0, 200) });
     parsed = {
       mode: 'diagnostic',
       message: rawText,

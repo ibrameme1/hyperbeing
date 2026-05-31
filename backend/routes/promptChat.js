@@ -3,6 +3,8 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { generatePromptResponse } from '../services/promptGenerator.js';
+import { checkTokenBudget } from '../services/stripeService.js';
+import { logger } from '../services/logger.js';
 
 const router = Router();
 
@@ -12,7 +14,7 @@ router.post('/:sessionId', authenticateToken, async (req, res) => {
   const { message, images = [] } = req.body;
 
   if (!message?.trim() && images.length === 0) {
-    return res.status(400).json({ error: 'Message or image required' });
+    return res.status(400).json({ error: 'Please type a message or attach an image to continue.' });
   }
 
   const db = getDb();
@@ -33,7 +35,16 @@ router.post('/:sessionId', authenticateToken, async (req, res) => {
   try { history = JSON.parse(session.history); } catch {}
 
   try {
-    const result = await generatePromptResponse(history, message || '', images);
+    checkTokenBudget(req.user.id);
+  } catch (err) {
+    if (err.message === 'TOKEN_LIMIT_EXCEEDED') {
+      return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
+    }
+    throw err;
+  }
+
+  try {
+    const result = await generatePromptResponse(history, message || '', images, req.user.id);
 
     db.prepare(
       'UPDATE prompt_sessions SET history = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
@@ -45,8 +56,11 @@ router.post('/:sessionId', authenticateToken, async (req, res) => {
       readyToGenerate: result.readyToGenerate,
     });
   } catch (err) {
-    console.error('Prompt chat error:', err);
-    res.status(500).json({ error: 'Failed to generate response' });
+    if (err.message === 'TOKEN_LIMIT_EXCEEDED') {
+      return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
+    }
+    logger.error('prompt chat failed', { errorMessage: err.message });
+    res.status(500).json({ error: 'Nova couldn\'t generate a response right now. Please try again.' });
   }
 });
 
