@@ -15,14 +15,16 @@ export default function Logo({ dark = false, height = 32 }) {
     >
       <span
         style={{
-          color: dark ? 'rgba(255,255,255,0.18)' : '#000000',
+          color: dark ? 'rgba(255,255,255,0.42)' : '#18132E',
         }}
       >
         Hyper
       </span>
       <span
         style={{
-          background: 'linear-gradient(90deg, #6B21D4 0%, #3B5BDB 50%, #00D0FF 100%)',
+          background: dark
+            ? 'linear-gradient(90deg, #8B5CF6 0%, #3B82F6 50%, #00D0FF 100%)'
+            : 'linear-gradient(90deg, #6B21D4 0%, #3B5BDB 50%, #00D0FF 100%)',
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
           backgroundClip: 'text',

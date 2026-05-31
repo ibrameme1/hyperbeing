@@ -60,8 +60,12 @@ export function AuthProvider({ children }) {
     logout();
   }, [logout]);
 
+  const setAuthUser = useCallback((userData) => {
+    setUser(userData);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, subscription, loading, login, register, logout, deleteAccount, refreshSubscription: fetchSubscription }}>
+    <AuthContext.Provider value={{ user, subscription, loading, login, register, logout, deleteAccount, setAuthUser, refreshSubscription: fetchSubscription }}>
       {children}
     </AuthContext.Provider>
   );
