@@ -83,7 +83,6 @@ router.post('/checkout', authMiddleware, billingLimiter,
         await stripe.subscriptions.update(sub.stripe_subscription_id, {
           items: [{ id: currentItemId, price: priceId }],
           proration_behavior: 'none',
-          billing_cycle_anchor: 'unchanged',
           metadata: { userId: req.userId, planKey },
         });
         const db = getDb();
@@ -93,9 +92,10 @@ router.post('/checkout', authMiddleware, billingLimiter,
 
       await stripe.subscriptions.update(sub.stripe_subscription_id, {
         items: [{ id: currentItemId, price: priceId }],
-        // Downgrades take effect at period end; upgrades apply immediately with proration
+        // Downgrades: no proration, keep billing cycle as-is
+        // Upgrades: prorate and reset billing cycle now
         proration_behavior: isDowngrade ? 'none' : 'create_prorations',
-        billing_cycle_anchor: isDowngrade ? 'unchanged' : 'now',
+        ...(isDowngrade ? {} : { billing_cycle_anchor: 'now' }),
         ...(isDowngrade && { cancel_at_period_end: false }),
         metadata: { userId: req.userId, planKey },
       });

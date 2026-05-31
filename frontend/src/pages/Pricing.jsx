@@ -121,14 +121,14 @@ const CREDIT_TABLE = [
 ];
 
 export default function Pricing() {
-  const { user } = useAuth();
+  const { user, subscription: authSub } = useAuth();
   const navigate = useNavigate();
   const [billing, setBilling] = useState('annual');
-  const [currentPlan, setCurrentPlan] = useState('free');
-  const [creditsLeft, setCreditsLeft] = useState(null);
+  const [currentPlan, setCurrentPlan] = useState(() => authSub?.plan || 'free');
+  const [creditsLeft, setCreditsLeft] = useState(() => authSub != null ? authSub.credits_remaining : null);
   const [loading, setLoading] = useState(null);
   const [ultraTier, setUltraTier] = useState(0);
-  const [subInfo, setSubInfo] = useState(null);
+  const [subInfo, setSubInfo] = useState(() => authSub || null);
   const [downgradeModal, setDowngradeModal] = useState(null);
 
   useEffect(() => { track('pricing_viewed'); }, []);
