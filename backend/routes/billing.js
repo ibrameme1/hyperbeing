@@ -148,7 +148,7 @@ router.post('/checkout', authMiddleware, billingLimiter,
 
     res.json({ url: session.url });
   } catch (err) {
-    logger.error('stripe checkout failed', { errorMessage: err.message, planKey, requestId: req.requestId });
+    logger.error('stripe checkout failed', { errorMessage: err.message, stack: err.stack, planKey, userId: req.userId, requestId: req.requestId });
     res.status(400).json({ error: 'Could not start checkout. Please try again.' });
   }
   },

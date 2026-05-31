@@ -182,19 +182,29 @@ export default function Pricing() {
       return;
     }
 
+    // Optimistically update card state immediately from the POST response so the
+    // UI reflects the change without waiting for the GET /subscription round-trip.
     if (data.isDowngrade) {
+      setSubInfo(prev => ({ ...(prev || {}), pending_plan: data.pendingPlan, current_period_end: data.periodEnd }));
       setDowngradeModal({ pendingPlan: data.pendingPlan, periodEnd: data.periodEnd, fromPlan: data.currentPlan });
+    } else if (data.cancelledDowngrade) {
+      setCurrentPlan(data.keptPlan);
+      setSubInfo(prev => ({ ...(prev || {}), plan: data.keptPlan, pending_plan: null }));
+    } else {
+      // Upgrade applied
+      setCurrentPlan(planKey);
+      setSubInfo(prev => ({ ...(prev || {}), plan: planKey, pending_plan: null }));
     }
 
-    // Refresh subscription state in-place after any successful action.
-    // Intentionally separated from the POST try-catch so Stripe latency on the
-    // GET /subscription call never surfaces as a "Could not start checkout" error.
+    // Follow-up refresh for authoritative data (credits, exact dates, next payment, etc.).
+    // Separated from the POST try-catch; failures are absorbed since the optimistic
+    // update above already keeps the UI consistent.
     try {
       const subRes = await api.get('/billing/subscription');
       setCurrentPlan(subRes.data.subscription.plan);
       setCreditsLeft(subRes.data.subscription.credits_remaining);
       setSubInfo(subRes.data.subscription);
-    } catch { /* state stays as-is; will update on next navigation */ }
+    } catch { /* ignore — optimistic state is correct */ }
 
     setLoading(null);
   }
