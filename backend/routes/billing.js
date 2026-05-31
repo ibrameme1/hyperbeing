@@ -5,7 +5,7 @@ import {
 } from '../services/stripeService.js';
 import { logger } from '../services/logger.js';
 import { getDb } from '../database.js';
-import { validate, isEnum } from '../middleware/validate.js';
+import { validate, isEnum, isOptionalString, isIntBetween } from '../middleware/validate.js';
 import { billingLimiter } from '../middleware/rateLimits.js';
 
 const router = Router();
@@ -24,7 +24,11 @@ router.get('/subscription', authMiddleware, (req, res) => {
 
 // ── POST /api/billing/checkout ────────────────────────────────────────────────
 router.post('/checkout', authMiddleware, billingLimiter,
-  validate({ planKey: isEnum('basic', 'pro', 'ultra') }),
+  validate({
+    planKey:   isEnum('basic', 'pro', 'ultra'),
+    billing:   isOptionalString(10),
+    ultraTier: (v) => (v === undefined || v === null) ? null : isIntBetween(0, 3)(v),
+  }),
   async (req, res) => {
   const { planKey, billing = 'monthly', ultraTier } = req.body;
   const plan = PLANS[planKey];
