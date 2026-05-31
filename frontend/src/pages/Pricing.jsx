@@ -129,6 +129,7 @@ export default function Pricing() {
   const [loading, setLoading] = useState(null);
   const [ultraTier, setUltraTier] = useState(0);
   const [subInfo, setSubInfo] = useState(null);
+  const [downgradeModal, setDowngradeModal] = useState(null);
 
   useEffect(() => { track('pricing_viewed'); }, []);
 
@@ -160,9 +161,17 @@ export default function Pricing() {
         ...(planKey === 'ultra' && { ultraTier }),
       });
       if (data.upgraded) {
-        // Plan changed on existing subscription — no Stripe redirect needed
-        alert(data.message || 'Plan updated successfully.');
-        window.location.reload();
+        if (data.isDowngrade) {
+          // Refresh sub state in-place so cards update immediately, then show modal
+          const subRes = await api.get('/billing/subscription');
+          setCurrentPlan(subRes.data.subscription.plan);
+          setCreditsLeft(subRes.data.subscription.credits_remaining);
+          setSubInfo(subRes.data.subscription);
+          setDowngradeModal({ pendingPlan: data.pendingPlan, periodEnd: data.periodEnd, fromPlan: data.currentPlan });
+        } else {
+          alert(data.message || 'Plan upgraded successfully.');
+          window.location.reload();
+        }
       } else {
         window.location.href = data.url;
       }
@@ -397,49 +406,102 @@ export default function Pricing() {
                     )}
                   </div>
 
-                  {/* CTA */}
+                  {/* CTA + status — logic depends on pending downgrade state */}
                   {(() => {
+                    const pendingPlan = subInfo?.pending_plan;
+                    const isCurrentEnding = plan.key === currentPlan && !!pendingPlan;
+                    const isPendingNext   = plan.key === pendingPlan;
                     const RANK = { free: 0, basic: 1, pro: 2, ultra: 3 };
                     const currentRank = RANK[currentPlan] ?? 0;
-                    const planRank = RANK[plan.key] ?? 0;
+                    const planRank    = RANK[plan.key] ?? 0;
+                    const periodEnd   = formatDate(subInfo?.current_period_end);
+
+                    // ── Plan being dropped (e.g. Pro while downgrading to Basic) ──
+                    if (isCurrentEnding) {
+                      return (
+                        <>
+                          <button
+                            onClick={handleManage}
+                            disabled={loading === 'portal'}
+                            className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mb-3 disabled:opacity-60"
+                            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.35)', border: '1px solid rgba(255,255,255,0.08)' }}
+                          >
+                            {loading === 'portal' ? <Loader2 size={16} className="animate-spin" /> : 'View billing'}
+                          </button>
+                          {periodEnd && (
+                            <div className="text-xs text-center mb-4 px-2 py-2 rounded-xl"
+                                 style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.18)' }}>
+                              <span style={{ color: '#F59E0B' }}>
+                                {plan.name} benefits active until <span className="font-bold">{periodEnd}</span>
+                              </span>
+                            </div>
+                          )}
+                        </>
+                      );
+                    }
+
+                    // ── Next plan (e.g. Basic when pending downgrade from Pro) ──
+                    if (isPendingNext) {
+                      return (
+                        <>
+                          <button
+                            onClick={handleManage}
+                            disabled={loading === 'portal'}
+                            className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mb-3 disabled:opacity-60"
+                            style={{ background: plan.gradient, color: '#fff', boxShadow: `0 4px 20px ${plan.glow}` }}
+                          >
+                            {loading === 'portal' ? <Loader2 size={16} className="animate-spin" /> : 'Manage subscription'}
+                          </button>
+                          {periodEnd && (
+                            <div className="text-xs text-center mb-4 px-2 py-2 rounded-xl"
+                                 style={{ background: 'rgba(0,240,255,0.06)', border: '1px solid rgba(0,240,255,0.18)' }}>
+                              <span style={{ color: '#00F0FF' }}>
+                                Switching to {plan.name} on <span className="font-bold">{periodEnd}</span>
+                              </span>
+                            </div>
+                          )}
+                        </>
+                      );
+                    }
+
+                    // ── Normal plan (no pending change) ──
                     const isUpgrade = planRank > currentRank;
                     const isDowngrade = planRank < currentRank;
                     const label = isCurrent ? 'Manage subscription'
                       : isUpgrade ? `Upgrade to ${plan.name}`
                       : isDowngrade ? `Downgrade to ${plan.name}`
                       : `Get ${plan.name}`;
+
+                    const statusNode = isCurrent && subInfo && subInfo.plan !== 'free' ? (
+                      <div className="text-xs text-center mb-4 px-1" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                        {(subInfo.status === 'cancelled' || subInfo.status === 'canceled') ? (
+                          <span style={{ color: '#f87171' }}>Cancelled — access ends {periodEnd}</span>
+                        ) : subInfo.next_payment_date ? (
+                          <>Renews {formatDate(subInfo.next_payment_date)}</>
+                        ) : periodEnd ? (
+                          <>Active until {periodEnd}</>
+                        ) : null}
+                      </div>
+                    ) : null;
+
                     return (
-                      <button
-                        onClick={() => isCurrent ? handleManage() : handleSubscribe(plan.key)}
-                        disabled={isLoading}
-                        className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mb-6 disabled:opacity-60"
-                        style={isCurrent
-                          ? { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }
-                          : { background: plan.gradient, color: '#fff', boxShadow: `0 4px 20px ${plan.glow}` }
-                        }
-                      >
-                        {isLoading ? <Loader2 size={16} className="animate-spin" /> :
-                         <><span>{label}</span>{!isCurrent && <ArrowRight size={14} />}</>}
-                      </button>
+                      <>
+                        <button
+                          onClick={() => isCurrent ? handleManage() : handleSubscribe(plan.key)}
+                          disabled={isLoading}
+                          className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mb-3 disabled:opacity-60"
+                          style={isCurrent
+                            ? { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }
+                            : { background: plan.gradient, color: '#fff', boxShadow: `0 4px 20px ${plan.glow}` }
+                          }
+                        >
+                          {isLoading ? <Loader2 size={16} className="animate-spin" /> :
+                           <><span>{label}</span>{!isCurrent && <ArrowRight size={14} />}</>}
+                        </button>
+                        {statusNode}
+                      </>
                     );
                   })()}
-
-                  {/* Subscription status message for current plan */}
-                  {isCurrent && subInfo && subInfo.plan !== 'free' && (
-                    <div className="text-xs text-center mb-4 px-1" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                      {subInfo.status === 'cancelled' || subInfo.status === 'canceled' ? (
-                        <span style={{ color: '#f87171' }}>
-                          Cancelled — access ends {formatDate(subInfo.current_period_end)}
-                        </span>
-                      ) : subInfo.pending_plan ? (
-                        <>Switching to <span className="capitalize" style={{ color: 'rgba(255,255,255,0.6)' }}>{subInfo.pending_plan}</span> on {formatDate(subInfo.current_period_end)}</>
-                      ) : subInfo.next_payment_date ? (
-                        <>Renews {formatDate(subInfo.next_payment_date)}</>
-                      ) : subInfo.current_period_end ? (
-                        <>Active until {formatDate(subInfo.current_period_end)}</>
-                      ) : null}
-                    </div>
-                  )}
 
                   {/* Ultra credit slider — below CTA so prices/buttons align across cards */}
                   {plan.key === 'ultra' && (
@@ -563,6 +625,54 @@ export default function Pricing() {
           New accounts get <span className="text-white/55 font-semibold">50 free credits</span> to try HyperBeing — no card required.
         </p>
       </div>
+
+      {/* Downgrade confirmation modal */}
+      <AnimatePresence>
+        {downgradeModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.8)' }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md rounded-3xl p-7"
+              style={{ background: '#111113', border: '1px solid rgba(139,92,246,0.2)' }}
+            >
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-5 text-2xl"
+                   style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.2)' }}>
+                📅
+              </div>
+              <h3 className="font-bold text-white text-xl mb-2">Downgrade confirmed</h3>
+              <p className="text-sm leading-relaxed mb-3" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                Your <span className="text-white font-semibold capitalize">{downgradeModal.fromPlan}</span> plan stays fully active until{' '}
+                <span className="text-white font-bold">{formatDate(downgradeModal.periodEnd)}</span>. You keep all{' '}
+                <span className="capitalize">{downgradeModal.fromPlan}</span> credits and features until then.
+              </p>
+              <p className="text-sm leading-relaxed mb-5" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                On <span className="text-white font-bold">{formatDate(downgradeModal.periodEnd)}</span>, your subscription automatically switches to{' '}
+                <span className="font-semibold capitalize" style={{ color: '#C4B5FD' }}>{downgradeModal.pendingPlan}</span> and you'll be billed at the{' '}
+                <span className="capitalize">{downgradeModal.pendingPlan}</span> plan rate going forward.
+              </p>
+              <div className="rounded-2xl px-4 py-3 mb-6 flex items-start gap-2.5"
+                   style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <span className="text-base mt-0.5">💡</span>
+                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  No charges today. You can revert this by upgrading back before{' '}
+                  <span className="text-white/60">{formatDate(downgradeModal.periodEnd)}</span>.
+                </p>
+              </div>
+              <button
+                onClick={() => setDowngradeModal(null)}
+                className="w-full py-3.5 rounded-2xl font-bold text-sm text-white transition-opacity hover:opacity-85"
+                style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+              >
+                Got it
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

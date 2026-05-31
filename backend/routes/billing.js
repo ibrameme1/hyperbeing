@@ -79,10 +79,11 @@ router.post('/checkout', authMiddleware, billingLimiter,
       // For upgrades: apply immediately
       if (isDowngrade) {
         const db = getDb();
+        const periodEnd = new Date(stripeSub.current_period_end * 1000).toISOString();
         db.prepare(
-          'UPDATE subscriptions SET pending_plan = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
-        ).run(planKey, req.userId);
-        return res.json({ upgraded: true, message: 'Plan will change at the end of your billing period.' });
+          'UPDATE subscriptions SET pending_plan = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
+        ).run(planKey, periodEnd, req.userId);
+        return res.json({ upgraded: true, isDowngrade: true, pendingPlan: planKey, periodEnd, currentPlan: sub.plan });
       } else {
         resetCreditsForPlan(req.userId, planKey);
         return res.json({ upgraded: true, message: 'Plan upgraded successfully.' });
