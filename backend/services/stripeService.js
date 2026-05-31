@@ -31,17 +31,17 @@ export const PLANS = {
   ultra: { name: 'Ultra', price: 149, credits: 2000, tokenLimit: 100_000_000, priceId: null, annualPriceId: null },
 };
 
-// Allowed Ultra tier price IDs (slider tiers). Used for server-side validation.
+// Allowed Ultra tier price IDs (slider tiers). Built from env vars for easy price rotation.
 export const ULTRA_PRICE_IDS = new Set([
-  'price_1TcS5nH6y4qMy1njJ7HBxru4', // tier 1 monthly
-  'price_1TcS5mH6y4qMy1njb3Q7qjx1', // tier 1 annual
-  'price_1TcS5mH6y4qMy1njpOcFGDZF', // tier 2 monthly
-  'price_1TcS5mH6y4qMy1njXuz8DsYS', // tier 2 annual
-  'price_1TcS5lH6y4qMy1nj1qmu3xH7', // tier 3 monthly
-  'price_1TcS5lH6y4qMy1nj9SNG1F0j', // tier 3 annual
-  'price_1TcS5lH6y4qMy1njTN2KsM4G', // tier 4 monthly
-  'price_1TcS5kH6y4qMy1njwOzdstwh', // tier 4 annual
-]);
+  process.env.STRIPE_ULTRA_T1_PRICE_ID,
+  process.env.STRIPE_ULTRA_T1_ANNUAL_PRICE_ID,
+  process.env.STRIPE_ULTRA_T2_PRICE_ID,
+  process.env.STRIPE_ULTRA_T2_ANNUAL_PRICE_ID,
+  process.env.STRIPE_ULTRA_T3_PRICE_ID,
+  process.env.STRIPE_ULTRA_T3_ANNUAL_PRICE_ID,
+  process.env.STRIPE_ULTRA_T4_PRICE_ID,
+  process.env.STRIPE_ULTRA_T4_ANNUAL_PRICE_ID,
+].filter(Boolean));
 
 export const CREDIT_COSTS = {
   create_presentation: 10,

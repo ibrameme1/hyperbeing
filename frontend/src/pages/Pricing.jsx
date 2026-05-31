@@ -31,10 +31,10 @@ const sliderThumbStyle = `
 const CM = 10;
 
 const ULTRA_TIERS = [
-  { credits: 20000, price: 149, annualDiscount: 0.22, priceId: 'price_1TcS5nH6y4qMy1njJ7HBxru4', annualPriceId: 'price_1TcS5mH6y4qMy1njb3Q7qjx1' },
-  { credits: 35000, price: 209, annualDiscount: 0.25, priceId: 'price_1TcS5mH6y4qMy1njpOcFGDZF', annualPriceId: 'price_1TcS5mH6y4qMy1njXuz8DsYS' },
-  { credits: 50000, price: 269, annualDiscount: 0.28, priceId: 'price_1TcS5lH6y4qMy1nj1qmu3xH7', annualPriceId: 'price_1TcS5lH6y4qMy1nj9SNG1F0j' },
-  { credits: 60000, price: 299, annualDiscount: 0.30, priceId: 'price_1TcS5lH6y4qMy1njTN2KsM4G', annualPriceId: 'price_1TcS5kH6y4qMy1njwOzdstwh' },
+  { credits: 20000, price: 149, annualDiscount: 0.22, priceId: import.meta.env.VITE_ULTRA_T1_PRICE_ID, annualPriceId: import.meta.env.VITE_ULTRA_T1_ANNUAL_PRICE_ID },
+  { credits: 35000, price: 209, annualDiscount: 0.25, priceId: import.meta.env.VITE_ULTRA_T2_PRICE_ID, annualPriceId: import.meta.env.VITE_ULTRA_T2_ANNUAL_PRICE_ID },
+  { credits: 50000, price: 269, annualDiscount: 0.28, priceId: import.meta.env.VITE_ULTRA_T3_PRICE_ID, annualPriceId: import.meta.env.VITE_ULTRA_T3_ANNUAL_PRICE_ID },
+  { credits: 60000, price: 299, annualDiscount: 0.30, priceId: import.meta.env.VITE_ULTRA_T4_PRICE_ID, annualPriceId: import.meta.env.VITE_ULTRA_T4_ANNUAL_PRICE_ID },
 ];
 
 const PLANS = [
