@@ -147,7 +147,11 @@ export default function Pricing() {
     if (planKey === currentPlan) return;
     setLoading(planKey);
     try {
-      const { data } = await api.post('/billing/checkout', { planKey, billing });
+      const { data } = await api.post('/billing/checkout', {
+        planKey,
+        billing,
+        ...(planKey === 'ultra' && { ultraTier }),
+      });
       window.location.href = data.url;
     } catch (err) {
       const status = err.response?.status;
