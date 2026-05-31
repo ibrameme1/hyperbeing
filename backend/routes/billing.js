@@ -78,38 +78,45 @@ router.post('/checkout', authMiddleware, billingLimiter,
       const PLAN_RANK = { free: 0, basic: 1, pro: 2, ultra: 3 };
       const isDowngrade = (PLAN_RANK[planKey] || 0) < (PLAN_RANK[sub.plan] || 0);
 
-      // Cancel a pending downgrade — user re-subscribes to their current plan
-      if (planKey === sub.plan && sub.pending_plan) {
+      // Cancel a pending downgrade — user picks any plan other than the scheduled one
+      if (sub.pending_plan && planKey !== sub.pending_plan) {
         await stripe.subscriptions.update(sub.stripe_subscription_id, {
           items: [{ id: currentItemId, price: priceId }],
           proration_behavior: 'none',
           metadata: { userId: req.userId, planKey },
         });
         const db = getDb();
-        db.prepare('UPDATE subscriptions SET pending_plan = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?').run(req.userId);
+        db.prepare('UPDATE subscriptions SET plan = ?, pending_plan = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?').run(planKey, req.userId);
         return res.json({ upgraded: true, cancelledDowngrade: true, keptPlan: planKey });
       }
 
-      await stripe.subscriptions.update(sub.stripe_subscription_id, {
-        items: [{ id: currentItemId, price: priceId }],
-        // Downgrades: no proration, keep billing cycle as-is
-        // Upgrades: prorate and reset billing cycle now
-        proration_behavior: isDowngrade ? 'none' : 'create_prorations',
-        ...(isDowngrade ? {} : { billing_cycle_anchor: 'now' }),
-        ...(isDowngrade && { cancel_at_period_end: false }),
-        metadata: { userId: req.userId, planKey },
-      });
-
-      // For downgrades: store pending plan change, don't change credits yet
-      // For upgrades: apply immediately
       if (isDowngrade) {
+        // Write pending_plan BEFORE calling Stripe so the webhook sees it and skips the plan update
         const db = getDb();
         const periodEnd = new Date(stripeSub.current_period_end * 1000).toISOString();
         db.prepare(
           'UPDATE subscriptions SET pending_plan = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
         ).run(planKey, periodEnd, req.userId);
+        try {
+          await stripe.subscriptions.update(sub.stripe_subscription_id, {
+            items: [{ id: currentItemId, price: priceId }],
+            proration_behavior: 'none',
+            metadata: { userId: req.userId, planKey },
+          });
+        } catch (stripeErr) {
+          db.prepare('UPDATE subscriptions SET pending_plan = NULL WHERE user_id = ?').run(req.userId);
+          throw stripeErr;
+        }
         return res.json({ upgraded: true, isDowngrade: true, pendingPlan: planKey, periodEnd, currentPlan: sub.plan });
       } else {
+        await stripe.subscriptions.update(sub.stripe_subscription_id, {
+          items: [{ id: currentItemId, price: priceId }],
+          proration_behavior: 'create_prorations',
+          billing_cycle_anchor: 'now',
+          metadata: { userId: req.userId, planKey },
+        });
+        const db = getDb();
+        db.prepare('UPDATE subscriptions SET pending_plan = NULL WHERE user_id = ?').run(req.userId);
         resetCreditsForPlan(req.userId, planKey);
         return res.json({ upgraded: true, message: 'Plan upgraded successfully.' });
       }
@@ -213,10 +220,15 @@ router.post('/webhook', async (req, res) => {
 
       const periodEnd = new Date(stripeSub.current_period_end * 1000).toISOString();
 
-      // Check if a plan change took effect (price changed on the subscription)
-      const newPriceId = stripeSub.items.data[0]?.price?.id;
-      const planFromStripe = stripeSub.metadata?.planKey;
+      // If a downgrade is scheduled, preserve the displayed plan — only sync status/period
+      if (sub.pending_plan) {
+        db.prepare(
+          'UPDATE subscriptions SET status = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE stripe_subscription_id = ?'
+        ).run(stripeSub.status, periodEnd, stripeSub.id);
+        break;
+      }
 
+      const planFromStripe = stripeSub.metadata?.planKey;
       if (planFromStripe && planFromStripe !== sub.plan) {
         // Plan change applied — update plan and reset credits
         db.prepare(

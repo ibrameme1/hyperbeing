@@ -170,8 +170,10 @@ export default function Pricing() {
           setSubInfo(subRes.data.subscription);
           setDowngradeModal({ pendingPlan: data.pendingPlan, periodEnd: data.periodEnd, fromPlan: data.currentPlan });
         } else if (data.cancelledDowngrade) {
-          // Downgrade was cancelled — refresh and reload cleanly
-          window.location.reload();
+          const subRes = await api.get('/billing/subscription');
+          setCurrentPlan(subRes.data.subscription.plan);
+          setCreditsLeft(subRes.data.subscription.credits_remaining);
+          setSubInfo(subRes.data.subscription);
         } else {
           alert(data.message || 'Plan upgraded successfully.');
           window.location.reload();
@@ -486,7 +488,7 @@ export default function Pricing() {
                         ) : subInfo.next_payment_date ? (
                           <>Renews {formatDate(subInfo.next_payment_date)}</>
                         ) : periodEnd ? (
-                          <>Active until {periodEnd}</>
+                          <>Renews {periodEnd}</>
                         ) : null}
                       </div>
                     ) : null;
