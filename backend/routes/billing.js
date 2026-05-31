@@ -37,6 +37,7 @@ router.post('/checkout', authMiddleware, billingLimiter,
   } else {
     priceId = isAnnual ? plan?.annualPriceId : plan?.priceId;
   }
+  logger.info('checkout debug', { planKey, billing, isAnnual, priceId, annualPriceId: plan?.annualPriceId, monthlyPriceId: plan?.priceId });
   if (!plan || !priceId) return res.status(400).json({ error: 'This plan isn\'t available for purchase. Please choose a different plan or contact support.' });
   if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not available right now. Please contact support.' });
 
