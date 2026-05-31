@@ -159,7 +159,13 @@ export default function Pricing() {
         billing,
         ...(planKey === 'ultra' && { ultraTier }),
       });
-      window.location.href = data.url;
+      if (data.upgraded) {
+        // Plan changed on existing subscription — no Stripe redirect needed
+        alert(data.message || 'Plan updated successfully.');
+        window.location.reload();
+      } else {
+        window.location.href = data.url;
+      }
     } catch (err) {
       const status = err.response?.status;
       alert(
@@ -393,7 +399,11 @@ export default function Pricing() {
                   {/* Subscription status message for current plan */}
                   {isCurrent && subInfo && subInfo.plan !== 'free' && (
                     <div className="text-xs text-center mb-4 px-1" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                      {subInfo.pending_plan ? (
+                      {subInfo.status === 'cancelled' || subInfo.status === 'canceled' ? (
+                        <span style={{ color: '#f87171' }}>
+                          Cancelled — access ends {formatDate(subInfo.current_period_end)}
+                        </span>
+                      ) : subInfo.pending_plan ? (
                         <>Switching to <span className="capitalize" style={{ color: 'rgba(255,255,255,0.6)' }}>{subInfo.pending_plan}</span> on {formatDate(subInfo.current_period_end)}</>
                       ) : subInfo.next_payment_date ? (
                         <>Renews {formatDate(subInfo.next_payment_date)}</>
