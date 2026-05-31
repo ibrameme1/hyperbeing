@@ -69,10 +69,10 @@ export default function Login() {
     try {
       if (mode === 'login') {
         await login(email, password);
-        navigate('/dashboard');
+        window.location.replace('/dashboard');
       } else {
         await register(name, email, password);
-        navigate('/onboarding');
+        window.location.replace('/onboarding');
       }
     } catch (err) {
       const code = err.response?.data?.code;

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { User, Briefcase, Zap, Building2, ArrowLeft, CheckCircle2, Loader2, Crown, CreditCard, Calendar } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { User, Briefcase, Zap, Building2, ArrowLeft, CheckCircle2, Loader2, Crown, CreditCard, Calendar, Trash2, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
@@ -26,7 +26,7 @@ function PlanBadge({ plan }) {
 }
 
 export default function Profile() {
-  const { user, logout } = useAuth();
+  const { user, logout, deleteAccount } = useAuth();
   const navigate = useNavigate();
 
   const [name, setName]         = useState('');
@@ -41,6 +41,9 @@ export default function Profile() {
   const [saving, setSaving]   = useState(false);
   const [saved, setSaved]     = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -58,6 +61,18 @@ export default function Profile() {
       setPlan(billingRes.data.plan);
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await deleteAccount();
+      navigate('/login');
+    } catch {
+      alert('Could not delete account. Please try again.');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function handleSave(e) {
     e.preventDefault();
@@ -198,6 +213,13 @@ export default function Profile() {
                 >
                   Sign out
                 </button>
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  className="w-full mt-2 py-2 rounded-xl text-xs font-semibold transition-opacity hover:opacity-70 flex items-center justify-center gap-1.5"
+                  style={{ background: 'transparent', color: 'rgba(248,113,113,0.5)', border: '1px solid rgba(248,113,113,0.1)' }}
+                >
+                  <Trash2 size={11} /> Delete account
+                </button>
               </div>
             </div>
 
@@ -309,6 +331,71 @@ export default function Profile() {
           </div>
         )}
       </div>
+
+      {/* Delete account modal */}
+      <AnimatePresence>
+        {showDeleteModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.75)' }}
+            onClick={e => { if (e.target === e.currentTarget) setShowDeleteModal(false); }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md rounded-2xl p-6"
+              style={{ background: '#141416', border: '1px solid rgba(248,113,113,0.2)' }}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                     style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.2)' }}>
+                  <AlertTriangle size={18} style={{ color: '#f87171' }} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base">Delete account</h3>
+                  <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>This is permanent and cannot be undone</p>
+                </div>
+              </div>
+
+              <p className="text-sm mb-5" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                All your presentations, credits, and billing data will be permanently deleted. If you have an active subscription, cancel it first via <button onClick={() => { setShowDeleteModal(false); navigate('/pricing'); }} className="underline" style={{ color: '#C4B5FD' }}>Manage subscription</button> before deleting.
+              </p>
+
+              <div className="mb-5">
+                <label className="block text-xs font-semibold mb-2" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  Type <span className="text-white font-bold">DELETE</span> to confirm
+                </label>
+                <input
+                  value={deleteConfirm}
+                  onChange={e => setDeleteConfirm(e.target.value)}
+                  placeholder="DELETE"
+                  className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(248,113,113,0.25)' }}
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setShowDeleteModal(false); setDeleteConfirm(''); }}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-70"
+                  style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleteConfirm !== 'DELETE' || deleting}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-opacity hover:opacity-80 disabled:opacity-30 flex items-center justify-center gap-2"
+                  style={{ background: 'rgba(248,113,113,0.15)', color: '#f87171', border: '1px solid rgba(248,113,113,0.25)' }}
+                >
+                  {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  Delete my account
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

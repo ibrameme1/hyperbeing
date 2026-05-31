@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, X, Sparkles, Zap, Crown, Rocket, ArrowRight, Loader2 } from 'lucide-react';
+import { Check, X, Sparkles, Zap, Crown, Rocket, ArrowRight, Loader2, Home, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Logo from '../components/Logo';
@@ -223,9 +223,18 @@ export default function Pricing() {
       <style>{sliderThumbStyle}</style>
       {/* Nav */}
       <div className="relative z-10 flex items-center justify-between px-8 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <button onClick={() => navigate('/dashboard')} className="flex items-center">
-          <Logo dark height={24} />
-        </button>
+        <div className="flex items-center gap-4">
+          <button onClick={() => navigate('/')} className="flex items-center">
+            <Logo dark height={24} />
+          </button>
+          <button
+            onClick={() => navigate(user ? '/dashboard' : '/')}
+            className="flex items-center gap-1.5 text-xs font-semibold transition-opacity hover:opacity-80 px-3 py-1.5 rounded-xl"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)' }}
+          >
+            <Home size={12} /> {user ? 'Dashboard' : 'Home'}
+          </button>
+        </div>
         <div className="flex items-center gap-3">
           {creditsLeft !== null && (
             <span className="text-sm px-3 py-1.5 rounded-xl" style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.3)' }}>
@@ -235,6 +244,25 @@ export default function Pricing() {
           {user && currentPlan !== 'free' && (
             <button onClick={handleManage} className="text-sm text-white/50 hover:text-white/80 transition-colors">
               {loading === 'portal' ? <Loader2 size={14} className="animate-spin" /> : 'Manage / downgrade →'}
+            </button>
+          )}
+          {user && (
+            <button
+              onClick={() => navigate('/profile')}
+              className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white flex-shrink-0 transition-opacity hover:opacity-80"
+              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+              title="Profile"
+            >
+              {(user.name || user.email || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+            </button>
+          )}
+          {!user && (
+            <button
+              onClick={() => navigate('/login')}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl transition-opacity hover:opacity-80"
+              style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.3)' }}
+            >
+              <User size={12} /> Sign in
             </button>
           )}
         </div>
