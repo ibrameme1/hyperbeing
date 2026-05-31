@@ -31,10 +31,10 @@ const sliderThumbStyle = `
 const CM = 10;
 
 const ULTRA_TIERS = [
-  { credits: 20000, price: 149, annualDiscount: 0.22, priceId: import.meta.env.VITE_ULTRA_T1_PRICE_ID, annualPriceId: import.meta.env.VITE_ULTRA_T1_ANNUAL_PRICE_ID },
-  { credits: 35000, price: 209, annualDiscount: 0.25, priceId: import.meta.env.VITE_ULTRA_T2_PRICE_ID, annualPriceId: import.meta.env.VITE_ULTRA_T2_ANNUAL_PRICE_ID },
-  { credits: 50000, price: 269, annualDiscount: 0.28, priceId: import.meta.env.VITE_ULTRA_T3_PRICE_ID, annualPriceId: import.meta.env.VITE_ULTRA_T3_ANNUAL_PRICE_ID },
-  { credits: 60000, price: 299, annualDiscount: 0.30, priceId: import.meta.env.VITE_ULTRA_T4_PRICE_ID, annualPriceId: import.meta.env.VITE_ULTRA_T4_ANNUAL_PRICE_ID },
+  { credits: 20000, price: 149, annualDiscount: 0.22 },
+  { credits: 35000, price: 209, annualDiscount: 0.25 },
+  { credits: 50000, price: 269, annualDiscount: 0.28 },
+  { credits: 60000, price: 299, annualDiscount: 0.30 },
 ];
 
 const PLANS = [
@@ -147,10 +147,11 @@ export default function Pricing() {
     if (planKey === currentPlan) return;
     setLoading(planKey);
     try {
-      const ultraPriceId = planKey === 'ultra'
-        ? (billing === 'annual' ? ULTRA_TIERS[ultraTier].annualPriceId : ULTRA_TIERS[ultraTier].priceId)
-        : undefined;
-      const { data } = await api.post('/billing/checkout', { planKey, billing, ultraPriceId });
+      const { data } = await api.post('/billing/checkout', {
+        planKey,
+        billing,
+        ...(planKey === 'ultra' && { ultraTier }),
+      });
       window.location.href = data.url;
     } catch (err) {
       const status = err.response?.status;
