@@ -11,6 +11,7 @@ import api from '../api/client';
 import OutOfCreditsModal from '../components/OutOfCreditsModal';
 import { useTheme } from '../contexts/ThemeContext';
 import { track } from '../utils/track';
+import Logo from '../components/Logo';
 
 const ANALYZING_MESSAGES = [
   'Reading your brief…',
@@ -460,8 +461,13 @@ export default function Dashboard() {
       setAnalysis(data);
       setShowQuestionFlow(true);
     } catch (err) {
-      const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong';
-      setSubmitError(msg);
+      const status = err.response?.status;
+      setSubmitError(
+        err.response?.data?.error ||
+        (status === 429 ? `You're creating presentations too quickly. Please wait ${err.response?.data?.retryAfter ?? 60} seconds.` :
+         status === 413 ? 'Your brief or attachments are too large. Try shortening your description or using fewer images.' :
+         'Could not analyse your brief. Please try again.')
+      );
     } finally {
       setAnalyzing(false);
     }
@@ -488,8 +494,13 @@ export default function Dashboard() {
         track('out_of_credits', { page: 'dashboard' });
         return;
       }
-      const msg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Something went wrong';
-      setSubmitError(msg);
+      const status = err.response?.status;
+      setSubmitError(
+        err.response?.data?.error ||
+        (status === 429 ? `You're generating too many presentations. Please wait ${err.response?.data?.retryAfter ?? 60} seconds before trying again.` :
+         status === 503 ? 'The AI service is temporarily unavailable. Please try again in a moment.' :
+         'Failed to start your presentation. Please try again.')
+      );
     }
   }
 
@@ -544,12 +555,8 @@ export default function Dashboard() {
       {/* Nav */}
       <nav className="sticky top-0 z-50 flex items-center justify-between px-6 py-3"
            style={{ background: 'var(--bg-nav)', backdropFilter: 'blur(20px)', borderBottom: '1px solid var(--border)' }}>
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
-            <Sparkles size={16} className="text-white" />
-          </div>
-          <span className="font-bold text-gray-900 dark:text-white text-lg tracking-tight">HyperBeing</span>
+        <div className="flex items-center">
+          <Logo dark={isDark} height={26} />
         </div>
         <div className="flex items-center gap-3">
           {/* Theme toggle */}

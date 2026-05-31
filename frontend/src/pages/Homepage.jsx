@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import BackgroundVideo from '../components/BackgroundVideo';
+import Logo from '../components/Logo';
 
 const STEPS = [
   { num: '01', title: 'Describe your presentation', desc: 'Tell Nova your topic, audience, tone, and goals. Upload brand assets if you have them.' },
@@ -94,14 +95,8 @@ export default function Homepage() {
         >
           <div className="liquid-glass rounded-full px-6 py-3 flex items-center justify-between max-w-5xl mx-auto">
             <div className="flex items-center gap-8">
-              <div className="flex items-center gap-2.5">
-                <div
-                  className="w-9 h-9 rounded-xl flex items-center justify-center"
-                  style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
-                >
-                  <Sparkles size={16} className="text-white" />
-                </div>
-                <span className="font-bold text-lg text-white tracking-tight">HyperBeing</span>
+              <div className="flex items-center">
+                <Logo dark height={28} />
               </div>
               <div className="hidden md:flex items-center gap-8 text-white/65 text-sm font-medium">
                 <Link to="/pricing" className="hover:text-white transition-colors duration-200">Pricing</Link>
@@ -549,14 +544,8 @@ export default function Homepage() {
       {/* ── Footer ── */}
       <footer className="relative z-10 border-t px-8 py-8" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
-            >
-              <Sparkles size={12} className="text-white" />
-            </div>
-            <span className="text-white/55 text-sm font-semibold">HyperBeing</span>
+          <div className="flex items-center">
+            <Logo dark height={20} />
           </div>
           <div className="flex items-center gap-6 text-sm text-white/30">
             <Link to="/pricing" className="hover:text-white/60 transition-colors">Pricing</Link>

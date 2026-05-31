@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Check, X, Sparkles, Zap, Crown, Rocket, ArrowRight, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import Logo from '../components/Logo';
 import api from '../api/client';
 import { track } from '../utils/track';
 
@@ -149,7 +150,13 @@ export default function Pricing() {
       const { data } = await api.post('/billing/checkout', { planKey, billing });
       window.location.href = data.url;
     } catch (err) {
-      alert(err.response?.data?.error || 'Something went wrong');
+      const status = err.response?.status;
+      alert(
+        err.response?.data?.error ||
+        (status === 503 ? 'Payments are not available right now. Please try again later.' :
+         status === 429 ? 'Too many requests. Please wait a moment and try again.' :
+         'Could not start checkout. Please try again.')
+      );
     } finally {
       setLoading(null);
     }
@@ -199,12 +206,8 @@ export default function Pricing() {
       <style>{sliderThumbStyle}</style>
       {/* Nav */}
       <div className="relative z-10 flex items-center justify-between px-8 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
-            <Sparkles size={14} className="text-white" />
-          </div>
-          <span className="text-white font-bold text-base">HyperBeing</span>
+        <button onClick={() => navigate('/dashboard')} className="flex items-center">
+          <Logo dark height={24} />
         </button>
         <div className="flex items-center gap-3">
           {creditsLeft !== null && (

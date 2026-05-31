@@ -35,12 +35,15 @@ export default function MessageBubble({ message }) {
         {/* Text */}
         {text && (
           <div className={isUser ? 'bubble-user' : 'bubble-ai'}>
-            {text.split('\n').map((line, i) => (
+            {text.split('\n').map((line, i, arr) => (
               <span key={i}>
                 {line}
-                {i < text.split('\n').length - 1 && <br />}
+                {i < arr.length - 1 && <br />}
               </span>
             ))}
+            {message.streaming && (
+              <span className="inline-block w-0.5 h-4 ml-0.5 bg-current align-middle animate-pulse" />
+            )}
           </div>
         )}
       </div>

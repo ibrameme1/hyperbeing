@@ -3,11 +3,12 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { chat, regenerateSlide, analyzePresentation, streamSlidePlan, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
+import { streamChat, regenerateSlide, analyzePresentation, streamSlidePlan, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
 import { generateSlideImage } from '../services/imageGeneration.js';
-import { deductCredits, getOrCreateSubscription, CREDIT_COSTS } from '../services/stripeService.js';
+import { deductCredits, getOrCreateSubscription, CREDIT_COSTS, checkTokenBudget } from '../services/stripeService.js';
 import { validate, isString, isOptionalString, isEnum, isArray, isIntBetween } from '../middleware/validate.js';
 import { createPresentationLimiter, addSlidesLimiter, analyzeLimiter } from '../middleware/rateLimits.js';
+import { logger } from '../services/logger.js';
 
 // Validates a single attachment object
 function validateAttachment(a) {
@@ -62,12 +63,17 @@ router.post('/analyze', authenticateToken, analyzeLimiter, async (req, res) => {
   if (!Array.isArray(attachments) || attachments.length > 10) {
     return res.status(400).json({ error: 'Attachments must be an array of max 10 items' });
   }
+  try { checkTokenBudget(req.user.id); } catch (err) {
+    if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
+    throw err;
+  }
+
   try {
-    const analysis = await analyzePresentation(message, attachments);
+    const analysis = await analyzePresentation(message, attachments, req.user.id);
     res.json(analysis);
   } catch (err) {
-    console.error('Analysis error:', err);
-    res.status(500).json({ error: 'Analysis failed' });
+    logger.error('analysis failed', { errorMessage: err.message });
+    res.status(500).json({ error: 'Brief analysis failed. Please try again — if the problem persists, try shortening your description.' });
   }
 });
 
@@ -88,6 +94,11 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
   }
   if (!VALID_ASPECT_RATIOS.includes(aspectRatio)) {
     return res.status(400).json({ error: `Invalid aspect ratio. Must be one of: ${VALID_ASPECT_RATIOS.join(', ')}` });
+  }
+
+  try { checkTokenBudget(req.user.id); } catch (err) {
+    if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
+    throw err;
   }
 
   // Check + deduct credits before starting
@@ -119,14 +130,15 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
     presentation: db.prepare('SELECT * FROM presentations WHERE id = ?').get(id),
   });
 
-  runFullFlow(id, message, attachments).catch(err => {
-    console.error('Full flow error:', err);
+  const userId = req.user.id;
+  runFullFlow(id, message, attachments, userId).catch(err => {
+    logger.error('slide flow failed', { errorMessage: err.message, stack: err.stack?.split('\n').slice(0,4).join('\n') });
     broadcast(id, { type: 'error', message: err.message });
     getDb().prepare(`UPDATE presentations SET status = 'error', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(id);
   });
 });
 
-async function runFullFlow(presentationId, message, attachments) {
+async function runFullFlow(presentationId, message, attachments, userId = null) {
   const db = getDb();
 
   broadcast(presentationId, { type: 'plan_generating' });
@@ -197,7 +209,7 @@ async function runFullFlow(presentationId, message, attachments) {
         }
         broadcast(presentationId, { type: 'slide_ready', slide: done });
       }).catch(err => {
-        console.error(`Slide ${slide.index} image failed:`, err.message);
+        logger.error('slide image failed', { slideIndex: slide.index, errorMessage: err.message });
         const errSlide = { ...slide, image_data: null, status: 'error' };
         completedSlides.set(slide.index, errSlide);
         broadcast(presentationId, { type: 'slide_error', index: slide.index, message: err.message });
@@ -205,7 +217,7 @@ async function runFullFlow(presentationId, message, attachments) {
 
       slidePromises.push(promise);
     },
-  });
+  }, userId);
 
   // Wait for all Nano Banana calls (they started as Claude was streaming)
   await Promise.all(slidePromises);
@@ -227,7 +239,7 @@ async function runFullFlow(presentationId, message, attachments) {
   // Auto-suggest a contextual title after generation completes
   try {
     const titleCtx = { slides: allSlides.map(s => ({ title: s.title, type: s.type, key_points: s.key_points?.slice(0, 2) })) };
-    const autoTitle = await suggestTitle(titleCtx);
+    const autoTitle = await suggestTitle(titleCtx, userId);
     if (autoTitle) {
       db.prepare(`UPDATE presentations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(autoTitle, presentationId);
       broadcast(presentationId, { type: 'title_updated', title: autoTitle });
@@ -244,27 +256,28 @@ router.get('/:id', authenticateToken, (req, res) => {
     .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
     .get(req.params.id, req.user.id);
 
-  if (!pres) return res.status(404).json({ error: 'Not found' });
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
 
   const messages = db
     .prepare('SELECT * FROM messages WHERE presentation_id = ? ORDER BY created_at ASC')
     .all(req.params.id);
 
+  let slide_plan = null, slides_data = null;
+  try { slide_plan = pres.slide_plan ? JSON.parse(pres.slide_plan) : null; } catch {}
+  try { slides_data = pres.slides_data ? JSON.parse(pres.slides_data) : null; } catch {}
+
   res.json({
-    presentation: {
-      ...pres,
-      slide_plan: pres.slide_plan ? JSON.parse(pres.slide_plan) : null,
-      slides_data: pres.slides_data ? JSON.parse(pres.slides_data) : null,
-    },
-    messages: messages.map(m => ({
-      ...m,
-      attachments: JSON.parse(m.attachments || '[]'),
-      metadata: JSON.parse(m.metadata || '{}'),
-    })),
+    presentation: { ...pres, slide_plan, slides_data },
+    messages: messages.map(m => {
+      let attachments = [], metadata = {};
+      try { attachments = JSON.parse(m.attachments || '[]'); } catch {}
+      try { metadata = JSON.parse(m.metadata || '{}'); } catch {}
+      return { ...m, attachments, metadata };
+    }),
   });
 });
 
-// ─── Continue chat ────────────────────────────────────────────────────────
+// ─── Continue chat (streaming SSE) ───────────────────────────────────────
 router.post('/:id/messages', authenticateToken, async (req, res) => {
   const { message, attachments = [] } = req.body;
   if (!message?.trim() && attachments.length === 0) {
@@ -275,7 +288,12 @@ router.post('/:id/messages', authenticateToken, async (req, res) => {
   const pres = db
     .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
     .get(req.params.id, req.user.id);
-  if (!pres) return res.status(404).json({ error: 'Not found' });
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
+
+  try { checkTokenBudget(req.user.id); } catch (err) {
+    if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
+    throw err;
+  }
 
   const history = db
     .prepare('SELECT * FROM messages WHERE presentation_id = ? ORDER BY created_at ASC')
@@ -287,10 +305,18 @@ router.post('/:id/messages', authenticateToken, async (req, res) => {
      VALUES (?, ?, 'user', ?, ?)`
   ).run(msgId, req.params.id, message, JSON.stringify(attachments));
 
-  try {
-    const agentResponse = await chat(history, message, attachments);
-    const aiMsgId = uuid();
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
 
+  try {
+    const agentResponse = await streamChat(history, message, attachments, (chunk) => {
+      res.write(`data: ${JSON.stringify({ type: 'chunk', text: chunk })}\n\n`);
+    }, req.user.id);
+
+    const aiMsgId = uuid();
     db.prepare(
       `INSERT INTO messages (id, presentation_id, role, content, metadata)
        VALUES (?, ?, 'assistant', ?, ?)`
@@ -304,12 +330,12 @@ router.post('/:id/messages', authenticateToken, async (req, res) => {
       ).run(presentation_title || pres.title, JSON.stringify(agentResponse.slide_plan), req.params.id);
     }
 
-    res.json({
-      aiMessage: { id: aiMsgId, role: 'assistant', content: agentResponse.message, metadata: agentResponse },
-    });
+    res.write(`data: ${JSON.stringify({ type: 'done', aiMessage: { id: aiMsgId, role: 'assistant', content: agentResponse.message, metadata: agentResponse } })}\n\n`);
+    res.end();
   } catch (err) {
-    console.error('Agent error:', err);
-    res.status(500).json({ error: 'AI agent failed' });
+    logger.error('chat agent failed', { errorMessage: err.message });
+    res.write(`data: ${JSON.stringify({ type: 'error', error: 'Nova couldn\'t process your message right now. Please try again.' })}\n\n`);
+    res.end();
   }
 });
 
@@ -381,8 +407,8 @@ router.post('/:id/generate', authenticateToken, async (req, res) => {
     .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
     .get(req.params.id, req.user.id);
 
-  if (!pres) return res.status(404).json({ error: 'Not found' });
-  if (!pres.slide_plan) return res.status(400).json({ error: 'No slide plan — complete the chat first' });
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
+  if (!pres.slide_plan) return res.status(400).json({ error: 'Your slide plan isn\'t ready yet — finish the chat with Nova first.' });
 
   const slidePlan = JSON.parse(pres.slide_plan);
 
@@ -394,7 +420,7 @@ router.post('/:id/generate', authenticateToken, async (req, res) => {
 
   // Run generation async — do not await
   runGeneration(req.params.id, slidePlan).catch(err => {
-    console.error('Generation error:', err);
+    logger.error('generation failed', { errorMessage: err.message });
     broadcast(req.params.id, { type: 'error', message: err.message });
   });
 });
@@ -465,7 +491,7 @@ async function runGeneration(presentationId, slidePlan) {
 
       broadcast(presentationId, { type: 'slide_ready', slide: completedSlide });
     } catch (err) {
-      console.error(`Slide ${slide.index} image failed:`, err.message);
+      logger.error('slide image failed', { slideIndex: slide.index, errorMessage: err.message });
       slides.push({ ...slide, image_data: null, status: 'error' });
       broadcast(presentationId, { type: 'slide_error', index: slide.index, message: err.message });
     }
@@ -481,27 +507,31 @@ async function runGeneration(presentationId, slidePlan) {
 // ─── Regenerate a single slide ────────────────────────────────────────────
 router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res) => {
   const { instruction, attachments: reqBodyAttachments } = req.body;
-  if (!instruction?.trim()) return res.status(400).json({ error: 'Instruction required' });
+  if (!instruction?.trim()) return res.status(400).json({ error: 'Please describe what you\'d like to change about this slide.' });
 
   const db = getDb();
   const pres = db
     .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
     .get(req.params.id, req.user.id);
 
-  if (!pres) return res.status(404).json({ error: 'Not found' });
-  if (!pres.slides_data) return res.status(400).json({ error: 'No slides generated yet' });
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
+  if (!pres.slides_data) return res.status(400).json({ error: 'No slides have been generated yet. Generate your presentation first.' });
+
+  try { checkTokenBudget(req.user.id); } catch (err) {
+    if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
+    throw err;
+  }
 
   const slides = JSON.parse(pres.slides_data);
   const idx = parseInt(req.params.index, 10);
   const slide = slides[idx];
-  if (!slide) return res.status(404).json({ error: 'Slide not found' });
+  if (!slide) return res.status(404).json({ error: 'Slide not found. It may have been removed or the index is out of range.' });
 
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
 
   res.json({ message: 'Regenerating…', index: idx });
 
-  const regenPresRow = db.prepare('SELECT aspect_ratio FROM presentations WHERE id = ?').get(req.params.id);
-  const regenAspectRatio = regenPresRow?.aspect_ratio || '16:9';
+  const regenAspectRatio = pres.aspect_ratio || '16:9';
 
   // Run async — client watches SSE for result
   (async () => {
@@ -510,7 +540,7 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
         theme: slidePlan.theme,
         color_palette: slidePlan.color_palette,
         presentation_title: slidePlan.presentation_title,
-      });
+      }, req.user.id);
 
       // Only the current slide's rendered image + any new attachments the user added in the edit bar
       let attachedImages = [];
@@ -542,7 +572,7 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
 
       broadcast(req.params.id, { type: 'slide_updated', slide: slides[idx] });
     } catch (err) {
-      console.error('Slide regen error:', err);
+      logger.error('slide regen failed', { errorMessage: err.message });
       broadcast(req.params.id, { type: 'slide_error', index: idx, message: err.message });
     }
   })();
@@ -551,12 +581,12 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
 // ─── Reorder slides ───────────────────────────────────────────────────────
 router.post('/:id/reorder', authenticateToken, (req, res) => {
   const { order } = req.body; // array of slide indexes in new order
-  if (!Array.isArray(order)) return res.status(400).json({ error: 'order array required' });
+  if (!Array.isArray(order)) return res.status(400).json({ error: 'Invalid request: expected an array of slide indices.' });
 
   const db = getDb();
   const pres = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?')
     .get(req.params.id, req.user.id);
-  if (!pres || !pres.slides_data) return res.status(404).json({ error: 'Not found' });
+  if (!pres || !pres.slides_data) return res.status(404).json({ error: 'Presentation not found or no slides to reorder.' });
 
   const slides = JSON.parse(pres.slides_data);
   const byIndex = new Map(slides.map(s => [s.index, s]));
@@ -576,7 +606,7 @@ router.patch('/:id/title', authenticateToken,
     const result = getDb()
       .prepare(`UPDATE presentations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`)
       .run(title, req.params.id, req.user.id);
-    if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+    if (result.changes === 0) return res.status(404).json({ error: 'Presentation not found or you don\'t have permission to rename it.' });
     res.json({ title });
   },
 );
@@ -585,7 +615,7 @@ router.patch('/:id/title', authenticateToken,
 router.post('/:id/suggest-title', authenticateToken, async (req, res) => {
   const db = getDb();
   const pres = db.prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-  if (!pres) return res.status(404).json({ error: 'Not found' });
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
 
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : null;
   const slidesData = pres.slides_data ? JSON.parse(pres.slides_data) : null;
@@ -596,10 +626,10 @@ router.post('/:id/suggest-title', authenticateToken, async (req, res) => {
   };
 
   try {
-    const title = await suggestTitle(context);
+    const title = await suggestTitle(context, req.user.id);
     res.json({ title });
   } catch (err) {
-    res.status(500).json({ error: 'Could not suggest title' });
+    res.status(500).json({ error: 'Could not generate a title suggestion right now. You can rename it manually.' });
   }
 });
 
@@ -607,7 +637,7 @@ router.post('/:id/suggest-title', authenticateToken, async (req, res) => {
 router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) => {
   const { description, count = 1, attachments: reqAttachments = [] } = req.body;
   if (!description?.trim() || typeof description !== 'string') {
-    return res.status(400).json({ error: 'Description required' });
+    return res.status(400).json({ error: 'Please describe the slides you\'d like to add.' });
   }
   if (description.length > 10_000) {
     return res.status(400).json({ error: 'Description too long (max 10,000 characters)' });
@@ -632,13 +662,12 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
 
   const db = getDb();
   const pres = db.prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-  if (!pres) return res.status(404).json({ error: 'Not found' });
-  if (!pres.slides_data) return res.status(400).json({ error: 'No slides yet' });
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
+  if (!pres.slides_data) return res.status(400).json({ error: 'No slides have been generated yet. Generate your presentation before adding more slides.' });
 
   const slides = JSON.parse(pres.slides_data);
   const startIndex = slides.length;
-  const presRow = db.prepare('SELECT aspect_ratio FROM presentations WHERE id = ?').get(req.params.id);
-  const aspectRatio = presRow?.aspect_ratio || '16:9';
+  const aspectRatio = pres.aspect_ratio || '16:9';
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
 
   // Create placeholder slides immediately (for auto, use 3 as optimistic placeholder count)
@@ -683,7 +712,9 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       });
 
       // Remove excess optimistic placeholders if Nova generated fewer than 3
-      const current0 = JSON.parse(db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id).slides_data);
+      const presRow0 = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+      if (!presRow0?.slides_data) return;
+      const current0 = JSON.parse(presRow0.slides_data);
       const trimmed = current0.filter(s => s.status !== 'generating' || newSlideDefs.some(d => d.index === s.index));
       if (trimmed.length !== current0.length) {
         db.prepare(`UPDATE presentations SET slides_data = ? WHERE id = ?`).run(JSON.stringify(trimmed), req.params.id);
@@ -702,7 +733,9 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
           ).then(imageData => {
             const done = { ...slideDef, image_data: imageData, status: 'complete' };
             // Persist: replace placeholder with done slide
-            const current = JSON.parse(db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id).slides_data);
+            const currentRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+            if (!currentRow?.slides_data) return;
+            const current = JSON.parse(currentRow.slides_data);
             const idx = current.findIndex(s => s.index === done.index);
             if (idx !== -1) current[idx] = done; else current.push(done);
             db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
@@ -710,7 +743,9 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
             broadcast(req.params.id, { type: 'slide_ready', slide: done });
           }).catch(err => {
             const errSlide = { ...slideDef, image_data: null, status: 'error' };
-            const current = JSON.parse(db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id).slides_data);
+            const errRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+            if (!errRow?.slides_data) return;
+            const current = JSON.parse(errRow.slides_data);
             const idx = current.findIndex(s => s.index === errSlide.index);
             if (idx !== -1) current[idx] = errSlide;
             db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
@@ -723,7 +758,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       await Promise.all(imagePromises);
       broadcast(req.params.id, { type: 'slides_added', count: slideCount });
     } catch (err) {
-      console.error('Add slides error:', err);
+      logger.error('add slides failed', { errorMessage: err.message });
       broadcast(req.params.id, { type: 'error', message: err.message });
     }
   })();
@@ -734,7 +769,7 @@ router.delete('/:id', authenticateToken, (req, res) => {
   const result = getDb()
     .prepare('DELETE FROM presentations WHERE id = ? AND user_id = ?')
     .run(req.params.id, req.user.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+  if (result.changes === 0) return res.status(404).json({ error: 'Presentation not found or you don\'t have permission to delete it.' });
   res.json({ message: 'Deleted' });
 });
 

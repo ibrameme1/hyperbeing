@@ -27,7 +27,13 @@ export default function EditSlideModal({ slide, presentationId, onClose, onUpdat
       onUpdated(slide.index);
       onClose();
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to update slide');
+      const status = err.response?.status;
+      setError(
+        err.response?.data?.error ||
+        (status === 429 ? 'Too many regeneration requests. Please wait a moment.' :
+         status === 402 ? 'You\'ve run out of credits. Upgrade your plan to keep editing.' :
+         'Could not update this slide. Please try again.')
+      );
       setLoading(false);
     }
   }

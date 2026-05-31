@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import {
   stripe, PLANS, getOrCreateSubscription, resetCreditsForPlan, grantCredits, isAdmin,
 } from '../services/stripeService.js';
+import { logger } from '../services/logger.js';
 import { getDb } from '../database.js';
 import { validate, isEnum } from '../middleware/validate.js';
 import { billingLimiter } from '../middleware/rateLimits.js';
@@ -29,8 +30,8 @@ router.post('/checkout', authMiddleware, billingLimiter,
   const plan = PLANS[planKey];
   const isAnnual = billing === 'annual';
   const priceId = isAnnual ? plan?.annualPriceId : plan?.priceId;
-  if (!plan || !priceId) return res.status(400).json({ error: 'Plan not available for purchase' });
-  if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments not configured' });
+  if (!plan || !priceId) return res.status(400).json({ error: 'This plan isn\'t available for purchase. Please choose a different plan or contact support.' });
+  if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not available right now. Please contact support.' });
 
   const sub = getOrCreateSubscription(req.userId);
   const db = getDb();
@@ -64,10 +65,10 @@ router.post('/checkout', authMiddleware, billingLimiter,
 
 // ── POST /api/billing/portal ──────────────────────────────────────────────────
 router.post('/portal', authMiddleware, async (req, res) => {
-  if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments not configured' });
+  if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not available right now. Please contact support.' });
 
   const sub = getOrCreateSubscription(req.userId);
-  if (!sub.stripe_customer_id) return res.status(400).json({ error: 'No active subscription' });
+  if (!sub.stripe_customer_id) return res.status(400).json({ error: 'No active subscription found. Purchase a plan first to access the billing portal.' });
 
   const session = await stripe.billingPortal.sessions.create({
     customer: sub.stripe_customer_id,
@@ -85,7 +86,8 @@ router.post('/webhook', async (req, res) => {
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
-    return res.status(400).send(`Webhook error: ${err.message}`);
+    logger.error('stripe webhook signature invalid', { errorMessage: err.message });
+    return res.status(400).send('Webhook signature verification failed');
   }
 
   const db = getDb();

@@ -10,6 +10,7 @@ import {
   Users, FileText, MessageSquare, Zap, Activity,
   TrendingUp, TrendingDown, Clock, Eye, Star,
   ChevronRight, Circle, BarChart2, RefreshCw,
+  Terminal, Cpu, Search, AlertCircle, Info, AlertTriangle, Bug,
 } from 'lucide-react';
 import api from '../api/client';
 
@@ -178,6 +179,11 @@ export default function AnalyticsDashboard() {
   const [pres,      setPres]      = useState(null);
   const [credits,   setCredits]   = useState(null);
   const [eventsData, setEventsData] = useState(null);
+  const [logsData, setLogsData] = useState(null);
+  const [logsSummary, setLogsSummary] = useState(null);
+  const [logsFilter, setLogsFilter] = useState({ level: '', search: '', limit: 100 });
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [metricsData, setMetricsData] = useState(null);
   const [liveEvents, setLiveEvents] = useState([]);
   const [liveConnected, setLiveConnected] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -186,6 +192,30 @@ export default function AnalyticsDashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const sseRef = useRef(null);
   const refreshTimer = useRef(null);
+
+  const fetchLogs = useCallback(async (filter = logsFilter) => {
+    setLogsLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: filter.limit });
+      if (filter.level) params.set('level', filter.level);
+      if (filter.search) params.set('search', filter.search);
+      const [logsRes, summaryRes] = await Promise.all([
+        api.get(`/admin/logs?${params}`),
+        api.get('/admin/log-summary'),
+      ]);
+      setLogsData(logsRes.data);
+      setLogsSummary(summaryRes.data);
+    } catch {} finally {
+      setLogsLoading(false);
+    }
+  }, [logsFilter]);
+
+  const fetchMetrics = useCallback(async () => {
+    try {
+      const res = await api.get('/admin/metrics');
+      setMetricsData(res.data);
+    } catch {}
+  }, []);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -208,7 +238,6 @@ export default function AnalyticsDashboard() {
       if (e.response?.status === 403 || e.response?.status === 401) {
         setAccessDenied(true);
       }
-      console.error('Analytics fetch failed', e);
     } finally {
       setLoading(false);
     }
@@ -234,6 +263,12 @@ export default function AnalyticsDashboard() {
 
     return () => { es.close(); setLiveConnected(false); };
   }, []);
+
+  // Auto-fetch logs/metrics when switching to those tabs
+  useEffect(() => {
+    if (activeTab === 'logs') fetchLogs();
+    if (activeTab === 'metrics') fetchMetrics();
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initial + auto-refresh
   useEffect(() => {
@@ -312,6 +347,8 @@ export default function AnalyticsDashboard() {
     { id: 'users',         label: 'Users',          icon: Users },
     { id: 'presentations', label: 'Presentations',  icon: FileText },
     { id: 'events',        label: 'Events',          icon: Activity },
+    { id: 'logs',          label: 'Logs',            icon: Terminal },
+    { id: 'metrics',       label: 'Metrics',         icon: Cpu },
   ];
 
   return (
@@ -798,6 +835,273 @@ export default function AnalyticsDashboard() {
           </motion.div>
         )}
 
+        {/* ── LOGS TAB ── */}
+        {activeTab === 'logs' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+            <SectionTitle>Application Logs</SectionTitle>
+
+            {/* Filters */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                <Search size={13} className="text-gray-500" />
+                <input
+                  type="text"
+                  placeholder="Search messages…"
+                  value={logsFilter.search}
+                  onChange={e => setLogsFilter(f => ({ ...f, search: e.target.value }))}
+                  className="bg-transparent text-xs text-gray-200 placeholder-gray-600 outline-none w-44"
+                />
+              </div>
+              <select
+                value={logsFilter.level}
+                onChange={e => setLogsFilter(f => ({ ...f, level: e.target.value }))}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 outline-none"
+              >
+                <option value="">All levels</option>
+                <option value="debug">Debug</option>
+                <option value="info">Info</option>
+                <option value="warn">Warn</option>
+                <option value="error">Error</option>
+              </select>
+              <select
+                value={logsFilter.limit}
+                onChange={e => setLogsFilter(f => ({ ...f, limit: Number(e.target.value) }))}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 outline-none"
+              >
+                <option value={50}>50 rows</option>
+                <option value={100}>100 rows</option>
+                <option value={250}>250 rows</option>
+                <option value={500}>500 rows</option>
+              </select>
+              <button
+                onClick={() => fetchLogs(logsFilter)}
+                disabled={logsLoading}
+                className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 hover:bg-white/10 transition disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={logsLoading ? 'animate-spin' : ''} />
+                {logsLoading ? 'Loading…' : 'Apply'}
+              </button>
+              {logsData && (
+                <span className="text-xs text-gray-600 ml-auto">{logsData.total} logs stored</span>
+              )}
+            </div>
+
+            {/* Log summary chips */}
+            {logsSummary && (
+              <div className="flex flex-wrap gap-2">
+                {(logsSummary.bySeverity ?? []).map(({ level, count }) => (
+                  <button
+                    key={level}
+                    onClick={() => { const f = { ...logsFilter, level }; setLogsFilter(f); fetchLogs(f); }}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition ${
+                      LOG_LEVEL_STYLES[level]?.chip ?? 'border-white/10 bg-white/5 text-gray-400'
+                    }`}
+                  >
+                    <LogLevelIcon level={level} />
+                    {level}: {count}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Recent errors callout */}
+            {logsSummary?.recentErrors?.length > 0 && (
+              <div className="rounded-xl border border-red-900/40 bg-red-900/10 p-4">
+                <p className="mb-2 text-xs font-semibold text-red-400 flex items-center gap-1.5">
+                  <AlertCircle size={13} /> Recent Errors
+                </p>
+                <div className="space-y-1">
+                  {logsSummary.recentErrors.map(e => (
+                    <div key={e.id} className="flex items-start gap-3 text-xs">
+                      <span className="text-gray-600 flex-shrink-0">{relTime(e.ts)}</span>
+                      <span className="text-red-300">{e.message}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Log table */}
+            <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-white/10 text-gray-500 text-left bg-white/5">
+                      <th className="px-4 py-3 w-28">Time</th>
+                      <th className="px-4 py-3 w-16">Level</th>
+                      <th className="px-4 py-3">Message</th>
+                      <th className="px-4 py-3 w-28">Request</th>
+                      <th className="px-4 py-3 w-24">User</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {logsData?.logs?.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-12 text-center text-gray-600">No logs found</td>
+                      </tr>
+                    )}
+                    {logsData?.logs?.map(log => (
+                      <tr key={log.id} className="border-b border-white/5 hover:bg-white/5 transition">
+                        <td className="px-4 py-2 text-gray-600 font-mono whitespace-nowrap">
+                          {relTime(log.ts)}
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 font-medium w-fit ${LOG_LEVEL_STYLES[log.level]?.badge ?? 'bg-gray-800 text-gray-400'}`}>
+                            <LogLevelIcon level={log.level} />
+                            {log.level}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-gray-200 max-w-sm">
+                          <p className="truncate">{log.message}</p>
+                          {log.context?.errorMessage && (
+                            <p className="text-red-400 text-[10px] mt-0.5 truncate">{log.context.errorMessage}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 font-mono text-gray-600 text-[10px]">
+                          {log.context?.requestId?.slice(0, 8) ?? '—'}
+                        </td>
+                        <td className="px-4 py-2 text-gray-500 text-[10px]">
+                          {log.context?.userId?.slice(0, 8) ?? '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── METRICS TAB ── */}
+        {activeTab === 'metrics' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+            <div className="flex items-center justify-between">
+              <SectionTitle>Server Metrics</SectionTitle>
+              <button
+                onClick={fetchMetrics}
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 transition"
+              >
+                <RefreshCw size={12} />
+                Refresh
+              </button>
+            </div>
+
+            {metricsData && (
+              <>
+                {/* Uptime */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-2xl font-bold text-white font-mono">{metricsData.uptimeHuman}</p>
+                    <p className="mt-1 text-xs text-gray-500">Server uptime</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-2xl font-bold text-white font-mono">
+                      {fmt(metricsData.http?.totalRequests ?? 0)}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">Total requests</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-2xl font-bold text-white font-mono">
+                      {fmt(metricsData.ai?.totalCalls ?? 0)}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">AI calls made</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-2xl font-bold text-white font-mono">
+                      {fmt((metricsData.ai?.totalInputTokens ?? 0) + (metricsData.ai?.totalOutputTokens ?? 0))}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">Total tokens used</p>
+                  </div>
+                </div>
+
+                {/* HTTP Route Performance */}
+                <ChartCard title="HTTP Route Performance">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-white/10 text-gray-500 text-left">
+                          <th className="pb-2 pr-4">Route</th>
+                          <th className="pb-2 pr-4 text-right">Requests</th>
+                          <th className="pb-2 pr-4 text-right">Avg ms</th>
+                          <th className="pb-2 pr-4 text-right">p95 ms</th>
+                          <th className="pb-2 pr-4 text-right">p99 ms</th>
+                          <th className="pb-2 text-right">Error %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(metricsData.http?.routes ?? []).map(r => (
+                          <tr key={r.route} className="border-b border-white/5 hover:bg-white/5 transition">
+                            <td className="py-2 pr-4 font-mono text-gray-300 max-w-xs truncate">
+                              <span className="text-purple-400 mr-1.5">{r.route.split(' ')[0]}</span>
+                              {r.route.split(' ').slice(1).join(' ')}
+                            </td>
+                            <td className="pr-4 text-right font-mono text-gray-300">{r.requests}</td>
+                            <td className="pr-4 text-right font-mono text-gray-300">{r.avgMs}</td>
+                            <td className="pr-4 text-right font-mono text-gray-300">{r.p95Ms}</td>
+                            <td className="pr-4 text-right font-mono text-gray-300">{r.p99Ms}</td>
+                            <td className="text-right">
+                              <span className={`font-mono ${r.errorRatePct > 10 ? 'text-red-400' : r.errorRatePct > 1 ? 'text-yellow-400' : 'text-green-400'}`}>
+                                {r.errorRatePct}%
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                        {(metricsData.http?.routes ?? []).length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="py-8 text-center text-gray-600">No request data yet</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </ChartCard>
+
+                {/* AI Call Stats */}
+                <ChartCard title="AI Function Performance">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-white/10 text-gray-500 text-left">
+                          <th className="pb-2 pr-4">Function</th>
+                          <th className="pb-2 pr-4 text-right">Calls</th>
+                          <th className="pb-2 pr-4 text-right">Errors</th>
+                          <th className="pb-2 pr-4 text-right">Avg ms</th>
+                          <th className="pb-2 text-right">Avg tokens</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(metricsData.ai?.byFunction ?? []).map(f => (
+                          <tr key={f.fn} className="border-b border-white/5 hover:bg-white/5 transition">
+                            <td className="py-2 pr-4 font-mono text-purple-300">{f.fn}</td>
+                            <td className="pr-4 text-right font-mono text-gray-300">{f.calls}</td>
+                            <td className="pr-4 text-right">
+                              <span className={`font-mono ${f.errors > 0 ? 'text-red-400' : 'text-green-400'}`}>{f.errors}</span>
+                            </td>
+                            <td className="pr-4 text-right font-mono text-gray-300">{f.avgMs}ms</td>
+                            <td className="text-right font-mono text-gray-400">{fmt(f.avgTokens ?? 0)}</td>
+                          </tr>
+                        ))}
+                        {(metricsData.ai?.byFunction ?? []).length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="py-8 text-center text-gray-600">No AI calls recorded yet</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </ChartCard>
+              </>
+            )}
+
+            {!metricsData && (
+              <div className="flex items-center justify-center py-20 text-gray-600">
+                <RefreshCw size={16} className="animate-spin mr-2" />
+                Loading metrics…
+              </div>
+            )}
+          </motion.div>
+        )}
+
         {/* ── EVENTS TAB ── */}
         {activeTab === 'events' && eventsData && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
@@ -923,6 +1227,21 @@ function StatRow({ label, value, color }) {
       </span>
     </div>
   );
+}
+
+const LOG_LEVEL_STYLES = {
+  debug: { badge: 'bg-gray-800 text-gray-400',   chip: 'border-gray-700 bg-gray-800/50 text-gray-400' },
+  info:  { badge: 'bg-blue-900/40 text-blue-400',   chip: 'border-blue-900/40 bg-blue-900/20 text-blue-400' },
+  warn:  { badge: 'bg-yellow-900/40 text-yellow-400', chip: 'border-yellow-900/40 bg-yellow-900/20 text-yellow-400' },
+  error: { badge: 'bg-red-900/40 text-red-400',   chip: 'border-red-900/40 bg-red-900/20 text-red-400' },
+};
+
+function LogLevelIcon({ level }) {
+  const sz = 10;
+  if (level === 'error') return <AlertCircle size={sz} />;
+  if (level === 'warn')  return <AlertTriangle size={sz} />;
+  if (level === 'debug') return <Bug size={sz} />;
+  return <Info size={sz} />;
 }
 
 const STATUS_STYLES = {

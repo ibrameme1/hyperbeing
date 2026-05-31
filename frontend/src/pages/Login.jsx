@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Eye, EyeOff, Loader2, ArrowRight, Zap, Layers, TrendingUp } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import Logo from '../components/Logo';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -54,7 +55,7 @@ export default function Login() {
 
   // Show error if OAuth failed
   useState(() => {
-    if (searchParams.get('error') === 'oauth') setError('Sign-in failed. Please try again.');
+    if (searchParams.get('error') === 'oauth') setError('Sign-in with that provider failed. Please try again or use email instead.');
   });
 
   const SOCIAL = [
@@ -78,7 +79,14 @@ export default function Login() {
       if (mode === 'login' && code === 'USER_NOT_FOUND') {
         setError('__no_account__');
       } else {
-        setError(err.response?.data?.error || 'Something went wrong');
+        const status = err.response?.status;
+      setError(
+        err.response?.data?.error ||
+        (status === 429 ? `Too many attempts. Please wait ${err.response?.data?.retryAfter ?? 'a moment'} seconds and try again.` :
+         status === 409 ? 'An account with that email already exists. Try signing in.' :
+         mode === 'register' ? 'Could not create your account. Please check your details and try again.' :
+         'Sign-in failed. Please check your email and password.')
+      );
       }
     } finally {
       setLoading(false);
@@ -102,13 +110,7 @@ export default function Login() {
 
         {/* Logo */}
         <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
-              <Sparkles size={18} className="text-white" />
-            </div>
-            <span className="text-white font-bold text-xl tracking-tight">HyperBeing</span>
-          </div>
+          <Logo dark height={30} />
         </div>
 
         {/* Hero copy */}
@@ -180,12 +182,8 @@ export default function Login() {
           className="w-full max-w-sm"
         >
           {/* Mobile logo */}
-          <div className="lg:hidden flex items-center gap-2 mb-8">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
-              <Sparkles size={16} className="text-white" />
-            </div>
-            <span className="font-bold text-lg" style={{ color: 'var(--text-primary)' }}>HyperBeing</span>
+          <div className="lg:hidden mb-8">
+            <Logo height={26} />
           </div>
 
           <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
