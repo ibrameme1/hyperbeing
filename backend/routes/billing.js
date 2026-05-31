@@ -40,33 +40,38 @@ router.post('/checkout', authMiddleware, billingLimiter,
   if (!plan || !priceId) return res.status(400).json({ error: 'This plan isn\'t available for purchase. Please choose a different plan or contact support.' });
   if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not available right now. Please contact support.' });
 
-  const sub = getOrCreateSubscription(req.userId);
-  const db = getDb();
-  const user = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(req.userId);
+  try {
+    const sub = getOrCreateSubscription(req.userId);
+    const db = getDb();
+    const user = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(req.userId);
 
-  // Get or create Stripe customer
-  let customerId = sub.stripe_customer_id;
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: user.email || undefined,
-      name: user.name,
-      metadata: { userId: req.userId },
+    // Get or create Stripe customer
+    let customerId = sub.stripe_customer_id;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email || undefined,
+        name: user.name,
+        metadata: { userId: req.userId },
+      });
+      customerId = customer.id;
+      db.prepare('UPDATE subscriptions SET stripe_customer_id = ? WHERE user_id = ?').run(customerId, req.userId);
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      mode: 'subscription',
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${frontendUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${frontendUrl()}/pricing`,
+      metadata: { userId: req.userId, planKey },
+      subscription_data: { metadata: { userId: req.userId, planKey } },
     });
-    customerId = customer.id;
-    db.prepare('UPDATE subscriptions SET stripe_customer_id = ? WHERE user_id = ?').run(customerId, req.userId);
+
+    res.json({ url: session.url });
+  } catch (err) {
+    logger.error('stripe checkout failed', { errorMessage: err.message, planKey, requestId: req.requestId });
+    res.status(400).json({ error: 'Could not start checkout. Please try again.' });
   }
-
-  const session = await stripe.checkout.sessions.create({
-    customer: customerId,
-    mode: 'subscription',
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${frontendUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${frontendUrl()}/pricing`,
-    metadata: { userId: req.userId, planKey },
-    subscription_data: { metadata: { userId: req.userId, planKey } },
-  });
-
-  res.json({ url: session.url });
   },
 );
 
