@@ -8,6 +8,7 @@ import { generateSlideImage } from '../services/imageGeneration.js';
 import { deductCredits, getOrCreateSubscription, CREDIT_COSTS, checkTokenBudget } from '../services/stripeService.js';
 import { validate, isString, isOptionalString, isEnum, isArray, isIntBetween } from '../middleware/validate.js';
 import { createPresentationLimiter, addSlidesLimiter, analyzeLimiter } from '../middleware/rateLimits.js';
+import { logger } from '../services/logger.js';
 
 // Validates a single attachment object
 function validateAttachment(a) {
@@ -71,7 +72,7 @@ router.post('/analyze', authenticateToken, analyzeLimiter, async (req, res) => {
     const analysis = await analyzePresentation(message, attachments, req.user.id);
     res.json(analysis);
   } catch (err) {
-    console.error('Analysis error:', err);
+    logger.error('analysis failed', { errorMessage: err.message });
     res.status(500).json({ error: 'Brief analysis failed. Please try again — if the problem persists, try shortening your description.' });
   }
 });
@@ -131,7 +132,7 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
 
   const userId = req.user.id;
   runFullFlow(id, message, attachments, userId).catch(err => {
-    console.error('Full flow error:', err);
+    logger.error('slide flow failed', { errorMessage: err.message, stack: err.stack?.split('\n').slice(0,4).join('\n') });
     broadcast(id, { type: 'error', message: err.message });
     getDb().prepare(`UPDATE presentations SET status = 'error', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(id);
   });
@@ -208,7 +209,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null) 
         }
         broadcast(presentationId, { type: 'slide_ready', slide: done });
       }).catch(err => {
-        console.error(`Slide ${slide.index} image failed:`, err.message);
+        logger.error('slide image failed', { slideIndex: slide.index, errorMessage: err.message });
         const errSlide = { ...slide, image_data: null, status: 'error' };
         completedSlides.set(slide.index, errSlide);
         broadcast(presentationId, { type: 'slide_error', index: slide.index, message: err.message });
@@ -332,7 +333,7 @@ router.post('/:id/messages', authenticateToken, async (req, res) => {
     res.write(`data: ${JSON.stringify({ type: 'done', aiMessage: { id: aiMsgId, role: 'assistant', content: agentResponse.message, metadata: agentResponse } })}\n\n`);
     res.end();
   } catch (err) {
-    console.error('Agent error:', err);
+    logger.error('chat agent failed', { errorMessage: err.message });
     res.write(`data: ${JSON.stringify({ type: 'error', error: 'Nova couldn\'t process your message right now. Please try again.' })}\n\n`);
     res.end();
   }
@@ -419,7 +420,7 @@ router.post('/:id/generate', authenticateToken, async (req, res) => {
 
   // Run generation async — do not await
   runGeneration(req.params.id, slidePlan).catch(err => {
-    console.error('Generation error:', err);
+    logger.error('generation failed', { errorMessage: err.message });
     broadcast(req.params.id, { type: 'error', message: err.message });
   });
 });
@@ -490,7 +491,7 @@ async function runGeneration(presentationId, slidePlan) {
 
       broadcast(presentationId, { type: 'slide_ready', slide: completedSlide });
     } catch (err) {
-      console.error(`Slide ${slide.index} image failed:`, err.message);
+      logger.error('slide image failed', { slideIndex: slide.index, errorMessage: err.message });
       slides.push({ ...slide, image_data: null, status: 'error' });
       broadcast(presentationId, { type: 'slide_error', index: slide.index, message: err.message });
     }
@@ -571,7 +572,7 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
 
       broadcast(req.params.id, { type: 'slide_updated', slide: slides[idx] });
     } catch (err) {
-      console.error('Slide regen error:', err);
+      logger.error('slide regen failed', { errorMessage: err.message });
       broadcast(req.params.id, { type: 'slide_error', index: idx, message: err.message });
     }
   })();
@@ -757,7 +758,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       await Promise.all(imagePromises);
       broadcast(req.params.id, { type: 'slides_added', count: slideCount });
     } catch (err) {
-      console.error('Add slides error:', err);
+      logger.error('add slides failed', { errorMessage: err.message });
       broadcast(req.params.id, { type: 'error', message: err.message });
     }
   })();

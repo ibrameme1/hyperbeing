@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { getDb } from '../database.js';
+import { requestContext } from '../services/logger.js';
 
 export { authenticateToken as authMiddleware };
 export function authenticateToken(req, res, next) {
@@ -15,6 +16,10 @@ export function authenticateToken(req, res, next) {
     if (!user) return res.status(401).json({ error: 'Account not found. It may have been deleted.' });
     req.user = user;
     req.userId = userId;
+    // Propagate userId into the active request context so all downstream
+    // logger calls automatically include it without manual threading.
+    const ctx = requestContext.getStore();
+    if (ctx) ctx.userId = userId;
     next();
   } catch {
     return res.status(401).json({ error: 'Your session has expired. Please sign in again.' });

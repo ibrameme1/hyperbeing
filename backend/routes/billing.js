@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import {
   stripe, PLANS, getOrCreateSubscription, resetCreditsForPlan, grantCredits, isAdmin,
 } from '../services/stripeService.js';
+import { logger } from '../services/logger.js';
 import { getDb } from '../database.js';
 import { validate, isEnum } from '../middleware/validate.js';
 import { billingLimiter } from '../middleware/rateLimits.js';
@@ -85,7 +86,7 @@ router.post('/webhook', async (req, res) => {
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
-    console.error('Stripe webhook signature error:', err.message);
+    logger.error('stripe webhook signature invalid', { errorMessage: err.message });
     return res.status(400).send('Webhook signature verification failed');
   }
 

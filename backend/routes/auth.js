@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import passport from 'passport';
+import { logger } from '../services/logger.js';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 import axios from 'axios';
@@ -182,7 +183,7 @@ router.get('/tiktok/callback', async (req, res) => {
     });
     redirectWithToken(res, user.id, isNew);
   } catch (err) {
-    console.error('TikTok OAuth error:', err.message);
+    logger.error('tiktok oauth failed', { errorMessage: err.message });
     res.redirect(`${frontendUrl()}/login?error=oauth`);
   }
 });

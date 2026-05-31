@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { recordTokenUsage } from './stripeService.js';
+import { logger } from './logger.js';
+import { metrics } from './metrics.js';
 
 const MOCK_MODE = !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'demo';
 
@@ -417,15 +419,8 @@ export async function chat(conversationHistory, userMessage, attachments = [], u
     { role: 'user', content: userContent },
   ];
 
-  console.log('\n' + '═'.repeat(60));
-  console.log('📨 CLAUDE API INPUT');
-  console.log('═'.repeat(60));
-  console.log(`Turn: ${messages.length} messages`);
-  messages.forEach((m, i) => {
-    const content = typeof m.content === 'string' ? m.content : `[multipart: ${Array.isArray(m.content) ? m.content.map(p => p.type).join(', ') : 'object'}]`;
-    console.log(`  [${i}] ${m.role}: ${content.slice(0, 200)}${content.length > 200 ? '…' : ''}`);
-  });
-  console.log('═'.repeat(60));
+  const t0 = Date.now();
+  logger.debug('claude chat request', { turns: messages.length });
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -434,7 +429,10 @@ export async function chat(conversationHistory, userMessage, attachments = [], u
     messages,
   });
 
+  const durationMs = Date.now() - t0;
   if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+  metrics.recordAICall({ fn: 'chat', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs });
+  logger.info('claude chat complete', { durationMs, state: undefined, inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens });
 
   const raw = response.content[0].text.trim();
   const SEP = '\n---\n';
@@ -456,21 +454,7 @@ export async function chat(conversationHistory, userMessage, attachments = [], u
   }
 
   const parsed = { message: messageText, ...metadata };
-
-  console.log('\n' + '═'.repeat(60));
-  console.log('🤖 CLAUDE API OUTPUT');
-  console.log('═'.repeat(60));
-  console.log(`State: ${parsed.state}`);
-  console.log(`Message: ${parsed.message?.slice(0, 300)}${(parsed.message?.length ?? 0) > 300 ? '…' : ''}`);
-  if (parsed.slide_plan) {
-    console.log(`Slide plan: ${parsed.slide_plan.total_slides} slides — "${parsed.slide_plan.presentation_title}"`);
-    parsed.slide_plan.slides?.forEach(s => {
-      console.log(`\n  Slide ${s.index} [${s.type}]: ${s.title}`);
-      console.log(`  Nano Banana prompt: ${(s.nano_banana_prompt || '—').slice(0, 200)}…`);
-      console.log(`  Attach categories: ${JSON.stringify(s.attach_image_categories)}`);
-    });
-  }
-  console.log('═'.repeat(60) + '\n');
+  logger.debug('claude chat parsed', { state: parsed.state, slideCount: parsed.slide_plan?.slides?.length });
 
   return parsed;
 }
@@ -542,17 +526,20 @@ export async function streamChat(conversationHistory, userMessage, attachments =
       metadata = JSON.parse(jsonText);
     }
   } catch (e) {
-    console.error('Failed to parse streamChat metadata:', e.message, metadataStr.slice(0, 200));
+    logger.warn('failed to parse streamChat metadata', { errorMessage: e.message, preview: metadataStr.slice(0, 200) });
     const match = metadataStr.match(/\{[\s\S]*\}/);
     if (match) try { metadata = JSON.parse(match[0]); } catch {}
   }
 
+  const t0Chat = Date.now();
   if (userId) {
     try {
       const finalMsg = await stream.finalMessage();
       recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
+      metrics.recordAICall({ fn: 'streamChat', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - t0Chat });
     } catch {}
   }
+  logger.info('claude stream chat complete', { durationMs: Date.now() - t0Chat });
 
   return { message: messageText, ...metadata };
 }
@@ -597,6 +584,7 @@ export async function analyzePresentation(message, attachments = [], userId = nu
   }
 
   const userContent = buildUserContent(message, attachments);
+  const t0 = Date.now();
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -605,7 +593,10 @@ export async function analyzePresentation(message, attachments = [], userId = nu
     messages: [{ role: 'user', content: userContent }],
   });
 
+  const durationMs = Date.now() - t0;
   if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+  metrics.recordAICall({ fn: 'analyzePresentation', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs });
+  logger.info('claude analyze complete', { durationMs, inputTokens: response.usage?.input_tokens });
 
   const raw = response.content[0].text.trim();
   const jsonText = raw.startsWith('```') ? raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '') : raw;
@@ -662,13 +653,17 @@ The nano_banana_prompt must follow the mandatory 5-layer structure: (1) BACKGROU
 Return ONLY the JSON object, nothing else.`,
   });
 
+  const t0 = Date.now();
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     messages: [{ role: 'user', content }],
   });
 
+  const durationMs = Date.now() - t0;
   if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+  metrics.recordAICall({ fn: 'regenerateSlide', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs });
+  logger.info('claude regen slide complete', { durationMs });
 
   const raw = response.content[0].text.trim();
   const jsonText = raw.startsWith('```')
@@ -866,11 +861,8 @@ export async function streamSlidePlan(message, attachments, callbacks, userId = 
 
   const userContent = buildUserContent(message, attachments);
 
-  console.log('\n' + '═'.repeat(60));
-  console.log('📨 CLAUDE STREAM INPUT');
-  console.log('═'.repeat(60));
-  console.log(`Message: ${message.slice(0, 200)}...`);
-  console.log('═'.repeat(60));
+  const t0 = Date.now();
+  logger.info('claude slide plan stream start', { messageLen: message.length, attachments: attachments.length });
 
   const stream = client.messages.stream({
     model: 'claude-sonnet-4-6',
@@ -891,18 +883,18 @@ export async function streamSlidePlan(message, attachments, callbacks, userId = 
         if (prefix === 'HEADER:') {
           try {
             const header = JSON.parse(jsonStr);
-            console.log(`🎯 HEADER parsed: "${header.presentation_title}", ${header.total_slides} slides`);
+            logger.debug('slide plan header parsed', { title: header.presentation_title, totalSlides: header.total_slides });
             onHeader(header);
           } catch (e) {
-            console.warn('Failed to parse HEADER:', e.message, jsonStr.slice(0, 100));
+            logger.warn('failed to parse slide plan header', { errorMessage: e.message });
           }
         } else {
           try {
             const slide = JSON.parse(jsonStr);
-            console.log(`📊 SLIDE ${slide.index} parsed: "${slide.title}"`);
+            logger.debug('slide parsed', { index: slide.index, title: slide.title });
             onSlide(slide);
           } catch (e) {
-            console.warn('Failed to parse SLIDE:', e.message, jsonStr.slice(0, 100));
+            logger.warn('failed to parse slide', { errorMessage: e.message });
           }
         }
       }
@@ -924,8 +916,10 @@ export async function streamSlidePlan(message, attachments, callbacks, userId = 
     try {
       const finalMsg = await stream.finalMessage();
       recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
+      metrics.recordAICall({ fn: 'streamSlidePlan', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - t0 });
     } catch {}
   }
+  logger.info('claude slide plan stream complete', { durationMs: Date.now() - t0 });
 }
 
 // ─── Suggest presentation title ──────────────────────────────────────────────
@@ -933,6 +927,7 @@ export async function streamSlidePlan(message, attachments, callbacks, userId = 
 export async function suggestTitle(context, userId = null) {
   if (MOCK_MODE) return 'Untitled Presentation';
 
+  const tTitle = Date.now();
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 60,
@@ -947,7 +942,12 @@ Return only the title text, nothing else.`,
     }],
   });
 
-  if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+  const durationMsTitle = Date.now() - tTitle;
+  if (userId) {
+    recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+    metrics.recordAICall({ fn: 'suggestTitle', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs: durationMsTitle });
+  }
+  logger.info('claude suggest title complete', { durationMs: durationMsTitle });
 
   return response.content[0].text.trim().replace(/^["']|["']$/g, '');
 }
@@ -1000,11 +1000,8 @@ USER REQUEST: ${description}
 
 ${countInstruction} Start index at ${startIndex}.`;
 
-  console.log('\n' + '═'.repeat(60));
-  console.log('📨 CLAUDE ADD-SLIDES STREAM');
-  console.log('═'.repeat(60));
-  console.log(`Adding ${count} slide(s) starting at index ${startIndex}`);
-  console.log('═'.repeat(60));
+  logger.info('claude add-slides stream start', { count, startIndex });
+  const tSlides = Date.now();
 
   const stream = client.messages.stream({
     model: 'claude-sonnet-4-6',
@@ -1025,10 +1022,10 @@ ${countInstruction} Start index at ${startIndex}.`;
         if (prefix === 'SLIDE:') {
           try {
             const slide = JSON.parse(jsonStr);
-            console.log(`📊 NEW SLIDE ${slide.index} parsed: "${slide.title}"`);
+            logger.debug('new slide parsed', { index: slide.index, title: slide.title });
             onSlide(slide);
           } catch (e) {
-            console.warn('Failed to parse new SLIDE:', e.message);
+            logger.warn('failed to parse new slide', { errorMessage: e.message });
           }
         }
       }
@@ -1048,6 +1045,8 @@ ${countInstruction} Start index at ${startIndex}.`;
     try {
       const finalMsg = await stream.finalMessage();
       recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
+      metrics.recordAICall({ fn: 'streamNewSlides', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - tSlides });
     } catch {}
   }
+  logger.info('claude add-slides stream complete', { durationMs: Date.now() - tSlides });
 }

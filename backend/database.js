@@ -123,6 +123,19 @@ export function initDatabase() {
     db.exec('ALTER TABLE subscriptions ADD COLUMN tokens_used INTEGER DEFAULT 0');
   } catch { /* already exists */ }
 
+  // Structured application logs (rolling — capped at 10 K rows by logger.js)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS app_logs (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      level      TEXT    NOT NULL,
+      message    TEXT    NOT NULL,
+      context    TEXT    DEFAULT '{}',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_app_logs_level   ON app_logs(level);
+    CREATE INDEX IF NOT EXISTS idx_app_logs_created ON app_logs(created_at);
+  `);
+
   // Analytics events table for custom event tracking
   db.exec(`
     CREATE TABLE IF NOT EXISTS analytics_events (

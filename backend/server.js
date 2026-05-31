@@ -13,6 +13,9 @@ import promptChatRoutes from './routes/promptChat.js';
 import billingRoutes from './routes/billing.js';
 import { apiLimiter } from './middleware/rateLimits.js';
 import analyticsRoutes from './routes/analytics.js';
+import adminRoutes from './routes/admin.js';
+import { requestLogger } from './middleware/requestLogger.js';
+import { logger } from './services/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -49,6 +52,9 @@ app.use(cors({
   },
   credentials: true,
 }));
+
+// Structured request logging + trace IDs (before auth so every request is covered)
+app.use(requestLogger);
 
 // Raw body must be captured BEFORE json() for Stripe signature verification
 app.use('/api/billing/webhook', express.raw({ type: 'application/json' }));
@@ -87,14 +93,20 @@ app.use('/api/presentations', presentationRoutes);
 app.use('/api/prompt-chat', promptChatRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/admin', adminRoutes);
 
-app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
+app.get('/api/health', (_, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 
 // Global error handler — never leak stack traces or internal messages to clients
 app.use((err, req, res, next) => {
   const status = err.status || err.statusCode || 500;
   if (status >= 500) {
-    console.error('Unhandled error:', err);
+    logger.error('unhandled exception', {
+      errorMessage: err.message,
+      errorName: err.name,
+      stack: err.stack?.split('\n').slice(0, 8).join('\n'),
+      requestId: req.requestId,
+    });
   }
   res.status(status).json({
     error: status >= 500 ? 'Internal server error' : (err.message || 'Request failed'),
@@ -103,5 +115,5 @@ app.use((err, req, res, next) => {
 
 initDatabase();
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 HyperBeing API running on http://localhost:${PORT}`);
+  logger.info('server started', { port: PORT, env: process.env.NODE_ENV || 'development' });
 });

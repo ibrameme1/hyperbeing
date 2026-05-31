@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { recordTokenUsage } from './stripeService.js';
+import { logger } from './logger.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -53,7 +54,7 @@ export async function generatePromptResponse(history, userMessage, attachedImage
   try {
     parsed = JSON.parse(rawText);
   } catch {
-    console.error('Prompt generator returned non-JSON:', rawText);
+    logger.warn('prompt generator returned non-JSON', { preview: rawText?.slice(0, 200) });
     parsed = {
       mode: 'diagnostic',
       message: rawText,

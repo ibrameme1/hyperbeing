@@ -4,6 +4,7 @@ import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { generatePromptResponse } from '../services/promptGenerator.js';
 import { checkTokenBudget } from '../services/stripeService.js';
+import { logger } from '../services/logger.js';
 
 const router = Router();
 
@@ -58,7 +59,7 @@ router.post('/:sessionId', authenticateToken, async (req, res) => {
     if (err.message === 'TOKEN_LIMIT_EXCEEDED') {
       return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
     }
-    console.error('Prompt chat error:', err);
+    logger.error('prompt chat failed', { errorMessage: err.message });
     res.status(500).json({ error: 'Nova couldn\'t generate a response right now. Please try again.' });
   }
 });
