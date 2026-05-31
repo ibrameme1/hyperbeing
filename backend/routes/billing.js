@@ -15,11 +15,21 @@ function frontendUrl() {
 }
 
 // ── GET /api/billing/subscription ─────────────────────────────────────────────
-router.get('/subscription', authMiddleware, (req, res) => {
+router.get('/subscription', authMiddleware, async (req, res) => {
   const sub = getOrCreateSubscription(req.userId);
   const plan = PLANS[sub.plan] || PLANS.free;
   const admin = isAdmin(req.userId);
-  res.json({ subscription: { ...sub, is_admin: admin }, plan });
+
+  // Fetch next invoice date from Stripe if available
+  let next_payment_date = null;
+  if (sub.stripe_subscription_id && process.env.STRIPE_SECRET_KEY) {
+    try {
+      const upcoming = await stripe.invoices.retrieveUpcoming({ subscription: sub.stripe_subscription_id });
+      next_payment_date = new Date(upcoming.next_payment_attempt * 1000).toISOString();
+    } catch { /* subscription may be cancelled or in trial */ }
+  }
+
+  res.json({ subscription: { ...sub, is_admin: admin, next_payment_date }, plan });
 });
 
 // ── POST /api/billing/checkout ────────────────────────────────────────────────

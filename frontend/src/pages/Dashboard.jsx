@@ -371,6 +371,14 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
                 </button>
               )}
               <button
+                onClick={() => { window.location.href = '/profile'; setOpen(false); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:opacity-80 text-left"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <User size={15} style={{ color: '#00F0FF' }} />
+                View profile
+              </button>
+              <button
                 onClick={() => { onUpgrade(); setOpen(false); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:opacity-80 text-left"
                 style={{ color: 'var(--text-secondary)' }}

@@ -128,6 +128,7 @@ export default function Pricing() {
   const [creditsLeft, setCreditsLeft] = useState(null);
   const [loading, setLoading] = useState(null);
   const [ultraTier, setUltraTier] = useState(0);
+  const [subInfo, setSubInfo] = useState(null);
 
   useEffect(() => { track('pricing_viewed'); }, []);
 
@@ -137,10 +138,16 @@ export default function Pricing() {
         .then(r => {
           setCurrentPlan(r.data.subscription.plan);
           setCreditsLeft(r.data.subscription.credits_remaining);
+          setSubInfo(r.data.subscription);
         })
         .catch(() => {});
     }
   }, [user]);
+
+  function formatDate(iso) {
+    if (!iso) return null;
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
 
   async function handleSubscribe(planKey) {
     if (!user) { navigate('/login'); return; }
@@ -382,6 +389,19 @@ export default function Pricing() {
                       </button>
                     );
                   })()}
+
+                  {/* Subscription status message for current plan */}
+                  {isCurrent && subInfo && subInfo.plan !== 'free' && (
+                    <div className="text-xs text-center mb-4 px-1" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                      {subInfo.pending_plan ? (
+                        <>Switching to <span className="capitalize" style={{ color: 'rgba(255,255,255,0.6)' }}>{subInfo.pending_plan}</span> on {formatDate(subInfo.current_period_end)}</>
+                      ) : subInfo.next_payment_date ? (
+                        <>Renews {formatDate(subInfo.next_payment_date)}</>
+                      ) : subInfo.current_period_end ? (
+                        <>Active until {formatDate(subInfo.current_period_end)}</>
+                      ) : null}
+                    </div>
+                  )}
 
                   {/* Ultra credit slider — below CTA so prices/buttons align across cards */}
                   {plan.key === 'ultra' && (
