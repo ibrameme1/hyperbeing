@@ -152,7 +152,8 @@ export default function Pricing() {
 
   async function handleSubscribe(planKey) {
     if (!user) { navigate('/login'); return; }
-    if (planKey === currentPlan) return;
+    // Allow re-subscribing to current plan only when cancelling a pending downgrade
+    if (planKey === currentPlan && !subInfo?.pending_plan) return;
     setLoading(planKey);
     try {
       const { data } = await api.post('/billing/checkout', {
@@ -168,6 +169,9 @@ export default function Pricing() {
           setCreditsLeft(subRes.data.subscription.credits_remaining);
           setSubInfo(subRes.data.subscription);
           setDowngradeModal({ pendingPlan: data.pendingPlan, periodEnd: data.periodEnd, fromPlan: data.currentPlan });
+        } else if (data.cancelledDowngrade) {
+          // Downgrade was cancelled — refresh and reload cleanly
+          window.location.reload();
         } else {
           alert(data.message || 'Plan upgraded successfully.');
           window.location.reload();
@@ -418,24 +422,27 @@ export default function Pricing() {
 
                     // ── Plan being dropped (e.g. Pro while downgrading to Basic) ──
                     if (isCurrentEnding) {
+                      const isLoadingThis = loading === plan.key;
                       return (
                         <>
                           <button
-                            onClick={handleManage}
-                            disabled={loading === 'portal'}
+                            onClick={() => handleSubscribe(plan.key)}
+                            disabled={isLoadingThis}
                             className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mb-3 disabled:opacity-60"
-                            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.35)', border: '1px solid rgba(255,255,255,0.08)' }}
+                            style={{ background: plan.gradient, color: '#fff', boxShadow: `0 4px 20px ${plan.glow}` }}
                           >
-                            {loading === 'portal' ? <Loader2 size={16} className="animate-spin" /> : 'View billing'}
+                            {isLoadingThis
+                              ? <Loader2 size={16} className="animate-spin" />
+                              : <><span>Upgrade back to {plan.name}</span><ArrowRight size={14} /></>}
                           </button>
-                          {periodEnd && (
-                            <div className="text-xs text-center mb-4 px-2 py-2 rounded-xl"
-                                 style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.18)' }}>
-                              <span style={{ color: '#F59E0B' }}>
-                                {plan.name} benefits active until <span className="font-bold">{periodEnd}</span>
-                              </span>
-                            </div>
-                          )}
+                          <div className="text-xs text-center mb-4 px-2 py-2 rounded-xl"
+                               style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.18)' }}>
+                            <span style={{ color: '#F59E0B' }}>
+                              {plan.name} benefits active{periodEnd
+                                ? <> until <span className="font-bold">{periodEnd}</span></>
+                                : ' until end of billing period'}
+                            </span>
+                          </div>
                         </>
                       );
                     }
@@ -452,14 +459,14 @@ export default function Pricing() {
                           >
                             {loading === 'portal' ? <Loader2 size={16} className="animate-spin" /> : 'Manage subscription'}
                           </button>
-                          {periodEnd && (
-                            <div className="text-xs text-center mb-4 px-2 py-2 rounded-xl"
-                                 style={{ background: 'rgba(0,240,255,0.06)', border: '1px solid rgba(0,240,255,0.18)' }}>
-                              <span style={{ color: '#00F0FF' }}>
-                                Switching to {plan.name} on <span className="font-bold">{periodEnd}</span>
-                              </span>
-                            </div>
-                          )}
+                          <div className="text-xs text-center mb-4 px-2 py-2 rounded-xl"
+                               style={{ background: 'rgba(0,240,255,0.06)', border: '1px solid rgba(0,240,255,0.18)' }}>
+                            <span style={{ color: '#00F0FF' }}>
+                              Switching to {plan.name}{periodEnd
+                                ? <> on <span className="font-bold">{periodEnd}</span></>
+                                : ' at end of billing period'}
+                            </span>
+                          </div>
                         </>
                       );
                     }
