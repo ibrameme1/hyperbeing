@@ -481,12 +481,12 @@ export default function Dashboard() {
     }
   }
 
-  async function handleQuestionComplete(answers, suggestedSlideCount) {
+  async function handleQuestionComplete(answers) {
     setShowQuestionFlow(false);
     setSubmitError('');
 
-    const qaSection = answers.map(a => `- ${a.question}: ${a.answer}`).join('\n');
-    const comprehensiveMessage = `${pendingInput}\n\nPREFLIGHT ANSWERS:\n${qaSection}\n\nDetected type: ${analysis.detected_type || ''}\nDetected industry: ${analysis.detected_industry || ''}\nSuggested slides: ${suggestedSlideCount || analysis.suggested_slide_count || 8}\n\nPlease generate the full presentation now.`;
+    const qaSection = answers.length > 0 ? `\n\nPREFLIGHT ANSWERS:\n${answers.map(a => `- ${a.question}: ${a.answer}`).join('\n')}` : '';
+    const comprehensiveMessage = `${pendingInput}${qaSection}\n\nDetected type: ${analysis.detected_type || ''}\nDetected industry: ${analysis.detected_industry || ''}\n\nPlease generate the full presentation now. Nova should decide the number of slides needed to do this presentation justice.`;
 
     try {
       const { data } = await api.post('/presentations', {

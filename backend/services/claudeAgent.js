@@ -405,7 +405,7 @@ CRITICAL RULES:
 3. When state = "ready", slide_plan MUST be fully populated with ALL slides
 4. nano_banana_prompt must be 250-300 words — specific, art-directed, cinematically written
 5. key_points ≤ 12 words each
-6. SLIDE COUNT IS ABSOLUTE: When the PREFLIGHT ANSWERS specify a slide count, you MUST generate EXACTLY that number of slides. Not fewer, not more. User said 5 — you create exactly 5 slides. User said 10 — exactly 10 slides. Never round down. Never decide fewer "makes more sense". The slide count is the user's final decision and overrides your judgment entirely. If "Suggested slides: 5" appears anywhere in the message, total_slides must equal 5 and slides array must have exactly 5 entries.
+6. SLIDE COUNT: You decide the number of slides needed to do the presentation justice. Choose based on the scope, complexity, and goals of the brief — typically 5–15 slides. Never pad with filler slides; never truncate an idea that needs more space. Your judgment is the final word.
 7. total_slides must EXACTLY equal the length of the slides array — they must always match`;
 
 // ─── Exports ────────────────────────────────────────────────────────────────
@@ -725,7 +725,7 @@ Rules:
 - HEADER: must come first
 - Each SLIDE: must be on its own line, complete parseable JSON
 - total_slides in HEADER must equal the number of SLIDE: lines
-- The user specified the slide count in PREFLIGHT ANSWERS — use EXACTLY that number
+- Choose total_slides based on what best serves the brief — typically 5–15 slides. Never pad, never truncate.
 - nano_banana_prompt must be 250–600 words following the MANDATORY 5-LAYER STRUCTURE below
 
 SLIDE STRUCTURE RULES:

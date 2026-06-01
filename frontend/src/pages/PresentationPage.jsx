@@ -417,7 +417,7 @@ export default function PresentationPage() {
 
       if (event.type === 'plan_ready') {
         setTotalSlides(event.total_slides);
-        // Create placeholder slides so viewer can show immediately, preserving any already-completed slides
+        // Create placeholder slides so viewer can show all N slides immediately (with loading overlays)
         setGeneratedSlides(prev => {
           const placeholders = Array.from({ length: event.total_slides }, (_, i) => ({
             index: i, type: 'content', title: `Slide ${i + 1}`, status: 'generating', image_data: null,
@@ -428,6 +428,10 @@ export default function PresentationPage() {
           }
           return merged;
         });
+        // Switch to viewer immediately so user sees all slides (with loading overlays) from the start
+        if (event.total_slides > 0) {
+          setPhase(p => p === 'generating' ? 'viewing' : p);
+        }
       }
 
       if (event.type === 'chat_needed') {
@@ -461,8 +465,6 @@ export default function PresentationPage() {
           return next.sort((a, b) => a.index - b.index);
         });
         setGenerationStage(5);
-        // Switch to viewer as soon as we have 1 real slide with an image
-        setPhase(p => p === 'generating' ? 'viewing' : p);
       }
 
       if (event.type === 'slide_error') {
