@@ -65,11 +65,8 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
           transition={{ duration: 0.45, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
           className="text-center"
         >
-          <p className="text-white/40 text-[11px] font-bold uppercase tracking-widest mb-1.5">
-            Nova's plan
-          </p>
           <h1 className="text-white text-xl font-bold">
-            {totalSlides} slide{totalSlides !== 1 ? 's' : ''} crafted for you
+            Nova crafted {totalSlides} slide{totalSlides !== 1 ? 's' : ''} for you
           </h1>
         </motion.div>
 

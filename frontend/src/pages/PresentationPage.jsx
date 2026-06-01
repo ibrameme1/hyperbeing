@@ -336,7 +336,8 @@ export default function PresentationPage() {
           stopPolling();
           setGeneratedSlides(data.presentation.slides_data);
           setTotalSlides(data.presentation.slides_data.length);
-          setTimeout(() => setPhase('viewing'), 400);
+          // Don't interrupt plan_reveal — let its onDone() handle the transition
+          setPhase(p => p === 'plan_reveal' ? p : 'viewing');
         } else if (data.presentation.status === 'generating' && data.presentation.slides_data) {
           const partial = data.presentation.slides_data;
           setGeneratedSlides(prev => {
@@ -418,12 +419,13 @@ export default function PresentationPage() {
       }
 
       if (event.type === 'plan_ready') {
-        setTotalSlides(event.total_slides);
-        // Create placeholder slides for all N positions (images will fill in via slide_ready)
+        const plans = event.slide_plans || [];
+        const count = event.total_slides || plans.length;
+        setTotalSlides(count);
+        // Build full slide list: completed slides merged with placeholders for the rest
         setGeneratedSlides(prev => {
-          const slidePlansArr = event.slide_plans || [];
-          const placeholders = Array.from({ length: event.total_slides }, (_, i) => {
-            const plan = slidePlansArr[i];
+          const placeholders = Array.from({ length: count }, (_, i) => {
+            const plan = plans[i];
             return {
               index: i,
               type: plan?.type || 'content',
@@ -434,16 +436,16 @@ export default function PresentationPage() {
           });
           const merged = [...placeholders];
           for (const s of prev) {
-            if (s.status === 'complete' && s.index < event.total_slides) merged[s.index] = s;
+            if (s.status === 'complete' && s.index < count) merged[s.index] = s;
           }
           return merged;
         });
-        if (event.total_slides > 0) {
-          // Show plan reveal only on fresh generation (not when reconnecting mid-generation)
-          setSlidePlan(event.slide_plans || []);
+        if (count > 0) {
+          setSlidePlan(plans);
+          // Transition to plan_reveal from any non-viewer state so it always fires
           setPhase(p => {
-            if (p !== 'generating') return p;
-            return (event.slide_plans?.length > 0) ? 'plan_reveal' : 'viewing';
+            if (p === 'viewing') return p;
+            return plans.length > 0 ? 'plan_reveal' : 'viewing';
           });
         }
       }
@@ -504,7 +506,8 @@ export default function PresentationPage() {
       if (event.type === 'complete') {
         clearInterval(stageTimer);
         stopPolling();
-        setPhase('viewing');
+        // Don't interrupt plan_reveal — its onDone() will transition to 'viewing'
+        setPhase(p => p === 'plan_reveal' ? p : 'viewing');
       }
 
       if (event.type === 'error') {
@@ -567,11 +570,37 @@ export default function PresentationPage() {
 
   if (phase === 'generating') {
     return (
-      <LoadingScreen
-        generatedSlides={generatedSlides}
-        totalSlides={totalSlides}
-        currentStage={generationStage}
-      />
+      <div
+        className="h-screen flex flex-col items-center justify-center relative overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
+      >
+        {/* Ambient glows */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-1/3 left-1/3 w-96 h-96 rounded-full opacity-20 animate-float"
+               style={{ background: 'radial-gradient(circle, #7b61ff 0%, transparent 70%)' }} />
+          <div className="absolute bottom-1/3 right-1/3 w-80 h-80 rounded-full opacity-15 animate-float"
+               style={{ background: 'radial-gradient(circle, #00b4ff 0%, transparent 70%)', animationDelay: '2s' }} />
+        </div>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex flex-col items-center gap-5 z-10"
+        >
+          <div className="relative">
+            <motion.div
+              animate={{ scale: [1, 1.15, 1], opacity: [0.5, 1, 0.5] }}
+              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+              className="absolute inset-0 rounded-3xl blur-xl"
+              style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+            />
+            <div className="relative w-16 h-16 rounded-3xl flex items-center justify-center"
+                 style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+              <Sparkles size={28} className="text-white" />
+            </div>
+          </div>
+          <p className="text-white/70 text-base font-semibold">Nova is planning your presentation…</p>
+        </motion.div>
+      </div>
     );
   }
 
