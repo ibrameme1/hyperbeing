@@ -200,6 +200,11 @@ async function runFullFlow(presentationId, message, attachments, userId = null) 
         key_points: (slide.key_points || []).slice(0, 2),
       };
       collectedSlidePlans.push(slideMeta);
+      // Persist accumulated plans so re-opens can skip straight to viewer instead of stuck on planning screen
+      if (header) {
+        db.prepare(`UPDATE presentations SET slide_plan = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+          .run(JSON.stringify({ ...header, slides: collectedSlidePlans }), presentationId);
+      }
       // Stream each slide's metadata to the frontend the moment Claude finishes planning it
       broadcast(presentationId, { type: 'plan_slide_streamed', slide: slideMeta });
       broadcast(presentationId, { type: 'slide_generating', index: slide.index });
