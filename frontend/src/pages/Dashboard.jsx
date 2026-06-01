@@ -429,6 +429,7 @@ export default function Dashboard() {
   const [currentPlan, setCurrentPlan] = useState('free');
   const [isAdmin, setIsAdmin] = useState(false);
   const [showOutOfCredits, setShowOutOfCredits] = useState(false);
+  const [slideCountOverride, setSlideCountOverride] = useState('auto');
   const textareaRef = useRef(null);
 
   function refreshCredits() {
@@ -442,9 +443,24 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
+    // Show cached data instantly while fetching fresh in background
+    try {
+      const cached = sessionStorage.getItem('hb_presentations');
+      if (cached) {
+        setPresentations(JSON.parse(cached));
+        setPresLoading(false);
+      }
+    } catch {}
+
     api.get('/presentations')
-      .then(r => setPresentations(r.data.presentations || []))
+      .then(r => {
+        const list = r.data.presentations || [];
+        setPresentations(list);
+        try { sessionStorage.setItem('hb_presentations', JSON.stringify(list)); } catch {}
+      })
+      .catch(() => {})
       .finally(() => setPresLoading(false));
+
     refreshCredits();
     const interval = setInterval(refreshCredits, 30_000);
     return () => clearInterval(interval);
@@ -486,7 +502,10 @@ export default function Dashboard() {
     setSubmitError('');
 
     const qaSection = answers.length > 0 ? `\n\nPREFLIGHT ANSWERS:\n${answers.map(a => `- ${a.question}: ${a.answer}`).join('\n')}` : '';
-    const comprehensiveMessage = `${pendingInput}${qaSection}\n\nDetected type: ${analysis.detected_type || ''}\nDetected industry: ${analysis.detected_industry || ''}\n\nPlease generate the full presentation now. Nova should decide the number of slides needed to do this presentation justice.`;
+    const slideCountInstruction = slideCountOverride === 'auto'
+      ? 'Nova should decide the number of slides needed to do this presentation justice.'
+      : `Generate EXACTLY ${slideCountOverride} slides — no more, no fewer.`;
+    const comprehensiveMessage = `${pendingInput}${qaSection}\n\nDetected type: ${analysis.detected_type || ''}\nDetected industry: ${analysis.detected_industry || ''}\n\n${slideCountInstruction}`;
 
     try {
       const { data } = await api.post('/presentations', {
@@ -517,7 +536,11 @@ export default function Dashboard() {
   }
 
   function handleDeletePresentation(id) {
-    setPresentations(prev => prev.filter(p => p.id !== id));
+    setPresentations(prev => {
+      const next = prev.filter(p => p.id !== id);
+      try { sessionStorage.setItem('hb_presentations', JSON.stringify(next)); } catch {}
+      return next;
+    });
   }
 
   const totalAttachments = allAttachments.length;
@@ -643,6 +666,23 @@ export default function Dashboard() {
                       }`}
                     >
                       {ratio}
+                    </button>
+                  ))}
+                </div>
+
+                {/* buttonX — temporary debug slide count override, remove when done */}
+                <div className="flex items-center gap-1 bg-ios-gray5 dark:bg-hb-surface-2 rounded-xl p-1">
+                  {['auto', '5', '8', '10', '12', '15', '20'].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setSlideCountOverride(n)}
+                      className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all duration-150 ${
+                        slideCountOverride === n
+                          ? 'bg-white dark:bg-hb-dark text-gray-900 dark:text-white shadow-sm'
+                          : 'text-ios-gray1 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-white'
+                      }`}
+                    >
+                      {n === 'auto' ? '✦' : n}
                     </button>
                   ))}
                 </div>

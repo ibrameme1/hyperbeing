@@ -349,6 +349,9 @@ export default function PresentationPage() {
             }
             return merged.sort((a, b) => a.index - b.index);
           });
+          if (data.presentation.slide_plan?.slides?.length > 0) {
+            setPhase(p => p === 'plan_reveal' ? p : 'viewing');
+          }
           if (data.presentation.slide_plan?.slides?.length) {
             setTotalSlides(data.presentation.slide_plan.slides.length);
           }
@@ -372,25 +375,27 @@ export default function PresentationPage() {
         setPhase('viewing');
         startSSE(id); // stay subscribed for slide_updated events
       } else if (data.presentation.status === 'generating' || data.presentation.status === 'processing') {
-        setPhase('generating');
-        // Build full slide list: completed slides + placeholders for in-progress ones
         const planSlides = data.presentation.slide_plan?.slides || [];
         const completedSlides = data.presentation.slides_data || [];
         if (planSlides.length > 0) {
+          // Plan already exists — skip straight to viewer with loading overlays for unfinished slides
           const completedByIndex = new Map(completedSlides.map(s => [s.index, s]));
           const merged = planSlides.map(slide =>
             completedByIndex.get(slide.index) ?? { ...slide, status: 'generating', image_data: null }
           );
           setGeneratedSlides(merged.sort((a, b) => a.index - b.index));
           setTotalSlides(planSlides.length);
-        } else if (completedSlides.length > 0) {
-          setGeneratedSlides(completedSlides);
-        }
-        if (data.presentation.slide_plan?.total_slides) {
-          setTotalSlides(data.presentation.slide_plan.total_slides);
+          setPhase('viewing');
+        } else {
+          // Plan not yet ready — show planning loader and wait for SSE plan_started
+          if (completedSlides.length > 0) setGeneratedSlides(completedSlides);
+          if (data.presentation.slide_plan?.total_slides) {
+            setTotalSlides(data.presentation.slide_plan.total_slides);
+          }
+          setPhase('generating');
         }
         startSSE(id);
-        startPolling(id); // fallback in case SSE events are missed
+        startPolling(id);
       } else {
         setPhase('chat');
       }

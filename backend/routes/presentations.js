@@ -45,6 +45,14 @@ router.get('/', authenticateToken, (req, res) => {
        FROM presentations WHERE user_id = ? ORDER BY updated_at DESC`
     )
     .all(req.user.id);
+
+  if (rows.length > 0) {
+    const lastModified = new Date(rows[0].updated_at + 'Z');
+    res.setHeader('Last-Modified', lastModified.toUTCString());
+    const ims = req.headers['if-modified-since'];
+    if (ims && new Date(ims) >= lastModified) return res.status(304).end();
+  }
+
   res.json({ presentations: rows });
 });
 
