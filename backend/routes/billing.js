@@ -93,7 +93,9 @@ router.post('/checkout', authMiddleware, billingLimiter,
       if (isDowngrade) {
         // Write pending_plan BEFORE calling Stripe so the webhook sees it and skips the plan update
         const db = getDb();
-        const periodEnd = new Date(stripeSub.current_period_end * 1000).toISOString();
+        const periodEnd = stripeSub.current_period_end
+          ? new Date(stripeSub.current_period_end * 1000).toISOString()
+          : null;
         db.prepare(
           'UPDATE subscriptions SET pending_plan = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
         ).run(planKey, periodEnd, req.userId);
@@ -218,7 +220,9 @@ router.post('/webhook', async (req, res) => {
       const sub = db.prepare('SELECT * FROM subscriptions WHERE stripe_subscription_id = ?').get(stripeSub.id);
       if (!sub) break;
 
-      const periodEnd = new Date(stripeSub.current_period_end * 1000).toISOString();
+      const periodEnd = stripeSub.current_period_end
+        ? new Date(stripeSub.current_period_end * 1000).toISOString()
+        : null;
 
       // If a downgrade is scheduled, preserve the displayed plan — only sync status/period
       if (sub.pending_plan) {
