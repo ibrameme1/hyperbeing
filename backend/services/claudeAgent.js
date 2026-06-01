@@ -1,7 +1,16 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { jsonrepair } from 'jsonrepair';
 import { recordTokenUsage } from './stripeService.js';
 import { logger } from './logger.js';
 import { metrics } from './metrics.js';
+
+function parseJSON(str) {
+  try { return JSON.parse(str); } catch (e1) {
+    try { return JSON.parse(jsonrepair(str)); } catch (e2) {
+      throw e1; // throw original error for logging
+    }
+  }
+}
 
 const MOCK_MODE = !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'demo';
 
@@ -882,7 +891,7 @@ export async function streamSlidePlan(message, attachments, callbacks, userId = 
       for (const { prefix, jsonStr } of objects) {
         if (prefix === 'HEADER:') {
           try {
-            const header = JSON.parse(jsonStr);
+            const header = parseJSON(jsonStr);
             logger.debug('slide plan header parsed', { title: header.presentation_title, totalSlides: header.total_slides });
             onHeader(header);
           } catch (e) {
@@ -890,7 +899,7 @@ export async function streamSlidePlan(message, attachments, callbacks, userId = 
           }
         } else {
           try {
-            const slide = JSON.parse(jsonStr);
+            const slide = parseJSON(jsonStr);
             logger.debug('slide parsed', { index: slide.index, title: slide.title });
             onSlide(slide);
           } catch (e) {
@@ -906,8 +915,8 @@ export async function streamSlidePlan(message, attachments, callbacks, userId = 
     const { objects } = extractPrefixedObjects(buffer + '\n');
     for (const { prefix, jsonStr } of objects) {
       try {
-        if (prefix === 'SLIDE:') onSlide(JSON.parse(jsonStr));
-        else onHeader(JSON.parse(jsonStr));
+        if (prefix === 'SLIDE:') onSlide(parseJSON(jsonStr));
+        else onHeader(parseJSON(jsonStr));
       } catch {}
     }
   }
@@ -1021,7 +1030,7 @@ ${countInstruction} Start index at ${startIndex}.`;
       for (const { prefix, jsonStr } of objects) {
         if (prefix === 'SLIDE:') {
           try {
-            const slide = JSON.parse(jsonStr);
+            const slide = parseJSON(jsonStr);
             logger.debug('new slide parsed', { index: slide.index, title: slide.title });
             onSlide(slide);
           } catch (e) {
@@ -1036,7 +1045,7 @@ ${countInstruction} Start index at ${startIndex}.`;
     const { objects } = extractPrefixedObjects(buffer + '\n');
     for (const { prefix, jsonStr } of objects) {
       if (prefix === 'SLIDE:') {
-        try { onSlide(JSON.parse(jsonStr)); } catch {}
+        try { onSlide(parseJSON(jsonStr)); } catch {}
       }
     }
   }
