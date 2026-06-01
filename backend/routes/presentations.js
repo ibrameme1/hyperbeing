@@ -159,14 +159,10 @@ async function runFullFlow(presentationId, message, attachments, userId = null) 
     .get(presentationId);
   let userAttachments = [];
   try { userAttachments = JSON.parse(firstUserMsg?.attachments || '[]'); } catch {}
-  const moodboardImages = userAttachments.filter(a => a.category === 'moodboard' && a.data);
-  const brandingImages  = userAttachments.filter(a => a.category === 'branding'  && a.data);
-  const allImages       = userAttachments.filter(a => a.data);
+  const allImages = userAttachments.filter(a => a.data);
 
-  let header = null;
   const slidePromises = [];
   const completedSlides = new Map();
-  const collectedSlidePlans = []; // minimal metadata for plan reveal screen
 
   function persistProgress() {
     const sorted = [...completedSlides.values()].sort((a, b) => a.index - b.index);
@@ -174,46 +170,44 @@ async function runFullFlow(presentationId, message, attachments, userId = null) 
       .run(JSON.stringify(sorted), presentationId);
   }
 
-  await streamSlidePlan(message, attachments, {
-    onHeader(h) {
-      header = h;
-      db.prepare(
-        `INSERT INTO messages (id, presentation_id, role, content, metadata) VALUES (?, ?, 'assistant', ?, ?)`
-      ).run(uuid(), presentationId, h.message || '', JSON.stringify({ state: 'ready', message: h.message }));
+  // ── Phase 1: quick outline — all slide titles/types instantly ───────────────
+  const { header, slides } = await generateCompactPlan(message, attachments, userId);
 
-      db.prepare(
-        `UPDATE presentations SET title = ?, slide_plan = ?, status = 'generating', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-      ).run(
-        h.presentation_title || 'Untitled Presentation',
-        JSON.stringify({ ...h, slides: [] }),
-        presentationId
-      );
-      // Tell the frontend how many slides to expect so it can switch to plan_reveal immediately
-      broadcast(presentationId, { type: 'plan_started', total_slides: h.total_slides || 0 });
-    },
+  // Persist header message
+  db.prepare(`INSERT INTO messages (id, presentation_id, role, content, metadata) VALUES (?, ?, 'assistant', ?, ?)`)
+    .run(uuid(), presentationId, header.message || '', JSON.stringify({ state: 'ready', message: header.message }));
 
-    onSlide(slide) {
-      const slideMeta = {
-        index: slide.index,
-        type: slide.type,
-        title: slide.title,
-        key_points: (slide.key_points || []).slice(0, 2),
-      };
-      collectedSlidePlans.push(slideMeta);
-      // Persist accumulated plans so re-opens can skip straight to viewer instead of stuck on planning screen
-      if (header) {
-        db.prepare(`UPDATE presentations SET slide_plan = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-          .run(JSON.stringify({ ...header, slides: collectedSlidePlans }), presentationId);
-      }
-      // Stream each slide's metadata to the frontend the moment Claude finishes planning it
-      broadcast(presentationId, { type: 'plan_slide_streamed', slide: slideMeta });
+  // Persist plan to DB (slides array has full outline, no image prompts yet)
+  db.prepare(`UPDATE presentations SET title = ?, slide_plan = ?, status = 'generating', updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .run(
+      header.presentation_title || 'Untitled Presentation',
+      JSON.stringify({ ...header, slides }),
+      presentationId
+    );
+
+  // Broadcast ALL slide rows at once → plan reveal screen shows instantly
+  broadcast(presentationId, { type: 'plan_started', total_slides: slides.length });
+  for (const slide of slides) {
+    broadcast(presentationId, {
+      type: 'plan_slide_streamed',
+      slide: { index: slide.index, type: slide.type, title: slide.title, key_points: (slide.key_points || []).slice(0, 2) },
+    });
+  }
+  broadcast(presentationId, {
+    type: 'plan_ready',
+    total_slides: slides.length,
+    slide_plans: slides.map(s => ({ index: s.index, type: s.type, title: s.title, key_points: (s.key_points || []).slice(0, 2) })),
+  });
+  broadcast(presentationId, { type: 'started', total_slides: slides.length });
+
+  // ── Phase 2: stream image prompts, start generation per slide as each arrives ─
+  await streamSlidePrompts(slides, header, message, attachments, {
+    onPrompt(slide) {
       broadcast(presentationId, { type: 'slide_generating', index: slide.index });
 
-      // Always attach all user reference images to every slide
       const attachedImages = allImages.slice(0, 3);
 
-      const staggerDelay = slide.index * 800;
-      const promise = new Promise(r => setTimeout(r, staggerDelay)).then(() => generateSlideImage(
+      const promise = generateSlideImage(
         slide.nano_banana_prompt || slide.title,
         slide.type,
         header?.theme        || 'modern-minimal',
@@ -221,11 +215,10 @@ async function runFullFlow(presentationId, message, attachments, userId = null) 
         slide.index,
         attachedImages,
         aspectRatio
-      )).then(imageData => {
+      ).then(imageData => {
         const done = { ...slide, image_data: imageData, status: 'complete' };
         completedSlides.set(slide.index, done);
         persistProgress();
-        // Save thumbnail from first slide
         if (slide.index === 0 && imageData && !imageData.startsWith('data:image/svg')) {
           db.prepare(`UPDATE presentations SET thumbnail = ? WHERE id = ?`).run(imageData, presentationId);
         }
@@ -241,33 +234,19 @@ async function runFullFlow(presentationId, message, attachments, userId = null) 
     },
   }, userId);
 
-  // All slide text is streamed — broadcast plan_ready with full slide structures for the reveal screen
-  const planTotalSlides = header?.total_slides || collectedSlidePlans.length;
-  broadcast(presentationId, {
-    type: 'plan_ready',
-    total_slides: planTotalSlides,
-    slide_plans: collectedSlidePlans,
-  });
-  broadcast(presentationId, { type: 'started', total_slides: planTotalSlides });
-
-  // Wait for all Nano Banana calls (they started as Claude was streaming)
+  // Wait for all image generations to finish
   await Promise.all(slidePromises);
 
   const allSlides = [...completedSlides.values()].sort((a, b) => a.index - b.index);
 
-  if (header) {
-    db.prepare(`UPDATE presentations SET slide_plan = ? WHERE id = ?`)
-      .run(
-        JSON.stringify({ ...header, slides: allSlides.map(({ image_data, ...rest }) => rest) }),
-        presentationId
-      );
-  }
+  // Persist final slide_plan with full outline data
+  db.prepare(`UPDATE presentations SET slide_plan = ? WHERE id = ?`)
+    .run(JSON.stringify({ ...header, slides: allSlides.map(({ image_data, ...rest }) => rest) }), presentationId);
 
-  db.prepare(
-    `UPDATE presentations SET status = 'completed', slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-  ).run(JSON.stringify(allSlides), presentationId);
+  db.prepare(`UPDATE presentations SET status = 'completed', slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .run(JSON.stringify(allSlides), presentationId);
 
-  // Auto-suggest a contextual title after generation completes
+  // Auto-suggest title
   try {
     const titleCtx = { slides: allSlides.map(s => ({ title: s.title, type: s.type, key_points: s.key_points?.slice(0, 2) })) };
     const autoTitle = await suggestTitle(titleCtx, userId);
