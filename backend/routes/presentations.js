@@ -541,12 +541,14 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
   }
 
   const slides = JSON.parse(pres.slides_data);
-  const idx = parseInt(req.params.index, 10);
-  const slide = slides[idx];
+  const targetIndex = parseInt(req.params.index, 10);
+  // Find by .index property — robust to reordering (array position ≠ .index after drag-reorder)
+  const arrayPos = slides.findIndex(s => s.index === targetIndex);
+  const slide = slides[arrayPos];
   if (!slide) return res.status(404).json({ error: 'Slide not found. It may have been removed or the index is out of range.' });
 
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
-  res.json({ message: 'Editing…', index: idx });
+  res.json({ message: 'Editing…', index: targetIndex });
 
   const regenAspectRatio = pres.aspect_ratio || '16:9';
 
@@ -579,16 +581,22 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
       );
 
       const updatedSlide = { ...slide, image_data: imageData, status: 'complete' };
-      slides[idx] = updatedSlide;
+      slides[arrayPos] = updatedSlide;
 
-      db.prepare(
-        `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-      ).run(JSON.stringify(slides), req.params.id);
+      // Always keep the thumbnail in sync with whichever slide is first in the current order
+      const updates = { slides_data: JSON.stringify(slides) };
+      let thumbSql = `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+      const thumbArgs = [updates.slides_data, req.params.id];
+      if (arrayPos === 0 && imageData && !imageData.startsWith('data:image/svg')) {
+        thumbSql = `UPDATE presentations SET slides_data = ?, thumbnail = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+        thumbArgs.splice(1, 0, imageData);
+      }
+      db.prepare(thumbSql).run(...thumbArgs);
 
       broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
     } catch (err) {
       logger.error('slide edit failed', { errorMessage: err.message });
-      broadcast(req.params.id, { type: 'slide_error', index: idx, message: err.message });
+      broadcast(req.params.id, { type: 'slide_error', index: targetIndex, message: err.message });
     }
   })();
 });
@@ -609,12 +617,13 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
   }
 
   const slides = JSON.parse(pres.slides_data);
-  const idx = parseInt(req.params.index, 10);
-  const slide = slides[idx];
+  const targetIndex = parseInt(req.params.index, 10);
+  const arrayPos = slides.findIndex(s => s.index === targetIndex);
+  const slide = slides[arrayPos];
   if (!slide) return res.status(404).json({ error: 'Slide not found.' });
 
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
-  res.json({ message: 'Retrying…', index: idx });
+  res.json({ message: 'Retrying…', index: targetIndex });
 
   const regenAspectRatio = pres.aspect_ratio || '16:9';
 
@@ -631,16 +640,20 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
       );
 
       const updatedSlide = { ...slide, image_data: imageData, status: 'complete' };
-      slides[idx] = updatedSlide;
+      slides[arrayPos] = updatedSlide;
 
-      db.prepare(
-        `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-      ).run(JSON.stringify(slides), req.params.id);
+      let thumbSql = `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+      const thumbArgs = [JSON.stringify(slides), req.params.id];
+      if (arrayPos === 0 && imageData && !imageData.startsWith('data:image/svg')) {
+        thumbSql = `UPDATE presentations SET slides_data = ?, thumbnail = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+        thumbArgs.splice(1, 0, imageData);
+      }
+      db.prepare(thumbSql).run(...thumbArgs);
 
       broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
     } catch (err) {
       logger.error('slide retry failed', { errorMessage: err.message });
-      broadcast(req.params.id, { type: 'slide_error', index: idx, message: err.message });
+      broadcast(req.params.id, { type: 'slide_error', index: targetIndex, message: err.message });
     }
   })();
 });
@@ -659,8 +672,16 @@ router.post('/:id/reorder', authenticateToken, (req, res) => {
   const byIndex = new Map(slides.map(s => [s.index, s]));
   const reordered = order.map(idx => byIndex.get(idx)).filter(Boolean);
 
-  db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-    .run(JSON.stringify(reordered), req.params.id);
+  // Sync thumbnail to whichever slide is now first
+  const newFirstImage = reordered[0]?.image_data;
+  const hasRealThumb = newFirstImage && !newFirstImage.startsWith('data:image/svg');
+  if (hasRealThumb) {
+    db.prepare(`UPDATE presentations SET slides_data = ?, thumbnail = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(JSON.stringify(reordered), newFirstImage, req.params.id);
+  } else {
+    db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(JSON.stringify(reordered), req.params.id);
+  }
 
   res.json({ message: 'Reordered' });
 });
