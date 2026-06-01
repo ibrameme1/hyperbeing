@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 
@@ -13,30 +13,34 @@ const TYPE_LABELS = {
 };
 
 export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone }) {
-  const [visibleCount, setVisibleCount] = useState(0);
   const [showFooter, setShowFooter] = useState(false);
+  const calledDone = useRef(false);
+  const advanceTimer = useRef(null);
 
+  const allStreamed = totalSlides > 0 && slidePlans.length >= totalSlides;
+
+  // Start the 1.6s auto-advance only once all slide titles have arrived
   useEffect(() => {
-    const timers = [];
-    const STAGGER = 150;
-    const INITIAL_DELAY = 400;
+    if (!allStreamed) return;
+    setShowFooter(true);
+    advanceTimer.current = setTimeout(() => {
+      if (!calledDone.current) { calledDone.current = true; onDone(); }
+    }, 1600);
+    return () => clearTimeout(advanceTimer.current);
+  }, [allStreamed]);
 
-    slidePlans.forEach((_, i) => {
-      timers.push(setTimeout(() => setVisibleCount(i + 1), INITIAL_DELAY + i * STAGGER));
-    });
+  function handleSkip() {
+    clearTimeout(advanceTimer.current);
+    if (!calledDone.current) { calledDone.current = true; onDone(); }
+  }
 
-    const allRevealedAt = INITIAL_DELAY + slidePlans.length * STAGGER;
-    timers.push(setTimeout(() => setShowFooter(true), allRevealedAt + 300));
-    timers.push(setTimeout(() => onDone(), allRevealedAt + 1600));
-
-    return () => timers.forEach(clearTimeout);
-  }, []);
+  const pendingCount = Math.max(0, totalSlides - slidePlans.length);
 
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-y-auto py-12"
       style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
-      onClick={onDone}
+      onClick={handleSkip}
     >
       {/* Ambient glows */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -59,74 +63,93 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
         </motion.div>
 
         {/* Headline */}
-        <motion.div
+        <motion.h1
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
-          className="text-center"
+          className="text-white text-xl font-bold text-center"
         >
-          <h1 className="text-white text-xl font-bold">
-            Nova crafted {totalSlides} slide{totalSlides !== 1 ? 's' : ''} for you
-          </h1>
-        </motion.div>
+          Nova crafted {totalSlides} slide{totalSlides !== 1 ? 's' : ''} for you
+        </motion.h1>
 
-        {/* Slide list */}
+        {/* Slide list — rows appear as each slide is streamed */}
         <div className="w-full flex flex-col gap-2">
-          {slidePlans.slice(0, visibleCount).map((slide, i) => (
-            <motion.div
-              key={slide.index ?? i}
-              initial={{ opacity: 0, x: -18, scale: 0.98 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+          <AnimatePresence initial={false}>
+            {slidePlans.map((slide, i) => (
+              <motion.div
+                key={slide.index ?? i}
+                initial={{ opacity: 0, x: -18, scale: 0.98 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+                className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+                style={{
+                  background: 'rgba(255,255,255,0.055)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <span
+                  className="text-xs font-black w-6 text-center flex-shrink-0 tabular-nums"
+                  style={{ color: '#a78bfa' }}
+                >
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <span
+                  className="text-[10px] font-bold uppercase tracking-wider flex-shrink-0 px-1.5 py-0.5 rounded-lg"
+                  style={{ background: 'rgba(167,139,250,0.14)', color: '#c4b5fd' }}
+                >
+                  {TYPE_LABELS[slide.type] || 'Slide'}
+                </span>
+                <span className="text-white text-sm font-semibold flex-1 truncate">
+                  {slide.title}
+                </span>
+                {slide.key_points?.[0] && (
+                  <span className="text-white/30 text-xs truncate max-w-[160px] hidden sm:block">
+                    {slide.key_points[0]}
+                  </span>
+                )}
+              </motion.div>
+            ))}
+          </AnimatePresence>
+
+          {/* Skeleton rows for slides not yet streamed */}
+          {Array.from({ length: pendingCount }, (_, i) => (
+            <div
+              key={`pending-${i}`}
               className="flex items-center gap-3 px-4 py-3 rounded-2xl"
               style={{
-                background: 'rgba(255,255,255,0.055)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'rgba(255,255,255,0.025)',
+                border: '1px solid rgba(255,255,255,0.04)',
               }}
             >
-              {/* Slide number */}
-              <span
-                className="text-xs font-black w-6 text-center flex-shrink-0 tabular-nums"
-                style={{ color: '#a78bfa' }}
-              >
-                {String(i + 1).padStart(2, '0')}
-              </span>
-
-              {/* Type badge */}
-              <span
-                className="text-[10px] font-bold uppercase tracking-wider flex-shrink-0 px-1.5 py-0.5 rounded-lg"
-                style={{ background: 'rgba(167,139,250,0.14)', color: '#c4b5fd' }}
-              >
-                {TYPE_LABELS[slide.type] || 'Slide'}
-              </span>
-
-              {/* Title */}
-              <span className="text-white text-sm font-semibold flex-1 truncate">
-                {slide.title}
-              </span>
-
-              {/* First key point (desktop only) */}
-              {slide.key_points?.[0] && (
-                <span className="text-white/30 text-xs truncate max-w-[160px] hidden sm:block">
-                  {slide.key_points[0]}
-                </span>
-              )}
-            </motion.div>
+              <div className="w-6 h-3 rounded-full bg-white/10 animate-pulse flex-shrink-0" />
+              <div className="w-14 h-4 rounded-lg bg-white/10 animate-pulse flex-shrink-0" />
+              <div className="flex-1 h-4 rounded-lg bg-white/10 animate-pulse max-w-[200px]" />
+            </div>
           ))}
         </div>
 
-        {/* Footer */}
-        <AnimatePresence>
-          {showFooter && (
+        {/* Status line */}
+        <AnimatePresence mode="wait">
+          {!allStreamed && totalSlides > 0 ? (
             <motion.p
+              key="planning"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.5 }}
+              exit={{ opacity: 0 }}
+              className="text-white/35 text-sm"
+            >
+              Planning slide {slidePlans.length + 1} of {totalSlides}…
+            </motion.p>
+          ) : showFooter ? (
+            <motion.p
+              key="opening"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               className="text-white/35 text-sm"
             >
               Opening your presentation…
             </motion.p>
-          )}
+          ) : null}
         </AnimatePresence>
 
         {/* Tap to skip hint */}

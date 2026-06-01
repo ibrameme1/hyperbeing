@@ -180,17 +180,20 @@ async function runFullFlow(presentationId, message, attachments, userId = null) 
         JSON.stringify({ ...h, slides: [] }),
         presentationId
       );
-      // plan_ready is broadcast after ALL slides are streamed so the reveal screen gets all slide titles
+      // Tell the frontend how many slides to expect so it can switch to plan_reveal immediately
+      broadcast(presentationId, { type: 'plan_started', total_slides: h.total_slides || 0 });
     },
 
     onSlide(slide) {
-      // Collect minimal metadata for the plan reveal screen
-      collectedSlidePlans.push({
+      const slideMeta = {
         index: slide.index,
         type: slide.type,
         title: slide.title,
         key_points: (slide.key_points || []).slice(0, 2),
-      });
+      };
+      collectedSlidePlans.push(slideMeta);
+      // Stream each slide's metadata to the frontend the moment Claude finishes planning it
+      broadcast(presentationId, { type: 'plan_slide_streamed', slide: slideMeta });
       broadcast(presentationId, { type: 'slide_generating', index: slide.index });
 
       // Always attach all user reference images to every slide

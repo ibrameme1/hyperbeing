@@ -418,35 +418,60 @@ export default function PresentationPage() {
         startPolling(presId);
       }
 
+      if (event.type === 'plan_started') {
+        // Header parsed — we know how many slides to expect; switch to plan_reveal immediately
+        const count = event.total_slides || 0;
+        if (count > 0) {
+          setTotalSlides(count);
+          setGeneratedSlides(Array.from({ length: count }, (_, i) => ({
+            index: i, type: 'content', title: `Slide ${i + 1}`,
+            status: 'generating', image_data: null,
+          })));
+          setSlidePlan([]);
+          setPhase(p => (p === 'viewing' || p === 'plan_reveal') ? p : 'plan_reveal');
+        }
+      }
+
+      if (event.type === 'plan_slide_streamed') {
+        // Each slide's title/type arrives as Claude streams it — add to the reveal list
+        setSlidePlan(prev => {
+          if (prev.some(s => s.index === event.slide.index)) return prev;
+          return [...prev, event.slide].sort((a, b) => a.index - b.index);
+        });
+        setGeneratedSlides(prev =>
+          prev.map(s => s.index === event.slide.index
+            ? { ...s, type: event.slide.type, title: event.slide.title }
+            : s)
+        );
+        // Fallback: switch to plan_reveal if plan_started was somehow missed
+        setPhase(p => (p === 'viewing' || p === 'plan_reveal') ? p : 'plan_reveal');
+      }
+
       if (event.type === 'plan_ready') {
+        // Fired after ALL slides are streamed — used for catch-up replay on reconnect
         const plans = event.slide_plans || [];
         const count = event.total_slides || plans.length;
-        setTotalSlides(count);
-        // Build full slide list: completed slides merged with placeholders for the rest
-        setGeneratedSlides(prev => {
-          const placeholders = Array.from({ length: count }, (_, i) => {
-            const plan = plans[i];
-            return {
-              index: i,
-              type: plan?.type || 'content',
-              title: plan?.title || `Slide ${i + 1}`,
-              status: 'generating',
-              image_data: null,
-            };
+        if (count > 0 && plans.length > 0) {
+          setTotalSlides(count);
+          setGeneratedSlides(prev => {
+            const placeholders = Array.from({ length: count }, (_, i) => {
+              const plan = plans[i];
+              return {
+                index: i,
+                type: plan?.type || 'content',
+                title: plan?.title || `Slide ${i + 1}`,
+                status: 'generating',
+                image_data: null,
+              };
+            });
+            const merged = [...placeholders];
+            for (const s of prev) {
+              if (s.status === 'complete' && s.index < count) merged[s.index] = s;
+            }
+            return merged;
           });
-          const merged = [...placeholders];
-          for (const s of prev) {
-            if (s.status === 'complete' && s.index < count) merged[s.index] = s;
-          }
-          return merged;
-        });
-        if (count > 0) {
           setSlidePlan(plans);
-          // Transition to plan_reveal from any non-viewer state so it always fires
-          setPhase(p => {
-            if (p === 'viewing') return p;
-            return plans.length > 0 ? 'plan_reveal' : 'viewing';
-          });
+          setPhase(p => (p === 'viewing' || p === 'plan_reveal') ? p : 'plan_reveal');
         }
       }
 
