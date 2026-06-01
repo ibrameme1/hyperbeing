@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { streamChat, regenerateSlide, analyzePresentation, streamSlidePlan, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
+import { streamChat, analyzePresentation, streamSlidePlan, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
 import { generateSlideImage } from '../services/imageGeneration.js';
 import { deductCredits, getOrCreateSubscription, CREDIT_COSTS, checkTokenBudget } from '../services/stripeService.js';
 import { validate, isString, isOptionalString, isEnum, isArray, isIntBetween } from '../middleware/validate.js';
@@ -522,7 +522,7 @@ async function runGeneration(presentationId, slidePlan) {
   broadcast(presentationId, { type: 'complete', total_slides: slides.length });
 }
 
-// ─── Regenerate a single slide ────────────────────────────────────────────
+// ─── Regenerate a single slide (user-described edit → direct to Gemini) ──────
 router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res) => {
   const { instruction, attachments: reqBodyAttachments } = req.body;
   if (!instruction?.trim()) return res.status(400).json({ error: 'Please describe what you\'d like to change about this slide.' });
@@ -546,51 +546,100 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
   if (!slide) return res.status(404).json({ error: 'Slide not found. It may have been removed or the index is out of range.' });
 
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
-
-  res.json({ message: 'Regenerating…', index: idx });
+  res.json({ message: 'Editing…', index: idx });
 
   const regenAspectRatio = pres.aspect_ratio || '16:9';
 
-  // Run async — client watches SSE for result
+  // Build an edit-focused prompt: pic1 = current slide, changes = user instruction
+  const hasCurrentImage = slide.image_data && !slide.image_data.startsWith('data:image/svg');
+  const editPrompt = hasCurrentImage
+    ? `EDIT INSTRUCTION: ${instruction.trim()}\n\nApply the above change to the presentation slide shown in the first reference image (pic1). Keep EVERYTHING else identical — the layout, composition, color palette, typography style, background, and overall design language. Do not redesign from scratch. Edit only what the instruction specifies.`
+    : `${slide.nano_banana_prompt || slide.image_prompt || slide.title}\n\nAdditional instruction: ${instruction.trim()}`;
+
+  // pic1 = current rendered slide; pic2, pic3… = anything the user uploaded in the edit bar
+  let attachedImages = [];
+  if (hasCurrentImage) {
+    const mimeType = slide.image_data.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg';
+    attachedImages.push({ data: slide.image_data, mimeType });
+  }
+  const userUploads = (reqBodyAttachments || []).filter(a => a.data);
+  attachedImages.push(...userUploads);
+  attachedImages = attachedImages.slice(0, 5);
+
   (async () => {
     try {
-      const updatedSlide = await regenerateSlide(slide, instruction, {
-        theme: slidePlan.theme,
-        color_palette: slidePlan.color_palette,
-        presentation_title: slidePlan.presentation_title,
-      }, req.user.id);
-
-      // Only the current slide's rendered image + any new attachments the user added in the edit bar
-      let attachedImages = [];
-      if (slide.image_data && !slide.image_data.startsWith('data:image/svg')) {
-        const mimeType = slide.image_data.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg';
-        attachedImages.push({ data: slide.image_data, mimeType });
-      }
-      const reqAttachments = (reqBodyAttachments || []).filter(a => a.data);
-      attachedImages.push(...reqAttachments);
-      attachedImages = attachedImages.slice(0, 4);
-
       const imageData = await generateSlideImage(
-        updatedSlide.nano_banana_prompt || updatedSlide.image_prompt || slide.nano_banana_prompt || slide.image_prompt,
-        updatedSlide.type || slide.type,
+        editPrompt,
+        slide.type,
         slidePlan.theme,
         slidePlan.color_palette,
-        undefined,
+        slide.index,
         attachedImages,
         regenAspectRatio
       );
 
-      updatedSlide.image_data = imageData;
-      updatedSlide.status = 'complete';
-      slides[idx] = { ...slide, ...updatedSlide };
+      const updatedSlide = { ...slide, image_data: imageData, status: 'complete' };
+      slides[idx] = updatedSlide;
 
       db.prepare(
         `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
       ).run(JSON.stringify(slides), req.params.id);
 
-      broadcast(req.params.id, { type: 'slide_updated', slide: slides[idx] });
+      broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
     } catch (err) {
-      logger.error('slide regen failed', { errorMessage: err.message });
+      logger.error('slide edit failed', { errorMessage: err.message });
+      broadcast(req.params.id, { type: 'slide_error', index: idx, message: err.message });
+    }
+  })();
+});
+
+// ─── Retry a failed slide (re-run original prompt, no changes) ───────────────
+router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
+  const db = getDb();
+  const pres = db
+    .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+
+  if (!pres) return res.status(404).json({ error: 'Presentation not found.' });
+  if (!pres.slides_data) return res.status(400).json({ error: 'No slides found.' });
+
+  try { checkTokenBudget(req.user.id); } catch (err) {
+    if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit.', code: 'TOKEN_LIMIT_EXCEEDED' });
+    throw err;
+  }
+
+  const slides = JSON.parse(pres.slides_data);
+  const idx = parseInt(req.params.index, 10);
+  const slide = slides[idx];
+  if (!slide) return res.status(404).json({ error: 'Slide not found.' });
+
+  const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
+  res.json({ message: 'Retrying…', index: idx });
+
+  const regenAspectRatio = pres.aspect_ratio || '16:9';
+
+  (async () => {
+    try {
+      const imageData = await generateSlideImage(
+        slide.nano_banana_prompt || slide.image_prompt || slide.title,
+        slide.type,
+        slidePlan.theme,
+        slidePlan.color_palette,
+        slide.index,
+        [],
+        regenAspectRatio
+      );
+
+      const updatedSlide = { ...slide, image_data: imageData, status: 'complete' };
+      slides[idx] = updatedSlide;
+
+      db.prepare(
+        `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+      ).run(JSON.stringify(slides), req.params.id);
+
+      broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
+    } catch (err) {
+      logger.error('slide retry failed', { errorMessage: err.message });
       broadcast(req.params.id, { type: 'slide_error', index: idx, message: err.message });
     }
   })();

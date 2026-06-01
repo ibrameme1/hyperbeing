@@ -20,6 +20,7 @@ const PLANNING_MESSAGES = [
 
 const GENERATING_MESSAGES = [
   'Generating your slide visuals…',
+  'Good things take time…',
   'Rendering your presentation…',
   'Creating your slides…',
   'Bringing your vision to life…',

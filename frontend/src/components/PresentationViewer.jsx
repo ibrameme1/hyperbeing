@@ -106,7 +106,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       const next = new Set(prev);
       let changed = false;
       prev.forEach(idx => {
-        if (localSlides[idx]?.status === 'complete') { next.delete(idx); changed = true; }
+        const s = localSlides[idx]?.status;
+        if (s === 'complete' || s === 'error') { next.delete(idx); changed = true; }
       });
       return changed ? next : prev;
     });
@@ -198,9 +199,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
     setLocalSlides(prev => prev.map((s, i) => i === slideIdx ? { ...s, status: 'generating' } : s));
     setUpdatingSlides(prev => new Set([...prev, slideIdx]));
     try {
-      await api.post(`/presentations/${presentationId}/slides/${slide.index}/regenerate`, {
-        instruction: 'Regenerate this slide exactly as originally planned. Keep the same content and style.',
-      });
+      await api.post(`/presentations/${presentationId}/slides/${slide.index}/retry`);
     } catch (err) {
       console.error('Retry failed:', err);
       setLocalSlides(prev => prev.map((s, i) => i === slideIdx ? { ...s, status: 'error' } : s));
@@ -500,10 +499,30 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
           </div>
         </Reorder.Group>
 
-        {/* Edit bar */}
-        <div className="border-t border-gray-100 dark:border-zinc-800 px-4 py-3 space-y-2">
+        {/* Edit panel */}
+        <div className="border-t border-gray-100 dark:border-zinc-800 px-4 pt-2.5 pb-3">
+
+          {/* Hint — shown when idle */}
+          <AnimatePresence>
+            {!editInstruction && !isUpdating && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.2 }}
+                className="flex items-center gap-1.5 mb-1.5"
+              >
+                <Pencil size={10} className="text-gray-400 dark:text-zinc-500 flex-shrink-0" />
+                <p className="text-[11px] text-gray-400 dark:text-zinc-500">
+                  Not happy with slide {current + 1}? Describe what you'd like to change — Nova will edit this slide directly.
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Attachments */}
           {editAttachments.length > 0 && (
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap mb-2">
               {editAttachments.map(att => (
                 <div key={att.id} className="relative group">
                   <img src={att.data} alt={att.name} className="h-10 w-10 rounded-lg object-cover border border-gray-200 dark:border-zinc-700" />
@@ -518,10 +537,14 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
             </div>
           )}
 
-          <div className="flex items-center gap-3">
+          {/* Input row */}
+          <div className="flex items-center gap-2">
             <input ref={editFileRef} type="file" accept="image/*" multiple className="hidden"
                    onChange={e => handleEditAttach(e.target.files)} />
-            <div className="flex-1 flex items-center gap-3 bg-gray-100 dark:bg-zinc-800 rounded-2xl px-4 py-2.5">
+            <div
+              className="flex-1 flex items-center gap-2 rounded-2xl px-3.5 py-2 transition-all"
+              style={{ background: 'var(--bg-input, #f3f4f6)' }}
+            >
               <textarea
                 ref={editRef}
                 value={editInstruction}
@@ -531,25 +554,26 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 }}
                 onDragOver={e => e.preventDefault()}
                 onDrop={handleEditDrop}
-                placeholder={`Describe changes to slide ${current + 1}…`}
+                placeholder={`e.g. "make the background darker" or "change the headline to bold red"`}
                 rows={1}
                 className="flex-1 bg-transparent text-sm outline-none text-gray-800 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500 resize-none leading-relaxed"
                 style={{ maxHeight: 80 }}
               />
+              <button
+                onClick={() => editFileRef.current?.click()}
+                className="flex-shrink-0 w-7 h-7 rounded-xl flex items-center justify-center hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors"
+                title="Attach reference image (becomes pic2, pic3…)"
+              >
+                <Paperclip size={13} className="text-gray-400 dark:text-zinc-500" />
+              </button>
             </div>
-            <button
-              onClick={() => editFileRef.current?.click()}
-              className="w-10 h-10 rounded-2xl bg-gray-100 dark:bg-zinc-800 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors flex-shrink-0"
-            >
-              <Paperclip size={15} className="text-gray-500 dark:text-zinc-400" />
-            </button>
             <button
               onClick={handleEditSubmit}
               disabled={!editInstruction.trim() || editLoading || isUpdating}
-              className="w-10 h-10 rounded-2xl flex items-center justify-center text-white transition-all duration-150 active:scale-95 disabled:opacity-40 flex-shrink-0"
+              className="w-9 h-9 rounded-2xl flex items-center justify-center text-white transition-all duration-150 active:scale-95 disabled:opacity-40 flex-shrink-0"
               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
             >
-              {editLoading ? <Loader2 size={16} className="animate-spin" /> : <Send size={15} />}
+              {editLoading ? <Loader2 size={15} className="animate-spin" /> : <Send size={14} />}
             </button>
           </div>
         </div>
