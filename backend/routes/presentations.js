@@ -180,29 +180,41 @@ async function runFullFlow(presentationId, message, attachments, userId = null) 
       .run(JSON.stringify(sorted), presentationId);
   }
 
-  // ── Phase 1: quick outline — all slide titles/types instantly ───────────────
-  const { header, slides } = await generateCompactPlan(message, attachments, userId);
+  // ── Phase 1: streaming outline — each slide row appears as it arrives ─────────
+  let headerBroadcast = false;
+  const slides = [];
 
-  // Persist header message
-  db.prepare(`INSERT INTO messages (id, presentation_id, role, content, metadata) VALUES (?, ?, 'assistant', ?, ?)`)
-    .run(uuid(), presentationId, header.message || '', JSON.stringify({ state: 'ready', message: header.message }));
+  const { header } = await generateCompactPlan(message, attachments, userId, {
+    onHeader(h) {
+      // As soon as we know the total count, switch the frontend to plan_reveal
+      broadcast(presentationId, { type: 'plan_started', total_slides: h.total_slides || 0 });
+      headerBroadcast = true;
 
-  // Persist plan to DB (slides array has full outline, no image prompts yet)
-  db.prepare(`UPDATE presentations SET title = ?, slide_plan = ?, status = 'generating', updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-    .run(
-      header.presentation_title || 'Untitled Presentation',
-      JSON.stringify({ ...header, slides }),
-      presentationId
-    );
+      // Persist header message and update status to generating
+      db.prepare(`INSERT INTO messages (id, presentation_id, role, content, metadata) VALUES (?, ?, 'assistant', ?, ?)`)
+        .run(uuid(), presentationId, h.message || '', JSON.stringify({ state: 'ready', message: h.message }));
+      db.prepare(`UPDATE presentations SET title = ?, status = 'generating', updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+        .run(h.presentation_title || 'Untitled Presentation', presentationId);
+    },
+    onSlide(slide) {
+      slides.push(slide);
+      // Broadcast each row immediately as it streams — frontend stagger timer handles animation
+      broadcast(presentationId, {
+        type: 'plan_slide_streamed',
+        slide: { index: slide.index, type: slide.type, title: slide.title, key_points: (slide.key_points || []).slice(0, 2) },
+      });
+    },
+  });
 
-  // Broadcast ALL slide rows at once → plan reveal screen shows instantly
-  broadcast(presentationId, { type: 'plan_started', total_slides: slides.length });
-  for (const slide of slides) {
-    broadcast(presentationId, {
-      type: 'plan_slide_streamed',
-      slide: { index: slide.index, type: slide.type, title: slide.title, key_points: (slide.key_points || []).slice(0, 2) },
-    });
+  if (!headerBroadcast) {
+    broadcast(presentationId, { type: 'plan_started', total_slides: slides.length });
   }
+
+  // Persist full plan to DB now that all slides are collected
+  db.prepare(`UPDATE presentations SET slide_plan = ? WHERE id = ?`)
+    .run(JSON.stringify({ ...header, slides }), presentationId);
+
+  // plan_ready used for catch-up replay on reconnect
   broadcast(presentationId, {
     type: 'plan_ready',
     total_slides: slides.length,

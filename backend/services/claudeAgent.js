@@ -722,30 +722,19 @@ function buildHistoryContent(message) {
 
 const COMPACT_PLAN_PROMPT = `You are Nova. Generate a complete presentation outline from the user's brief.
 
-Return ONLY valid JSON — no markdown fences, no text before or after:
-{
-  "presentation_title": "...",
-  "total_slides": N,
-  "theme": "modern-minimal|bold-gradient|corporate|creative|tech",
-  "color_palette": {"primary":"#hex","secondary":"#hex","accent":"#hex"},
-  "message": "Warm 1-sentence confirmation for the user",
-  "slides": [
-    {
-      "index": 0,
-      "type": "cover|section|content|quote|data|image|conclusion",
-      "title": "Slide title",
-      "subtitle": "Subtitle or null",
-      "key_points": ["Bullet ≤ 12 words"],
-      "speaker_note": "What to say"
-    }
-  ]
-}
+Output format — CRITICAL. Output lines starting with HEADER: then SLIDE: for each slide. No other text, no markdown, no commentary.
+
+First output this header line:
+HEADER:{"presentation_title":"...","total_slides":N,"theme":"modern-minimal|bold-gradient|corporate|creative|tech","color_palette":{"primary":"#hex","secondary":"#hex","accent":"#hex"},"message":"Warm 1-sentence confirmation for the user"}
+
+Then immediately output one SLIDE: line per slide:
+SLIDE:{"index":N,"type":"cover|section|content|quote|data|image|conclusion","title":"Slide title","subtitle":"Subtitle or null","key_points":["Bullet ≤ 12 words"],"speaker_note":"What to say"}
 
 Rules:
-- Return ONLY the JSON — nothing else
+- Output HEADER: first, then ALL SLIDE: lines — no other text
 - If the brief says "Generate EXACTLY N slides", output exactly N slides
 - Otherwise decide based on the brief (typically 5–15 slides)
-- total_slides must equal the slides array length
+- total_slides in HEADER must equal the number of SLIDE: lines
 - Every slide except the cover (index 0) must have a KEY TAKEAWAY headline as its title — reading only titles should tell the full story
 - key_points ≤ 12 words each
 - When "PREFLIGHT ANSWERS:" is present, you have all needed info — generate immediately`;
@@ -873,41 +862,90 @@ ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 - "all" — attach all uploaded images
 - [] — attach nothing (e.g., pure text quote slides)`;
 
-export async function generateCompactPlan(message, attachments, userId = null) {
+// Streaming compact plan — calls callbacks.onHeader(header) and callbacks.onSlide(slide)
+// as each line arrives so the frontend can show rows immediately.
+// Returns { header, slides } for backward-compatible use in runFullFlow.
+export async function generateCompactPlan(message, attachments, userId = null, callbacks = {}) {
+  const { onHeader, onSlide } = callbacks;
+
   if (MOCK_MODE) {
-    await new Promise(r => setTimeout(r, 400));
+    await new Promise(r => setTimeout(r, 100));
     const mock = await mockChat([]);
     if (mock.slide_plan) {
       const { slides, ...headerFields } = mock.slide_plan;
-      return {
-        header: { ...headerFields, message: mock.message },
-        slides: slides.map(({ nano_banana_prompt, attach_image_categories, image_prompt, ...rest }) => rest),
-      };
+      const header = { ...headerFields, message: mock.message };
+      const cleanSlides = slides.map(({ nano_banana_prompt, attach_image_categories, image_prompt, ...rest }) => rest);
+      onHeader?.(header);
+      for (const s of cleanSlides) { await new Promise(r => setTimeout(r, 80)); onSlide?.(s); }
+      return { header, slides: cleanSlides };
     }
-    return { header: { presentation_title: 'Demo', total_slides: 3, theme: 'modern-minimal', color_palette: {}, message: 'Here is your plan!' }, slides: [] };
+    const header = { presentation_title: 'Demo', total_slides: 3, theme: 'modern-minimal', color_palette: {}, message: 'Here is your plan!' };
+    onHeader?.(header);
+    return { header, slides: [] };
   }
 
   const userContent = buildUserContent(message, attachments);
   const t0 = Date.now();
   logger.info('claude compact plan start', { messageLen: message.length });
 
-  const response = await client.messages.create({
+  const stream = client.messages.stream({
     model: 'claude-sonnet-4-6',
     max_tokens: 3000,
     system: COMPACT_PLAN_PROMPT,
     messages: [{ role: 'user', content: userContent }],
   });
 
-  const durationMs = Date.now() - t0;
-  if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
-  metrics.recordAICall({ fn: 'generateCompactPlan', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs });
+  let buffer = '';
+  let header = null;
+  const slides = [];
 
-  const raw = response.content[0].text.trim();
-  const jsonText = raw.startsWith('```') ? raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '') : raw;
-  const plan = parseJSON(jsonText);
-  const { slides, ...headerFields } = plan;
-  logger.info('claude compact plan complete', { durationMs, totalSlides: slides?.length });
-  return { header: headerFields, slides: slides || [] };
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+      buffer += event.delta.text;
+      const { objects, remaining } = extractPrefixedObjects(buffer);
+      buffer = remaining;
+
+      for (const { prefix, jsonStr } of objects) {
+        try {
+          const parsed = parseJSON(jsonStr);
+          if (prefix === 'HEADER:') {
+            header = parsed;
+            onHeader?.(header);
+          } else if (prefix === 'SLIDE:') {
+            slides.push(parsed);
+            onSlide?.(parsed);
+          }
+        } catch (e) {
+          logger.warn('compact plan parse error', { prefix, errorMessage: e.message });
+        }
+      }
+    }
+  }
+
+  // Flush any remaining buffer
+  if (buffer.trim()) {
+    const { objects } = extractPrefixedObjects(buffer + '\n');
+    for (const { prefix, jsonStr } of objects) {
+      try {
+        const parsed = parseJSON(jsonStr);
+        if (prefix === 'HEADER:' && !header) { header = parsed; onHeader?.(header); }
+        else if (prefix === 'SLIDE:') { slides.push(parsed); onSlide?.(parsed); }
+      } catch {}
+    }
+  }
+
+  const durationMs = Date.now() - t0;
+  if (userId) {
+    try {
+      const finalMsg = await stream.finalMessage();
+      recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
+      metrics.recordAICall({ fn: 'generateCompactPlan', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs });
+    } catch {}
+  }
+  logger.info('claude compact plan complete', { durationMs, totalSlides: slides.length });
+
+  if (!header) throw new Error('Compact plan returned no header');
+  return { header, slides };
 }
 
 export async function streamSlidePrompts(slides, header, message, attachments, callbacks, userId = null) {

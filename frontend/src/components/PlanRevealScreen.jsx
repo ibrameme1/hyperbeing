@@ -64,12 +64,14 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
   const allRevealed = visibleCount >= totalSlides && totalSlides > 0;
 
   // Auto-advance once all rows have been revealed on screen
+  // Give at least 3s to read — scale up with slide count (200ms per slide, capped at 6s)
   useEffect(() => {
     if (!allRevealed) return;
     setShowFooter(true);
+    const holdMs = Math.min(Math.max(totalSlides * 200, 3000), 6000);
     advanceTimer.current = setTimeout(() => {
       if (!calledDone.current) { calledDone.current = true; onDone(); }
-    }, 1600);
+    }, holdMs);
     return () => clearTimeout(advanceTimer.current);
   }, [allRevealed]);
 
