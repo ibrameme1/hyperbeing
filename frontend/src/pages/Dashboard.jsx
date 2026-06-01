@@ -672,7 +672,7 @@ export default function Dashboard() {
 
                 {/* buttonX — temporary debug slide count override, remove when done */}
                 <div className="flex items-center gap-1 bg-ios-gray5 dark:bg-hb-surface-2 rounded-xl p-1">
-                  {['auto', '5', '8', '10', '12', '15', '20'].map(n => (
+                  {['auto', '3', '5', '8', '10', '12', '15', '20'].map(n => (
                     <button
                       key={n}
                       onClick={() => setSlideCountOverride(n)}
