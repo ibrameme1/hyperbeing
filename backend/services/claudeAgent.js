@@ -718,6 +718,282 @@ function buildHistoryContent(message) {
   return buildUserContent(message.content, atts);
 }
 
+// ─── Two-phase generation: compact plan + prompt streaming ──────────────────
+
+const COMPACT_PLAN_PROMPT = `You are Nova. Generate a complete presentation outline from the user's brief.
+
+Return ONLY valid JSON — no markdown fences, no text before or after:
+{
+  "presentation_title": "...",
+  "total_slides": N,
+  "theme": "modern-minimal|bold-gradient|corporate|creative|tech",
+  "color_palette": {"primary":"#hex","secondary":"#hex","accent":"#hex"},
+  "message": "Warm 1-sentence confirmation for the user",
+  "slides": [
+    {
+      "index": 0,
+      "type": "cover|section|content|quote|data|image|conclusion",
+      "title": "Slide title",
+      "subtitle": "Subtitle or null",
+      "key_points": ["Bullet ≤ 12 words"],
+      "speaker_note": "What to say"
+    }
+  ]
+}
+
+Rules:
+- Return ONLY the JSON — nothing else
+- If the brief says "Generate EXACTLY N slides", output exactly N slides
+- Otherwise decide based on the brief (typically 5–15 slides)
+- total_slides must equal the slides array length
+- Every slide except the cover (index 0) must have a KEY TAKEAWAY headline as its title — reading only titles should tell the full story
+- key_points ≤ 12 words each
+- When "PREFLIGHT ANSWERS:" is present, you have all needed info — generate immediately`;
+
+const PROMPT_GEN_SYSTEM = `You are Nova, generating detailed visual prompts for an existing slide outline.
+
+Output format — CRITICAL. Output ONLY lines starting with SLIDE:. No other text, no markdown, no commentary.
+
+One line per slide:
+SLIDE:{"index":N,"nano_banana_prompt":"...250-600 word prompt per NANO BANANA FORMAT below...","attach_image_categories":["moodboard"|"branding"|"all"|[]]}
+
+Rules:
+- Output a SLIDE: line for EVERY slide in the provided outline — do not skip any index
+- nano_banana_prompt must be 250–600 words following the MANDATORY 5-LAYER STRUCTURE below
+
+SLIDE STRUCTURE RULES:
+- Every slide (EXCEPT cover/title slides at index 0) must have a KEY TAKEAWAY headline as its title. This headline must communicate the main point of that slide on its own — someone reading only the headlines should be able to follow the full story of the presentation.
+- Cover and title slides (type "cover") keep their original format — do not force a key takeaway structure on them.
+
+══════════════════════════════════════════
+MANDATORY 5-LAYER STRUCTURE FOR EVERY PROMPT
+══════════════════════════════════════════
+
+Every nano_banana_prompt must contain these layers in this order:
+
+1. BACKGROUND
+   State the exact color (with hex when relevant) AND one sentence on WHY this color serves the slide's mood.
+   Examples: "pure black (#000000). Sparse. The scarcity is the design." / "warm near-black (#0A0A0A) — the color of a cabin at cruising altitude. Cozy. Contained."
+
+2. TOP / HEADER
+   - Bold white ALL-CAPS display type, broken into 2–3 short lines
+   - The LAST line must be in HOT PINK (this is the brand accent — never skip it)
+   - Followed by a subhead in WHITE ITALIC that reframes or sharpens the headline
+   - No corporate filler. Headlines read like copywriter punchlines.
+
+3. MAIN BODY
+   Choose ONE format based on the slide's argument:
+
+   A) SINGLE HERO PHOTOGRAPH — one cinematic image filling the center. Describe lighting, expression, what the subject is doing, what's visible on any screen within the image, and the moment just before something happens (anticipation > action).
+
+   B) COLLAGE OF REAL MOMENTS — 4–8 overlapping candid images. Number each. For each: who is in it, what they're doing, their named emotional state, what's visible on their screen, what they're holding. Must feel unprompted and culturally specific.
+
+   C) STRUCTURED COLUMNS OR GRID — 3–5 vertical sections separated by hairline neon green dividers. Each section gets: a logo/symbol, a large bold stat, a real photo collage, audience pills (rounded rectangles with emoji), a bottom text box. Internal structure must be consistent across sections.
+
+   D) ISOMETRIC 3D RENDER — for ecosystem/architecture/data slides. Specify floors, rings, or pods. State materials (frosted glass, marble, metallic finish), lighting (soft ambient from top), color accents per layer, and what each element CONTAINS (icons, mini visuals, stat callouts).
+
+4. CALLOUT CARDS
+   Specify for each card: border color, background tint, internal text verbatim, emoji used, size relative to other elements.
+   Common forms: hot pink rounded rectangles with emoji, dark green cards with neon green borders, prize badges with country flags, glassmorphism floating cards.
+
+5. BOTTOM STRIP
+   Full-width strip — dark green or pure black. One bold white centered line that delivers the slide's verdict. Optionally followed by a smaller neon green italic line that adds a second beat.
+   The verdict line should land like a punchline: declarative, surprising, final.
+   Examples of the register to aim for: "The most powerful marketing tool in Pakistan right now is a number going down." / "First mover doesn't just lead. First mover locks the market."
+
+══════════════════════════════════════════
+NON-NEGOTIABLE COLOR PALETTE
+══════════════════════════════════════════
+
+Default to this palette unless the user's brand explicitly requires otherwise:
+- Pure black (#000000) — primary background for editorial slides
+- Near-black (#0A0A0A) — when texture or grid is layered
+- Hot pink — accent for the final headline line, callout borders, glowing accents
+- Neon green — italic subtext, hairline dividers, pulsing indicators, audience pills
+- Dark green — full-width bottom strips, callout box backgrounds
+- White — primary type, photo borders
+- Gold (#FFB800) — premium/lifestyle elements in 3D style only
+- Frosted glass tints at 5–10% opacity — subtle warm purple, red-pink, red, yellow over near-black
+
+For 3D infographic slides: pure white (#FFFFFF) base OR dark navy gradient (#0A0E1A to #1B4F9C), with electric green (#00FFA3) for digital accents.
+
+══════════════════════════════════════════
+QUALITY REQUIREMENTS — EVERY PROMPT MUST HAVE
+══════════════════════════════════════════
+
+- At least 3 sensory details (lighting, texture, expression, sound implication)
+- At least 1 piece of visible on-screen text quoted verbatim when phones or screens appear (WhatsApp message, TikTok caption, view count, timestamp)
+- At least 1 named human emotional state ("deeply confused," "pure anticipation," "completely losing it," "abandoned all pretense of working")
+- Culturally specific markers relevant to the user's audience (specific cities, age groups, social rituals, slang)
+- Every stat paired with a consequence (not "30M users" but what that number means for the argument)
+- A moment of contradiction or surprise where possible
+
+══════════════════════════════════════════
+TYPOGRAPHY RULES
+══════════════════════════════════════════
+
+Always specify weight, case, color, and placement. Never write "use a nice font."
+- Headlines: bold ALL-CAPS display type, condensed or extended
+- Subheads: white italic, sentence case
+- Callout titles: bold white
+- Stats: large bold, white or gold
+- Body inside cards: ~12pt, white or light grey
+
+══════════════════════════════════════════
+STYLE SELECTION
+══════════════════════════════════════════
+
+Default to EDITORIAL/CAMPAIGN style (pure black, ALL-CAPS, hot pink accent, photo collages) for:
+- Marketing slides, insight slides, campaign concepts, audience slides, content strategy
+
+Default to 3D INFOGRAPHIC style (clean white or navy, isometric renders, glassmorphism, floating cards) for:
+- Ecosystem slides, architecture slides, defensibility/moat slides, platform overviews, data dashboards
+
+══════════════════════════════════════════
+SELF-CHECK BEFORE OUTPUTTING EACH PROMPT
+══════════════════════════════════════════
+
+Verify all are present:
+- Background color has a stated reason
+- Hot pink accent line is in the headline
+- White italic subhead is present
+- Main body describes at least one specific human moment with named emotion
+- At least one piece of on-screen text quoted verbatim (when applicable)
+- Stats paired with consequences
+- Callouts specify color, border, and content
+- Bottom strip has a thesis/verdict line
+
+NEVER mention aspect ratio in the prompt text — aspect ratio is handled separately as an API parameter.
+BANNED FOREVER — never use: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart", "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization". Always find a specific, real, directed visual concept.
+If the user uploaded moodboard or reference images, explicitly describe which visual elements, colors, and mood from those references should carry into this specific slide.
+
+ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
+- "moodboard" — attach moodboard references to slides where visual style guidance is needed
+- "branding" — attach branding/logos/pack shots to slides where products or brand identity feature
+- "all" — attach all uploaded images
+- [] — attach nothing (e.g., pure text quote slides)`;
+
+export async function generateCompactPlan(message, attachments, userId = null) {
+  if (MOCK_MODE) {
+    await new Promise(r => setTimeout(r, 400));
+    const mock = await mockChat([]);
+    if (mock.slide_plan) {
+      const { slides, ...headerFields } = mock.slide_plan;
+      return {
+        header: { ...headerFields, message: mock.message },
+        slides: slides.map(({ nano_banana_prompt, attach_image_categories, image_prompt, ...rest }) => rest),
+      };
+    }
+    return { header: { presentation_title: 'Demo', total_slides: 3, theme: 'modern-minimal', color_palette: {}, message: 'Here is your plan!' }, slides: [] };
+  }
+
+  const userContent = buildUserContent(message, attachments);
+  const t0 = Date.now();
+  logger.info('claude compact plan start', { messageLen: message.length });
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 3000,
+    system: COMPACT_PLAN_PROMPT,
+    messages: [{ role: 'user', content: userContent }],
+  });
+
+  const durationMs = Date.now() - t0;
+  if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+  metrics.recordAICall({ fn: 'generateCompactPlan', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs });
+
+  const raw = response.content[0].text.trim();
+  const jsonText = raw.startsWith('```') ? raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '') : raw;
+  const plan = parseJSON(jsonText);
+  const { slides, ...headerFields } = plan;
+  logger.info('claude compact plan complete', { durationMs, totalSlides: slides?.length });
+  return { header: headerFields, slides: slides || [] };
+}
+
+export async function streamSlidePrompts(slides, header, message, attachments, callbacks, userId = null) {
+  const { onPrompt } = callbacks;
+
+  if (MOCK_MODE) {
+    for (const slide of slides) {
+      await new Promise(r => setTimeout(r, 250));
+      onPrompt({ ...slide, nano_banana_prompt: slide.title, attach_image_categories: [] });
+    }
+    return;
+  }
+
+  const outlineText = slides.map(s =>
+    `Slide ${s.index} [${s.type}]: "${s.title}"${s.subtitle ? ` — ${s.subtitle}` : ''}. Key points: ${(s.key_points || []).join('; ')}`
+  ).join('\n');
+
+  const promptMessage = `Generate nano_banana_prompts for all ${slides.length} slides.
+
+Presentation: ${header.presentation_title}
+Theme: ${header.theme}
+Color palette: ${JSON.stringify(header.color_palette)}
+
+Slide outline:
+${outlineText}
+
+Original brief: ${message}`;
+
+  const userContent = buildUserContent(promptMessage, attachments);
+
+  const t0 = Date.now();
+  logger.info('claude prompt generation start', { slideCount: slides.length });
+
+  const stream = client.messages.stream({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 16000,
+    system: PROMPT_GEN_SYSTEM,
+    messages: [{ role: 'user', content: userContent }],
+  });
+
+  let buffer = '';
+
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+      buffer += event.delta.text;
+      const { objects, remaining } = extractPrefixedObjects(buffer);
+      buffer = remaining;
+
+      for (const { prefix, jsonStr } of objects) {
+        if (prefix === 'SLIDE:') {
+          try {
+            const promptData = parseJSON(jsonStr);
+            const slide = slides.find(s => s.index === promptData.index) || {};
+            logger.debug('slide prompt generated', { index: promptData.index });
+            onPrompt({ ...slide, ...promptData });
+          } catch (e) {
+            logger.warn('failed to parse slide prompt', { errorMessage: e.message });
+          }
+        }
+      }
+    }
+  }
+
+  if (buffer.trim()) {
+    const { objects } = extractPrefixedObjects(buffer + '\n');
+    for (const { prefix, jsonStr } of objects) {
+      if (prefix === 'SLIDE:') {
+        try {
+          const promptData = parseJSON(jsonStr);
+          const slide = slides.find(s => s.index === promptData.index) || {};
+          onPrompt({ ...slide, ...promptData });
+        } catch {}
+      }
+    }
+  }
+
+  if (userId) {
+    try {
+      const finalMsg = await stream.finalMessage();
+      recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
+      metrics.recordAICall({ fn: 'streamSlidePrompts', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - t0 });
+    } catch {}
+  }
+  logger.info('claude prompt generation complete', { durationMs: Date.now() - t0 });
+}
+
 // ─── Streaming system prompt ────────────────────────────────────────────────
 
 const SYSTEM_PROMPT_STREAM = `You are Nova. The user has provided their full brief with PREFLIGHT ANSWERS. Generate the complete presentation now.

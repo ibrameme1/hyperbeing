@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { streamChat, analyzePresentation, streamSlidePlan, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
+import { streamChat, analyzePresentation, generateCompactPlan, streamSlidePrompts, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
 import { generateSlideImage } from '../services/imageGeneration.js';
 import { deductCredits, getOrCreateSubscription, CREDIT_COSTS, checkTokenBudget } from '../services/stripeService.js';
 import { validate, isString, isOptionalString, isEnum, isArray, isIntBetween } from '../middleware/validate.js';
