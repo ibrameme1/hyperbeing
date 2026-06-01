@@ -80,7 +80,7 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
                 key={slide.index ?? i}
                 initial={{ opacity: 0, x: -18, scale: 0.98 }}
                 animate={{ opacity: 1, x: 0, scale: 1 }}
-                transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+                transition={{ duration: 0.32, delay: i * 0.06, ease: [0.16, 1, 0.3, 1] }}
                 className="flex items-center gap-3 px-4 py-3 rounded-2xl"
                 style={{
                   background: 'rgba(255,255,255,0.055)',
