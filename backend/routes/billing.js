@@ -16,32 +16,45 @@ function frontendUrl() {
 
 // ── GET /api/billing/subscription ─────────────────────────────────────────────
 router.get('/subscription', authMiddleware, async (req, res) => {
-  const sub = getOrCreateSubscription(req.userId);
-  const plan = PLANS[sub.plan] || PLANS.free;
-  const admin = isAdmin(req.userId);
+  try {
+    let sub = getOrCreateSubscription(req.userId);
+    const admin = isAdmin(req.userId);
 
-  let next_payment_date = null;
-  let current_period_end = sub.current_period_end;
+    let next_payment_date = null;
+    let current_period_end = sub.current_period_end;
 
-  if (sub.stripe_subscription_id && process.env.STRIPE_SECRET_KEY) {
-    try {
-      const [stripeSub, upcoming] = await Promise.all([
-        // Always fetch period_end from Stripe so it's never stale/null
-        stripe.subscriptions.retrieve(sub.stripe_subscription_id),
-        stripe.invoices.retrieveUpcoming({ subscription: sub.stripe_subscription_id }).catch(() => null),
-      ]);
-      current_period_end = new Date(stripeSub.current_period_end * 1000).toISOString();
-      if (upcoming?.next_payment_attempt) {
-        next_payment_date = new Date(upcoming.next_payment_attempt * 1000).toISOString();
+    if (sub.stripe_subscription_id && process.env.STRIPE_SECRET_KEY) {
+      try {
+        const [stripeSub, upcoming] = await Promise.all([
+          stripe.subscriptions.retrieve(sub.stripe_subscription_id),
+          stripe.invoices.retrieveUpcoming({ subscription: sub.stripe_subscription_id }).catch(() => null),
+        ]);
+        current_period_end = new Date(stripeSub.current_period_end * 1000).toISOString();
+        if (upcoming?.next_payment_attempt) {
+          next_payment_date = new Date(upcoming.next_payment_attempt * 1000).toISOString();
+        }
+        if (current_period_end !== sub.current_period_end) {
+          getDb().prepare('UPDATE subscriptions SET current_period_end = ? WHERE user_id = ?').run(current_period_end, req.userId);
+        }
+      } catch (stripeErr) {
+        // Stale/test-mode subscription ID — clear it so the user isn't stuck
+        if (stripeErr?.statusCode === 404 || stripeErr?.code === 'resource_missing') {
+          logger.warn('clearing stale stripe subscription id', { userId: req.userId, subId: sub.stripe_subscription_id });
+          getDb().prepare(
+            "UPDATE subscriptions SET stripe_subscription_id = NULL, plan = 'free', status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
+          ).run(req.userId);
+          sub = getOrCreateSubscription(req.userId);
+        }
+        // Other errors (network, etc.) are silently ignored — we fall back to DB data
       }
-      // Persist if DB was stale/null
-      if (current_period_end !== sub.current_period_end) {
-        getDb().prepare('UPDATE subscriptions SET current_period_end = ? WHERE user_id = ?').run(current_period_end, req.userId);
-      }
-    } catch { /* subscription may be cancelled or Stripe unavailable */ }
+    }
+
+    const plan = PLANS[sub.plan] || PLANS.free;
+    res.json({ subscription: { ...sub, current_period_end, is_admin: admin, next_payment_date }, plan });
+  } catch (err) {
+    logger.error('get subscription failed', { errorMessage: err.message, userId: req.userId });
+    res.status(500).json({ error: 'Could not load subscription. Please try again.' });
   }
-
-  res.json({ subscription: { ...sub, current_period_end, is_admin: admin, next_payment_date }, plan });
 });
 
 // ── POST /api/billing/checkout ────────────────────────────────────────────────
@@ -67,12 +80,27 @@ router.post('/checkout', authMiddleware, billingLimiter,
   if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not available right now. Please contact support.' });
 
   try {
-    const sub = getOrCreateSubscription(req.userId);
+    let sub = getOrCreateSubscription(req.userId);
 
     // If user already has an active paid subscription, use Stripe to update it
     // instead of creating a new checkout session (prevents duplicate subscriptions)
     if (sub.stripe_subscription_id && sub.status === 'active') {
-      const stripeSub = await stripe.subscriptions.retrieve(sub.stripe_subscription_id);
+      let stripeSub;
+      try {
+        stripeSub = await stripe.subscriptions.retrieve(sub.stripe_subscription_id);
+      } catch (stripeErr) {
+        if (stripeErr?.statusCode === 404 || stripeErr?.code === 'resource_missing') {
+          // Stale test-mode sub — clear it and fall through to create a new checkout
+          logger.warn('clearing stale stripe subscription id on checkout', { userId: req.userId, subId: sub.stripe_subscription_id });
+          getDb().prepare(
+            "UPDATE subscriptions SET stripe_subscription_id = NULL, plan = 'free', status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
+          ).run(req.userId);
+          sub = getOrCreateSubscription(req.userId);
+        } else {
+          throw stripeErr;
+        }
+      }
+      if (stripeSub) {
       const currentItemId = stripeSub.items.data[0]?.id;
 
       const PLAN_RANK = { free: 0, basic: 1, pro: 2, ultra: 3 };
@@ -122,7 +150,8 @@ router.post('/checkout', authMiddleware, billingLimiter,
         resetCreditsForPlan(req.userId, planKey);
         return res.json({ upgraded: true, message: 'Plan upgraded successfully.' });
       }
-    }
+      } // if (stripeSub)
+    } // if (sub.stripe_subscription_id && sub.status === 'active')
     const db = getDb();
     const user = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(req.userId);
 
@@ -160,15 +189,20 @@ router.post('/checkout', authMiddleware, billingLimiter,
 router.post('/portal', authMiddleware, async (req, res) => {
   if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not available right now. Please contact support.' });
 
-  const sub = getOrCreateSubscription(req.userId);
-  if (!sub.stripe_customer_id) return res.status(400).json({ error: 'No active subscription found. Purchase a plan first to access the billing portal.' });
+  try {
+    const sub = getOrCreateSubscription(req.userId);
+    if (!sub.stripe_customer_id) return res.status(400).json({ error: 'No active subscription found. Purchase a plan first to access the billing portal.' });
 
-  const session = await stripe.billingPortal.sessions.create({
-    customer: sub.stripe_customer_id,
-    return_url: `${frontendUrl()}/dashboard`,
-  });
+    const session = await stripe.billingPortal.sessions.create({
+      customer: sub.stripe_customer_id,
+      return_url: `${frontendUrl()}/dashboard`,
+    });
 
-  res.json({ url: session.url });
+    res.json({ url: session.url });
+  } catch (err) {
+    logger.error('stripe portal failed', { errorMessage: err.message, userId: req.userId });
+    res.status(400).json({ error: 'Could not open billing portal. Please try again.' });
+  }
 });
 
 // ── POST /api/billing/webhook ─────────────────────────────────────────────────
