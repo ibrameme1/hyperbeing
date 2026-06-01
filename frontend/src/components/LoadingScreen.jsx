@@ -120,17 +120,47 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
         </p>
 
         {/* Progress bar */}
-        <div
-          className="w-72 h-1.5 rounded-full overflow-hidden"
-          style={{ background: 'rgba(255,255,255,0.12)' }}
-        >
-          <motion.div
-            className="h-full rounded-full"
-            style={{ background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)' }}
-            animate={{ width: totalSlides > 0 ? `${Math.max(progress * 100, 5)}%` : '30%' }}
-            transition={totalSlides > 0 ? { duration: 0.6, ease: 'easeOut' } : { duration: 2, repeat: Infinity, repeatType: 'reverse', ease: 'easeInOut' }}
-          />
-        </div>
+        {totalSlides > 0 ? (
+          <div
+            className="w-72 h-1.5 rounded-full overflow-hidden"
+            style={{ background: 'rgba(255,255,255,0.12)' }}
+          >
+            <motion.div
+              className="h-full rounded-full"
+              style={{ background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)' }}
+              animate={{ width: `${Math.max(progress * 100, 5)}%` }}
+              transition={{ duration: 0.6, ease: 'easeOut' }}
+            />
+          </div>
+        ) : (
+          /* Indeterminate shimmer bar during planning phase */
+          <div
+            className="w-72 h-1.5 rounded-full overflow-hidden relative"
+            style={{ background: 'rgba(255,255,255,0.10)' }}
+          >
+            <motion.div
+              className="absolute inset-y-0 w-1/3 rounded-full"
+              style={{ background: 'linear-gradient(90deg, transparent 0%, #764ba2 40%, #667eea 60%, transparent 100%)' }}
+              animate={{ x: ['-33%', '300%'] }}
+              transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut', repeatDelay: 0.3 }}
+            />
+          </div>
+        )}
+
+        {/* Animated thinking dots — only during planning */}
+        {!isGenerating && (
+          <div className="flex justify-center gap-1.5 mt-1">
+            {[0, 1, 2, 3, 4].map(i => (
+              <motion.div
+                key={i}
+                animate={{ scale: [1, 1.6, 1], opacity: [0.25, 1, 0.25] }}
+                transition={{ duration: 1.4, repeat: Infinity, delay: i * 0.22, ease: 'easeInOut' }}
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+              />
+            ))}
+          </div>
+        )}
       </motion.div>
 
       {/* Slide preview strip */}

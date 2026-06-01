@@ -12,29 +12,80 @@ const TYPE_LABELS = {
   conclusion: 'Close',
 };
 
+// Stagger reveal interval: how many ms between each row appearing
+const ROW_INTERVAL_MS = 180;
+
 export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone }) {
   const [showFooter, setShowFooter] = useState(false);
+  // visibleCount controls how many rows are shown — increments 1-by-1 via timer
+  const [visibleCount, setVisibleCount] = useState(0);
   const calledDone = useRef(false);
   const advanceTimer = useRef(null);
+  const rowTimer = useRef(null);
 
-  const allStreamed = totalSlides > 0 && slidePlans.length >= totalSlides;
-
-  // Start the 1.6s auto-advance only once all slide titles have arrived
+  // When new slides arrive in slidePlans, start (or continue) the row-reveal timer
   useEffect(() => {
-    if (!allStreamed) return;
+    if (slidePlans.length === 0) return;
+    if (rowTimer.current) return; // already running
+    rowTimer.current = setInterval(() => {
+      setVisibleCount(prev => {
+        const next = prev + 1;
+        if (next >= slidePlans.length) {
+          clearInterval(rowTimer.current);
+          rowTimer.current = null;
+        }
+        return next;
+      });
+    }, ROW_INTERVAL_MS);
+    return () => {};
+  }, [slidePlans.length > 0]);
+
+  // If more slides arrive after timer finished, restart it from current count
+  useEffect(() => {
+    if (slidePlans.length === 0) return;
+    setVisibleCount(prev => {
+      if (prev < slidePlans.length && !rowTimer.current) {
+        rowTimer.current = setInterval(() => {
+          setVisibleCount(c => {
+            const next = c + 1;
+            if (next >= slidePlans.length) {
+              clearInterval(rowTimer.current);
+              rowTimer.current = null;
+            }
+            return next;
+          });
+        }, ROW_INTERVAL_MS);
+      }
+      return prev;
+    });
+  }, [slidePlans.length]);
+
+  const visibleSlides = slidePlans.slice(0, visibleCount);
+  const allRevealed = visibleCount >= totalSlides && totalSlides > 0;
+
+  // Auto-advance once all rows have been revealed on screen
+  useEffect(() => {
+    if (!allRevealed) return;
     setShowFooter(true);
     advanceTimer.current = setTimeout(() => {
       if (!calledDone.current) { calledDone.current = true; onDone(); }
     }, 1600);
     return () => clearTimeout(advanceTimer.current);
-  }, [allStreamed]);
+  }, [allRevealed]);
+
+  // Cleanup timers on unmount
+  useEffect(() => () => {
+    clearInterval(rowTimer.current);
+    clearTimeout(advanceTimer.current);
+  }, []);
 
   function handleSkip() {
+    clearInterval(rowTimer.current);
     clearTimeout(advanceTimer.current);
     if (!calledDone.current) { calledDone.current = true; onDone(); }
   }
 
-  const pendingCount = Math.max(0, totalSlides - slidePlans.length);
+  const pendingCount = Math.max(0, totalSlides - visibleSlides.length);
 
   return (
     <div
@@ -72,15 +123,15 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
           Nova crafted {totalSlides} slide{totalSlides !== 1 ? 's' : ''} for you
         </motion.h1>
 
-        {/* Slide list — rows appear as each slide is streamed */}
+        {/* Slide list — rows appear one-by-one via visibleCount timer */}
         <div className="w-full flex flex-col gap-2">
           <AnimatePresence initial={false}>
-            {slidePlans.map((slide, i) => (
+            {visibleSlides.map((slide, i) => (
               <motion.div
                 key={slide.index ?? i}
                 initial={{ opacity: 0, x: -18, scale: 0.98 }}
                 animate={{ opacity: 1, x: 0, scale: 1 }}
-                transition={{ duration: 0.32, delay: i * 0.06, ease: [0.16, 1, 0.3, 1] }}
+                transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
                 className="flex items-center gap-3 px-4 py-3 rounded-2xl"
                 style={{
                   background: 'rgba(255,255,255,0.055)',
@@ -111,7 +162,7 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
             ))}
           </AnimatePresence>
 
-          {/* Skeleton rows for slides not yet streamed */}
+          {/* Skeleton rows for slides not yet revealed */}
           {Array.from({ length: pendingCount }, (_, i) => (
             <div
               key={`pending-${i}`}
@@ -130,7 +181,7 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
 
         {/* Status line */}
         <AnimatePresence mode="wait">
-          {!allStreamed && totalSlides > 0 ? (
+          {!allRevealed && totalSlides > 0 ? (
             <motion.p
               key="planning"
               initial={{ opacity: 0 }}
@@ -138,7 +189,7 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
               exit={{ opacity: 0 }}
               className="text-white/35 text-sm"
             >
-              Planning slide {slidePlans.length + 1} of {totalSlides}…
+              Planning slide {visibleSlides.length + 1} of {totalSlides}…
             </motion.p>
           ) : showFooter ? (
             <motion.p

@@ -442,6 +442,19 @@ export default function Dashboard() {
       .catch(() => {});
   }
 
+  const fetchPresentations = useCallback((updateCache = true) => {
+    return api.get('/presentations')
+      .then(r => {
+        const list = r.data.presentations || [];
+        setPresentations(list);
+        if (updateCache) {
+          try { sessionStorage.setItem('hb_presentations', JSON.stringify(list)); } catch {}
+        }
+        return list;
+      })
+      .catch(() => []);
+  }, []);
+
   useEffect(() => {
     // Show cached data instantly while fetching fresh in background
     try {
@@ -452,18 +465,33 @@ export default function Dashboard() {
       }
     } catch {}
 
-    api.get('/presentations')
-      .then(r => {
-        const list = r.data.presentations || [];
-        setPresentations(list);
-        try { sessionStorage.setItem('hb_presentations', JSON.stringify(list)); } catch {}
-      })
-      .catch(() => {})
+    refreshCredits();
+    const creditsInterval = setInterval(refreshCredits, 30_000);
+
+    // Poll for live status while any presentation is generating
+    let statusInterval = null;
+    function scheduleStatusPoll(list) {
+      clearInterval(statusInterval);
+      const hasGenerating = (list || []).some(p => p.status === 'generating' || p.status === 'processing');
+      if (hasGenerating) {
+        statusInterval = setInterval(() => {
+          fetchPresentations().then(updated => {
+            const stillGenerating = updated.some(p => p.status === 'generating' || p.status === 'processing');
+            if (!stillGenerating) clearInterval(statusInterval);
+          });
+        }, 4000);
+      }
+    }
+
+    // Initial fetch — sets loading state and kicks off polling if needed
+    fetchPresentations()
+      .then(scheduleStatusPoll)
       .finally(() => setPresLoading(false));
 
-    refreshCredits();
-    const interval = setInterval(refreshCredits, 30_000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(creditsInterval);
+      clearInterval(statusInterval);
+    };
   }, []);
 
   const allAttachments = [

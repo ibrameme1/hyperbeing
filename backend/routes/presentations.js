@@ -165,7 +165,17 @@ async function runFullFlow(presentationId, message, attachments, userId = null) 
   const completedSlides = new Map();
 
   function persistProgress() {
-    const sorted = [...completedSlides.values()].sort((a, b) => a.index - b.index);
+    // Merge with current DB state so user-edited slides (_edited: true) are never overwritten
+    const current = db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(presentationId);
+    let dbSlides = [];
+    try { dbSlides = JSON.parse(current?.slides_data || '[]'); } catch {}
+    const dbByIndex = new Map(dbSlides.map(s => [s.index, s]));
+    // Apply in-memory completed slides, but skip slots marked _edited in DB
+    for (const [idx, slide] of completedSlides) {
+      if (dbByIndex.get(idx)?._edited) continue; // preserve user edit
+      dbByIndex.set(idx, slide);
+    }
+    const sorted = [...dbByIndex.values()].sort((a, b) => a.index - b.index);
     db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
       .run(JSON.stringify(sorted), presentationId);
   }
@@ -201,43 +211,72 @@ async function runFullFlow(presentationId, message, attachments, userId = null) 
   broadcast(presentationId, { type: 'started', total_slides: slides.length });
 
   // ── Phase 2: stream image prompts, start generation per slide as each arrives ─
+  const promptedIndices = new Set();
+
+  function startSlideGeneration(slide) {
+    promptedIndices.add(slide.index);
+    broadcast(presentationId, { type: 'slide_generating', index: slide.index });
+
+    const attachedImages = allImages.slice(0, 3);
+
+    const promise = generateSlideImage(
+      slide.nano_banana_prompt || slide.title,
+      slide.type,
+      header?.theme        || 'modern-minimal',
+      header?.color_palette || {},
+      slide.index,
+      attachedImages,
+      aspectRatio
+    ).then(imageData => {
+      const done = { ...slide, image_data: imageData, status: 'complete' };
+      completedSlides.set(slide.index, done);
+      persistProgress();
+      if (slide.index === 0 && imageData && !imageData.startsWith('data:image/svg')) {
+        db.prepare(`UPDATE presentations SET thumbnail = ? WHERE id = ?`).run(imageData, presentationId);
+      }
+      broadcast(presentationId, { type: 'slide_ready', slide: done });
+    }).catch(err => {
+      logger.error('slide image failed', { slideIndex: slide.index, errorMessage: err.message });
+      const errSlide = { ...slide, image_data: null, status: 'error' };
+      completedSlides.set(slide.index, errSlide);
+      persistProgress();
+      broadcast(presentationId, { type: 'slide_error', index: slide.index, message: err.message });
+    });
+
+    slidePromises.push(promise);
+  }
+
   await streamSlidePrompts(slides, header, message, attachments, {
-    onPrompt(slide) {
-      broadcast(presentationId, { type: 'slide_generating', index: slide.index });
-
-      const attachedImages = allImages.slice(0, 3);
-
-      const promise = generateSlideImage(
-        slide.nano_banana_prompt || slide.title,
-        slide.type,
-        header?.theme        || 'modern-minimal',
-        header?.color_palette || {},
-        slide.index,
-        attachedImages,
-        aspectRatio
-      ).then(imageData => {
-        const done = { ...slide, image_data: imageData, status: 'complete' };
-        completedSlides.set(slide.index, done);
-        persistProgress();
-        if (slide.index === 0 && imageData && !imageData.startsWith('data:image/svg')) {
-          db.prepare(`UPDATE presentations SET thumbnail = ? WHERE id = ?`).run(imageData, presentationId);
-        }
-        broadcast(presentationId, { type: 'slide_ready', slide: done });
-      }).catch(err => {
-        logger.error('slide image failed', { slideIndex: slide.index, errorMessage: err.message });
-        const errSlide = { ...slide, image_data: null, status: 'error' };
-        completedSlides.set(slide.index, errSlide);
-        broadcast(presentationId, { type: 'slide_error', index: slide.index, message: err.message });
-      });
-
-      slidePromises.push(promise);
-    },
+    onPrompt(slide) { startSlideGeneration(slide); },
   }, userId);
+
+  // Fallback: if streamSlidePrompts failed to emit a prompt for any slide, generate with title
+  for (const slide of slides) {
+    if (!promptedIndices.has(slide.index)) {
+      logger.warn('slide prompt missing — using title fallback', { slideIndex: slide.index });
+      startSlideGeneration(slide);
+    }
+  }
 
   // Wait for all image generations to finish
   await Promise.all(slidePromises);
 
-  const allSlides = [...completedSlides.values()].sort((a, b) => a.index - b.index);
+  // Build final slides: merge DB state (preserving _edited slides) with completedSlides
+  const finalRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(presentationId);
+  let finalDbSlides = [];
+  try { finalDbSlides = JSON.parse(finalRow?.slides_data || '[]'); } catch {}
+  const finalByIndex = new Map(finalDbSlides.map(s => [s.index, s]));
+  for (const [idx, slide] of completedSlides) {
+    if (finalByIndex.get(idx)?._edited) continue; // preserve user edit
+    finalByIndex.set(idx, slide);
+  }
+  // Ensure all plan slides are represented (fill any gaps as error)
+  for (const slide of slides) {
+    if (!finalByIndex.has(slide.index)) {
+      finalByIndex.set(slide.index, { ...slide, image_data: null, status: 'error' });
+    }
+  }
+  const allSlides = [...finalByIndex.values()].sort((a, b) => a.index - b.index);
 
   // Persist final slide_plan with full outline data
   db.prepare(`UPDATE presentations SET slide_plan = ? WHERE id = ?`)
@@ -535,12 +574,12 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
     throw err;
   }
 
-  const slides = JSON.parse(pres.slides_data);
   const targetIndex = parseInt(req.params.index, 10);
-  // Find by .index property — robust to reordering (array position ≠ .index after drag-reorder)
-  const arrayPos = slides.findIndex(s => s.index === targetIndex);
-  const slide = slides[arrayPos];
-  if (!slide) return res.status(404).json({ error: 'Slide not found. It may have been removed or the index is out of range.' });
+
+  // Read slide data at request time just to validate and build the prompt
+  const slidesAtRequest = JSON.parse(pres.slides_data);
+  const slideForPrompt = slidesAtRequest.find(s => s.index === targetIndex);
+  if (!slideForPrompt) return res.status(404).json({ error: 'Slide not found. It may have been removed or the index is out of range.' });
 
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
   res.json({ message: 'Editing…', index: targetIndex });
@@ -548,16 +587,16 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
   const regenAspectRatio = pres.aspect_ratio || '16:9';
 
   // Build an edit-focused prompt: pic1 = current slide, changes = user instruction
-  const hasCurrentImage = slide.image_data && !slide.image_data.startsWith('data:image/svg');
+  const hasCurrentImage = slideForPrompt.image_data && !slideForPrompt.image_data.startsWith('data:image/svg');
   const editPrompt = hasCurrentImage
     ? `EDIT INSTRUCTION: ${instruction.trim()}\n\nApply the above change to the presentation slide shown in the first reference image (pic1). Keep EVERYTHING else identical — the layout, composition, color palette, typography style, background, and overall design language. Do not redesign from scratch. Edit only what the instruction specifies.`
-    : `${slide.nano_banana_prompt || slide.image_prompt || slide.title}\n\nAdditional instruction: ${instruction.trim()}`;
+    : `${slideForPrompt.nano_banana_prompt || slideForPrompt.image_prompt || slideForPrompt.title}\n\nAdditional instruction: ${instruction.trim()}`;
 
   // pic1 = current rendered slide; pic2, pic3… = anything the user uploaded in the edit bar
   let attachedImages = [];
   if (hasCurrentImage) {
-    const mimeType = slide.image_data.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg';
-    attachedImages.push({ data: slide.image_data, mimeType });
+    const mimeType = slideForPrompt.image_data.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg';
+    attachedImages.push({ data: slideForPrompt.image_data, mimeType });
   }
   const userUploads = (reqBodyAttachments || []).filter(a => a.data);
   attachedImages.push(...userUploads);
@@ -567,22 +606,38 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
     try {
       const imageData = await generateSlideImage(
         editPrompt,
-        slide.type,
+        slideForPrompt.type,
         slidePlan.theme,
         slidePlan.color_palette,
-        slide.index,
+        slideForPrompt.index,
         attachedImages,
         regenAspectRatio
       );
 
-      const updatedSlide = { ...slide, image_data: imageData, status: 'complete' };
-      slides[arrayPos] = updatedSlide;
+      // Re-read slides_data fresh to avoid overwriting concurrent changes
+      const freshPres = db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id);
+      const freshSlides = JSON.parse(freshPres?.slides_data || '[]');
+      const freshArrayPos = freshSlides.findIndex(s => s.index === targetIndex);
+
+      const updatedSlide = {
+        ...(freshArrayPos >= 0 ? freshSlides[freshArrayPos] : slideForPrompt),
+        image_data: imageData,
+        status: 'complete',
+        _edited: true,
+      };
+
+      if (freshArrayPos >= 0) {
+        freshSlides[freshArrayPos] = updatedSlide;
+      } else {
+        freshSlides.push(updatedSlide);
+        freshSlides.sort((a, b) => a.index - b.index);
+      }
 
       // Always keep the thumbnail in sync with whichever slide is first in the current order
-      const updates = { slides_data: JSON.stringify(slides) };
       let thumbSql = `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
-      const thumbArgs = [updates.slides_data, req.params.id];
-      if (arrayPos === 0 && imageData && !imageData.startsWith('data:image/svg')) {
+      const thumbArgs = [JSON.stringify(freshSlides), req.params.id];
+      const isFirstSlide = freshSlides[0]?.index === targetIndex;
+      if (isFirstSlide && imageData && !imageData.startsWith('data:image/svg')) {
         thumbSql = `UPDATE presentations SET slides_data = ?, thumbnail = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
         thumbArgs.splice(1, 0, imageData);
       }

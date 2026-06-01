@@ -334,7 +334,18 @@ export default function PresentationPage() {
         const { data } = await api.get(`/presentations/${presId}`);
         if (data.presentation.status === 'completed' && data.presentation.slides_data) {
           stopPolling();
-          setGeneratedSlides(data.presentation.slides_data);
+          // Merge: DB slides fill in any gaps; _edited slides in frontend state win
+          setGeneratedSlides(prev => {
+            const dbSlides = data.presentation.slides_data;
+            const frontendByIndex = new Map(prev.map(s => [s.index, s]));
+            const merged = dbSlides.map(dbSlide => {
+              const fe = frontendByIndex.get(dbSlide.index);
+              // Preserve frontend state if the slide is already complete or was edited
+              if (fe && (fe._edited || fe.status === 'complete')) return fe;
+              return dbSlide;
+            });
+            return merged.sort((a, b) => a.index - b.index);
+          });
           setTotalSlides(data.presentation.slides_data.length);
           // Don't interrupt plan_reveal — let its onDone() handle the transition
           setPhase(p => p === 'plan_reveal' ? p : 'viewing');
@@ -536,6 +547,8 @@ export default function PresentationPage() {
       if (event.type === 'complete') {
         clearInterval(stageTimer);
         stopPolling();
+        // Mark any slides still in 'generating' state as error (they never got slide_ready)
+        setGeneratedSlides(prev => prev.map(s => s.status === 'generating' ? { ...s, status: 'error' } : s));
         // Don't interrupt plan_reveal — its onDone() will transition to 'viewing'
         setPhase(p => p === 'plan_reveal' ? p : 'viewing');
       }
