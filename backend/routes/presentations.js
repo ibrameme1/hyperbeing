@@ -158,6 +158,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null) 
   let header = null;
   const slidePromises = [];
   const completedSlides = new Map();
+  const collectedSlidePlans = []; // minimal metadata for plan reveal screen
 
   function persistProgress() {
     const sorted = [...completedSlides.values()].sort((a, b) => a.index - b.index);
@@ -179,12 +180,17 @@ async function runFullFlow(presentationId, message, attachments, userId = null) 
         JSON.stringify({ ...h, slides: [] }),
         presentationId
       );
-
-      broadcast(presentationId, { type: 'plan_ready',  total_slides: h.total_slides });
-      broadcast(presentationId, { type: 'started',     total_slides: h.total_slides });
+      // plan_ready is broadcast after ALL slides are streamed so the reveal screen gets all slide titles
     },
 
     onSlide(slide) {
+      // Collect minimal metadata for the plan reveal screen
+      collectedSlidePlans.push({
+        index: slide.index,
+        type: slide.type,
+        title: slide.title,
+        key_points: (slide.key_points || []).slice(0, 2),
+      });
       broadcast(presentationId, { type: 'slide_generating', index: slide.index });
 
       // Always attach all user reference images to every slide
@@ -218,6 +224,15 @@ async function runFullFlow(presentationId, message, attachments, userId = null) 
       slidePromises.push(promise);
     },
   }, userId);
+
+  // All slide text is streamed — broadcast plan_ready with full slide structures for the reveal screen
+  const planTotalSlides = header?.total_slides || collectedSlidePlans.length;
+  broadcast(presentationId, {
+    type: 'plan_ready',
+    total_slides: planTotalSlides,
+    slide_plans: collectedSlidePlans,
+  });
+  broadcast(presentationId, { type: 'started', total_slides: planTotalSlides });
 
   // Wait for all Nano Banana calls (they started as Claude was streaming)
   await Promise.all(slidePromises);
@@ -377,7 +392,10 @@ router.get('/:id/events', (req, res) => {
       if (presState.slide_plan) {
         const plan = JSON.parse(presState.slide_plan);
         const totalSlides = plan.total_slides || plan.slides?.length || 0;
-        res.write(`data: ${JSON.stringify({ type: 'plan_ready', total_slides: totalSlides })}\n\n`);
+        const slidePlans = (plan.slides || []).map(s => ({
+          index: s.index, type: s.type, title: s.title, key_points: (s.key_points || []).slice(0, 2),
+        }));
+        res.write(`data: ${JSON.stringify({ type: 'plan_ready', total_slides: totalSlides, slide_plans: slidePlans })}\n\n`);
       }
       if (presState.slides_data) {
         const doneSlides = JSON.parse(presState.slides_data);

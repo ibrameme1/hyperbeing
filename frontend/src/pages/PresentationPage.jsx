@@ -8,6 +8,7 @@ import {
 import api from '../api/client';
 import MessageBubble from '../components/MessageBubble';
 import LoadingScreen from '../components/LoadingScreen';
+import PlanRevealScreen from '../components/PlanRevealScreen';
 import PresentationViewer from '../components/PresentationViewer';
 import { track } from '../utils/track';
 
@@ -317,6 +318,7 @@ export default function PresentationPage() {
   const [generatedSlides, setGeneratedSlides] = useState([]);
   const [totalSlides, setTotalSlides] = useState(0);
   const [generationStage, setGenerationStage] = useState(0);
+  const [slidePlan, setSlidePlan] = useState([]);
 
   const sseRef = useRef(null);
   const pollRef = useRef(null);
@@ -417,20 +419,32 @@ export default function PresentationPage() {
 
       if (event.type === 'plan_ready') {
         setTotalSlides(event.total_slides);
-        // Create placeholder slides so viewer can show all N slides immediately (with loading overlays)
+        // Create placeholder slides for all N positions (images will fill in via slide_ready)
         setGeneratedSlides(prev => {
-          const placeholders = Array.from({ length: event.total_slides }, (_, i) => ({
-            index: i, type: 'content', title: `Slide ${i + 1}`, status: 'generating', image_data: null,
-          }));
+          const slidePlansArr = event.slide_plans || [];
+          const placeholders = Array.from({ length: event.total_slides }, (_, i) => {
+            const plan = slidePlansArr[i];
+            return {
+              index: i,
+              type: plan?.type || 'content',
+              title: plan?.title || `Slide ${i + 1}`,
+              status: 'generating',
+              image_data: null,
+            };
+          });
           const merged = [...placeholders];
           for (const s of prev) {
             if (s.status === 'complete' && s.index < event.total_slides) merged[s.index] = s;
           }
           return merged;
         });
-        // Switch to viewer immediately so user sees all slides (with loading overlays) from the start
         if (event.total_slides > 0) {
-          setPhase(p => p === 'generating' ? 'viewing' : p);
+          // Show plan reveal only on fresh generation (not when reconnecting mid-generation)
+          setSlidePlan(event.slide_plans || []);
+          setPhase(p => {
+            if (p !== 'generating') return p;
+            return (event.slide_plans?.length > 0) ? 'plan_reveal' : 'viewing';
+          });
         }
       }
 
@@ -519,6 +533,7 @@ export default function PresentationPage() {
     setPhase('generating');
     setGenerationStage(0);
     setGeneratedSlides([]);
+    setSlidePlan([]);
 
     try {
       await api.post(`/presentations/${id}/generate`);
@@ -556,6 +571,16 @@ export default function PresentationPage() {
         generatedSlides={generatedSlides}
         totalSlides={totalSlides}
         currentStage={generationStage}
+      />
+    );
+  }
+
+  if (phase === 'plan_reveal') {
+    return (
+      <PlanRevealScreen
+        totalSlides={totalSlides}
+        slidePlans={slidePlan}
+        onDone={() => setPhase('viewing')}
       />
     );
   }
