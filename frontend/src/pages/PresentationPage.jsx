@@ -419,7 +419,7 @@ export default function PresentationPage() {
       const event = JSON.parse(e.data);
 
       if (event.type === 'plan_generating') {
-        setPhase('generating');
+        setPhase(p => (p === 'viewing' || p === 'plan_reveal') ? p : 'generating');
         startPolling(presId);
       }
 
