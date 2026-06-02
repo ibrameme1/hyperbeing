@@ -17,6 +17,7 @@ import adminRoutes from './routes/admin.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { logger } from './services/logger.js';
 import { getPostHog } from './services/posthogClient.js';
+import { clearStaleTestSubscriptions } from './services/stripeService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -136,7 +137,18 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
+// Catch unhandled promise rejections so a single bad Stripe/API call can't
+// take down the whole process. Log it and keep running.
+process.on('unhandledRejection', (reason) => {
+  logger.error('unhandled promise rejection', {
+    errorMessage: reason?.message || String(reason),
+    errorName: reason?.name,
+    stack: reason?.stack?.split('\n').slice(0, 8).join('\n'),
+  });
+});
+
 initDatabase();
+clearStaleTestSubscriptions().catch(() => {}); // best-effort cleanup on startup
 app.listen(PORT, '0.0.0.0', () => {
   logger.info('server started', { port: PORT, env: process.env.NODE_ENV || 'development' });
 });
