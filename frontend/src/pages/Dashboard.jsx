@@ -429,7 +429,6 @@ export default function Dashboard() {
   const [currentPlan, setCurrentPlan] = useState('free');
   const [isAdmin, setIsAdmin] = useState(false);
   const [showOutOfCredits, setShowOutOfCredits] = useState(false);
-  const [slideCountOverride, setSlideCountOverride] = useState('auto');
   const textareaRef = useRef(null);
 
   function refreshCredits() {
@@ -530,10 +529,7 @@ export default function Dashboard() {
     setSubmitError('');
 
     const qaSection = answers.length > 0 ? `\n\nPREFLIGHT ANSWERS:\n${answers.map(a => `- ${a.question}: ${a.answer}`).join('\n')}` : '';
-    const slideCountInstruction = slideCountOverride === 'auto'
-      ? 'Nova should decide the number of slides needed to do this presentation justice.'
-      : `Generate EXACTLY ${slideCountOverride} slides — no more, no fewer.`;
-    const comprehensiveMessage = `${pendingInput}${qaSection}\n\nDetected type: ${analysis.detected_type || ''}\nDetected industry: ${analysis.detected_industry || ''}\n\n${slideCountInstruction}`;
+    const comprehensiveMessage = `${pendingInput}${qaSection}\n\nDetected type: ${analysis.detected_type || ''}\nDetected industry: ${analysis.detected_industry || ''}\n\nNova should decide the number of slides needed to do this presentation justice.`;
 
     try {
       const { data } = await api.post('/presentations', {
@@ -694,23 +690,6 @@ export default function Dashboard() {
                       }`}
                     >
                       {ratio}
-                    </button>
-                  ))}
-                </div>
-
-                {/* buttonX — temporary debug slide count override, remove when done */}
-                <div className="flex items-center gap-1 bg-ios-gray5 dark:bg-hb-surface-2 rounded-xl p-1">
-                  {['auto', '3', '5', '8', '10', '12', '15', '20'].map(n => (
-                    <button
-                      key={n}
-                      onClick={() => setSlideCountOverride(n)}
-                      className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all duration-150 ${
-                        slideCountOverride === n
-                          ? 'bg-white dark:bg-hb-dark text-gray-900 dark:text-white shadow-sm'
-                          : 'text-ios-gray1 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-white'
-                      }`}
-                    >
-                      {n === 'auto' ? '✦' : n}
                     </button>
                   ))}
                 </div>
