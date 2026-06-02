@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { getDb } from '../database.js';
 import { requestContext } from '../services/logger.js';
+import { tracer } from '../services/tracer.js';
 
 export { authenticateToken as authMiddleware };
 export function authenticateToken(req, res, next) {
@@ -20,6 +21,7 @@ export function authenticateToken(req, res, next) {
     // logger calls automatically include it without manual threading.
     const ctx = requestContext.getStore();
     if (ctx) ctx.userId = userId;
+    tracer.patchUserId(ctx?.requestId, userId);
     next();
   } catch {
     return res.status(401).json({ error: 'Your session has expired. Please sign in again.' });

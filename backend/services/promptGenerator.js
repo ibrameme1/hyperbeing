@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { recordTokenUsage } from './stripeService.js';
-import { logger } from './logger.js';
+import { logger, requestContext } from './logger.js';
+import { tracer } from './tracer.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -14,6 +15,10 @@ const SYSTEM_PROMPT = fs.readFileSync(
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function generatePromptResponse(history, userMessage, attachedImages = [], userId = null) {
+  const _tid = requestContext.getStore()?.requestId;
+  const _t = Date.now();
+  tracer.recordStep(_tid, 'prompt_generator', 'started', 0);
+
   const userContent = [];
 
   for (const img of attachedImages) {
@@ -67,6 +72,7 @@ export async function generatePromptResponse(history, userMessage, attachedImage
     { role: 'assistant', content: rawText },
   ];
 
+  tracer.recordStep(_tid, 'prompt_generator', 'completed', Date.now() - _t);
   return {
     mode: parsed.mode,
     message: parsed.message,
