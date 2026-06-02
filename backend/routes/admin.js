@@ -95,4 +95,20 @@ router.get('/log-summary', authenticateToken, requireAdmin, (req, res) => {
 });
 
 
+// ─── POST /api/admin/grant-credits ───────────────────────────────────────────
+// Grant credits to a user by email. Body: { email, credits }
+router.post('/grant-credits', authenticateToken, requireAdmin, (req, res) => {
+  const { email, credits } = req.body;
+  if (!email || !credits || credits < 1) return res.status(400).json({ error: 'email and credits required' });
+  const db = getDb();
+  const user = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(email);
+  if (!user) return res.status(404).json({ error: `No user found with email: ${email}` });
+  const current = db.prepare('SELECT credits_remaining, credits_total FROM subscriptions WHERE user_id = ?').get(user.id);
+  if (!current) return res.status(404).json({ error: 'No subscription found for this user' });
+  db.prepare(
+    'UPDATE subscriptions SET credits_remaining = ?, credits_total = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
+  ).run(current.credits_remaining + credits, current.credits_total + credits, user.id);
+  res.json({ email, added: credits, new_balance: current.credits_remaining + credits });
+});
+
 export default router;
