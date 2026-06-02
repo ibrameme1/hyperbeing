@@ -307,4 +307,20 @@ router.post('/webhook', async (req, res) => {
   res.json({ received: true });
 });
 
+// ── TEMPORARY: Admin user fix (delete after use) ───────────────────────────────
+router.post('/admin/fix-user', (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email required' });
+
+  const db = getDb();
+  const user = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  db.prepare("UPDATE subscriptions SET plan = 'ultra', credits_remaining = 999999, credits_total = 999999, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?").run(user.id);
+  const updated = db.prepare('SELECT plan, credits_remaining FROM subscriptions WHERE user_id = ?').get(user.id);
+
+  logger.info('admin fix-user endpoint', { email, result: updated });
+  res.json({ success: true, message: `${email} updated to ultra plan`, updated });
+});
+
 export default router;
