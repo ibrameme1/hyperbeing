@@ -124,6 +124,25 @@ export function grantCredits(userId, amount, type, description) {
   return newBalance;
 }
 
+// On startup, clear any subscription IDs that belong to Stripe test mode
+// (they start with the same prefix but don't exist in live mode).
+export async function clearStaleTestSubscriptions() {
+  if (!process.env.STRIPE_SECRET_KEY) return;
+  const db = getDb();
+  const rows = db.prepare("SELECT user_id, stripe_subscription_id FROM subscriptions WHERE stripe_subscription_id IS NOT NULL").all();
+  for (const row of rows) {
+    try {
+      await getStripe().subscriptions.retrieve(row.stripe_subscription_id);
+    } catch (err) {
+      if (err?.statusCode === 404 || err?.code === 'resource_missing') {
+        db.prepare(
+          "UPDATE subscriptions SET stripe_subscription_id = NULL, plan = 'free', status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
+        ).run(row.user_id);
+      }
+    }
+  }
+}
+
 export function resetCreditsForPlan(userId, planKey) {
   const db = getDb();
   const plan = PLANS[planKey];
