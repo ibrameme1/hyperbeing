@@ -611,7 +611,7 @@ export default function Dashboard() {
       <nav className="sticky top-0 z-50 flex items-center justify-between px-6 py-3"
            style={{ background: 'var(--bg-nav)', backdropFilter: 'blur(20px)', borderBottom: '1px solid var(--border)' }}>
         <div className="flex items-center">
-          <Logo dark={isDark} height={26} />
+          <Logo dark={isDark} height={40} />
         </div>
         <div className="flex items-center gap-3">
           {/* Theme toggle */}

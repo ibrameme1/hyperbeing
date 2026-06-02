@@ -11,7 +11,7 @@ import Logo from '../components/Logo';
 const STEPS = [
   { num: '01', title: 'Describe your presentation', desc: 'Tell Nova your topic, audience, tone, and goals. Upload brand assets if you have them.' },
   { num: '02', title: 'Nova plans the deck', desc: 'The AI builds a narrative structure, writes slide content, and chooses a visual direction.' },
-  { num: '03', title: 'Slides generate live', desc: 'Watch each slide appear in real time with custom AI imagery and professional layouts.' },
+  { num: '03', title: 'Slides generate live', desc: 'Watch each slide appear in real time with custom visuals and professional layouts.' },
   { num: '04', title: 'Export and present', desc: 'Download your deck as PDF or PNG. Done in under a minute.' },
 ];
 
@@ -96,7 +96,7 @@ export default function Homepage() {
           <div className="liquid-glass rounded-full px-6 py-3 flex items-center justify-between max-w-5xl mx-auto">
             <div className="flex items-center gap-8">
               <div className="flex items-center">
-                <Logo dark height={28} />
+                <Logo dark height={44} />
               </div>
               <div className="hidden md:flex items-center gap-8 text-white/65 text-sm font-medium">
                 <Link to="/pricing" className="hover:text-white transition-colors duration-200">Pricing</Link>
@@ -146,7 +146,7 @@ export default function Homepage() {
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold"
                 style={{ background: 'rgba(139,92,246,0.12)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.28)' }}
               >
-                <Sparkles size={12} /> AI Presentation Maker · Powered by Claude
+                <Sparkles size={12} /> AI Presentation Maker
               </div>
             </motion.div>
 
@@ -545,7 +545,7 @@ export default function Homepage() {
       <footer className="relative z-10 border-t px-8 py-8" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center">
-            <Logo dark height={20} />
+            <Logo dark height={36} />
           </div>
           <div className="flex items-center gap-6 text-sm text-white/30">
             <Link to="/pricing" className="hover:text-white/60 transition-colors">Pricing</Link>

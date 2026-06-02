@@ -255,7 +255,7 @@ export default function Pricing() {
       <div className="relative z-10 flex items-center justify-between px-8 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <div className="flex items-center gap-4">
           <button onClick={() => navigate('/')} className="flex items-center">
-            <Logo dark height={24} />
+            <Logo dark height={40} />
           </button>
           <button
             onClick={() => navigate(user ? '/dashboard' : '/')}
