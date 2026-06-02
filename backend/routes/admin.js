@@ -94,4 +94,19 @@ router.get('/log-summary', authenticateToken, requireAdmin, (req, res) => {
   res.json({ bySeverity, recentErrors, byHour });
 });
 
+// ─── POST /api/admin/topup-free-users ────────────────────────────────────────
+// One-time migration: bumps all free-plan users below 15 credits up to 15.
+router.post('/topup-free-users', authenticateToken, requireAdmin, (req, res) => {
+  const TARGET = 15;
+  const result = getDb().prepare(`
+    UPDATE subscriptions
+    SET credits_remaining = ?,
+        credits_total      = MAX(credits_total, ?),
+        updated_at         = CURRENT_TIMESTAMP
+    WHERE plan = 'free'
+      AND credits_remaining < ?
+  `).run(TARGET, TARGET, TARGET);
+  res.json({ updated: result.changes, credits: TARGET });
+});
+
 export default router;
