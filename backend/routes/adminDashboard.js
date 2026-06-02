@@ -8,7 +8,7 @@ const router = Router();
 function requireAdminToken(req, res, next) {
   const token = req.query.token || req.headers['x-admin-token'];
   if (!process.env.ADMIN_TOKEN || token !== process.env.ADMIN_TOKEN) {
-    return res.status(401).send(`<!DOCTYPE html><html><body style="font-family:monospace;background:#0a0a0a;color:#ff4444;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><h1>401 — Unauthorized</h1></body></html>`);
+    return res.status(401).send(`<!DOCTYPE html><html><body style="font-family:monospace;background:#0a0a0a;color:#ff4444;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><h1>401 — Unauthorized</h1><p style="margin-left:16px">Set ADMIN_TOKEN env var and pass ?token= in the URL</p></body></html>`);
   }
   next();
 }
@@ -41,172 +41,198 @@ router.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
 
   const send = (trace) => {
     try { res.write(`data: ${JSON.stringify(trace)}\n\n`); } catch {}
   };
 
-  // Send last 5 requests immediately for catch-up
+  // Catch-up: send last 5 requests
   const recent = tracer.getRequests().slice(0, 5).reverse();
   for (const t of recent) send(t);
 
   const unsub = tracer.subscribe(send);
   const heartbeat = setInterval(() => { try { res.write(': ping\n\n'); } catch {} }, 25000);
 
-  req.on('close', () => {
-    unsub();
-    clearInterval(heartbeat);
-  });
+  req.on('close', () => { unsub(); clearInterval(heartbeat); });
 });
 
 // ─── Dashboard HTML ─────────────────────────────────────────────────────────
 
 router.get('/', (req, res) => {
-  const token = req.query.token || req.headers['x-admin-token'];
+  const token = req.query.token || req.headers['x-admin-token'] || '';
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(getDashboardHTML(token));
 });
 
+function escAttr(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 function getDashboardHTML(token) {
+  const t = escAttr(token);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>HyperBeing — System Monitor</title>
-<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<title>HyperBeing Monitor</title>
 <style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  :root{
-    --bg:#0a0a0f;--bg2:#111118;--bg3:#1a1a24;--border:#2a2a3a;
-    --text:#e2e2f0;--muted:#6b6b8a;--accent:#7c6fff;--green:#22c55e;
-    --yellow:#eab308;--red:#ef4444;--blue:#3b82f6;--teal:#14b8a6;
-    --orange:#f97316;--purple:#a855f7;--amber:#f59e0b;
-  }
-  body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;font-size:13px;min-height:100vh}
-  h1{font-size:18px;font-weight:700;letter-spacing:-0.3px}
-  h2{font-size:14px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
-  header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100}
-  .logo{font-weight:800;font-size:16px;background:linear-gradient(135deg,var(--accent),#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-  .badge{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--muted)}
-  .live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;flex-shrink:0}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-  .tabs{display:flex;gap:2px;background:var(--bg3);border-radius:8px;padding:3px;margin-left:auto}
-  .tab{padding:5px 14px;border-radius:6px;cursor:pointer;font-weight:500;transition:all .15s;color:var(--muted);border:none;background:none;font-size:12px}
-  .tab.active{background:var(--accent);color:#fff}
-  .tab:hover:not(.active){color:var(--text)}
-  .panel{display:none;padding:16px 20px;height:calc(100vh - 55px);overflow:hidden}
-  .panel.active{display:flex;flex-direction:column;gap:12px}
-  /* Architecture tab */
-  #arch-panel{flex-direction:row;gap:0;padding:0}
-  #network-container{flex:1;background:var(--bg);position:relative}
-  #arch-sidebar{width:280px;background:var(--bg2);border-left:1px solid var(--border);padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
-  .legend-item{display:flex;align-items:center;gap:8px;font-size:12px}
-  .legend-dot{width:10px;height:10px;border-radius:50%}
-  .node-detail{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:6px}
-  .node-detail h3{font-size:13px;font-weight:600}
-  .stat-row{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
-  .stat-val{color:var(--text);font-weight:500}
-  /* Feed tab */
-  .feed-header{display:flex;justify-content:space-between;align-items:center}
-  .filter-bar{display:flex;gap:8px;align-items:center}
-  .filter-btn{padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer;font-size:11px;transition:all .15s}
-  .filter-btn.active{border-color:var(--accent);color:var(--accent)}
-  table{width:100%;border-collapse:collapse}
-  th{text-align:left;padding:8px 10px;color:var(--muted);font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2);z-index:10}
-  td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:top;font-size:12px}
-  tr.clickable{cursor:pointer}
-  tr.clickable:hover td{background:var(--bg3)}
-  .status-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase}
-  .status-badge.in-progress{background:rgba(59,130,246,.15);color:var(--blue)}
-  .status-badge.completed{background:rgba(34,197,94,.1);color:var(--green)}
-  .status-badge.failed{background:rgba(239,68,68,.12);color:var(--red)}
-  .step-pills{display:flex;flex-wrap:wrap;gap:3px;max-width:300px}
-  .step-pill{padding:1px 6px;border-radius:3px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--muted)}
-  .step-pill.completed{border-color:#22c55e40;color:var(--green)}
-  .step-pill.failed{border-color:#ef444440;color:var(--red)}
-  .step-pill.started{border-color:#eab30840;color:var(--yellow)}
-  .trace-detail{background:var(--bg3);padding:10px;border-radius:6px;margin-top:4px}
-  .trace-step{display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)}
-  .trace-step:last-child{border-bottom:none}
-  .step-icon{width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0;margin-top:1px}
-  .step-icon.completed{background:rgba(34,197,94,.2);color:var(--green)}
-  .step-icon.failed{background:rgba(239,68,68,.2);color:var(--red)}
-  .step-icon.started{background:rgba(234,179,8,.2);color:var(--yellow)}
-  .step-info{flex:1}
-  .step-name{font-weight:500;font-size:12px}
-  .step-meta{font-size:11px;color:var(--muted);margin-top:2px}
-  .step-error{font-size:11px;color:var(--red);margin-top:3px;font-family:monospace;background:rgba(239,68,68,.06);padding:4px 6px;border-radius:4px}
-  .table-wrap{overflow-y:auto;flex:1;border:1px solid var(--border);border-radius:8px}
-  /* Error panel */
-  .error-group{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:8px}
-  .error-group h3{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
-  .count-badge{background:rgba(239,68,68,.15);color:var(--red);border-radius:4px;padding:1px 6px;font-size:11px}
-  .error-entry{font-size:11px;color:var(--muted);padding:4px 8px;background:var(--bg3);border-radius:4px;border-left:2px solid var(--red)}
-  .error-entry .err-msg{color:var(--text);font-family:monospace;word-break:break-all}
-  .error-entry .err-meta{color:var(--muted);margin-top:2px}
-  .errors-scroll{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px}
-  /* DB stats */
-  .db-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
-  .db-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center}
-  .db-card .n{font-size:22px;font-weight:700;color:var(--accent)}
-  .db-card .label{font-size:11px;color:var(--muted);margin-top:2px}
-  .new-row{animation:fadeIn .4s ease}
-  @keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
-  .scrollable{overflow-y:auto}
-  .empty{color:var(--muted);font-size:13px;padding:24px;text-align:center}
-  select,input{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;font-size:12px}
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0f;--bg2:#111118;--bg3:#1a1a24;--border:#2a2a3a;
+  --text:#e2e2f0;--muted:#6b6b8a;--accent:#7c6fff;
+  --green:#22c55e;--yellow:#eab308;--red:#ef4444;--blue:#3b82f6;
+  --purple:#a855f7;--teal:#14b8a6;--orange:#f97316;--amber:#f59e0b;
+}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:100}
+.logo{font-weight:800;font-size:15px;background:linear-gradient(135deg,#7c6fff,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.badge{background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:2px 7px;font-size:11px;color:var(--muted)}
+#status-dot{width:8px;height:8px;border-radius:50%;background:var(--yellow);flex-shrink:0;transition:background .3s}
+#status-dot.live{background:var(--green);animation:pulse 2s infinite}
+#status-dot.error{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+#last-update{color:var(--muted);font-size:11px;margin-left:2px}
+.tabs{display:flex;gap:2px;background:var(--bg3);border-radius:7px;padding:3px;margin-left:auto}
+.tab{padding:5px 13px;border-radius:5px;cursor:pointer;font-weight:500;font-size:12px;color:var(--muted);border:none;background:none;transition:all .15s}
+.tab.active{background:var(--accent);color:#fff}
+.tab:hover:not(.active){color:var(--text)}
+
+/* panels */
+.panel{display:none;flex:1;overflow:hidden;flex-direction:column;gap:10px;padding:14px 18px}
+.panel.active{display:flex}
+
+/* Architecture */
+#arch-panel{flex-direction:row;gap:0;padding:0}
+#arch-main{flex:1;overflow-x:auto;overflow-y:auto;padding:14px}
+.arch-grid{display:flex;gap:12px;align-items:flex-start;min-width:fit-content}
+.arch-col{display:flex;flex-direction:column;gap:6px;min-width:140px}
+.arch-col-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:4px 8px;border-radius:4px;text-align:center;margin-bottom:2px}
+.node-card{border:1px solid;border-radius:7px;padding:7px 10px;cursor:pointer;transition:all .15s;position:relative;font-size:11px;line-height:1.4}
+.node-card:hover{filter:brightness(1.2);transform:translateY(-1px)}
+.node-card.selected{box-shadow:0 0 0 2px var(--accent)}
+.node-name{font-weight:600;font-size:11px}
+.node-sub{font-size:10px;opacity:.7;margin-top:1px}
+.node-stats{font-size:10px;margin-top:4px;display:flex;gap:6px;flex-wrap:wrap}
+.node-stat{background:rgba(0,0,0,.3);padding:1px 5px;border-radius:3px}
+.node-stat.err{color:var(--red)}
+.node-stat.ok{color:var(--green)}
+.node-stat.slow{color:var(--yellow)}
+
+#arch-sidebar{width:260px;background:var(--bg2);border-left:1px solid var(--border);padding:14px;overflow-y:auto;flex-shrink:0}
+.legend{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.legend-item{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
+.legend-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.detail-box{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:11px;margin-top:10px}
+.detail-box h3{font-size:12px;font-weight:600;margin-bottom:8px}
+.drow{display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid var(--border)}
+.drow:last-child{border-bottom:none}
+.dval{font-weight:500}
+.derr{color:var(--red)}
+
+/* Feed */
+.feed-top{display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.filter-bar{display:flex;gap:6px;align-items:center}
+.fbtn{padding:3px 9px;border-radius:5px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer;font-size:11px;transition:all .15s}
+.fbtn.active{border-color:var(--accent);color:var(--accent)}
+select{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 7px;font-size:11px}
+.table-wrap{overflow-y:auto;flex:1;border:1px solid var(--border);border-radius:7px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:7px 9px;color:var(--muted);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2);z-index:5}
+td{padding:6px 9px;border-bottom:1px solid var(--border);vertical-align:top;font-size:11px}
+tr.clickable{cursor:pointer}
+tr.clickable:hover td{background:var(--bg3)}
+.sbadge{display:inline-flex;align-items:center;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;text-transform:uppercase}
+.sbadge.in-progress{background:rgba(59,130,246,.15);color:var(--blue)}
+.sbadge.completed{background:rgba(34,197,94,.1);color:var(--green)}
+.sbadge.failed{background:rgba(239,68,68,.12);color:var(--red)}
+.pills{display:flex;flex-wrap:wrap;gap:2px}
+.pill{padding:1px 5px;border-radius:3px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--muted)}
+.pill.completed{border-color:#22c55e40;color:var(--green)}
+.pill.failed{border-color:#ef444440;color:var(--red)}
+.pill.started{border-color:#eab30840;color:var(--yellow)}
+.trace-detail{background:var(--bg3);border-radius:5px;padding:8px;margin-top:4px;display:flex;flex-direction:column;gap:4px}
+.tstep{display:flex;align-items:flex-start;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)}
+.tstep:last-child{border-bottom:none}
+.tico{width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;flex-shrink:0;margin-top:1px}
+.tico.completed{background:rgba(34,197,94,.2);color:var(--green)}
+.tico.failed{background:rgba(239,68,68,.2);color:var(--red)}
+.tico.started{background:rgba(234,179,8,.2);color:var(--yellow)}
+.tname{font-weight:500;font-size:11px}
+.tmeta{font-size:10px;color:var(--muted)}
+.terr{font-size:10px;color:var(--red);font-family:monospace;background:rgba(239,68,68,.06);padding:3px 5px;border-radius:3px;margin-top:2px;word-break:break-all}
+.empty{color:var(--muted);padding:20px;text-align:center;font-size:12px}
+
+/* Errors */
+.errors-list{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px}
+.egroup{background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:12px}
+.egroup h3{font-size:12px;font-weight:600;display:flex;align-items:center;gap:7px;margin-bottom:7px}
+.ecnt{background:rgba(239,68,68,.15);color:var(--red);border-radius:3px;padding:1px 5px;font-size:10px}
+.eentry{font-size:11px;padding:4px 7px;background:var(--bg3);border-radius:4px;border-left:2px solid var(--red);margin-bottom:4px}
+.emsg{color:var(--text);font-family:monospace;word-break:break-all}
+.emeta{color:var(--muted);font-size:10px;margin-top:2px}
+
+/* DB / Metrics */
+.db-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.dcard{background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:10px;text-align:center}
+.dcard .n{font-size:20px;font-weight:700;color:var(--accent)}
+.dcard .lbl{font-size:10px;color:var(--muted);margin-top:2px}
+h2{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.section-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;flex-shrink:0}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.new-row{animation:fadeIn .3s ease}
 </style>
 </head>
 <body>
 <header>
   <span class="logo">HyperBeing</span>
   <span class="badge">System Monitor</span>
-  <div class="live-dot" id="live-dot"></div>
-  <span id="last-update" style="color:var(--muted);font-size:11px">connecting…</span>
+  <div id="status-dot"></div>
+  <span id="last-update">connecting…</span>
   <div class="tabs">
-    <button class="tab active" onclick="switchTab('arch')">Architecture</button>
-    <button class="tab" onclick="switchTab('feed')">Live Feed</button>
-    <button class="tab" onclick="switchTab('errors')">Errors</button>
-    <button class="tab" onclick="switchTab('db')">Database</button>
+    <button class="tab active" data-tab="arch">Architecture</button>
+    <button class="tab" data-tab="feed">Live Feed</button>
+    <button class="tab" data-tab="errors">Errors</button>
+    <button class="tab" data-tab="db">Database</button>
   </div>
 </header>
 
-<!-- ARCHITECTURE TAB -->
+<!-- ARCHITECTURE -->
 <div id="arch-panel" class="panel active">
-  <div id="network-container">
-    <div id="network" style="width:100%;height:100%"></div>
+  <div id="arch-main">
+    <div class="arch-grid" id="arch-grid"></div>
   </div>
   <div id="arch-sidebar">
-    <h2>Legend</h2>
-    <div class="legend-item"><div class="legend-dot" style="background:#a855f7"></div> Frontend Pages</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div> Backend Routes</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#6b7280"></div> Middleware</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#14b8a6"></div> Services</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div> Database Tables</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div> External Services</div>
-    <hr style="border-color:var(--border)">
-    <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div> Healthy (no errors)</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#eab308"></div> Slow (avg >5s)</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div> Errors in last 5min</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#374151"></div> No activity yet</div>
-    <hr style="border-color:var(--border)">
-    <div id="node-detail-panel">
-      <p style="color:var(--muted);font-size:12px">Click a node to see details</p>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#a855f7"></div>Frontend Pages</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div>Backend Routes</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#6b7280"></div>Middleware</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#14b8a6"></div>Services</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>Database Tables</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div>External Services</div>
     </div>
+    <hr style="border-color:var(--border);margin-bottom:10px">
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div>Healthy (no errors 5min)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#eab308"></div>Slow (avg &gt;5s)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div>Has errors (5min)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#374151"></div>No activity yet</div>
+    </div>
+    <div id="node-detail"></div>
   </div>
 </div>
 
-<!-- LIVE FEED TAB -->
+<!-- LIVE FEED -->
 <div id="feed-panel" class="panel">
-  <div class="feed-header">
-    <h2>Live Request Feed</h2>
+  <div class="feed-top">
+    <span class="section-title">Live Request Feed</span>
     <div class="filter-bar">
-      <button class="filter-btn active" onclick="setFilter('all')">All</button>
-      <button class="filter-btn" onclick="setFilter('in-progress')">In Progress</button>
-      <button class="filter-btn" onclick="setFilter('failed')">Failed</button>
-      <select id="node-filter" onchange="applyFilters()"><option value="">All nodes</option></select>
+      <button class="fbtn active" data-filter="all">All</button>
+      <button class="fbtn" data-filter="in-progress">In Progress</button>
+      <button class="fbtn" data-filter="failed">Failed</button>
+      <select id="node-filter"><option value="">All nodes</option></select>
     </div>
   </div>
   <div class="table-wrap">
@@ -214,532 +240,458 @@ function getDashboardHTML(token) {
       <thead><tr>
         <th>Time</th><th>User</th><th>Path</th><th>Steps</th><th>Status</th><th>Duration</th>
       </tr></thead>
-      <tbody id="feed-tbody"></tbody>
+      <tbody id="feed-tbody"><tr><td colspan="6" class="empty">Waiting for requests…</td></tr></tbody>
     </table>
   </div>
 </div>
 
-<!-- ERRORS TAB -->
+<!-- ERRORS -->
 <div id="errors-panel" class="panel">
-  <h2>Error Inspector — last hour</h2>
-  <div class="errors-scroll" id="errors-container">
-    <div class="empty">No errors in the last hour</div>
+  <span class="section-title">Error Inspector — last hour</span>
+  <div class="errors-list" id="errors-list">
+    <div class="empty">No errors in the last hour ✓</div>
   </div>
 </div>
 
-<!-- DATABASE TAB -->
+<!-- DATABASE -->
 <div id="db-panel" class="panel">
-  <h2>Database — Row Counts</h2>
+  <span class="section-title">Database — Row Counts</span>
   <div class="db-grid" id="db-grid"></div>
-  <hr style="border-color:var(--border);margin-top:12px">
-  <h2 style="margin-top:4px">Service Metrics (since last restart)</h2>
-  <div id="metrics-section" style="margin-top:8px"></div>
+  <br>
+  <span class="section-title">Service Metrics (since restart)</span>
+  <div class="db-grid" id="metrics-grid" style="margin-top:8px"></div>
+  <br>
+  <span class="section-title">AI Function Stats</span>
+  <div class="table-wrap" style="max-height:300px;margin-top:8px">
+    <table>
+      <thead><tr><th>Function</th><th>Calls</th><th>Errors</th><th>Avg ms</th><th>Avg Tokens</th></tr></thead>
+      <tbody id="ai-tbody"></tbody>
+    </table>
+  </div>
 </div>
 
 <script>
-const TOKEN = '${token}';
-const API = (path) => '/admin' + path + '?token=' + TOKEN;
+const TOKEN = '${t}';
+const api = p => '/admin' + p + (p.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN);
 
-// ─── Tab switching ──────────────────────────────────────────────────────────
-function switchTab(name) {
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.getElementById(name + '-panel').classList.add('active');
-  event.target.classList.add('active');
-  if (name === 'arch') setTimeout(() => network && network.fit({ animation: true }), 50);
-}
+// ── System node definitions ──────────────────────────────────────────────────
+const LAYERS = [
+  {
+    id: 'frontend', label: 'Frontend Pages', color: '#a855f7',
+    nodes: [
+      {id:'fe_home',     name:'Homepage',         sub:'/'},
+      {id:'fe_login',    name:'Login',            sub:'/login'},
+      {id:'fe_dashboard',name:'Dashboard',        sub:'/dashboard'},
+      {id:'fe_pres',     name:'Presentation',     sub:'/presentations/:id'},
+      {id:'fe_prompt',   name:'Prompt Generator', sub:'/prompt-generator'},
+      {id:'fe_onboard',  name:'Onboarding',       sub:'/onboarding'},
+      {id:'fe_pricing',  name:'Pricing',          sub:'/pricing'},
+      {id:'fe_profile',  name:'Profile',          sub:'/profile'},
+      {id:'fe_billing',  name:'Billing Success',  sub:'/billing/success'},
+      {id:'fe_callback', name:'Auth Callback',    sub:'/auth/callback'},
+      {id:'fe_analytics',name:'Analytics',        sub:'/analytics (admin)'},
+    ]
+  },
+  {
+    id: 'routes', label: 'Backend Routes', color: '#3b82f6',
+    nodes: [
+      {id:'rt_auth',     name:'/api/auth',          sub:'login · register · OAuth · profile', step:'route_auth'},
+      {id:'rt_pres',     name:'/api/presentations', sub:'create · analyze · chat · generate', step:'route_presentations'},
+      {id:'rt_billing',  name:'/api/billing',       sub:'subscription · checkout · webhook',  step:'route_billing'},
+      {id:'rt_analytics',name:'/api/analytics',     sub:'overview · events · live SSE',       step:'route_analytics'},
+      {id:'rt_admin',    name:'/api/admin',         sub:'logs · metrics · grants',             step:'route_admin'},
+      {id:'rt_prompt',   name:'/api/prompt-chat',   sub:'chat session · reset',               step:'route_prompt_chat'},
+    ]
+  },
+  {
+    id: 'middleware', label: 'Middleware', color: '#6b7280',
+    nodes: [
+      {id:'mw_logger',   name:'requestLogger',   sub:'trace ID · metrics · timing'},
+      {id:'mw_auth',     name:'authenticateToken',sub:'JWT verify · user lookup'},
+      {id:'mw_rate',     name:'rateLimits',       sub:'per-route limits · backoff'},
+      {id:'mw_validate', name:'validate',         sub:'schema validation'},
+    ]
+  },
+  {
+    id: 'services', label: 'Services', color: '#14b8a6',
+    nodes: [
+      {id:'svc_claude',  name:'claudeAgent',      sub:'chat · plan · prompts · regen',      steps:['claude_chat','claude_plan_gen','claude_prompt_gen','claude_question_gen','claude_regen_slide','claude_suggest_title','claude_new_slides']},
+      {id:'svc_img',     name:'imageGeneration',  sub:'Gemini Flash slide images',          steps:['nanobanana_slide_']},
+      {id:'svc_prompt',  name:'promptGenerator',  sub:'multi-turn prompt refinement',       steps:['prompt_generator']},
+      {id:'svc_stripe',  name:'stripeService',    sub:'credits · subscriptions · billing'},
+      {id:'svc_logger',  name:'logger',           sub:'structured logs → SQLite'},
+      {id:'svc_metrics', name:'metrics',          sub:'HTTP + AI call stats'},
+      {id:'svc_posthog', name:'posthogClient',    sub:'error tracking'},
+    ]
+  },
+  {
+    id: 'database', label: 'Database', color: '#f59e0b',
+    nodes: [
+      {id:'db_users',     name:'users',              sub:'id · email · oauth_ids · avatar'},
+      {id:'db_pres',      name:'presentations',      sub:'id · user_id · slides · status'},
+      {id:'db_messages',  name:'messages',           sub:'presentation_id · role · content'},
+      {id:'db_sessions',  name:'prompt_sessions',    sub:'user_id · history'},
+      {id:'db_subs',      name:'subscriptions',      sub:'plan · credits · stripe_ids'},
+      {id:'db_credits',   name:'credit_transactions',sub:'user_id · amount · type'},
+      {id:'db_logs',      name:'app_logs',           sub:'level · message · context'},
+      {id:'db_analytics', name:'analytics_events',   sub:'event_type · user_id · metadata'},
+    ]
+  },
+  {
+    id: 'external', label: 'External Services', color: '#f97316',
+    nodes: [
+      {id:'ext_anthropic',name:'Anthropic API',  sub:'claude-sonnet-4-6 · messages.create'},
+      {id:'ext_gemini',   name:'Google Gemini',  sub:'gemini-3.1-flash-image-preview'},
+      {id:'ext_stripe',   name:'Stripe API',     sub:'subscriptions · checkout · webhooks'},
+      {id:'ext_posthog',  name:'PostHog',        sub:'event capture · error tracking'},
+      {id:'ext_goauth',   name:'Google OAuth',   sub:'passport · profile · email'},
+      {id:'ext_metaauth', name:'Meta OAuth',     sub:'passport · facebook strategy'},
+      {id:'ext_tiktok',   name:'TikTok OAuth',   sub:'custom · open.tiktokapis.com'},
+    ]
+  },
+];
 
-// ─── State ──────────────────────────────────────────────────────────────────
+// ── State ────────────────────────────────────────────────────────────────────
 let allRequests = [];
 let nodeStatsMap = {};
 let activeFilter = 'all';
-let nodeFilter = '';
-let selectedNode = null;
+let nodeFilterId = '';
 let expandedTraces = new Set();
-let network = null;
-let networkNodes = null;
-let networkEdges = null;
+let selectedNodeId = null;
 
-// ─── Architecture Graph ─────────────────────────────────────────────────────
-const LAYER_COLORS = {
-  frontend: '#a855f7',
-  route: '#3b82f6',
-  middleware: '#6b7280',
-  service: '#14b8a6',
-  database: '#f59e0b',
-  external: '#f97316',
-};
+// ── Tab switching ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(tab + '-panel').classList.add('active');
+    btn.classList.add('active');
+  });
+});
 
-const NODE_DEFS = [
-  // Frontend pages
-  {id:'fe_home',      label:'Homepage\\n/',                    group:'frontend', step:null},
-  {id:'fe_login',     label:'Login\\n/login',                  group:'frontend', step:null},
-  {id:'fe_dashboard', label:'Dashboard\\n/dashboard',          group:'frontend', step:null},
-  {id:'fe_pres',      label:'Presentation\\n/presentations/:id',group:'frontend',step:null},
-  {id:'fe_prompt',    label:'Prompt Gen\\n/prompt-generator',  group:'frontend', step:null},
-  {id:'fe_onboard',   label:'Onboarding\\n/onboarding',        group:'frontend', step:null},
-  {id:'fe_pricing',   label:'Pricing\\n/pricing',              group:'frontend', step:null},
-  {id:'fe_profile',   label:'Profile\\n/profile',              group:'frontend', step:null},
-  {id:'fe_billing',   label:'Billing Success\\n/billing/success',group:'frontend',step:null},
-  {id:'fe_callback',  label:'Auth Callback\\n/auth/callback',  group:'frontend', step:null},
-  {id:'fe_analytics', label:'Analytics\\n/analytics',          group:'frontend', step:null},
-  // Backend routes
-  {id:'rt_auth',      label:'/api/auth',         group:'route', step:'route_auth'},
-  {id:'rt_pres',      label:'/api/presentations',group:'route', step:'route_presentations'},
-  {id:'rt_billing',   label:'/api/billing',      group:'route', step:'route_billing'},
-  {id:'rt_analytics', label:'/api/analytics',    group:'route', step:'route_analytics'},
-  {id:'rt_admin',     label:'/api/admin',        group:'route', step:'route_admin'},
-  {id:'rt_prompt',    label:'/api/prompt-chat',  group:'route', step:'route_prompt_chat'},
-  // Middleware
-  {id:'mw_auth',      label:'authenticateToken', group:'middleware', step:null},
-  {id:'mw_logger',    label:'requestLogger',     group:'middleware', step:null},
-  {id:'mw_rate',      label:'rateLimits',        group:'middleware', step:null},
-  {id:'mw_validate',  label:'validate',          group:'middleware', step:null},
-  // Services
-  {id:'svc_claude',   label:'claudeAgent',       group:'service', step:'claude_question_gen'},
-  {id:'svc_img',      label:'imageGeneration',   group:'service', step:'nanobanana_slide_0'},
-  {id:'svc_stripe',   label:'stripeService',     group:'service', step:null},
-  {id:'svc_logger',   label:'logger',            group:'service', step:null},
-  {id:'svc_metrics',  label:'metrics',           group:'service', step:null},
-  {id:'svc_posthog',  label:'posthogClient',     group:'service', step:null},
-  {id:'svc_prompt',   label:'promptGenerator',   group:'service', step:'prompt_generator'},
-  // Database tables
-  {id:'db_users',     label:'users',             group:'database', step:null},
-  {id:'db_pres',      label:'presentations',     group:'database', step:null},
-  {id:'db_messages',  label:'messages',          group:'database', step:null},
-  {id:'db_sessions',  label:'prompt_sessions',   group:'database', step:null},
-  {id:'db_subs',      label:'subscriptions',     group:'database', step:null},
-  {id:'db_credits',   label:'credit_transactions',group:'database',step:null},
-  {id:'db_logs',      label:'app_logs',          group:'database', step:null},
-  {id:'db_analytics', label:'analytics_events',  group:'database', step:null},
-  // External services
-  {id:'ext_anthropic',label:'Anthropic API',     group:'external', step:'claude_question_gen'},
-  {id:'ext_gemini',   label:'Google Gemini',     group:'external', step:'nanobanana_slide_0'},
-  {id:'ext_stripe',   label:'Stripe API',        group:'external', step:null},
-  {id:'ext_posthog',  label:'PostHog',           group:'external', step:null},
-  {id:'ext_goauth',   label:'Google OAuth',      group:'external', step:null},
-  {id:'ext_metaauth', label:'Meta OAuth',        group:'external', step:null},
-  {id:'ext_tiktok',   label:'TikTok OAuth',      group:'external', step:null},
-];
+// ── Architecture grid ─────────────────────────────────────────────────────────
+function buildArchGrid() {
+  const grid = document.getElementById('arch-grid');
+  grid.innerHTML = LAYERS.map(layer => {
+    const colLabel = \`<div class="arch-col-label" style="background:\${layer.color}22;color:\${layer.color};border:1px solid \${layer.color}44">\${layer.label}</div>\`;
+    const cards = layer.nodes.map(n => \`<div class="node-card" id="nc_\${n.id}"
+      style="background:\${layer.color}11;border-color:\${layer.color}44;color:\${layer.color}"
+      data-node="\${n.id}" onclick="selectNode('\${n.id}')">
+      <div class="node-name">\${esc(n.name)}</div>
+      <div class="node-sub" style="color:\${layer.color}99">\${esc(n.sub)}</div>
+      <div class="node-stats" id="ns_\${n.id}"></div>
+    </div>\`).join('');
+    return \`<div class="arch-col">\${colLabel}\${cards}</div>\`;
+  }).join('');
 
-const EDGE_DEFS = [
-  // Frontend → Routes (user flows)
-  ['fe_login','rt_auth'],['fe_dashboard','rt_pres'],['fe_dashboard','rt_auth'],
-  ['fe_pres','rt_pres'],['fe_prompt','rt_prompt'],['fe_onboard','rt_auth'],
-  ['fe_pricing','rt_billing'],['fe_profile','rt_auth'],['fe_billing','rt_billing'],
-  ['fe_callback','rt_auth'],['fe_analytics','rt_analytics'],['fe_analytics','rt_admin'],
-  // All routes go through middleware
-  ['mw_logger','rt_auth'],['mw_logger','rt_pres'],['mw_logger','rt_billing'],
-  ['mw_logger','rt_analytics'],['mw_logger','rt_admin'],['mw_logger','rt_prompt'],
-  ['mw_auth','rt_pres'],['mw_auth','rt_billing'],['mw_auth','rt_analytics'],
-  ['mw_auth','rt_admin'],['mw_auth','rt_prompt'],['mw_auth','rt_auth'],
-  ['mw_rate','rt_pres'],['mw_rate','rt_auth'],['mw_rate','rt_billing'],
-  ['mw_validate','rt_pres'],['mw_validate','rt_auth'],
-  // Routes → Services
-  ['rt_pres','svc_claude'],['rt_pres','svc_img'],['rt_pres','svc_stripe'],
-  ['rt_prompt','svc_prompt'],['rt_auth','svc_stripe'],['rt_billing','svc_stripe'],
-  ['rt_analytics','svc_logger'],['rt_admin','svc_logger'],['rt_admin','svc_metrics'],
-  ['svc_claude','svc_stripe'],['svc_prompt','svc_stripe'],
-  // Services → External
-  ['svc_claude','ext_anthropic'],['svc_prompt','ext_anthropic'],
-  ['svc_img','ext_gemini'],['svc_stripe','ext_stripe'],['svc_posthog','ext_posthog'],
-  ['rt_auth','ext_goauth'],['rt_auth','ext_metaauth'],['rt_auth','ext_tiktok'],
-  // Routes → DB
-  ['rt_pres','db_pres'],['rt_pres','db_messages'],['rt_pres','db_users'],
-  ['rt_auth','db_users'],['rt_billing','db_subs'],['rt_billing','db_credits'],
-  ['rt_analytics','db_analytics'],['rt_admin','db_logs'],
-  ['svc_stripe','db_subs'],['svc_stripe','db_credits'],
-  ['svc_logger','db_logs'],
-  // Services → DB
-  ['rt_prompt','db_sessions'],
-];
-
-function getNodeBaseColor(group) {
-  return LAYER_COLORS[group] || '#6b7280';
+  // Populate node filter select
+  const sel = document.getElementById('node-filter');
+  sel.innerHTML = '<option value="">All nodes</option>';
+  LAYERS.forEach(layer => {
+    if (['services','routes','external'].includes(layer.id)) {
+      layer.nodes.forEach(n => {
+        const opt = document.createElement('option');
+        opt.value = n.id; opt.textContent = n.name;
+        sel.appendChild(opt);
+      });
+    }
+  });
+  sel.onchange = () => { nodeFilterId = sel.value; renderFeed(); };
 }
 
-function getNodeHealthColor(nodeId, stats) {
-  const nodeDef = NODE_DEFS.find(n => n.id === nodeId);
-  if (!nodeDef || !nodeDef.step) return null; // no trace step = no health data
-
-  // For service nodes, aggregate matching steps
-  const matchingSteps = Object.entries(stats).filter(([step]) => {
-    if (nodeDef.id.startsWith('svc_claude') || nodeDef.id === 'ext_anthropic') {
-      return step.startsWith('claude_') || step === 'prompt_generator';
-    }
-    if (nodeDef.id === 'svc_img' || nodeDef.id === 'ext_gemini') {
-      return step.startsWith('nanobanana_');
-    }
-    if (nodeDef.id === 'svc_prompt') return step === 'prompt_generator';
-    return step === nodeDef.step;
-  });
-
-  if (matchingSteps.length === 0) return null;
-
-  let totalErrors = 0, totalCount = 0, maxAvgMs = 0;
-  for (const [, s] of matchingSteps) {
-    totalErrors += s.errors;
-    totalCount += s.count;
-    if (s.avgMs > maxAvgMs) maxAvgMs = s.avgMs;
-  }
-
-  if (totalErrors > 0) return '#ef4444';
-  if (maxAvgMs > 5000) return '#eab308';
-  if (totalCount > 0) return '#22c55e';
-  return null;
+function getNodeSteps(node) {
+  if (node.steps) return node.steps;
+  if (node.step) return [node.step];
+  return [];
 }
 
-function initNetwork() {
-  const container = document.getElementById('network');
-
-  const layerPositions = {
-    frontend: { level: 0 }, route: { level: 1 }, middleware: { level: 2 },
-    service: { level: 3 }, database: { level: 4 }, external: { level: 5 },
-  };
-
-  const groupCounts = {};
-  for (const n of NODE_DEFS) {
-    if (!groupCounts[n.group]) groupCounts[n.group] = 0;
-    groupCounts[n.group]++;
-  }
-  const groupIdx = {};
-  for (const n of NODE_DEFS) {
-    if (!groupIdx[n.group]) groupIdx[n.group] = 0;
-    n._idx = groupIdx[n.group]++;
-    n._total = groupCounts[n.group];
-  }
-
-  const nodes = new vis.DataSet(NODE_DEFS.map(n => {
-    const base = getNodeBaseColor(n.group);
-    return {
-      id: n.id,
-      label: n.label,
-      color: { background: base + '33', border: base, highlight: { background: base + '55', border: base } },
-      font: { color: '#e2e2f0', size: 11 },
-      shape: n.group === 'database' ? 'cylinder' : n.group === 'external' ? 'diamond' : 'box',
-      borderWidth: 1.5,
-      shadow: { enabled: true, color: base + '44', size: 8 },
-    };
-  }));
-
-  const edges = new vis.DataSet(EDGE_DEFS.map(([from, to], i) => ({
-    id: i, from, to,
-    arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-    color: { color: '#2a2a3a', highlight: '#7c6fff' },
-    width: 1,
-    smooth: { type: 'curvedCW', roundness: 0.1 },
-  })));
-
-  networkNodes = nodes;
-  networkEdges = edges;
-
-  const options = {
-    layout: {
-      hierarchical: {
-        direction: 'LR',
-        sortMethod: 'directed',
-        levelSeparation: 220,
-        nodeSpacing: 60,
-        blockShifting: true,
-        edgeMinimization: true,
-      },
-    },
-    physics: { enabled: false },
-    interaction: { hover: true, tooltipDelay: 100, navigationButtons: true, keyboard: true },
-    nodes: { margin: { top: 8, bottom: 8, left: 10, right: 10 } },
-    edges: { length: 200 },
-  };
-
-  network = new vis.Network(container, { nodes, edges }, options);
-
-  network.on('click', (params) => {
-    if (params.nodes.length > 0) {
-      selectedNode = params.nodes[0];
-      showNodeDetail(selectedNode);
-      nodeFilter = selectedNode;
-      document.getElementById('node-filter').value = selectedNode;
-      applyFilters();
-    } else {
-      selectedNode = null;
-      document.getElementById('node-detail-panel').innerHTML = '<p style="color:var(--muted);font-size:12px">Click a node to see details</p>';
-      nodeFilter = '';
-      document.getElementById('node-filter').value = '';
-      applyFilters();
-    }
+function matchNodeStats(nodeSteps, statsMap) {
+  let count = 0, totalMs = 0, errors = 0, lastError = null;
+  Object.entries(statsMap).forEach(([step, s]) => {
+    const match = nodeSteps.some(ns => step.startsWith(ns));
+    if (!match) return;
+    count += s.count;
+    if (s.avgMs && s.count) totalMs += s.avgMs * s.count;
+    errors += s.errors;
+    if (s.lastError && !lastError) lastError = s.lastError;
   });
-
-  network.on('hoverNode', (params) => {
-    const def = NODE_DEFS.find(n => n.id === params.node);
-    if (!def) return;
-    const stats = nodeStatsMap;
-    const stepData = def.step ? stats[def.step] : null;
-    let tooltip = def.label.replace(/\\n/g, ' ');
-    if (stepData) {
-      tooltip += '\\nRequests (5min): ' + stepData.count;
-      tooltip += '\\nAvg latency: ' + stepData.avgMs + 'ms';
-      if (stepData.lastError) tooltip += '\\nLast error: ' + stepData.lastError.slice(0, 60);
-    }
-    // vis.js shows title as tooltip
-    networkNodes.update({ id: params.node, title: tooltip });
-  });
-
-  setTimeout(() => network.fit({ animation: true }), 100);
-}
-
-function showNodeDetail(nodeId) {
-  const def = NODE_DEFS.find(n => n.id === nodeId);
-  if (!def) return;
-
-  const matchingSteps = Object.entries(nodeStatsMap).filter(([step]) => {
-    if (def.id === 'svc_claude' || def.id === 'ext_anthropic') return step.startsWith('claude_') || step === 'prompt_generator';
-    if (def.id === 'svc_img' || def.id === 'ext_gemini') return step.startsWith('nanobanana_');
-    if (def.id === 'svc_prompt') return step === 'prompt_generator';
-    return step === def.step;
-  });
-
-  let html = '<div class="node-detail">';
-  html += '<h3>' + def.label.replace(/\\n/g, ' · ') + '</h3>';
-  html += '<div class="stat-row"><span>Group</span><span class="stat-val" style="color:' + getNodeBaseColor(def.group) + '">' + def.group + '</span></div>';
-
-  if (matchingSteps.length > 0) {
-    let totalCount = 0, totalErrors = 0, totalMs = 0;
-    for (const [step, s] of matchingSteps) {
-      totalCount += s.count; totalErrors += s.errors;
-      if (s.avgMs && s.count) totalMs += s.avgMs * s.count;
-    }
-    const avgMs = totalCount > 0 ? Math.round(totalMs / totalCount) : 0;
-    html += '<div class="stat-row"><span>Requests (5min)</span><span class="stat-val">' + totalCount + '</span></div>';
-    html += '<div class="stat-row"><span>Avg latency</span><span class="stat-val">' + avgMs + 'ms</span></div>';
-    html += '<div class="stat-row"><span>Errors</span><span class="stat-val" style="color:' + (totalErrors > 0 ? 'var(--red)' : 'var(--green)') + '">' + totalErrors + '</span></div>';
-    for (const [step, s] of matchingSteps) {
-      if (s.lastError) {
-        html += '<div class="step-error">' + escHtml(s.lastError.slice(0, 120)) + '</div>';
-        break;
-      }
-    }
-  } else {
-    html += '<div style="color:var(--muted);font-size:12px;margin-top:4px">No activity yet</div>';
-  }
-  html += '</div>';
-  document.getElementById('node-detail-panel').innerHTML = html;
+  const avgMs = count > 0 ? Math.round(totalMs / count) : 0;
+  return {count, avgMs, errors, lastError};
 }
 
 function updateNodeColors() {
-  if (!networkNodes) return;
-  const updates = [];
-  for (const n of NODE_DEFS) {
-    const base = getNodeBaseColor(n.group);
-    const health = getNodeHealthColor(n.id, nodeStatsMap);
-    const color = health || base;
-    updates.push({
-      id: n.id,
-      color: {
-        background: color + '33',
-        border: color,
-        highlight: { background: color + '55', border: color },
-      },
-      shadow: { enabled: true, color: color + '44', size: health ? 12 : 8 },
+  LAYERS.forEach(layer => {
+    layer.nodes.forEach(n => {
+      const card = document.getElementById('nc_' + n.id);
+      const statsEl = document.getElementById('ns_' + n.id);
+      if (!card) return;
+      const steps = getNodeSteps(n);
+      if (steps.length === 0) { statsEl.innerHTML = ''; return; }
+      const {count, avgMs, errors, lastError} = matchNodeStats(steps, nodeStatsMap);
+      let healthColor = layer.color; // default = no activity
+      let statsHtml = '';
+      if (count > 0) {
+        if (errors > 0) healthColor = '#ef4444';
+        else if (avgMs > 5000) healthColor = '#eab308';
+        else healthColor = '#22c55e';
+        statsHtml = \`<span class="node-stat \${errors>0?'err':avgMs>5000?'slow':'ok'}">\${count} req</span><span class="node-stat">\${avgMs}ms avg</span>\`;
+        if (errors > 0) statsHtml += \`<span class="node-stat err">\${errors} err</span>\`;
+      }
+      card.style.borderColor = healthColor + '80';
+      card.style.boxShadow = count > 0 ? \`0 0 10px \${healthColor}20\` : '';
+      statsEl.innerHTML = statsHtml;
+
+      if (selectedNodeId === n.id) showNodeDetail(n.id);
     });
+  });
+}
+
+function selectNode(nodeId) {
+  if (selectedNodeId === nodeId) {
+    selectedNodeId = null;
+    nodeFilterId = '';
+    document.getElementById('node-filter').value = '';
+    document.querySelectorAll('.node-card').forEach(c => c.classList.remove('selected'));
+    document.getElementById('node-detail').innerHTML = '';
+    renderFeed();
+    return;
   }
-  networkNodes.update(updates);
-}
-
-// ─── Live Feed ──────────────────────────────────────────────────────────────
-function setFilter(f) {
-  activeFilter = f;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
-  applyFilters();
-}
-
-function applyFilters() {
-  nodeFilter = document.getElementById('node-filter').value;
+  selectedNodeId = nodeId;
+  document.querySelectorAll('.node-card').forEach(c => c.classList.remove('selected'));
+  const card = document.getElementById('nc_' + nodeId);
+  if (card) card.classList.add('selected');
+  nodeFilterId = nodeId;
+  document.getElementById('node-filter').value = nodeId;
+  showNodeDetail(nodeId);
   renderFeed();
+  // Switch to feed tab
+  document.querySelectorAll('.tab').forEach(t => { if(t.dataset.tab==='feed') t.click(); });
+}
+
+function findNode(id) {
+  for (const layer of LAYERS) {
+    const n = layer.nodes.find(n => n.id === id);
+    if (n) return {node:n, layer};
+  }
+  return null;
+}
+
+function showNodeDetail(nodeId) {
+  const found = findNode(nodeId);
+  if (!found) return;
+  const {node, layer} = found;
+  const steps = getNodeSteps(node);
+  const {count, avgMs, errors, lastError} = steps.length ? matchNodeStats(steps, nodeStatsMap) : {};
+
+  let html = \`<div class="detail-box">
+    <h3 style="color:\${layer.color}">\${esc(node.name)}</h3>
+    <div class="drow"><span>Layer</span><span class="dval" style="color:\${layer.color}">\${layer.label}</span></div>\`;
+  if (steps.length > 0 && count !== undefined) {
+    html += \`<div class="drow"><span>Requests (5min)</span><span class="dval">\${count}</span></div>\`;
+    html += \`<div class="drow"><span>Avg latency</span><span class="dval">\${avgMs}ms</span></div>\`;
+    html += \`<div class="drow"><span>Errors</span><span class="dval \${errors>0?'derr':''}">\${errors}</span></div>\`;
+    if (lastError) html += \`<div class="drow" style="flex-direction:column;gap:3px"><span>Last error</span><span class="dval derr" style="font-size:10px;font-family:monospace;word-break:break-all">\${esc(lastError.slice(0,150))}</span></div>\`;
+  } else {
+    html += '<div style="color:var(--muted);font-size:11px;margin-top:6px">No traced activity yet</div>';
+  }
+  html += '</div>';
+  document.getElementById('node-detail').innerHTML = html;
+}
+
+// ── Feed ─────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.fbtn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    activeFilter = btn.dataset.filter;
+    document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderFeed();
+  });
+});
+
+function nodeMatchesRequest(nodeId, req) {
+  const found = findNode(nodeId);
+  if (!found) return true;
+  const {node} = found;
+  const steps = getNodeSteps(node);
+  if (steps.length === 0) return false;
+  return req.steps.some(s => steps.some(ns => s.step.startsWith(ns)));
 }
 
 function renderFeed() {
   let rows = [...allRequests];
   if (activeFilter !== 'all') rows = rows.filter(r => r.status === activeFilter);
-  if (nodeFilter) {
-    const def = NODE_DEFS.find(n => n.id === nodeFilter);
-    if (def && def.step) {
-      rows = rows.filter(r => {
-        if (def.id === 'svc_claude' || def.id === 'ext_anthropic') {
-          return r.steps.some(s => s.step.startsWith('claude_') || s.step === 'prompt_generator');
-        }
-        if (def.id === 'svc_img' || def.id === 'ext_gemini') {
-          return r.steps.some(s => s.step.startsWith('nanobanana_'));
-        }
-        return r.steps.some(s => s.step === def.step);
-      });
-    }
-  }
+  if (nodeFilterId) rows = rows.filter(r => nodeMatchesRequest(nodeFilterId, r));
 
   const tbody = document.getElementById('feed-tbody');
-  tbody.innerHTML = rows.slice(0, 20).map(r => renderRow(r)).join('');
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">No matching requests</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.slice(0,20).map(r => renderRow(r)).join('');
 }
 
 function renderRow(r) {
-  const stepPills = r.steps.map(s =>
-    '<span class="step-pill ' + s.status + '">' + escHtml(shortStep(s.step)) + '</span>'
+  const pills = r.steps.map(s =>
+    \`<span class="pill \${s.status}">\${esc(shortStep(s.step))}</span>\`
   ).join('');
   const expanded = expandedTraces.has(r.traceId);
-  const detail = expanded ? renderTraceDetail(r) : '';
-  const dur = r.totalDuration != null ? r.totalDuration + 'ms' : r.status === 'in-progress' ? '<span style="color:var(--yellow)">…</span>' : '—';
+  const detail = expanded ? renderDetail(r) : '';
+  const dur = r.totalDuration != null ? r.totalDuration+'ms' : r.status==='in-progress' ? '<span style="color:var(--yellow)">…</span>' : '—';
   const ts = new Date(r.startTime).toLocaleTimeString();
-  return '<tr class="clickable" onclick="toggleTrace(\'' + r.traceId + '\')">'
-    + '<td>' + ts + '</td>'
-    + '<td style="max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(r.userId || '—') + '</td>'
-    + '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(r.method + ' ' + r.path) + '</td>'
-    + '<td><div class="step-pills">' + (stepPills || '<span style="color:var(--muted)">—</span>') + '</div>'
-    + (detail ? '<div class="trace-detail">' + detail + '</div>' : '') + '</td>'
-    + '<td><span class="status-badge ' + r.status + '">' + r.status.replace('-',' ') + '</span></td>'
-    + '<td>' + dur + '</td>'
-    + '</tr>';
+  const userId = r.userId ? r.userId.slice(0,12) : '—';
+  const path = (r.method||'') + ' ' + (r.path||'');
+  return \`<tr class="clickable" onclick="toggleTrace('\${r.traceId}')">
+    <td>\${ts}</td>
+    <td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace">\${esc(userId)}</td>
+    <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)">\${esc(path)}</td>
+    <td><div class="pills">\${pills||'<span class="pill">—</span>'}</div>\${detail}</td>
+    <td><span class="sbadge \${r.status}">\${r.status.replace('-',' ')}</span></td>
+    <td>\${dur}</td>
+  </tr>\`;
 }
 
-function renderTraceDetail(r) {
-  return r.steps.map(s => {
-    const icon = s.status === 'completed' ? '✓' : s.status === 'failed' ? '✗' : '●';
-    return '<div class="trace-step">'
-      + '<div class="step-icon ' + s.status + '">' + icon + '</div>'
-      + '<div class="step-info">'
-      + '<div class="step-name">' + escHtml(s.step) + '</div>'
-      + '<div class="step-meta">' + (s.duration_ms > 0 ? s.duration_ms + 'ms' : '') + '</div>'
-      + (s.error ? '<div class="step-error">' + escHtml(s.error.slice(0, 200)) + '</div>' : '')
-      + '</div></div>';
+function renderDetail(r) {
+  const steps = r.steps.map(s => {
+    const icon = s.status==='completed'?'✓':s.status==='failed'?'✗':'●';
+    return \`<div class="tstep">
+      <div class="tico \${s.status}">\${icon}</div>
+      <div style="flex:1">
+        <div class="tname">\${esc(s.step)}</div>
+        <div class="tmeta">\${s.duration_ms>0?s.duration_ms+'ms':''}</div>
+        \${s.error?\`<div class="terr">\${esc(s.error.slice(0,200))}</div>\`:''}
+      </div>
+    </div>\`;
   }).join('');
+  return \`<div class="trace-detail">\${steps||'<div class="tmeta">No steps recorded</div>'}</div>\`;
 }
 
-function toggleTrace(traceId) {
-  if (expandedTraces.has(traceId)) expandedTraces.delete(traceId);
-  else expandedTraces.add(traceId);
+function toggleTrace(id) {
+  if (expandedTraces.has(id)) expandedTraces.delete(id);
+  else expandedTraces.add(id);
   renderFeed();
 }
 
 function shortStep(step) {
-  const map = {
-    claude_question_gen: 'Q-Gen', claude_plan_gen: 'Plan', claude_prompt_gen: 'Prompt',
-    claude_chat: 'Chat', claude_regen_slide: 'Regen', claude_suggest_title: 'Title',
-    claude_new_slides: 'NewSlides', prompt_generator: 'PromptGen', full_flow: 'FullFlow',
-  };
-  if (step in map) return map[step];
-  if (step.startsWith('nanobanana_slide_')) return 'Slide ' + step.split('_').pop();
-  return step.slice(0, 10);
+  const m = {claude_question_gen:'Q-Gen',claude_plan_gen:'Plan',claude_prompt_gen:'Prompt',
+    claude_chat:'Chat',claude_regen_slide:'Regen',claude_suggest_title:'Title',
+    claude_new_slides:'NewSlides',prompt_generator:'PromptGen',full_flow:'FullFlow'};
+  if (m[step]) return m[step];
+  if (step.startsWith('nanobanana_slide_')) return 'Slide'+step.split('_').pop();
+  return step.slice(0,10);
 }
 
-// ─── Errors ─────────────────────────────────────────────────────────────────
+// ── Errors ────────────────────────────────────────────────────────────────────
 function renderErrors(errors) {
-  const container = document.getElementById('errors-container');
-  if (!errors || errors.length === 0) {
-    container.innerHTML = '<div class="empty">No errors in the last hour ✓</div>';
-    return;
+  const el = document.getElementById('errors-list');
+  if (!errors || !errors.length) {
+    el.innerHTML = '<div class="empty">No errors in the last hour ✓</div>'; return;
   }
-  container.innerHTML = errors.map(g => {
-    const failures = g.failures.slice(0, 5).map(f =>
-      '<div class="error-entry">'
-      + '<div class="err-msg">' + escHtml(f.error || 'Unknown error') + '</div>'
-      + '<div class="err-meta">' + new Date(f.timestamp).toLocaleTimeString() + ' · ' + escHtml(f.path || '') + (f.userId ? ' · ' + escHtml(f.userId) : '') + '</div>'
-      + '</div>'
+  el.innerHTML = errors.map(g => {
+    const failures = g.failures.slice(0,5).map(f =>
+      \`<div class="eentry">
+        <div class="emsg">\${esc(f.error||'Unknown error')}</div>
+        <div class="emeta">\${new Date(f.timestamp).toLocaleTimeString()} · \${esc(f.path||'')} \${f.userId?'· '+esc(f.userId.slice(0,10)):''}</div>
+      </div>\`
     ).join('');
-    return '<div class="error-group">'
-      + '<h3>' + escHtml(g.step) + ' <span class="count-badge">' + g.count + ' failures</span></h3>'
-      + failures
-      + '</div>';
+    return \`<div class="egroup">
+      <h3>\${esc(g.step)} <span class="ecnt">\${g.count} failures</span></h3>
+      \${failures}
+    </div>\`;
   }).join('');
 }
 
-// ─── DB Stats ───────────────────────────────────────────────────────────────
+// ── DB / Metrics ───────────────────────────────────────────────────────────────
 function renderDB(dbStats, snap) {
   const grid = document.getElementById('db-grid');
-  grid.innerHTML = Object.entries(dbStats).map(([t, n]) =>
-    '<div class="db-card"><div class="n">' + n.toLocaleString() + '</div><div class="label">' + t + '</div></div>'
+  grid.innerHTML = Object.entries(dbStats||{}).map(([t,n]) =>
+    \`<div class="dcard"><div class="n">\${Number(n).toLocaleString()}</div><div class="lbl">\${t}</div></div>\`
   ).join('');
 
-  const sec = document.getElementById('metrics-section');
-  if (!snap) { sec.innerHTML = ''; return; }
-  sec.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px">'
-    + metricCard('Uptime', snap.uptimeHuman || '—')
-    + metricCard('Total Requests', (snap.http?.totalRequests || 0).toLocaleString())
-    + metricCard('HTTP Errors', (snap.http?.totalErrors || 0).toLocaleString())
-    + metricCard('AI Calls', (snap.ai?.totalCalls || 0).toLocaleString())
-    + metricCard('Input Tokens', (snap.ai?.totalInputTokens || 0).toLocaleString())
-    + metricCard('Output Tokens', (snap.ai?.totalOutputTokens || 0).toLocaleString())
-    + '</div>';
-}
+  const mg = document.getElementById('metrics-grid');
+  if (snap) {
+    mg.innerHTML = [
+      ['Uptime', snap.uptimeHuman||'—'],
+      ['Total Requests', (snap.http?.totalRequests||0).toLocaleString()],
+      ['HTTP Errors', (snap.http?.totalErrors||0).toLocaleString()],
+      ['AI Calls', (snap.ai?.totalCalls||0).toLocaleString()],
+      ['Input Tokens', (snap.ai?.totalInputTokens||0).toLocaleString()],
+      ['Output Tokens', (snap.ai?.totalOutputTokens||0).toLocaleString()],
+      ['Avg AI Latency', (snap.ai?.avgLatencyMs||0)+'ms'],
+    ].map(([l,v]) => \`<div class="dcard"><div class="n" style="font-size:16px">\${v}</div><div class="lbl">\${l}</div></div>\`).join('');
 
-function metricCard(label, value) {
-  return '<div class="db-card"><div class="n" style="font-size:18px">' + value + '</div><div class="label">' + label + '</div></div>';
-}
-
-// ─── Node filter select population ─────────────────────────────────────────
-function populateNodeFilter() {
-  const sel = document.getElementById('node-filter');
-  const groups = ['service', 'route', 'external'];
-  sel.innerHTML = '<option value="">All nodes</option>'
-    + NODE_DEFS.filter(n => groups.includes(n.group)).map(n =>
-      '<option value="' + n.id + '">' + n.label.replace(/\\n/g, ' ') + '</option>'
-    ).join('');
-}
-
-// ─── Data refresh ────────────────────────────────────────────────────────────
-async function fetchData() {
-  try {
-    const r = await fetch(API('/api/data'));
-    if (!r.ok) return;
-    const data = await r.json();
-
-    allRequests = data.requests || [];
-    nodeStatsMap = {};
-    for (const s of (data.nodeStats || [])) nodeStatsMap[s.step] = s;
-
-    renderFeed();
-    renderErrors(data.errors);
-    renderDB(data.dbStats || {}, data.metrics);
-    updateNodeColors();
-    if (selectedNode) showNodeDetail(selectedNode);
-
-    document.getElementById('last-update').textContent = 'Updated ' + new Date().toLocaleTimeString();
-  } catch (e) {
-    document.getElementById('last-update').textContent = 'Connection error';
+    const ai = snap.ai?.byFunction||[];
+    const atbody = document.getElementById('ai-tbody');
+    atbody.innerHTML = ai.length ? ai.map(f =>
+      \`<tr><td>\${esc(f.fn)}</td><td>\${f.calls}</td><td>\${f.errors}</td><td>\${f.avgMs||0}ms</td><td>\${f.avgTokens||0}</td></tr>\`
+    ).join('') : '<tr><td colspan="5" class="empty">No AI calls yet</td></tr>';
   }
 }
 
-// ─── SSE for real-time feed ──────────────────────────────────────────────────
+// ── Data fetch ─────────────────────────────────────────────────────────────────
+async function fetchData() {
+  try {
+    const r = await fetch(api('/api/data'), {signal: AbortSignal.timeout(8000)});
+    if (!r.ok) {
+      setStatus('error', 'HTTP ' + r.status);
+      return;
+    }
+    const data = await r.json();
+    allRequests = data.requests || [];
+    nodeStatsMap = {};
+    for (const s of (data.nodeStats||[])) nodeStatsMap[s.step] = s;
+    renderFeed();
+    renderErrors(data.errors);
+    renderDB(data.dbStats||{}, data.metrics);
+    updateNodeColors();
+    setStatus('live', 'Updated ' + new Date().toLocaleTimeString());
+  } catch(e) {
+    setStatus('error', 'Fetch error: ' + e.message.slice(0,40));
+  }
+}
+
+function setStatus(state, text) {
+  const dot = document.getElementById('status-dot');
+  dot.className = state==='live' ? 'live' : state==='error' ? 'error' : '';
+  document.getElementById('last-update').textContent = text;
+}
+
+// ── SSE ────────────────────────────────────────────────────────────────────────
 function connectSSE() {
-  const es = new EventSource(API('/api/events'));
+  let es;
+  try {
+    es = new EventSource(api('/api/events'));
+  } catch(e) { return; }
+
+  es.onopen = () => setStatus('live', 'Live · ' + new Date().toLocaleTimeString());
+  es.onerror = () => {
+    setStatus('error', 'SSE disconnected — retrying…');
+    es.close();
+    setTimeout(connectSSE, 5000);
+  };
   es.onmessage = (e) => {
     try {
       const trace = JSON.parse(e.data);
       const idx = allRequests.findIndex(r => r.traceId === trace.traceId);
       if (idx >= 0) allRequests[idx] = trace;
       else allRequests.unshift(trace);
-      if (allRequests.length > 100) allRequests = allRequests.slice(0, 100);
-      // Update node stats from tracer push (partial, just re-fetch on interval for full stats)
+      if (allRequests.length > 100) allRequests.length = 100;
       renderFeed();
-      document.getElementById('last-update').textContent = 'Live · ' + new Date().toLocaleTimeString();
+      setStatus('live', 'Live · ' + new Date().toLocaleTimeString());
     } catch {}
   };
-  es.onerror = () => {
-    document.getElementById('live-dot').style.background = 'var(--red)';
-    setTimeout(connectSSE, 5000);
-    es.close();
-  };
-  es.onopen = () => { document.getElementById('live-dot').style.background = 'var(--green)'; };
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-function escHtml(str) {
-  if (!str) return '';
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ─── Init ─────────────────────────────────────────────────────────────────────
-initNetwork();
-populateNodeFilter();
+// ── Init ───────────────────────────────────────────────────────────────────────
+buildArchGrid();
 fetchData();
 connectSSE();
-setInterval(fetchData, 10000); // full refresh every 10s for stats
+setInterval(fetchData, 10000);
 </script>
 </body>
 </html>`;
