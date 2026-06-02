@@ -1,6 +1,6 @@
 // In-memory request trace store — last 100 requests, no persistence needed.
 
-const MAX_REQUESTS = 100;
+const MAX_REQUESTS = 500;
 
 // Map<traceId, RequestTrace>
 const store = new Map();
