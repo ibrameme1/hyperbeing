@@ -420,6 +420,7 @@ export default function Dashboard() {
   const [presentations, setPresentations] = useState([]);
   const [presLoading, setPresLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
+  const [fetchingUrls, setFetchingUrls] = useState([]);
   const [analysis, setAnalysis] = useState(null);
   const [showQuestionFlow, setShowQuestionFlow] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState([]);
@@ -502,12 +503,37 @@ export default function Dashboard() {
     if (!input.trim() && allAttachments.length === 0) return;
     setAnalyzing(true);
     setSubmitError('');
+
+    // Detect URLs in the input and fetch their content to enrich the brief
+    const urlRegex = /https?:\/\/[^\s,)>]+/g;
+    const detectedUrls = [...new Set(input.match(urlRegex) || [])].slice(0, 3);
+    let enrichedMessage = input.trim();
+
+    if (detectedUrls.length > 0) {
+      setFetchingUrls(detectedUrls);
+      const fetchedContents = await Promise.all(
+        detectedUrls.map(url =>
+          api.post('/presentations/fetch-url', { url })
+            .then(r => ({ url, domain: r.data.domain, content: r.data.content }))
+            .catch(() => null)
+        )
+      );
+      setFetchingUrls([]);
+
+      const urlContext = fetchedContents
+        .filter(Boolean)
+        .map(({ domain, content }) => `\n\n--- Content from ${domain} ---\n${content}\n---`)
+        .join('');
+
+      if (urlContext) enrichedMessage += urlContext;
+    }
+
     try {
       const { data } = await api.post('/presentations/analyze', {
-        message: input.trim(),
+        message: enrichedMessage,
         attachments: allAttachments.map(a => ({ type: a.type, name: a.name, data: a.data, mimeType: a.mimeType, category: a.category })),
       });
-      setPendingInput(input.trim());
+      setPendingInput(enrichedMessage);
       setPendingAttachments(allAttachments.map(a => ({ type: a.type, name: a.name, data: a.data, mimeType: a.mimeType, category: a.category })));
       setAnalysis(data);
       setShowQuestionFlow(true);
@@ -587,6 +613,31 @@ export default function Dashboard() {
   return (
     <>
     <AnimatePresence>
+      {fetchingUrls.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(16px)' }}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            className="rounded-3xl px-10 py-10 max-w-xs w-full mx-4 text-center shadow-2xl bg-white dark:bg-hb-surface"
+          >
+            <div className="w-14 h-14 rounded-2xl mx-auto mb-5 flex items-center justify-center"
+                 style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
+              <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
+                <Sparkles size={24} className="text-white" />
+              </motion.div>
+            </div>
+            <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-1">Reading your link</h3>
+            <p className="text-sm text-gray-500 dark:text-zinc-400">{fetchingUrls.map(u => { try { return new URL(u).hostname; } catch { return u; } }).join(', ')}</p>
+          </motion.div>
+        </motion.div>
+      )}
       {analyzing && <AnalyzingOverlay />}
     </AnimatePresence>
     <AnimatePresence>

@@ -37,6 +37,43 @@ function broadcast(presentationId, event) {
   });
 }
 
+// ─── Fetch URL content for use as brief context ───────────────────────────────
+router.post('/fetch-url', authenticateToken, async (req, res) => {
+  const { url } = req.body;
+  if (!url || !/^https?:\/\/.+/.test(url)) {
+    return res.status(400).json({ error: 'Valid URL required' });
+  }
+
+  try {
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HyperBeing/1.0; +https://hyperbeing.co)' },
+      signal: AbortSignal.timeout(12000),
+    });
+
+    if (!response.ok) {
+      return res.status(400).json({ error: `Site returned ${response.status}` });
+    }
+
+    const html = await response.text();
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<head[\s\S]*?<\/head>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+      .slice(0, 8000);
+
+    const domain = new URL(url).hostname;
+    logger.info('url fetched', { domain, chars: text.length });
+    res.json({ url, domain, content: text });
+  } catch (err) {
+    logger.warn('url fetch failed', { url, errorMessage: err.message });
+    res.status(400).json({ error: 'Could not read that URL. The site may block automated requests.' });
+  }
+});
+
 // ─── List presentations ────────────────────────────────────────────────────
 router.get('/', authenticateToken, (req, res) => {
   const rows = getDb()
