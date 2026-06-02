@@ -16,6 +16,7 @@ import analyticsRoutes from './routes/analytics.js';
 import adminRoutes from './routes/admin.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { logger } from './services/logger.js';
+import { getPostHog } from './services/posthogClient.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -107,10 +108,32 @@ app.use((err, req, res, next) => {
       stack: err.stack?.split('\n').slice(0, 8).join('\n'),
       requestId: req.requestId,
     });
+    const ph = getPostHog();
+    if (ph) {
+      const distinctId = req.user?.id ? String(req.user.id) : req.ip || 'anonymous';
+      ph.capture({
+        distinctId,
+        event: 'server_error',
+        properties: {
+          error_message: err.message,
+          error_name: err.name,
+          path: req.path,
+          method: req.method,
+          status,
+          request_id: req.requestId,
+        },
+      });
+    }
   }
   res.status(status).json({
     error: status >= 500 ? 'Internal server error' : (err.message || 'Request failed'),
   });
+});
+
+process.on('SIGTERM', async () => {
+  const ph = getPostHog();
+  if (ph) await ph.shutdown();
+  process.exit(0);
 });
 
 initDatabase();

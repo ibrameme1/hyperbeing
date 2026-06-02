@@ -11,6 +11,7 @@ import api from '../api/client';
 import OutOfCreditsModal from '../components/OutOfCreditsModal';
 import { useTheme } from '../contexts/ThemeContext';
 import { track } from '../utils/track';
+import { capture } from '../utils/posthog';
 import Logo from '../components/Logo';
 
 const ANALYZING_MESSAGES = [
@@ -501,6 +502,10 @@ export default function Dashboard() {
 
   async function handleSubmit() {
     if (!input.trim() && allAttachments.length === 0) return;
+    capture('prompt_submitted', {
+      has_attachments: allAttachments.length > 0,
+      aspect_ratio: selectedAspectRatio,
+    });
     setAnalyzing(true);
     setSubmitError('');
 

@@ -8,6 +8,7 @@ import {
 import SlideRenderer from './SlideRenderer';
 import { exportToPDF, exportImages } from '../utils/pdfExport';
 import api from '../api/client';
+import { capture } from '../utils/posthog';
 
 // Separate component so each item has its own wasDragging ref
 function FilmstripItem({ slide, idx, isCurrent, onGoTo }) {
@@ -181,6 +182,10 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       await api.post(`/presentations/${presentationId}/slides/${slideIndex}/regenerate`, {
         instruction: editInstruction.trim(),
         attachments: editAttachments.map(a => ({ data: a.data, mimeType: a.mimeType, name: a.name })),
+      });
+      capture('slide_edited', {
+        presentation_id: presentationId,
+        slide_index: slideIndex,
       });
       setEditInstruction('');
       setEditAttachments([]);

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../api/client';
+import { capture, identifyUser, resetPostHog } from '../utils/posthog';
 
 const AuthContext = createContext(null);
 
@@ -20,7 +21,11 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const stored = localStorage.getItem('hb_user');
     const token = localStorage.getItem('hb_token');
-    if (stored && token) setUser(JSON.parse(stored));
+    if (stored && token) {
+      const parsedUser = JSON.parse(stored);
+      setUser(parsedUser);
+      identifyUser(parsedUser);
+    }
     setLoading(false);
   }, []);
 
@@ -35,6 +40,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('hb_refresh_token', data.refreshToken);
     localStorage.setItem('hb_user', JSON.stringify(data.user));
     setUser(data.user);
+    identifyUser(data.user);
     return data.user;
   }, []);
 
@@ -44,6 +50,8 @@ export function AuthProvider({ children }) {
     localStorage.setItem('hb_refresh_token', data.refreshToken);
     localStorage.setItem('hb_user', JSON.stringify(data.user));
     setUser(data.user);
+    identifyUser(data.user);
+    capture('user_signed_up', { method: 'email' });
     return data.user;
   }, []);
 
@@ -53,6 +61,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('hb_user');
     setUser(null);
     setSubscription(null);
+    resetPostHog();
   }, []);
 
   const deleteAccount = useCallback(async () => {

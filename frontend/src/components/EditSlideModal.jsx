@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Wand2, Loader2 } from 'lucide-react';
 import SlideRenderer from './SlideRenderer';
 import api from '../api/client';
+import { capture } from '../utils/posthog';
 
 export default function EditSlideModal({ slide, presentationId, onClose, onUpdated }) {
   const [instruction, setInstruction] = useState('');
@@ -23,6 +24,11 @@ export default function EditSlideModal({ slide, presentationId, onClose, onUpdat
     try {
       await api.post(`/presentations/${presentationId}/slides/${slide.index}/regenerate`, {
         instruction: instruction.trim(),
+      });
+      capture('slide_edited', {
+        presentation_id: presentationId,
+        slide_index: slide.index,
+        source: 'modal',
       });
       onUpdated(slide.index);
       onClose();
