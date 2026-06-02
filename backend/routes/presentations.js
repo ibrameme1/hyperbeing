@@ -8,7 +8,8 @@ import { generateSlideImage } from '../services/imageGeneration.js';
 import { deductCredits, getOrCreateSubscription, CREDIT_COSTS, checkTokenBudget } from '../services/stripeService.js';
 import { validate, isString, isOptionalString, isEnum, isArray, isIntBetween } from '../middleware/validate.js';
 import { createPresentationLimiter, addSlidesLimiter, analyzeLimiter } from '../middleware/rateLimits.js';
-import { logger } from '../services/logger.js';
+import { logger, requestContext } from '../services/logger.js';
+import { tracer } from '../services/tracer.js';
 
 // Validates a single attachment object
 function validateAttachment(a) {
@@ -176,15 +177,18 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
   });
 
   const userId = req.user.id;
-  runFullFlow(id, message, attachments, userId).catch(err => {
+  const _traceId = requestContext.getStore()?.requestId;
+  runFullFlow(id, message, attachments, userId, _traceId).catch(err => {
     logger.error('slide flow failed', { errorMessage: err.message, stack: err.stack?.split('\n').slice(0,4).join('\n') });
     broadcast(id, { type: 'error', message: err.message });
     getDb().prepare(`UPDATE presentations SET status = 'error', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(id);
   });
 });
 
-async function runFullFlow(presentationId, message, attachments, userId = null) {
+async function runFullFlow(presentationId, message, attachments, userId = null, traceId = null) {
   const db = getDb();
+  const _t = Date.now();
+  tracer.recordStep(traceId, 'full_flow', 'started', 0);
 
   broadcast(presentationId, { type: 'plan_generating' });
 
@@ -344,6 +348,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null) 
     }
   } catch {}
 
+  tracer.recordStep(traceId, 'full_flow', 'completed', Date.now() - _t);
   broadcast(presentationId, { type: 'complete', total_slides: allSlides.length });
 }
 

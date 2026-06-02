@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
-import { logger } from './logger.js';
+import { logger, requestContext } from './logger.js';
+import { tracer } from './tracer.js';
 
 const MOCK_MODE = !process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY === 'demo';
 
@@ -18,6 +19,11 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
     await new Promise(r => setTimeout(r, delay));
     return generateRichPlaceholder(slideType, theme, slideIndex);
   }
+
+  const _tid = requestContext.getStore()?.requestId;
+  const _step = `nanobanana_slide_${slideIndex}`;
+  const _t = Date.now();
+  tracer.recordStep(_tid, _step, 'started', 0);
 
   const fullPrompt = buildFullPrompt(nanaBananaPrompt, slideType, theme, colorPalette);
 
@@ -49,6 +55,7 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
         .find(p => p.inlineData?.mimeType?.startsWith('image/'));
       if (imagePart) {
         logger.debug('nano banana image gen success', { slideIndex });
+        tracer.recordStep(_tid, _step, 'completed', Date.now() - _t);
         return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
       }
       logger.warn('nano banana returned no image', { slideIndex, attempt });
@@ -56,10 +63,12 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
       const isTransient = err.message.includes('fetch failed') || err.message.includes('429') || err.message.includes('503');
       logger.warn('nano banana image gen failed', { slideIndex, attempt, maxAttempts, errorMessage: err.message, isTransient });
       if (attempt < maxAttempts && isTransient) continue;
+      tracer.recordStep(_tid, _step, 'failed', Date.now() - _t, err.message);
     }
     break;
   }
 
+  tracer.recordStep(_tid, _step, 'completed', Date.now() - _t);
   return generateRichPlaceholder(slideType, theme, slideIndex);
 }
 

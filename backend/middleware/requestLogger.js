@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { logger, requestContext } from '../services/logger.js';
 import { metrics } from '../services/metrics.js';
+import { tracer } from '../services/tracer.js';
 
 /**
  * Assigns every request a UUID trace ID, runs the request inside an
@@ -22,6 +23,8 @@ export function requestLogger(req, res, next) {
   };
 
   requestContext.run(store, () => {
+    tracer.initRequest(requestId, null, req.method, req.path);
+
     res.on('finish', () => {
       const durationMs = Date.now() - startMs;
       const { statusCode } = res;
@@ -41,6 +44,12 @@ export function requestLogger(req, res, next) {
 
       if (durationMs > 8_000) {
         logger.warn('slow request', { status: statusCode, durationMs });
+      }
+
+      if (statusCode >= 500) {
+        tracer.failRequest(requestId, 'http_error', 'HTTP ' + statusCode);
+      } else {
+        tracer.completeRequest(requestId);
       }
     });
 

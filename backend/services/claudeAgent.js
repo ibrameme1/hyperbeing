@@ -1,8 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { jsonrepair } from 'jsonrepair';
 import { recordTokenUsage } from './stripeService.js';
-import { logger } from './logger.js';
+import { logger, requestContext } from './logger.js';
 import { metrics } from './metrics.js';
+import { tracer } from './tracer.js';
 
 function parseJSON(str) {
   try { return JSON.parse(str); } catch (e1) {
@@ -422,6 +423,10 @@ CRITICAL RULES:
 export async function chat(conversationHistory, userMessage, attachments = [], userId = null) {
   if (MOCK_MODE) return mockChat(conversationHistory);
 
+  const _tid = requestContext.getStore()?.requestId;
+  const _t = Date.now();
+  tracer.recordStep(_tid, 'claude_chat', 'started', 0);
+
   const userContent = buildUserContent(userMessage, attachments);
   const messages = [
     ...conversationHistory.map(m => ({ role: m.role, content: buildHistoryContent(m) })),
@@ -465,6 +470,7 @@ export async function chat(conversationHistory, userMessage, attachments = [], u
   const parsed = { message: messageText, ...metadata };
   logger.debug('claude chat parsed', { state: parsed.state, slideCount: parsed.slide_plan?.slides?.length });
 
+  tracer.recordStep(_tid, 'claude_chat', 'completed', Date.now() - _t);
   return parsed;
 }
 
@@ -480,6 +486,10 @@ export async function streamChat(conversationHistory, userMessage, attachments =
     }
     return result;
   }
+
+  const _tid = requestContext.getStore()?.requestId;
+  const _t = Date.now();
+  tracer.recordStep(_tid, 'claude_chat', 'started', 0);
 
   const userContent = buildUserContent(userMessage, attachments);
   const messages = [
@@ -550,6 +560,7 @@ export async function streamChat(conversationHistory, userMessage, attachments =
   }
   logger.info('claude stream chat complete', { durationMs: Date.now() - t0Chat });
 
+  tracer.recordStep(_tid, 'claude_chat', 'completed', Date.now() - _t);
   return { message: messageText, ...metadata };
 }
 
@@ -592,6 +603,10 @@ export async function analyzePresentation(message, attachments = [], userId = nu
     };
   }
 
+  const _tid = requestContext.getStore()?.requestId;
+  const _t = Date.now();
+  tracer.recordStep(_tid, 'claude_question_gen', 'started', 0);
+
   const userContent = buildUserContent(message, attachments);
   const t0 = Date.now();
 
@@ -611,16 +626,27 @@ export async function analyzePresentation(message, attachments = [], userId = nu
   const jsonText = raw.startsWith('```') ? raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '') : raw;
 
   try {
-    return JSON.parse(jsonText);
+    const result = JSON.parse(jsonText);
+    tracer.recordStep(_tid, 'claude_question_gen', 'completed', Date.now() - _t);
+    return result;
   } catch {
     const match = jsonText.match(/\{[\s\S]*\}/);
-    if (match) return JSON.parse(match[0]);
+    if (match) {
+      const result = JSON.parse(match[0]);
+      tracer.recordStep(_tid, 'claude_question_gen', 'completed', Date.now() - _t);
+      return result;
+    }
+    tracer.recordStep(_tid, 'claude_question_gen', 'failed', Date.now() - _t, 'Failed to parse analysis response');
     throw new Error('Failed to parse analysis response');
   }
 }
 
 export async function regenerateSlide(slide, instruction, presentationContext, userId = null) {
   if (MOCK_MODE) return mockRegenerateSlide(slide, instruction);
+
+  const _tid = requestContext.getStore()?.requestId;
+  const _t = Date.now();
+  tracer.recordStep(_tid, 'claude_regen_slide', 'started', 0);
 
   const slideInfo = { ...slide };
   delete slideInfo.image_data; // exclude base64 from JSON text block
@@ -680,10 +706,16 @@ Return ONLY the JSON object, nothing else.`,
     : raw;
 
   try {
-    return JSON.parse(jsonText);
+    const result = JSON.parse(jsonText);
+    tracer.recordStep(_tid, 'claude_regen_slide', 'completed', Date.now() - _t);
+    return result;
   } catch {
     const match = jsonText.match(/\{[\s\S]*\}/);
-    if (match) return JSON.parse(match[0]);
+    if (match) {
+      tracer.recordStep(_tid, 'claude_regen_slide', 'completed', Date.now() - _t);
+      return JSON.parse(match[0]);
+    }
+    tracer.recordStep(_tid, 'claude_regen_slide', 'failed', Date.now() - _t, 'Failed to parse updated slide from Claude');
     throw new Error('Failed to parse updated slide from Claude');
   }
 }
@@ -884,6 +916,10 @@ export async function generateCompactPlan(message, attachments, userId = null, c
     return { header, slides: [] };
   }
 
+  const _tid = requestContext.getStore()?.requestId;
+  const _t = Date.now();
+  tracer.recordStep(_tid, 'claude_plan_gen', 'started', 0);
+
   const userContent = buildUserContent(message, attachments);
   const t0 = Date.now();
   logger.info('claude compact plan start', { messageLen: message.length });
@@ -944,7 +980,11 @@ export async function generateCompactPlan(message, attachments, userId = null, c
   }
   logger.info('claude compact plan complete', { durationMs, totalSlides: slides.length });
 
-  if (!header) throw new Error('Compact plan returned no header');
+  if (!header) {
+    tracer.recordStep(_tid, 'claude_plan_gen', 'failed', Date.now() - _t, 'Compact plan returned no header');
+    throw new Error('Compact plan returned no header');
+  }
+  tracer.recordStep(_tid, 'claude_plan_gen', 'completed', Date.now() - _t);
   return { header, slides };
 }
 
@@ -958,6 +998,10 @@ export async function streamSlidePrompts(slides, header, message, attachments, c
     }
     return;
   }
+
+  const _tid = requestContext.getStore()?.requestId;
+  const _t = Date.now();
+  tracer.recordStep(_tid, 'claude_prompt_gen', 'started', 0);
 
   const outlineText = slides.map(s =>
     `Slide ${s.index} [${s.type}]: "${s.title}"${s.subtitle ? ` — ${s.subtitle}` : ''}. Key points: ${(s.key_points || []).join('; ')}`
@@ -1030,6 +1074,7 @@ Original brief: ${message}`;
     } catch {}
   }
   logger.info('claude prompt generation complete', { durationMs: Date.now() - t0 });
+  tracer.recordStep(_tid, 'claude_prompt_gen', 'completed', Date.now() - _t);
 }
 
 // ─── Streaming system prompt ────────────────────────────────────────────────
@@ -1250,6 +1295,10 @@ export async function streamSlidePlan(message, attachments, callbacks, userId = 
 export async function suggestTitle(context, userId = null) {
   if (MOCK_MODE) return 'Untitled Presentation';
 
+  const _tid = requestContext.getStore()?.requestId;
+  const _t = Date.now();
+  tracer.recordStep(_tid, 'claude_suggest_title', 'started', 0);
+
   const tTitle = Date.now();
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -1272,6 +1321,7 @@ Return only the title text, nothing else.`,
   }
   logger.info('claude suggest title complete', { durationMs: durationMsTitle });
 
+  tracer.recordStep(_tid, 'claude_suggest_title', 'completed', Date.now() - _t);
   return response.content[0].text.trim().replace(/^["']|["']$/g, '');
 }
 
@@ -1323,6 +1373,10 @@ USER REQUEST: ${description}
 
 ${countInstruction} Start index at ${startIndex}.`;
 
+  const _tid = requestContext.getStore()?.requestId;
+  const _t = Date.now();
+  tracer.recordStep(_tid, 'claude_new_slides', 'started', 0);
+
   logger.info('claude add-slides stream start', { count, startIndex });
   const tSlides = Date.now();
 
@@ -1372,4 +1426,5 @@ ${countInstruction} Start index at ${startIndex}.`;
     } catch {}
   }
   logger.info('claude add-slides stream complete', { durationMs: Date.now() - tSlides });
+  tracer.recordStep(_tid, 'claude_new_slides', 'completed', Date.now() - _t);
 }
