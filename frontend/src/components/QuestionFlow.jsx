@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, ArrowRight } from 'lucide-react';
+import { capture } from '../utils/posthog';
 
 export default function QuestionFlow({ analysis, onComplete, onCancel }) {
   const { contextual_questions = [], detected_type = '' } = analysis;
@@ -28,6 +29,12 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
   function handleNext() {
     if (!canProceed) return;
     const newAnswers = [...answers, { question: question.question, answer: selected }];
+    capture('modal_question_answered', {
+      question: question.question,
+      answer: selected,
+      question_index: currentIndex,
+      is_last: isLast,
+    });
 
     if (isLast) {
       onComplete(newAnswers);

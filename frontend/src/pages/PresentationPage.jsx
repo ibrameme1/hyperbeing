@@ -11,6 +11,7 @@ import LoadingScreen from '../components/LoadingScreen';
 import PlanRevealScreen from '../components/PlanRevealScreen';
 import PresentationViewer from '../components/PresentationViewer';
 import { track } from '../utils/track';
+import { capture } from '../utils/posthog';
 
 // ─── Chat Phase ────────────────────────────────────────────────────────────
 function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
@@ -522,12 +523,22 @@ export default function PresentationPage() {
           return next.sort((a, b) => a.index - b.index);
         });
         setGenerationStage(5);
+        capture('slide_generated', {
+          presentation_id: presId,
+          slide_index: event.slide.index,
+          slide_type: event.slide.type,
+        });
       }
 
       if (event.type === 'slide_error') {
         setGeneratedSlides(prev =>
           prev.map(s => s.index === event.index ? { ...s, status: 'error' } : s)
         );
+        capture('slide_generation_failed', {
+          presentation_id: presId,
+          slide_index: event.index,
+          error_message: event.message || 'slide_error event received',
+        });
       }
 
       if (event.type === 'slides_adding') {
@@ -556,6 +567,10 @@ export default function PresentationPage() {
       if (event.type === 'error') {
         clearInterval(stageTimer);
         console.error('Generation error:', event.message);
+        capture('slide_generation_failed', {
+          presentation_id: presId,
+          error_message: event.message || 'generation_error event received',
+        });
       }
     };
 
