@@ -339,6 +339,18 @@ router.get('/events', (req, res) => {
   });
 });
 
+// ── DELETE /api/analytics/users/:userId ──────────────────────────────────────
+router.delete('/users/:userId', (req, res) => {
+  const db = getDb();
+  const { userId } = req.params;
+  const user = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  // ON DELETE CASCADE handles all related rows (presentations, messages, subscriptions, etc.)
+  db.prepare('DELETE FROM analytics_events WHERE user_id = ?').run(userId);
+  db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  res.json({ message: 'User deleted', userId });
+});
+
 // ── PATCH /api/analytics/users/:userId/credits ────────────────────────────────
 router.patch('/users/:userId/credits', (req, res) => {
   const db = getDb();
