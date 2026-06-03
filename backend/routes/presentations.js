@@ -652,11 +652,10 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
 
   const regenAspectRatio = pres.aspect_ratio || '16:9';
 
-  // Build an edit-focused prompt: pic1 = current slide, changes = user instruction
+  // Build the regeneration prompt — user instruction leads, slide context follows
   const hasCurrentImage = slideForPrompt.image_data && !slideForPrompt.image_data.startsWith('data:image/svg');
-  const editPrompt = hasCurrentImage
-    ? `EDIT INSTRUCTION: ${instruction.trim()}\n\nApply the above change to the presentation slide shown in the first reference image (pic1). Keep EVERYTHING else identical — the layout, composition, color palette, typography style, background, and overall design language. Do not redesign from scratch. Edit only what the instruction specifies.`
-    : `${slideForPrompt.nano_banana_prompt || slideForPrompt.image_prompt || slideForPrompt.title}\n\nAdditional instruction: ${instruction.trim()}`;
+  const baseContext = slideForPrompt.nano_banana_prompt || slideForPrompt.image_prompt || slideForPrompt.title;
+  const editPrompt = `${instruction.trim()}\n\nSlide context: ${baseContext}`;
 
   // pic1 = current rendered slide; pic2, pic3… = anything the user uploaded in the edit bar
   let attachedImages = [];

@@ -11,7 +11,7 @@ import api from '../api/client';
 import { capture } from '../utils/posthog';
 
 // Separate component so each item has its own wasDragging ref
-function FilmstripItem({ slide, idx, isCurrent, onGoTo }) {
+function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry }) {
   const wasDragging = useRef(false);
 
   return (
@@ -42,8 +42,15 @@ function FilmstripItem({ slide, idx, isCurrent, onGoTo }) {
           </div>
         )}
         {slide.status === 'error' && (
-          <div className="absolute inset-0 bg-red-900/60 flex items-center justify-center rounded-lg">
-            <AlertTriangle size={14} className="text-red-300" />
+          <div className="absolute inset-0 bg-red-900/70 flex flex-col items-center justify-center gap-1.5 rounded-lg">
+            <AlertTriangle size={12} className="text-red-300" />
+            <button
+              onPointerUp={e => { e.stopPropagation(); if (!wasDragging.current) onRetry(idx); }}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors text-white text-[9px] font-semibold leading-none"
+            >
+              <RefreshCw size={8} />
+              Retry
+            </button>
           </div>
         )}
       </div>
@@ -486,6 +493,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               idx={idx}
               isCurrent={idx === current}
               onGoTo={goTo}
+              onRetry={handleRetrySlide}
             />
           ))}
 

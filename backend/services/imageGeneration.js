@@ -60,10 +60,15 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
       }
       logger.warn('nano banana returned no image', { slideIndex, attempt });
     } catch (err) {
-      const isTransient = err.message.includes('fetch failed') || err.message.includes('429') || err.message.includes('503');
-      logger.warn('nano banana image gen failed', { slideIndex, attempt, maxAttempts, errorMessage: err.message, isTransient });
-      if (attempt < maxAttempts && isTransient) continue;
-      tracer.recordStep(_tid, _step, 'failed', Date.now() - _t, err.message);
+      const msg = err.message || '';
+      const isTransient = msg.includes('fetch failed') || msg.includes('503')
+        || msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('Resource has been exhausted');
+      logger.warn('nano banana image gen failed', { slideIndex, attempt, maxAttempts, errorMessage: msg, isTransient });
+      if (attempt < maxAttempts && isTransient) {
+        await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000)); // 2s, 4s, 8s
+        continue;
+      }
+      tracer.recordStep(_tid, _step, 'failed', Date.now() - _t, msg);
     }
     break;
   }
