@@ -401,12 +401,20 @@ export default function PresentationPage() {
   const [messages, setMessages] = useState([]);
   const [phase, setPhase] = useState(initIsCompleted ? 'viewing' : 'loading');
 
-  // For completed presentations opened from dashboard, show a skeleton slide immediately
-  const [generatedSlides, setGeneratedSlides] = useState(
-    initIsCompleted
-      ? [{ index: 0, type: 'content', title: '', status: 'generating', image_data: null }]
-      : []
-  );
+  // For completed presentations opened from dashboard, show skeleton wireframes immediately.
+  // Use status:'complete' with null image_data so SlideRenderer shows a pulse skeleton
+  // without triggering the "Generating slide…" overlay.
+  // First slide uses the thumbnail from the dashboard card (already cached) for instant recognition.
+  const [generatedSlides, setGeneratedSlides] = useState(() => {
+    if (!initIsCompleted) return [];
+    return Array.from({ length: 8 }, (_, i) => ({
+      index: i,
+      type: 'content',
+      title: '',
+      status: 'complete',
+      image_data: i === 0 ? (initPres?.thumbnail || null) : null,
+    }));
+  });
   const [totalSlides, setTotalSlides] = useState(0);
   const [generationStage, setGenerationStage] = useState(0);
   const [slidePlan, setSlidePlan] = useState([]);
