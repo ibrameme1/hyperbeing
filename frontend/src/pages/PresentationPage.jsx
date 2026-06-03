@@ -13,6 +13,86 @@ import PresentationViewer from '../components/PresentationViewer';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
 
+// ─── Generating messages ───────────────────────────────────────────────────
+const GENERATING_MESSAGES = [
+  'Nova is reading your mind… 🔮',
+  'Crafting slides pixel by pixel…',
+  'Good things take time ⏳',
+  'Consulting the design spirits…',
+  'Making it look expensive…',
+  'Aligning every atom carefully…',
+  'Adding magic sprinkles ✨',
+  'Your future audience will thank you…',
+  'Professional quality in progress…',
+  'Almost presentation-ready…',
+];
+
+// ─── Generating screen ─────────────────────────────────────────────────────
+function GeneratingScreen() {
+  const [msgIdx, setMsgIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setMsgIdx(i => (i + 1) % GENERATING_MESSAGES.length), 2800);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <div
+      className="h-screen flex flex-col items-center justify-center relative overflow-hidden"
+      style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
+    >
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-1/3 left-1/3 w-96 h-96 rounded-full opacity-20 animate-float"
+             style={{ background: 'radial-gradient(circle, #7b61ff 0%, transparent 70%)' }} />
+        <div className="absolute bottom-1/3 right-1/3 w-80 h-80 rounded-full opacity-15 animate-float"
+             style={{ background: 'radial-gradient(circle, #00b4ff 0%, transparent 70%)', animationDelay: '2s' }} />
+      </div>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="flex flex-col items-center gap-6 z-10 px-6 text-center"
+      >
+        <div className="relative">
+          <motion.div
+            animate={{ scale: [1, 1.15, 1], opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+            className="absolute inset-0 rounded-3xl blur-xl"
+            style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+          />
+          <div className="relative w-16 h-16 rounded-3xl flex items-center justify-center"
+               style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+            <Sparkles size={28} className="text-white" />
+          </div>
+        </div>
+        <div className="flex flex-col items-center gap-2">
+          <p className="text-white font-bold text-lg">Nova is crafting your presentation</p>
+          <AnimatePresence mode="wait">
+            <motion.p
+              key={msgIdx}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.35 }}
+              className="text-white/50 text-sm min-h-[20px]"
+            >
+              {GENERATING_MESSAGES[msgIdx]}
+            </motion.p>
+          </AnimatePresence>
+        </div>
+        <div className="flex gap-1.5 mt-1">
+          {[0, 1, 2].map(i => (
+            <motion.div
+              key={i}
+              animate={{ scale: [1, 1.4, 1], opacity: [0.3, 1, 0.3] }}
+              transition={{ duration: 1.4, repeat: Infinity, delay: i * 0.22 }}
+              className="w-2 h-2 rounded-full bg-white/60"
+            />
+          ))}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 // ─── Chat Phase ────────────────────────────────────────────────────────────
 function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
   const [input, setInput] = useState('');
@@ -334,10 +414,12 @@ export default function PresentationPage() {
       try {
         const { data } = await api.get(`/presentations/${presId}`);
         if (data.presentation.status === 'completed' && data.presentation.slides_data) {
-          stopPolling();
-          // Merge: DB slides fill in any gaps; _edited slides in frontend state win
+          const dbSlides = data.presentation.slides_data;
+          // Stop polling only when all slides are done (supports add-slides mid-session)
+          const allDone = dbSlides.every(s => s.status === 'complete' || s.status === 'error');
+          if (allDone) stopPolling();
+          // Merge: DB slides fill in any gaps; _edited / complete slides in frontend state win
           setGeneratedSlides(prev => {
-            const dbSlides = data.presentation.slides_data;
             const frontendByIndex = new Map(prev.map(s => [s.index, s]));
             const merged = dbSlides.map(dbSlide => {
               const fe = frontendByIndex.get(dbSlide.index);
@@ -347,7 +429,7 @@ export default function PresentationPage() {
             });
             return merged.sort((a, b) => a.index - b.index);
           });
-          setTotalSlides(data.presentation.slides_data.length);
+          setTotalSlides(dbSlides.length);
           // Don't interrupt plan_reveal — let its onDone() handle the transition
           setPhase(p => p === 'plan_reveal' ? p : 'viewing');
         } else if (data.presentation.status === 'generating' && data.presentation.slides_data) {
@@ -385,7 +467,9 @@ export default function PresentationPage() {
       if (data.presentation.status === 'completed' && data.presentation.slides_data) {
         setGeneratedSlides(data.presentation.slides_data);
         setPhase('viewing');
-        startSSE(id); // stay subscribed for slide_updated events
+        startSSE(id); // stay subscribed for slide_updated / slide_ready events
+        // If add-slides is still running (some slides are still generating), poll until they complete
+        if (data.presentation.slides_data.some(s => s.status === 'generating')) startPolling(id);
       } else if (data.presentation.status === 'generating' || data.presentation.status === 'processing') {
         const planSlides = data.presentation.slide_plan?.slides || [];
         const completedSlides = data.presentation.slides_data || [];
@@ -654,39 +738,7 @@ export default function PresentationPage() {
   }
 
   if (phase === 'generating') {
-    return (
-      <div
-        className="h-screen flex flex-col items-center justify-center relative overflow-hidden"
-        style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
-      >
-        {/* Ambient glows */}
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-1/3 left-1/3 w-96 h-96 rounded-full opacity-20 animate-float"
-               style={{ background: 'radial-gradient(circle, #7b61ff 0%, transparent 70%)' }} />
-          <div className="absolute bottom-1/3 right-1/3 w-80 h-80 rounded-full opacity-15 animate-float"
-               style={{ background: 'radial-gradient(circle, #00b4ff 0%, transparent 70%)', animationDelay: '2s' }} />
-        </div>
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="flex flex-col items-center gap-5 z-10"
-        >
-          <div className="relative">
-            <motion.div
-              animate={{ scale: [1, 1.15, 1], opacity: [0.5, 1, 0.5] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-              className="absolute inset-0 rounded-3xl blur-xl"
-              style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
-            />
-            <div className="relative w-16 h-16 rounded-3xl flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-              <Sparkles size={28} className="text-white" />
-            </div>
-          </div>
-          <p className="text-white/70 text-base font-semibold">Nova is planning your presentation…</p>
-        </motion.div>
-      </div>
-    );
+    return <GeneratingScreen />;
   }
 
   if (phase === 'plan_reveal') {

@@ -431,6 +431,7 @@ export default function Dashboard() {
   const [currentPlan, setCurrentPlan] = useState('free');
   const [isAdmin, setIsAdmin] = useState(false);
   const [showOutOfCredits, setShowOutOfCredits] = useState(false);
+  const [creatingPresentation, setCreatingPresentation] = useState(false);
   const textareaRef = useRef(null);
 
   function refreshCredits() {
@@ -480,7 +481,7 @@ export default function Dashboard() {
             const stillGenerating = updated.some(p => p.status === 'generating' || p.status === 'processing');
             if (!stillGenerating) clearInterval(statusInterval);
           });
-        }, 4000);
+        }, 2000);
       }
     }
 
@@ -557,6 +558,7 @@ export default function Dashboard() {
 
   async function handleQuestionComplete(answers) {
     setShowQuestionFlow(false);
+    setCreatingPresentation(true);
     setSubmitError('');
 
     const qaSection = answers.length > 0 ? `\n\nPREFLIGHT ANSWERS:\n${answers.map(a => `- ${a.question}: ${a.answer}`).join('\n')}` : '';
@@ -571,6 +573,7 @@ export default function Dashboard() {
       track('presentation_created', { presentation_id: data.presentation.id, aspect_ratio: selectedAspectRatio });
       navigate(`/presentations/${data.presentation.id}`);
     } catch (err) {
+      setCreatingPresentation(false);
       if (err.response?.status === 402) {
         setShowOutOfCredits(true);
         track('out_of_credits', { page: 'dashboard' });
@@ -644,6 +647,35 @@ export default function Dashboard() {
         </motion.div>
       )}
       {analyzing && <AnalyzingOverlay />}
+      {creatingPresentation && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(16px)' }}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            className="rounded-3xl px-10 py-10 max-w-xs w-full mx-4 text-center shadow-2xl bg-white dark:bg-hb-surface"
+          >
+            <div
+              className="w-16 h-16 rounded-2xl mx-auto mb-5 flex items-center justify-center"
+              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+            >
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: 'linear' }}
+              >
+                <Sparkles size={26} className="text-white" />
+              </motion.div>
+            </div>
+            <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Starting your presentation</h3>
+            <p className="text-sm text-gray-500 dark:text-zinc-400">Nova is getting ready…</p>
+          </motion.div>
+        </motion.div>
+      )}
     </AnimatePresence>
     <AnimatePresence>
       {showOutOfCredits && (
