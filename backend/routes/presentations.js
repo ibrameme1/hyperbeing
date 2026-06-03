@@ -909,7 +909,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       const current0 = JSON.parse(presRow0.slides_data);
       const trimmed = current0.filter(s => s.status !== 'generating' || newSlideDefs.some(d => d.index === s.index));
       if (trimmed.length !== current0.length) {
-        db.prepare(`UPDATE presentations SET slides_data = ? WHERE id = ?`).run(JSON.stringify(trimmed), req.params.id);
+        db.prepare(`UPDATE presentations SET slides_data = ? WHERE id = ? AND user_id = ?`).run(JSON.stringify(trimmed), req.params.id, req.user.id);
         broadcast(req.params.id, { type: 'slides_trimmed', keep_indices: newSlideDefs.map(d => d.index) });
       }
 
