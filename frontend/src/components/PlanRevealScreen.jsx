@@ -16,6 +16,8 @@ const TYPE_LABELS = {
 const ROW_INTERVAL_MS = 180;
 
 export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone }) {
+  // Use slidePlans.length as fallback if totalSlides wasn't broadcast (header parse failed)
+  const effectiveTotal = totalSlides || slidePlans.length;
   const [showFooter, setShowFooter] = useState(false);
   // visibleCount controls how many rows are shown — increments 1-by-1 via timer
   const [visibleCount, setVisibleCount] = useState(0);
@@ -61,14 +63,14 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
   }, [slidePlans.length]);
 
   const visibleSlides = slidePlans.slice(0, visibleCount);
-  const allRevealed = visibleCount >= totalSlides && totalSlides > 0;
+  const allRevealed = visibleCount >= effectiveTotal && effectiveTotal > 0;
 
   // Auto-advance once all rows have been revealed on screen
   // Give at least 3s to read — scale up with slide count (200ms per slide, capped at 6s)
   useEffect(() => {
     if (!allRevealed) return;
     setShowFooter(true);
-    const holdMs = Math.min(Math.max(totalSlides * 200, 3000), 6000);
+    const holdMs = Math.min(Math.max(effectiveTotal * 200, 3000), 6000);
     advanceTimer.current = setTimeout(() => {
       if (!calledDone.current) { calledDone.current = true; onDone(); }
     }, holdMs);
@@ -87,7 +89,7 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
     if (!calledDone.current) { calledDone.current = true; onDone(); }
   }
 
-  const pendingCount = Math.max(0, totalSlides - visibleSlides.length);
+  const pendingCount = Math.max(0, effectiveTotal - visibleSlides.length);
 
   return (
     <div
@@ -122,7 +124,7 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
           transition={{ duration: 0.45, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
           className="text-white text-xl font-bold text-center"
         >
-          Nova crafted {totalSlides} slide{totalSlides !== 1 ? 's' : ''} for you
+          Nova crafted {effectiveTotal} slide{effectiveTotal !== 1 ? 's' : ''} for you
         </motion.h1>
 
         {/* Slide list — rows appear one-by-one via visibleCount timer */}
@@ -183,7 +185,7 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
 
         {/* Status line */}
         <AnimatePresence mode="wait">
-          {!allRevealed && totalSlides > 0 ? (
+          {!allRevealed && effectiveTotal > 0 ? (
             <motion.p
               key="planning"
               initial={{ opacity: 0 }}
@@ -191,7 +193,7 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
               exit={{ opacity: 0 }}
               className="text-white/35 text-sm"
             >
-              Planning slide {visibleSlides.length + 1} of {totalSlides}…
+              Planning slide {visibleSlides.length + 1} of {effectiveTotal}…
             </motion.p>
           ) : showFooter ? (
             <motion.p
@@ -205,14 +207,14 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
           ) : null}
         </AnimatePresence>
 
-        {/* Tap to skip hint */}
+        {/* Tap to skip hint — always visible so users know they can skip */}
         <motion.p
           initial={{ opacity: 0 }}
-          animate={{ opacity: 0.3 }}
-          transition={{ delay: 0.8 }}
-          className="text-white/30 text-[11px] absolute bottom-6"
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.6 }}
+          className="text-white/50 text-xs font-medium tracking-wide border border-white/20 rounded-full px-4 py-1.5"
         >
-          tap to skip
+          Tap anywhere to skip
         </motion.p>
       </div>
     </div>
