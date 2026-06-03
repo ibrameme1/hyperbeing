@@ -450,37 +450,36 @@ export default function PresentationPage() {
         const count = event.total_slides || 0;
         if (count > 0) {
           setTotalSlides(count);
-          setGeneratedSlides(Array.from({ length: count }, (_, i) => ({
-            index: i, type: 'content', title: `Slide ${i + 1}`,
-            status: 'generating', image_data: null,
-          })));
-          setSlidePlan([]);
+          // Only initialise placeholders if nothing has arrived yet — slide_ready events or
+          // plan_slide_streamed may have already populated generatedSlides (synthetic-header path)
+          setGeneratedSlides(prev => {
+            if (prev.length > 0) return prev;
+            return Array.from({ length: count }, (_, i) => ({
+              index: i, type: 'content', title: `Slide ${i + 1}`,
+              status: 'generating', image_data: null,
+            }));
+          });
+          // Never clear slidePlan here — it may already be fully built from plan_slide_streamed
           setPhase(p => (p === 'viewing' || p === 'plan_reveal') ? p : 'plan_reveal');
         }
       }
 
       if (event.type === 'plan_slide_streamed') {
-        // Each slide's title/type arrives as Claude streams it — add to the reveal list
+        // Each slide's title/type arrives as Claude streams it — build the reveal list
         setSlidePlan(prev => {
           if (prev.some(s => s.index === event.slide.index)) return prev;
           return [...prev, event.slide].sort((a, b) => a.index - b.index);
         });
-        setGeneratedSlides(prev => {
-          const exists = prev.some(s => s.index === event.slide.index);
-          if (exists) {
-            return prev.map(s => s.index === event.slide.index
-              ? { ...s, type: event.slide.type, title: event.slide.title }
-              : s);
-          }
-          // plan_started may not have fired (header parse failed) — add placeholder now
-          return [...prev, {
-            index: event.slide.index,
-            type: event.slide.type || 'content',
-            title: event.slide.title || `Slide ${event.slide.index + 1}`,
-            status: 'generating',
-            image_data: null,
-          }].sort((a, b) => a.index - b.index);
-        });
+        // Update title/type on an existing placeholder but never ADD a new entry here —
+        // slides are initialised all-at-once by plan_started / plan_ready / onDone()
+        // so the viewer never shows them arriving one-by-one.
+        setGeneratedSlides(prev =>
+          prev.some(s => s.index === event.slide.index)
+            ? prev.map(s => s.index === event.slide.index
+                ? { ...s, type: event.slide.type, title: event.slide.title }
+                : s)
+            : prev
+        );
         // Fallback: switch to plan_reveal if plan_started was somehow missed
         setPhase(p => (p === 'viewing' || p === 'plan_reveal') ? p : 'plan_reveal');
       }
@@ -696,17 +695,25 @@ export default function PresentationPage() {
         totalSlides={totalSlides}
         slidePlans={slidePlan}
         onDone={() => {
-          // If generatedSlides placeholders were never created (header never fired),
-          // build them from slidePlan so the viewer has something to show
+          // Ensure ALL N slots exist in the viewer before switching — existing entries
+          // (including any already-completed slide_ready slides) are preserved; gaps are
+          // filled as 'generating' placeholders from slidePlan metadata.
           setGeneratedSlides(prev => {
-            if (prev.length > 0) return prev;
-            return slidePlan.map(s => ({
-              index: s.index,
-              type: s.type || 'content',
-              title: s.title || `Slide ${s.index + 1}`,
-              status: 'generating',
-              image_data: null,
-            })).sort((a, b) => a.index - b.index);
+            const targetCount = totalSlides || slidePlan.length;
+            if (!targetCount) return prev;
+            const byIndex = new Map(prev.map(s => [s.index, s]));
+            const planByIndex = new Map(slidePlan.map(s => [s.index, s]));
+            return Array.from({ length: targetCount }, (_, i) => {
+              if (byIndex.has(i)) return byIndex.get(i);
+              const plan = planByIndex.get(i);
+              return {
+                index: i,
+                type: plan?.type || 'content',
+                title: plan?.title || `Slide ${i + 1}`,
+                status: 'generating',
+                image_data: null,
+              };
+            });
           });
           setPhase('viewing');
         }}
