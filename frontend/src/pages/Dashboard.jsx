@@ -410,6 +410,9 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [input, setInput] = useState('');
 
+  // User-scoped cache key prevents stale data from a previous user ever being shown
+  const presCacheKey = `hb_presentations_${user?.id}`;
+
   const prefs = (() => { try { return JSON.parse(localStorage.getItem('hb_prefs') || 'null'); } catch { return null; } })();
   const heroSubtitle = prefs
     ? (VIBE_SUBTITLES[prefs.design_vibe] || PRIORITY_SUBTITLES[prefs.priority] || 'What will you create today?')
@@ -432,6 +435,9 @@ export default function Dashboard() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [showOutOfCredits, setShowOutOfCredits] = useState(false);
   const [creatingPresentation, setCreatingPresentation] = useState(false);
+  const [adminSlideCount, setAdminSlideCount] = useState(null); // null = let Nova decide
+  const [showSlideCountInput, setShowSlideCountInput] = useState(false);
+  const slideCountInputRef = useRef(null);
   const textareaRef = useRef(null);
 
   function refreshCredits() {
@@ -450,7 +456,7 @@ export default function Dashboard() {
         const list = r.data.presentations || [];
         setPresentations(list);
         if (updateCache) {
-          try { sessionStorage.setItem('hb_presentations', JSON.stringify(list)); } catch {}
+          try { sessionStorage.setItem(presCacheKey, JSON.stringify(list)); } catch {}
         }
         return list;
       })
@@ -460,7 +466,7 @@ export default function Dashboard() {
   useEffect(() => {
     // Show cached data instantly while the HTTP fetch is in flight
     try {
-      const cached = sessionStorage.getItem('hb_presentations');
+      const cached = sessionStorage.getItem(presCacheKey);
       if (cached) {
         setPresentations(JSON.parse(cached));
         setPresLoading(false);
@@ -485,7 +491,7 @@ export default function Dashboard() {
       if (event.type === 'snapshot') {
         const list = event.presentations || [];
         setPresentations(list);
-        try { sessionStorage.setItem('hb_presentations', JSON.stringify(list)); } catch {}
+        try { sessionStorage.setItem(presCacheKey, JSON.stringify(list)); } catch {}
         setPresLoading(false);
       } else if (event.type === 'presentation_updated') {
         setPresentations(prev => {
@@ -494,7 +500,7 @@ export default function Dashboard() {
             ? prev.map(p => p.id === event.presentation.id ? event.presentation : p)
             : [event.presentation, ...prev];
           next.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-          try { sessionStorage.setItem('hb_presentations', JSON.stringify(next)); } catch {}
+          try { sessionStorage.setItem(presCacheKey, JSON.stringify(next)); } catch {}
           return next;
         });
       }
@@ -574,7 +580,10 @@ export default function Dashboard() {
     setSubmitError('');
 
     const qaSection = answers.length > 0 ? `\n\nPREFLIGHT ANSWERS:\n${answers.map(a => `- ${a.question}: ${a.answer}`).join('\n')}` : '';
-    const comprehensiveMessage = `${pendingInput}${qaSection}\n\nDetected type: ${analysis.detected_type || ''}\nDetected industry: ${analysis.detected_industry || ''}\n\nNova should decide the number of slides needed to do this presentation justice.`;
+    const slideInstruction = adminSlideCount
+      ? `You MUST create exactly ${adminSlideCount} slide${adminSlideCount !== 1 ? 's' : ''} — no more, no fewer. This is a hard requirement set by the administrator.`
+      : 'Nova should decide the number of slides needed to do this presentation justice.';
+    const comprehensiveMessage = `${pendingInput}${qaSection}\n\nDetected type: ${analysis.detected_type || ''}\nDetected industry: ${analysis.detected_industry || ''}\n\n${slideInstruction}`;
 
     try {
       const { data } = await api.post('/presentations', {
@@ -608,7 +617,7 @@ export default function Dashboard() {
   function handleDeletePresentation(id) {
     setPresentations(prev => {
       const next = prev.filter(p => p.id !== id);
-      try { sessionStorage.setItem('hb_presentations', JSON.stringify(next)); } catch {}
+      try { sessionStorage.setItem(presCacheKey, JSON.stringify(next)); } catch {}
       return next;
     });
   }
@@ -793,6 +802,53 @@ export default function Dashboard() {
                     </button>
                   ))}
                 </div>
+
+                {/* Admin: fixed slide count override */}
+                {isAdmin && (
+                  <div className="relative">
+                    {showSlideCountInput ? (
+                      <div className="flex items-center gap-1 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-600 rounded-xl px-2 py-1">
+                        <Zap size={12} className="text-amber-500 flex-shrink-0" />
+                        <input
+                          ref={slideCountInputRef}
+                          type="number"
+                          min={1}
+                          max={50}
+                          value={adminSlideCount ?? ''}
+                          onChange={e => {
+                            const v = e.target.value;
+                            setAdminSlideCount(v === '' ? null : Math.min(50, Math.max(1, parseInt(v) || 1)));
+                          }}
+                          onBlur={() => setShowSlideCountInput(false)}
+                          onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') setShowSlideCountInput(false); }}
+                          placeholder="1–50"
+                          className="w-12 text-xs bg-transparent outline-none font-semibold text-amber-700 dark:text-amber-400 placeholder:text-amber-400"
+                        />
+                        {adminSlideCount && (
+                          <button
+                            onMouseDown={e => { e.preventDefault(); setAdminSlideCount(null); setShowSlideCountInput(false); }}
+                            className="text-amber-400 hover:text-amber-600"
+                          >
+                            <X size={10} />
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setShowSlideCountInput(true); setTimeout(() => slideCountInputRef.current?.select(), 10); }}
+                        className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-xl border transition-all ${
+                          adminSlideCount
+                            ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-400'
+                            : 'border-dashed border-amber-300 dark:border-amber-700 text-amber-500 dark:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                        }`}
+                        title="Admin: override slide count"
+                      >
+                        <Zap size={12} />
+                        {adminSlideCount ? `${adminSlideCount} slides` : 'Slides: Auto'}
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Toggle attach zones */}
                 <button

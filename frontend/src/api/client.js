@@ -32,6 +32,11 @@ api.interceptors.response.use(
       localStorage.removeItem('hb_token');
       localStorage.removeItem('hb_refresh_token');
       localStorage.removeItem('hb_user');
+      try {
+        Object.keys(sessionStorage)
+          .filter(k => k.startsWith('hb_presentations_'))
+          .forEach(k => sessionStorage.removeItem(k));
+      } catch {}
       window.location.href = '/login';
     }
     return Promise.reject(err);
