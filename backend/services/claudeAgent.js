@@ -981,8 +981,21 @@ export async function generateCompactPlan(message, attachments, userId = null, c
   logger.info('claude compact plan complete', { durationMs, totalSlides: slides.length });
 
   if (!header) {
-    tracer.recordStep(_tid, 'claude_plan_gen', 'failed', Date.now() - _t, 'Compact plan returned no header');
-    throw new Error('Compact plan returned no header');
+    if (slides.length > 0) {
+      // Claude streamed slides but no HEADER: — synthesize one so generation can continue
+      header = {
+        presentation_title: 'Untitled Presentation',
+        total_slides: slides.length,
+        theme: 'modern-minimal',
+        color_palette: {},
+        message: `Here are your ${slides.length} slides.`,
+      };
+      onHeader?.(header);
+      logger.warn('compact plan: synthesized header from slides', { slideCount: slides.length });
+    } else {
+      tracer.recordStep(_tid, 'claude_plan_gen', 'failed', Date.now() - _t, 'Compact plan returned no header');
+      throw new Error('Compact plan returned no header');
+    }
   }
   tracer.recordStep(_tid, 'claude_plan_gen', 'completed', Date.now() - _t);
   return { header, slides };

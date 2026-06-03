@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import {
-  Send, Paperclip, ArrowLeft, Sparkles, X, Wand2, Loader2, FileImage
+  Send, Paperclip, ArrowLeft, Sparkles, X, Wand2, Loader2, FileImage, AlertTriangle
 } from 'lucide-react';
 import api from '../api/client';
 import MessageBubble from '../components/MessageBubble';
@@ -408,6 +408,16 @@ export default function PresentationPage() {
         }
         startSSE(id);
         startPolling(id);
+      } else if (data.presentation.status === 'error') {
+        const errorSlides = data.presentation.slides_data || [];
+        if (errorSlides.length > 0) {
+          setGeneratedSlides(errorSlides);
+          setTotalSlides(errorSlides.length);
+          setPhase('viewing');
+        } else {
+          setPhase('error');
+        }
+        startSSE(id);
       } else {
         setPhase('chat');
       }
@@ -455,11 +465,22 @@ export default function PresentationPage() {
           if (prev.some(s => s.index === event.slide.index)) return prev;
           return [...prev, event.slide].sort((a, b) => a.index - b.index);
         });
-        setGeneratedSlides(prev =>
-          prev.map(s => s.index === event.slide.index
-            ? { ...s, type: event.slide.type, title: event.slide.title }
-            : s)
-        );
+        setGeneratedSlides(prev => {
+          const exists = prev.some(s => s.index === event.slide.index);
+          if (exists) {
+            return prev.map(s => s.index === event.slide.index
+              ? { ...s, type: event.slide.type, title: event.slide.title }
+              : s);
+          }
+          // plan_started may not have fired (header parse failed) — add placeholder now
+          return [...prev, {
+            index: event.slide.index,
+            type: event.slide.type || 'content',
+            title: event.slide.title || `Slide ${event.slide.index + 1}`,
+            status: 'generating',
+            image_data: null,
+          }].sort((a, b) => a.index - b.index);
+        });
         // Fallback: switch to plan_reveal if plan_started was somehow missed
         setPhase(p => (p === 'viewing' || p === 'plan_reveal') ? p : 'plan_reveal');
       }
@@ -566,10 +587,17 @@ export default function PresentationPage() {
 
       if (event.type === 'error') {
         clearInterval(stageTimer);
+        stopPolling();
         console.error('Generation error:', event.message);
         capture('slide_generation_failed', {
           presentation_id: presId,
           error_message: event.message || 'generation_error event received',
+        });
+        // If we have some slides already, stay in the viewer — otherwise show error screen
+        setGeneratedSlides(prev => {
+          if (prev.length > 0) return prev.map(s => s.status === 'generating' ? { ...s, status: 'error' } : s);
+          setPhase('error');
+          return prev;
         });
       }
     };
@@ -667,8 +695,21 @@ export default function PresentationPage() {
       <PlanRevealScreen
         totalSlides={totalSlides}
         slidePlans={slidePlan}
-        onDone={() => setPhase('viewing')}
-      />
+        onDone={() => {
+          // If generatedSlides placeholders were never created (header never fired),
+          // build them from slidePlan so the viewer has something to show
+          setGeneratedSlides(prev => {
+            if (prev.length > 0) return prev;
+            return slidePlan.map(s => ({
+              index: s.index,
+              type: s.type || 'content',
+              title: s.title || `Slide ${s.index + 1}`,
+              status: 'generating',
+              image_data: null,
+            })).sort((a, b) => a.index - b.index);
+          });
+          setPhase('viewing');
+        }}
     );
   }
 
@@ -685,6 +726,32 @@ export default function PresentationPage() {
         onSlidesUpdate={setGeneratedSlides}
         onTitleChange={(t) => setPresentation(p => ({ ...p, title: t }))}
       />
+    );
+  }
+
+  if (phase === 'error') {
+    return (
+      <div
+        className="h-screen flex flex-col items-center justify-center gap-6"
+        style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
+      >
+        <div className="w-14 h-14 rounded-2xl bg-red-500/20 flex items-center justify-center">
+          <AlertTriangle size={28} className="text-red-400" />
+        </div>
+        <div className="text-center">
+          <h2 className="text-white text-xl font-bold mb-2">Generation Failed</h2>
+          <p className="text-white/50 text-sm max-w-xs">
+            Something went wrong while creating your presentation. Please go back and try again.
+          </p>
+        </div>
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white text-gray-900 font-semibold text-sm hover:bg-gray-100 transition-colors active:scale-95"
+        >
+          <ArrowLeft size={16} />
+          Back to Dashboard
+        </button>
+      </div>
     );
   }
 
