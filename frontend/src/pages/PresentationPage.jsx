@@ -710,6 +710,7 @@ export default function PresentationPage() {
           });
           setPhase('viewing');
         }}
+      />
     );
   }
 

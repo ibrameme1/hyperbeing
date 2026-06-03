@@ -11,6 +11,7 @@ import {
   TrendingUp, TrendingDown, Clock, Eye, Star,
   ChevronRight, Circle, BarChart2, RefreshCw,
   Terminal, Cpu, Search, AlertCircle, Info, AlertTriangle, Bug,
+  Pencil, Check, X,
 } from 'lucide-react';
 import api from '../api/client';
 
@@ -192,6 +193,32 @@ export default function AnalyticsDashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const sseRef = useRef(null);
   const refreshTimer = useRef(null);
+
+  const [editingUserId, setEditingUserId] = useState(null);
+  const [editCreditsValue, setEditCreditsValue] = useState('');
+  const [creditSaving, setCreditSaving] = useState(false);
+  const [creditSaveError, setCreditSaveError] = useState(null);
+
+  async function handleSaveCredits(userId) {
+    const val = parseInt(editCreditsValue, 10);
+    if (isNaN(val) || val < 0) { setCreditSaveError('Enter a valid number'); return; }
+    setCreditSaving(true);
+    setCreditSaveError(null);
+    try {
+      const { data } = await api.patch(`/analytics/users/${userId}/credits`, { credits: val });
+      setUsers(prev => ({
+        ...prev,
+        topUsers: prev.topUsers.map(u =>
+          u.id === userId ? { ...u, credits_remaining: data.credits_remaining } : u
+        ),
+      }));
+      setEditingUserId(null);
+    } catch (err) {
+      setCreditSaveError(err.response?.data?.error || 'Failed to update');
+    } finally {
+      setCreditSaving(false);
+    }
+  }
 
   const fetchLogs = useCallback(async (filter = logsFilter) => {
     setLogsLoading(true);
@@ -691,7 +718,59 @@ export default function AnalyticsDashboard() {
                           </span>
                         </td>
                         <td className="pr-4 text-gray-300 font-mono">{u.presentation_count}</td>
-                        <td className="text-gray-300 font-mono">{u.credits_remaining}</td>
+                        <td className="text-gray-300 font-mono">
+                          {editingUserId === u.id ? (
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={editCreditsValue}
+                                  onChange={e => setEditCreditsValue(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') handleSaveCredits(u.id);
+                                    if (e.key === 'Escape') setEditingUserId(null);
+                                  }}
+                                  className="w-20 bg-gray-800 border border-purple-500 rounded px-1.5 py-0.5 text-xs text-white font-mono focus:outline-none focus:border-purple-400"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => handleSaveCredits(u.id)}
+                                  disabled={creditSaving}
+                                  className="text-green-400 hover:text-green-300 disabled:opacity-40"
+                                  title="Save"
+                                >
+                                  <Check size={13} />
+                                </button>
+                                <button
+                                  onClick={() => { setEditingUserId(null); setCreditSaveError(null); }}
+                                  className="text-gray-500 hover:text-gray-300"
+                                  title="Cancel"
+                                >
+                                  <X size={13} />
+                                </button>
+                              </div>
+                              {creditSaveError && (
+                                <p className="text-red-400 text-[10px]">{creditSaveError}</p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 group">
+                              <span>{u.credits_remaining}</span>
+                              <button
+                                onClick={() => {
+                                  setEditingUserId(u.id);
+                                  setEditCreditsValue(String(u.credits_remaining));
+                                  setCreditSaveError(null);
+                                }}
+                                className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-purple-400 transition-opacity"
+                                title="Edit credits"
+                              >
+                                <Pencil size={11} />
+                              </button>
+                            </div>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
