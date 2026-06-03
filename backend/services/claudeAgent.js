@@ -780,11 +780,8 @@ SLIDE:{"index":N,"nano_banana_prompt":"...250-600 word prompt per NANO BANANA FO
 
 Rules:
 - Output a SLIDE: line for EVERY slide in the provided outline — do not skip any index
+- This includes the cover slide at index 0 — it needs the full 5-layer prompt just like every other slide
 - nano_banana_prompt must be 250–600 words following the MANDATORY 5-LAYER STRUCTURE below
-
-SLIDE STRUCTURE RULES:
-- Every slide (EXCEPT cover/title slides at index 0) must have a KEY TAKEAWAY headline as its title. This headline must communicate the main point of that slide on its own — someone reading only the headlines should be able to follow the full story of the presentation.
-- Cover and title slides (type "cover") keep their original format — do not force a key takeaway structure on them.
 
 ══════════════════════════════════════════
 MANDATORY 5-LAYER STRUCTURE FOR EVERY PROMPT

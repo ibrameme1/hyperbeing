@@ -914,25 +914,38 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
         newSlideDefs.push(slideDef);
       });
 
+      // Phase 2: upgrade image prompts via streamSlidePrompts (same as main generation flow)
+      // streamNewSlides gives basic prompts; PROMPT_GEN_SYSTEM produces the full 5-layer structured ones.
+      const promptHeader = {
+        presentation_title: slidePlan.presentation_title || pres.title,
+        theme: slidePlan.theme || 'modern-minimal',
+        color_palette: slidePlan.color_palette || {},
+      };
+      const promptedByIndex = new Map(newSlideDefs.map(s => [s.index, s]));
+      await streamSlidePrompts(newSlideDefs, promptHeader, description, combinedImages, {
+        onPrompt(slide) { promptedByIndex.set(slide.index, slide); },
+      });
+      const promptedSlideDefs = newSlideDefs.map(s => promptedByIndex.get(s.index) || s);
+
       // Remove excess optimistic placeholders if Nova generated fewer than 3
       const presRow0 = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
       if (!presRow0?.slides_data) return;
       const current0 = JSON.parse(presRow0.slides_data);
-      const trimmed = current0.filter(s => s.status !== 'generating' || newSlideDefs.some(d => d.index === s.index));
+      const trimmed = current0.filter(s => s.status !== 'generating' || promptedSlideDefs.some(d => d.index === s.index));
       if (trimmed.length !== current0.length) {
         db.prepare(`UPDATE presentations SET slides_data = ? WHERE id = ? AND user_id = ?`).run(JSON.stringify(trimmed), req.params.id, req.user.id);
-        broadcast(req.params.id, { type: 'slides_trimmed', keep_indices: newSlideDefs.map(d => d.index) });
+        broadcast(req.params.id, { type: 'slides_trimmed', keep_indices: promptedSlideDefs.map(d => d.index) });
       }
 
       // Generate images for each new slide with stagger
-      const imagePromises = newSlideDefs.map((slideDef, i) =>
+      const imagePromises = promptedSlideDefs.map((slideDef, i) =>
         new Promise(r => setTimeout(r, i * 800)).then(() => {
           const attachedImages = combinedImages;
 
           return generateSlideImage(
             slideDef.nano_banana_prompt || slideDef.title,
             slideDef.type, slidePlan.theme, slidePlan.color_palette,
-            slideDef.index, attachedImages, aspectRatio
+            slideDef.index, combinedImages, aspectRatio
           ).then(imageData => {
             const done = { ...slideDef, image_data: imageData, status: 'complete' };
             // Persist: replace placeholder with done slide

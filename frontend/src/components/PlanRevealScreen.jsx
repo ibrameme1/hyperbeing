@@ -63,7 +63,10 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
   }, [slidePlans.length]);
 
   const visibleSlides = slidePlans.slice(0, visibleCount);
-  const allRevealed = visibleCount >= effectiveTotal && effectiveTotal > 0;
+  // Use totalSlides (from plan_started event) for allRevealed so we don't
+  // fire prematurely in the synthetic-header path where plan_started fires
+  // after all plan_slide_streamed events (totalSlides would be 0 at that point).
+  const allRevealed = totalSlides > 0 && visibleCount >= totalSlides;
 
   // Auto-advance once all rows have been revealed on screen
   // Give at least 3s to read — scale up with slide count (200ms per slide, capped at 6s)

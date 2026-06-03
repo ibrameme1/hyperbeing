@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, ArrowRight } from 'lucide-react';
+import { Sparkles, ArrowRight, Send } from 'lucide-react';
 import { capture } from '../utils/posthog';
 
 export default function QuestionFlow({ analysis, onComplete, onCancel }) {
@@ -8,32 +8,50 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
   const allQuestions = contextual_questions;
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState([]);
-  const [selected, setSelected] = useState(null);
+  const [selectedOptions, setSelectedOptions] = useState([]);
+  const [customText, setCustomText] = useState('');
   const [direction, setDirection] = useState(1);
+  const customRef = useRef(null);
 
-  // If there are no questions, complete immediately
   useEffect(() => {
     if (allQuestions.length === 0) onComplete([]);
   }, []);
+
+  // Reset selections when question changes
+  useEffect(() => {
+    setSelectedOptions([]);
+    setCustomText('');
+  }, [currentIndex]);
 
   const question = allQuestions[currentIndex];
   const isLast = currentIndex === allQuestions.length - 1;
   const total = allQuestions.length;
 
-  const canProceed = !!selected;
+  const canProceed = selectedOptions.length > 0 || customText.trim().length > 0;
 
-  function handleSelect(option) {
-    setSelected(option);
+  function toggleOption(option) {
+    setSelectedOptions(prev =>
+      prev.includes(option) ? prev.filter(o => o !== option) : [...prev, option]
+    );
+  }
+
+  function buildAnswer() {
+    const parts = [...selectedOptions];
+    if (customText.trim()) parts.push(customText.trim());
+    return parts.join(', ');
   }
 
   function handleNext() {
     if (!canProceed) return;
-    const newAnswers = [...answers, { question: question.question, answer: selected }];
+    const answer = buildAnswer();
+    const newAnswers = [...answers, { question: question.question, answer }];
     capture('modal_question_answered', {
       question: question.question,
-      answer: selected,
+      answer,
       question_index: currentIndex,
       is_last: isLast,
+      multi_selected: selectedOptions.length,
+      used_custom: customText.trim().length > 0,
     });
 
     if (isLast) {
@@ -41,7 +59,6 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
     } else {
       setDirection(1);
       setAnswers(newAnswers);
-      setSelected(null);
       setCurrentIndex(i => i + 1);
     }
   }
@@ -105,9 +122,12 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
               {question?.question}
             </motion.h2>
           </AnimatePresence>
+          {question?.options?.length > 1 && (
+            <p className="text-xs text-gray-400 mt-1">Select one or more</p>
+          )}
         </div>
 
-        {/* Options */}
+        {/* Options + custom input */}
         <div className="px-6 pb-6">
           <AnimatePresence mode="wait" custom={direction}>
             <motion.div
@@ -118,23 +138,51 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
               animate="center"
               exit="exit"
               transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-              className="flex flex-wrap gap-2 mt-4"
+              className="mt-3 space-y-3"
             >
-              {question?.options?.map(option => (
-                <motion.button
-                  key={option}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => handleSelect(option)}
-                  className={`px-4 py-2.5 rounded-2xl text-sm font-semibold border-2 transition-all duration-150 ${
-                    selected === option
-                      ? 'border-transparent text-white'
-                      : 'border-gray-200 text-gray-700 bg-gray-50 hover:border-gray-300 hover:bg-white'
-                  }`}
-                  style={selected === option ? { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderColor: 'transparent' } : {}}
-                >
-                  {option}
-                </motion.button>
-              ))}
+              {/* Option chips — multi-select */}
+              <div className="flex flex-wrap gap-2">
+                {question?.options?.map(option => {
+                  const isSelected = selectedOptions.includes(option);
+                  return (
+                    <motion.button
+                      key={option}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => toggleOption(option)}
+                      className={`px-4 py-2.5 rounded-2xl text-sm font-semibold border-2 transition-all duration-150 ${
+                        isSelected
+                          ? 'border-transparent text-white'
+                          : 'border-gray-200 text-gray-700 bg-gray-50 hover:border-gray-300 hover:bg-white'
+                      }`}
+                      style={isSelected ? { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderColor: 'transparent' } : {}}
+                    >
+                      {isSelected && <span className="mr-1.5 text-xs">✓</span>}
+                      {option}
+                    </motion.button>
+                  );
+                })}
+              </div>
+
+              {/* Custom text input */}
+              <div className="flex items-center gap-2 rounded-2xl border-2 border-gray-200 bg-gray-50 px-3.5 py-2.5 transition-all focus-within:border-purple-400 focus-within:bg-white">
+                <input
+                  ref={customRef}
+                  value={customText}
+                  onChange={e => setCustomText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleNext(); }}
+                  placeholder="Or type your own answer…"
+                  className="flex-1 bg-transparent text-sm text-gray-800 placeholder:text-gray-400 outline-none"
+                />
+                {customText.trim() && (
+                  <button
+                    onClick={handleNext}
+                    className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+                  >
+                    <Send size={11} className="text-white" />
+                  </button>
+                )}
+              </div>
             </motion.div>
           </AnimatePresence>
 
