@@ -10,6 +10,7 @@ import { validate, isString, isOptionalString, isEnum, isArray, isIntBetween } f
 import { createPresentationLimiter, addSlidesLimiter, analyzeLimiter } from '../middleware/rateLimits.js';
 import { logger, requestContext } from '../services/logger.js';
 import { tracer } from '../services/tracer.js';
+import { sendPresentationReady } from '../services/emailService.js';
 
 // Validates a single attachment object
 function validateAttachment(a) {
@@ -337,6 +338,12 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
 
   db.prepare(`UPDATE presentations SET status = 'completed', slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
     .run(JSON.stringify(allSlides), presentationId);
+
+  if (userId) {
+    const _presUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(userId);
+    const _presTitle = db.prepare('SELECT title FROM presentations WHERE id = ?').get(presentationId)?.title;
+    if (_presUser?.email) sendPresentationReady(_presUser.name, _presUser.email, presentationId, _presTitle);
+  }
 
   // Auto-suggest title
   try {

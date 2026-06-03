@@ -5,6 +5,10 @@ import {
 } from '../services/stripeService.js';
 import { logger } from '../services/logger.js';
 import { getDb } from '../database.js';
+import {
+  sendPurchaseConfirmation, sendPlanUpgraded, sendPlanDowngradeScheduled,
+  sendSubscriptionCancelled, sendRenewalReceipt, sendPaymentFailed,
+} from '../services/emailService.js';
 import { validate, isEnum, isOptionalString, isIntBetween } from '../middleware/validate.js';
 import { billingLimiter } from '../middleware/rateLimits.js';
 
@@ -137,6 +141,8 @@ router.post('/checkout', authMiddleware, billingLimiter,
           db.prepare('UPDATE subscriptions SET pending_plan = NULL WHERE user_id = ?').run(req.userId);
           throw stripeErr;
         }
+        const _downgradeUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.userId);
+        if (_downgradeUser?.email) sendPlanDowngradeScheduled(_downgradeUser.name, _downgradeUser.email, PLANS[sub.plan]?.name || sub.plan, plan.name, periodEnd);
         return res.json({ upgraded: true, isDowngrade: true, pendingPlan: planKey, periodEnd, currentPlan: sub.plan });
       } else {
         await stripe.subscriptions.update(sub.stripe_subscription_id, {
@@ -148,6 +154,8 @@ router.post('/checkout', authMiddleware, billingLimiter,
         const db = getDb();
         db.prepare('UPDATE subscriptions SET pending_plan = NULL WHERE user_id = ?').run(req.userId);
         resetCreditsForPlan(req.userId, planKey);
+        const _upgradeUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.userId);
+        if (_upgradeUser?.email) sendPlanUpgraded(_upgradeUser.name, _upgradeUser.email, plan.name, plan.credits);
         return res.json({ upgraded: true, message: 'Plan upgraded successfully.' });
       }
       } // if (stripeSub)
@@ -231,6 +239,11 @@ router.post('/webhook', async (req, res) => {
       ).run(subscriptionId, planKey, 'active', null, userId);
 
       resetCreditsForPlan(userId, planKey);
+      const _purchaseUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(userId);
+      if (_purchaseUser?.email) {
+        const _purchasePlan = PLANS[planKey];
+        sendPurchaseConfirmation(_purchaseUser.name, _purchaseUser.email, _purchasePlan?.name || planKey, _purchasePlan?.credits || 0);
+      }
       break;
     }
 
@@ -245,6 +258,11 @@ router.post('/webhook', async (req, res) => {
       // Only reset on renewal (not the initial payment — that's handled by checkout.session.completed)
       if (invoice.billing_reason === 'subscription_cycle') {
         resetCreditsForPlan(sub.user_id, sub.plan);
+        const _renewUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(sub.user_id);
+        if (_renewUser?.email) {
+          const _renewPlan = PLANS[sub.plan];
+          sendRenewalReceipt(_renewUser.name, _renewUser.email, _renewPlan?.name || sub.plan, _renewPlan?.credits || 0);
+        }
       }
       break;
     }
@@ -289,6 +307,8 @@ router.post('/webhook', async (req, res) => {
       db.prepare(
         'UPDATE subscriptions SET plan = ?, status = ?, stripe_subscription_id = NULL, credits_remaining = 0, updated_at = CURRENT_TIMESTAMP WHERE stripe_subscription_id = ?'
       ).run('free', 'cancelled', stripeSub.id);
+      const _cancelUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(sub.user_id);
+      if (_cancelUser?.email) sendSubscriptionCancelled(_cancelUser.name, _cancelUser.email);
       break;
     }
 
@@ -300,6 +320,8 @@ router.post('/webhook', async (req, res) => {
       db.prepare(
         'UPDATE subscriptions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE stripe_subscription_id = ?'
       ).run('past_due', invoice.subscription);
+      const _failUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(sub.user_id);
+      if (_failUser?.email) sendPaymentFailed(_failUser.name, _failUser.email, PLANS[sub.plan]?.name || sub.plan);
       break;
     }
   }

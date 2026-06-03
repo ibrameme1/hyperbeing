@@ -9,6 +9,7 @@ import { Strategy as FacebookStrategy } from 'passport-facebook';
 import axios from 'axios';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { sendWelcomeEmail, sendAccountDeleted } from '../services/emailService.js';
 import { validate, isString, isEmail, isOptionalString } from '../middleware/validate.js';
 import { authLimiter, loginLimiter, authBackoff } from '../middleware/rateLimits.js';
 
@@ -105,6 +106,7 @@ router.get('/google/callback',
       email: profile.emails?.[0]?.value,
       avatar: profile.photos?.[0]?.value,
     });
+    if (isNew && user.email) sendWelcomeEmail(user.name, user.email);
     redirectWithToken(res, user.id, isNew);
   },
 );
@@ -125,6 +127,7 @@ router.get('/meta/callback',
       email: profile.emails?.[0]?.value,
       avatar: profile.photos?.[0]?.value,
     });
+    if (isNew && user.email) sendWelcomeEmail(user.name, user.email);
     redirectWithToken(res, user.id, isNew);
   },
 );
@@ -181,6 +184,7 @@ router.get('/tiktok/callback', async (req, res) => {
       email: null,
       avatar: tiktokUser.avatar_url,
     });
+    if (isNew && user.email) sendWelcomeEmail(user.name, user.email);
     redirectWithToken(res, user.id, isNew);
   } catch (err) {
     logger.error('tiktok oauth failed', { errorMessage: err.message });
@@ -214,6 +218,7 @@ router.post('/register',
 
     req.clearAuthBackoff?.();
     const user = { id, name, email: email.toLowerCase() };
+    sendWelcomeEmail(name, email.toLowerCase());
     res.status(201).json({ token: signToken(id), refreshToken: signRefreshToken(id), user });
   },
 );
@@ -283,7 +288,10 @@ router.post('/refresh', (req, res) => {
 });
 
 router.delete('/account', authenticateToken, (req, res) => {
-  getDb().prepare('DELETE FROM users WHERE id = ?').run(req.user.id);
+  const db = getDb();
+  const user = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.user.id);
+  db.prepare('DELETE FROM users WHERE id = ?').run(req.user.id);
+  if (user?.email) sendAccountDeleted(user.name, user.email);
   res.json({ message: 'Account deleted' });
 });
 

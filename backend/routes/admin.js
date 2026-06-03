@@ -3,6 +3,7 @@ import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { isAdmin } from '../services/stripeService.js';
 import { metrics } from '../services/metrics.js';
+import { sendCreditsGranted } from '../services/emailService.js';
 
 const router = Router();
 
@@ -105,10 +106,13 @@ router.post('/grant-credits', authenticateToken, requireAdmin, (req, res) => {
   if (!user) return res.status(404).json({ error: `No user found with email: ${email}` });
   const current = db.prepare('SELECT credits_remaining, credits_total FROM subscriptions WHERE user_id = ?').get(user.id);
   if (!current) return res.status(404).json({ error: 'No subscription found for this user' });
+  const newBalance = current.credits_remaining + credits;
   db.prepare(
     'UPDATE subscriptions SET credits_remaining = ?, credits_total = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
-  ).run(current.credits_remaining + credits, current.credits_total + credits, user.id);
-  res.json({ email, added: credits, new_balance: current.credits_remaining + credits });
+  ).run(newBalance, current.credits_total + credits, user.id);
+  const grantedUser = db.prepare('SELECT name FROM users WHERE id = ?').get(user.id);
+  sendCreditsGranted(grantedUser?.name || 'there', email, credits, newBalance);
+  res.json({ email, added: credits, new_balance: newBalance });
 });
 
 export default router;
