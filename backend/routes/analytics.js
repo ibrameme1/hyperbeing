@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
+import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { isAdmin } from '../services/stripeService.js';
 
@@ -336,6 +337,40 @@ router.get('/events', (req, res) => {
     limit,
     offset,
   });
+});
+
+// ── PATCH /api/analytics/users/:userId/credits ────────────────────────────────
+router.patch('/users/:userId/credits', (req, res) => {
+  const db = getDb();
+  const { userId } = req.params;
+  const { credits, reason } = req.body;
+
+  const creditsNum = parseInt(credits, 10);
+  if (isNaN(creditsNum) || creditsNum < 0) {
+    return res.status(400).json({ error: 'credits must be a non-negative integer' });
+  }
+
+  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const sub = db.prepare('SELECT credits_remaining FROM subscriptions WHERE user_id = ?').get(userId);
+  if (!sub) return res.status(404).json({ error: 'No subscription found for this user' });
+
+  const prev = sub.credits_remaining;
+  const diff = creditsNum - prev;
+
+  db.prepare(`
+    UPDATE subscriptions
+    SET credits_remaining = ?, credits_total = MAX(credits_total, ?), updated_at = CURRENT_TIMESTAMP
+    WHERE user_id = ?
+  `).run(creditsNum, creditsNum, userId);
+
+  db.prepare(`
+    INSERT INTO credit_transactions (id, user_id, amount, balance_after, type, description)
+    VALUES (?, ?, ?, ?, 'admin_adjustment', ?)
+  `).run(uuid(), userId, diff, creditsNum, reason || `Admin adjusted credits from ${prev} to ${creditsNum}`);
+
+  res.json({ userId, credits_remaining: creditsNum, previous: prev });
 });
 
 export default router;
