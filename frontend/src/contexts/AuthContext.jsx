@@ -59,6 +59,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('hb_token');
     localStorage.removeItem('hb_refresh_token');
     localStorage.removeItem('hb_user');
+    try { sessionStorage.removeItem('hb_presentations'); } catch {}
     setUser(null);
     setSubscription(null);
     resetPostHog();

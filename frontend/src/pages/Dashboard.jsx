@@ -204,7 +204,7 @@ function PresentationCard({ pres, onDelete }) {
       exit={{ opacity: 0, scale: 0.95 }}
       whileHover={{ scale: 1.02, y: -2 }}
       whileTap={{ scale: 0.98 }}
-      onClick={() => navigate(`/presentations/${pres.id}`)}
+      onClick={() => navigate(`/presentations/${pres.id}`, { state: { presentation: pres } })}
       className="bg-white dark:bg-hb-surface rounded-2xl overflow-hidden shadow-ios cursor-pointer group relative"
     >
       <div className="aspect-[16/9] overflow-hidden"
@@ -458,7 +458,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    // Show cached data instantly while waiting for SSE snapshot
+    // Show cached data instantly while the HTTP fetch is in flight
     try {
       const cached = sessionStorage.getItem('hb_presentations');
       if (cached) {
@@ -470,7 +470,10 @@ export default function Dashboard() {
     refreshCredits();
     const creditsInterval = setInterval(refreshCredits, 30_000);
 
-    // Real-time dashboard updates via SSE — replaces polling entirely
+    // Fetch immediately via HTTP — fastest path, no SSE handshake delay
+    fetchPresentations().finally(() => setPresLoading(false));
+
+    // SSE for real-time updates only (status changes, new presentations while on page)
     const token = localStorage.getItem('hb_token');
     const apiBase = import.meta.env.VITE_API_URL || '';
     const sse = new EventSource(`${apiBase}/api/presentations/dashboard-events?token=${encodeURIComponent(token)}`);
@@ -480,19 +483,16 @@ export default function Dashboard() {
       try { event = JSON.parse(e.data); } catch { return; }
 
       if (event.type === 'snapshot') {
-        // Initial full list sent on SSE connect
         const list = event.presentations || [];
         setPresentations(list);
         try { sessionStorage.setItem('hb_presentations', JSON.stringify(list)); } catch {}
         setPresLoading(false);
       } else if (event.type === 'presentation_updated') {
-        // A single presentation changed — update or prepend it in the list
         setPresentations(prev => {
           const exists = prev.some(p => p.id === event.presentation.id);
           const next = exists
             ? prev.map(p => p.id === event.presentation.id ? event.presentation : p)
             : [event.presentation, ...prev];
-          // Re-sort by updated_at descending (server sends ISO strings)
           next.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
           try { sessionStorage.setItem('hb_presentations', JSON.stringify(next)); } catch {}
           return next;
@@ -500,10 +500,7 @@ export default function Dashboard() {
       }
     };
 
-    sse.onerror = () => {
-      // EventSource auto-reconnects; fall back to a one-time fetch if needed
-      fetchPresentations().finally(() => setPresLoading(false));
-    };
+    sse.onerror = () => {};
 
     return () => {
       clearInterval(creditsInterval);
@@ -625,7 +622,7 @@ export default function Dashboard() {
     setShowZones(true);
     files.forEach(file => {
       const reader = new FileReader();
-      reader.onload = ev => setMoodboardFiles(prev => [...prev, {
+      reader.onload = ev => setBrandingFiles(prev => [...prev, {
         id: Math.random().toString(36).slice(2),
         name: file.name, type: 'image', mimeType: file.type, data: ev.target.result,
       }]);

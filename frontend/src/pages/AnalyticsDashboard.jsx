@@ -11,7 +11,7 @@ import {
   TrendingUp, TrendingDown, Clock, Eye, Star,
   ChevronRight, Circle, BarChart2, RefreshCw,
   Terminal, Cpu, Search, AlertCircle, Info, AlertTriangle, Bug,
-  Pencil, Check, X,
+  Pencil, Check, X, ArrowLeft, Trash2,
 } from 'lucide-react';
 import api from '../api/client';
 
@@ -198,6 +198,24 @@ export default function AnalyticsDashboard() {
   const [editCreditsValue, setEditCreditsValue] = useState('');
   const [creditSaving, setCreditSaving] = useState(false);
   const [creditSaveError, setCreditSaveError] = useState(null);
+  const [deletingUserId, setDeletingUserId] = useState(null);
+
+  async function handleDeleteUser(userId) {
+    if (!window.confirm('Permanently delete this user and all their data? This cannot be undone.')) return;
+    setDeletingUserId(userId);
+    try {
+      await api.delete(`/analytics/users/${userId}`);
+      setUsers(prev => ({
+        ...prev,
+        topUsers: prev.topUsers.filter(u => u.id !== userId),
+        recentSignups: prev.recentSignups.filter(u => u.id !== userId),
+      }));
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to delete user');
+    } finally {
+      setDeletingUserId(null);
+    }
+  }
 
   async function handleSaveCredits(userId) {
     const val = parseInt(editCreditsValue, 10);
@@ -393,6 +411,13 @@ export default function AnalyticsDashboard() {
               </p>
             </div>
             <div className="flex items-center gap-4">
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 transition"
+              >
+                <ArrowLeft size={12} />
+                Dashboard
+              </button>
               <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs">
                 <LiveDot active={liveConnected} />
                 <span className={liveConnected ? 'text-green-400' : 'text-gray-500'}>
@@ -687,12 +712,13 @@ export default function AnalyticsDashboard() {
                       <th className="pb-2 pr-4">User</th>
                       <th className="pb-2 pr-4">Plan</th>
                       <th className="pb-2 pr-4">Decks</th>
-                      <th className="pb-2">Credits left</th>
+                      <th className="pb-2 pr-4">Credits left</th>
+                      <th className="pb-2"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {users.topUsers.map((u, i) => (
-                      <tr key={u.id} className="border-b border-white/5 hover:bg-white/5 transition">
+                      <tr key={u.id} className="border-b border-white/5 hover:bg-white/5 transition group">
                         <td className="py-2 pr-4">
                           <div className="flex items-center gap-2">
                             <span
@@ -718,7 +744,7 @@ export default function AnalyticsDashboard() {
                           </span>
                         </td>
                         <td className="pr-4 text-gray-300 font-mono">{u.presentation_count}</td>
-                        <td className="text-gray-300 font-mono">
+                        <td className="pr-4 text-gray-300 font-mono">
                           {editingUserId === u.id ? (
                             <div className="flex flex-col gap-1">
                               <div className="flex items-center gap-1.5">
@@ -755,7 +781,7 @@ export default function AnalyticsDashboard() {
                               )}
                             </div>
                           ) : (
-                            <div className="flex items-center gap-1.5 group">
+                            <div className="flex items-center gap-1.5 group/cell">
                               <span>{u.credits_remaining}</span>
                               <button
                                 onClick={() => {
@@ -763,13 +789,25 @@ export default function AnalyticsDashboard() {
                                   setEditCreditsValue(String(u.credits_remaining));
                                   setCreditSaveError(null);
                                 }}
-                                className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-purple-400 transition-opacity"
+                                className="opacity-0 group-hover/cell:opacity-100 text-gray-600 hover:text-purple-400 transition-opacity"
                                 title="Edit credits"
                               >
                                 <Pencil size={11} />
                               </button>
                             </div>
                           )}
+                        </td>
+                        <td>
+                          <button
+                            onClick={() => handleDeleteUser(u.id)}
+                            disabled={deletingUserId === u.id}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-700 hover:text-red-400 disabled:opacity-40"
+                            title="Delete user"
+                          >
+                            {deletingUserId === u.id
+                              ? <RefreshCw size={13} className="animate-spin" />
+                              : <Trash2 size={13} />}
+                          </button>
                         </td>
                       </tr>
                     ))}

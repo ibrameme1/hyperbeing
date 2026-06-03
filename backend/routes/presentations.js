@@ -48,8 +48,8 @@ function broadcastDashboardUpdate(db, userId, presentationId) {
   const clients = userSseRegistry.get(String(userId));
   if (!clients || clients.size === 0) return;
   const row = db.prepare(
-    'SELECT id, title, status, thumbnail, created_at, updated_at FROM presentations WHERE id = ?'
-  ).get(presentationId);
+    'SELECT id, title, status, thumbnail, created_at, updated_at FROM presentations WHERE id = ? AND user_id = ?'
+  ).get(presentationId, userId);
   if (!row) return;
   const payload = `data: ${JSON.stringify({ type: 'presentation_updated', presentation: row })}\n\n`;
   clients.forEach(res => {
@@ -1037,6 +1037,36 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       broadcast(req.params.id, { type: 'error', message: err.message });
     }
   })();
+});
+
+// ─── Delete a single slide ────────────────────────────────────────────────
+router.delete('/:id/slides/:index', authenticateToken, (req, res) => {
+  const db = getDb();
+  const pres = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+  if (!pres || !pres.slides_data) return res.status(404).json({ error: 'Presentation not found' });
+
+  const targetIndex = parseInt(req.params.index, 10);
+  const slides = JSON.parse(pres.slides_data);
+  const filtered = slides.filter(s => s.index !== targetIndex);
+
+  if (filtered.length === slides.length) return res.status(404).json({ error: 'Slide not found' });
+
+  const newFirst = filtered[0];
+  const hasThumb = newFirst?.image_data && !newFirst.image_data.startsWith('data:image/svg');
+
+  if (filtered.length === 0) {
+    db.prepare(`UPDATE presentations SET slides_data = ?, thumbnail = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(JSON.stringify(filtered), req.params.id);
+  } else if (hasThumb) {
+    db.prepare(`UPDATE presentations SET slides_data = ?, thumbnail = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(JSON.stringify(filtered), newFirst.image_data, req.params.id);
+  } else {
+    db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(JSON.stringify(filtered), req.params.id);
+  }
+
+  res.json({ message: 'Slide deleted', slides: filtered });
 });
 
 // ─── Delete presentation ──────────────────────────────────────────────────

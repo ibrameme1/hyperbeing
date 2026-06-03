@@ -3,7 +3,7 @@ import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Download, Loader2, ArrowLeft,
   Sparkles, Send, Images, FileDown, Paperclip, X, Plus,
-  AlertTriangle, RefreshCw, Check, Pencil,
+  AlertTriangle, RefreshCw, Check, Pencil, Trash2,
 } from 'lucide-react';
 import SlideRenderer from './SlideRenderer';
 import { exportToPDF, exportImages } from '../utils/pdfExport';
@@ -11,47 +11,58 @@ import api from '../api/client';
 import { capture } from '../utils/posthog';
 
 // Separate component so each item has its own wasDragging ref
-function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry }) {
+function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDelete }) {
   const wasDragging = useRef(false);
 
   return (
     <Reorder.Item
       key={slide.index}
       value={slide}
-      className="flex flex-col items-center gap-1.5 flex-shrink-0"
+      className="flex flex-col items-center gap-1.5 flex-shrink-0 group/item"
       style={{ listStyle: 'none', cursor: 'grab' }}
       whileDrag={{ scale: 1.06, zIndex: 50, cursor: 'grabbing' }}
       onDragStart={() => { wasDragging.current = true; }}
       onDragEnd={() => { setTimeout(() => { wasDragging.current = false; }, 80); }}
     >
-      <div
-        onPointerUp={() => { if (!wasDragging.current) onGoTo(idx); }}
-        className={`w-24 rounded-lg overflow-hidden transition-all duration-150 relative select-none ${
-          isCurrent ? 'ring-2 ring-purple-500 shadow-md' : 'opacity-60 hover:opacity-90'
-        }`}
-        style={{ aspectRatio: '16/9' }}
-      >
-        {slide.image_data && !slide.image_data.startsWith('data:image/svg') ? (
-          <img src={slide.image_data} alt={slide.title} className="w-full h-full object-cover pointer-events-none" draggable={false} />
-        ) : (
-          <div className="w-full h-full bg-gray-200 dark:bg-zinc-700 animate-pulse" />
-        )}
-        {slide.status === 'generating' && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
-            <Loader2 size={14} className="text-white animate-spin" />
-          </div>
-        )}
-        {slide.status === 'error' && (
-          <div className="absolute inset-0 bg-red-900/70 flex flex-col items-center justify-center gap-1.5 rounded-lg">
-            <AlertTriangle size={12} className="text-red-300" />
-            <button
-              onPointerUp={e => { e.stopPropagation(); if (!wasDragging.current) onRetry(idx); }}
-              className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors text-white text-[9px] font-semibold leading-none"
-            >
-              <RefreshCw size={8} />
-              Retry
-            </button>
-          </div>
+      <div className="relative">
+        <div
+          onPointerUp={() => { if (!wasDragging.current) onGoTo(idx); }}
+          className={`w-24 rounded-lg overflow-hidden transition-all duration-150 relative select-none ${
+            isCurrent ? 'ring-2 ring-purple-500 shadow-md' : 'opacity-60 hover:opacity-90'
+          }`}
+          style={{ aspectRatio: '16/9' }}
+        >
+          {slide.image_data && !slide.image_data.startsWith('data:image/svg') ? (
+            <img src={slide.image_data} alt={slide.title} className="w-full h-full object-cover pointer-events-none" draggable={false} />
+          ) : (
+            <div className="w-full h-full bg-gray-200 dark:bg-zinc-700 animate-pulse" />
+          )}
+          {slide.status === 'generating' && (
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
+              <Loader2 size={14} className="text-white animate-spin" />
+            </div>
+          )}
+          {slide.status === 'error' && (
+            <div className="absolute inset-0 bg-red-900/70 flex flex-col items-center justify-center gap-1.5 rounded-lg">
+              <AlertTriangle size={12} className="text-red-300" />
+              <button
+                onPointerUp={e => { e.stopPropagation(); if (!wasDragging.current) onRetry(idx); }}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors text-white text-[9px] font-semibold leading-none"
+              >
+                <RefreshCw size={8} />
+                Retry
+              </button>
+            </div>
+          )}
+        </div>
+        {canDelete && (
+          <button
+            onPointerUp={e => { e.stopPropagation(); if (!wasDragging.current) onDelete(idx); }}
+            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover/item:opacity-100 transition-opacity shadow-sm z-10"
+            title="Delete slide"
+          >
+            <X size={9} />
+          </button>
         )}
       </div>
       <span className={`text-xs font-medium transition-colors select-none ${isCurrent ? 'text-purple-600 dark:text-purple-400' : 'text-gray-400 dark:text-zinc-500'}`}>
@@ -202,6 +213,23 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       setUpdatingSlides(prev => { const n = new Set(prev); n.delete(current); return n; });
     } finally {
       setEditLoading(false);
+    }
+  }
+
+  async function handleDeleteSlide(slideIdx) {
+    if (localSlides.length <= 1) return; // don't delete the last slide
+    const slide = localSlides[slideIdx];
+    if (!slide) return;
+    const prev = [...localSlides];
+    const updated = localSlides.filter((_, i) => i !== slideIdx);
+    setLocalSlides(updated);
+    onSlidesUpdate(updated);
+    if (current >= updated.length) setCurrent(Math.max(0, updated.length - 1));
+    try {
+      await api.delete(`/presentations/${presentationId}/slides/${slide.index}`);
+    } catch {
+      setLocalSlides(prev);
+      onSlidesUpdate(prev);
     }
   }
 
@@ -494,6 +522,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               isCurrent={idx === current}
               onGoTo={goTo}
               onRetry={handleRetrySlide}
+              onDelete={handleDeleteSlide}
+              canDelete={localSlides.length > 1}
             />
           ))}
 

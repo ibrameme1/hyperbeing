@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import {
@@ -391,12 +391,22 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
 export default function PresentationPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { state: routerState } = useLocation();
 
-  const [presentation, setPresentation] = useState(null);
+  // Use partial data passed from dashboard for instant render (skips loading spinner)
+  const initPres = routerState?.presentation;
+  const initIsCompleted = initPres?.status === 'completed';
+
+  const [presentation, setPresentation] = useState(initPres || null);
   const [messages, setMessages] = useState([]);
-  const [phase, setPhase] = useState('loading'); // loading | chat | generating | viewing
+  const [phase, setPhase] = useState(initIsCompleted ? 'viewing' : 'loading');
 
-  const [generatedSlides, setGeneratedSlides] = useState([]);
+  // For completed presentations opened from dashboard, show a skeleton slide immediately
+  const [generatedSlides, setGeneratedSlides] = useState(
+    initIsCompleted
+      ? [{ index: 0, type: 'content', title: '', status: 'generating', image_data: null }]
+      : []
+  );
   const [totalSlides, setTotalSlides] = useState(0);
   const [generationStage, setGenerationStage] = useState(0);
   const [slidePlan, setSlidePlan] = useState([]);
