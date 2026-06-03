@@ -30,12 +30,30 @@ const router = Router();
 // In-memory SSE client registry: presentationId → Set<res>
 const sseRegistry = new Map();
 
+// User-level SSE registry for dashboard real-time updates: userId → Set<res>
+const userSseRegistry = new Map();
+
 function broadcast(presentationId, event) {
   const clients = sseRegistry.get(presentationId);
   if (!clients || clients.size === 0) return;
   const payload = `data: ${JSON.stringify(event)}\n\n`;
   clients.forEach(res => {
     try { res.write(payload); } catch { /* client disconnected */ }
+  });
+}
+
+// Broadcast a dashboard-level update to all of a user's open dashboard tabs.
+// Reads the latest presentation row from DB and sends it as a 'presentation_updated' event.
+function broadcastDashboardUpdate(db, userId, presentationId) {
+  const clients = userSseRegistry.get(String(userId));
+  if (!clients || clients.size === 0) return;
+  const row = db.prepare(
+    'SELECT id, title, status, thumbnail, created_at, updated_at FROM presentations WHERE id = ?'
+  ).get(presentationId);
+  if (!row) return;
+  const payload = `data: ${JSON.stringify({ type: 'presentation_updated', presentation: row })}\n\n`;
+  clients.forEach(res => {
+    try { res.write(payload); } catch {}
   });
 }
 
@@ -93,6 +111,35 @@ router.get('/', authenticateToken, (req, res) => {
   }
 
   res.json({ presentations: rows });
+});
+
+// ─── Dashboard SSE: real-time presentation list updates ───────────────────
+router.get('/dashboard-events', authenticateToken, (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const userId = String(req.user.id);
+  if (!userSseRegistry.has(userId)) userSseRegistry.set(userId, new Set());
+  userSseRegistry.get(userId).add(res);
+
+  // Send current list immediately on connect so the dashboard always has fresh data
+  const rows = getDb()
+    .prepare('SELECT id, title, status, thumbnail, created_at, updated_at FROM presentations WHERE user_id = ? ORDER BY updated_at DESC')
+    .all(req.user.id);
+  res.write(`data: ${JSON.stringify({ type: 'snapshot', presentations: rows })}\n\n`);
+
+  const heartbeat = setInterval(() => {
+    try { res.write(': heartbeat\n\n'); } catch {}
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    userSseRegistry.get(userId)?.delete(res);
+    if (userSseRegistry.get(userId)?.size === 0) userSseRegistry.delete(userId);
+  });
 });
 
 // ─── Analyze brief and return contextual questions ─────────────────────────
@@ -177,12 +224,17 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
     presentation: db.prepare('SELECT * FROM presentations WHERE id = ?').get(id),
   });
 
+  // Notify dashboard subscribers that a new presentation appeared
+  broadcastDashboardUpdate(db, req.user.id, id);
+
   const userId = req.user.id;
   const _traceId = requestContext.getStore()?.requestId;
   runFullFlow(id, message, attachments, userId, _traceId).catch(err => {
     logger.error('slide flow failed', { errorMessage: err.message, stack: err.stack?.split('\n').slice(0,4).join('\n') });
     broadcast(id, { type: 'error', message: err.message });
-    getDb().prepare(`UPDATE presentations SET status = 'error', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(id);
+    const errDb = getDb();
+    errDb.prepare(`UPDATE presentations SET status = 'error', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(id);
+    broadcastDashboardUpdate(errDb, userId, id);
   });
 });
 
@@ -237,6 +289,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
         .run(uuid(), presentationId, h.message || '', JSON.stringify({ state: 'ready', message: h.message }));
       db.prepare(`UPDATE presentations SET title = ?, status = 'generating', updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
         .run(h.presentation_title || 'Untitled Presentation', presentationId);
+      broadcastDashboardUpdate(db, userId, presentationId);
     },
     onSlide(slide) {
       slides.push(slide);
@@ -287,6 +340,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
       persistProgress();
       if (slide.index === 0 && imageData && !imageData.startsWith('data:image/svg')) {
         db.prepare(`UPDATE presentations SET thumbnail = ? WHERE id = ?`).run(imageData, presentationId);
+        broadcastDashboardUpdate(db, userId, presentationId);
       }
       broadcast(presentationId, { type: 'slide_ready', slide: done });
     }).catch(err => {
@@ -338,6 +392,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
 
   db.prepare(`UPDATE presentations SET status = 'completed', slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
     .run(JSON.stringify(allSlides), presentationId);
+  broadcastDashboardUpdate(db, userId, presentationId);
 
   if (userId) {
     const _presUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(userId);
@@ -352,6 +407,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
     if (autoTitle) {
       db.prepare(`UPDATE presentations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(autoTitle, presentationId);
       broadcast(presentationId, { type: 'title_updated', title: autoTitle });
+      broadcastDashboardUpdate(db, userId, presentationId);
     }
   } catch {}
 
@@ -534,16 +590,18 @@ router.post('/:id/generate', authenticateToken, async (req, res) => {
     `UPDATE presentations SET status = 'generating', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
   ).run(req.params.id);
 
+  broadcastDashboardUpdate(db, req.user.id, req.params.id);
   res.json({ message: 'Generation started', total_slides: slidePlan.slides.length });
 
   // Run generation async — do not await
-  runGeneration(req.params.id, slidePlan).catch(err => {
+  const genUserId = req.user.id;
+  runGeneration(req.params.id, slidePlan, genUserId).catch(err => {
     logger.error('generation failed', { errorMessage: err.message });
     broadcast(req.params.id, { type: 'error', message: err.message });
   });
 });
 
-async function runGeneration(presentationId, slidePlan) {
+async function runGeneration(presentationId, slidePlan, userId = null) {
   const db = getDb();
   const slides = [];
   const presRow = db.prepare('SELECT aspect_ratio FROM presentations WHERE id = ?').get(presentationId);
@@ -619,6 +677,7 @@ async function runGeneration(presentationId, slidePlan) {
     `UPDATE presentations SET status = 'completed', slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
   ).run(JSON.stringify(slides), presentationId);
 
+  if (userId) broadcastDashboardUpdate(db, userId, presentationId);
   broadcast(presentationId, { type: 'complete', total_slides: slides.length });
 }
 

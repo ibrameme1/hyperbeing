@@ -458,7 +458,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    // Show cached data instantly while fetching fresh in background
+    // Show cached data instantly while waiting for SSE snapshot
     try {
       const cached = sessionStorage.getItem('hb_presentations');
       if (cached) {
@@ -470,29 +470,44 @@ export default function Dashboard() {
     refreshCredits();
     const creditsInterval = setInterval(refreshCredits, 30_000);
 
-    // Poll for live status while any presentation is generating
-    let statusInterval = null;
-    function scheduleStatusPoll(list) {
-      clearInterval(statusInterval);
-      const hasGenerating = (list || []).some(p => p.status === 'generating' || p.status === 'processing');
-      if (hasGenerating) {
-        statusInterval = setInterval(() => {
-          fetchPresentations().then(updated => {
-            const stillGenerating = updated.some(p => p.status === 'generating' || p.status === 'processing');
-            if (!stillGenerating) clearInterval(statusInterval);
-          });
-        }, 2000);
-      }
-    }
+    // Real-time dashboard updates via SSE — replaces polling entirely
+    const token = localStorage.getItem('hb_token');
+    const apiBase = import.meta.env.VITE_API_URL || '';
+    const sse = new EventSource(`${apiBase}/api/presentations/dashboard-events?token=${encodeURIComponent(token)}`);
 
-    // Initial fetch — sets loading state and kicks off polling if needed
-    fetchPresentations()
-      .then(scheduleStatusPoll)
-      .finally(() => setPresLoading(false));
+    sse.onmessage = (e) => {
+      let event;
+      try { event = JSON.parse(e.data); } catch { return; }
+
+      if (event.type === 'snapshot') {
+        // Initial full list sent on SSE connect
+        const list = event.presentations || [];
+        setPresentations(list);
+        try { sessionStorage.setItem('hb_presentations', JSON.stringify(list)); } catch {}
+        setPresLoading(false);
+      } else if (event.type === 'presentation_updated') {
+        // A single presentation changed — update or prepend it in the list
+        setPresentations(prev => {
+          const exists = prev.some(p => p.id === event.presentation.id);
+          const next = exists
+            ? prev.map(p => p.id === event.presentation.id ? event.presentation : p)
+            : [event.presentation, ...prev];
+          // Re-sort by updated_at descending (server sends ISO strings)
+          next.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+          try { sessionStorage.setItem('hb_presentations', JSON.stringify(next)); } catch {}
+          return next;
+        });
+      }
+    };
+
+    sse.onerror = () => {
+      // EventSource auto-reconnects; fall back to a one-time fetch if needed
+      fetchPresentations().finally(() => setPresLoading(false));
+    };
 
     return () => {
       clearInterval(creditsInterval);
-      clearInterval(statusInterval);
+      sse.close();
     };
   }, []);
 
