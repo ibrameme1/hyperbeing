@@ -410,6 +410,9 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [input, setInput] = useState('');
 
+  // User-scoped cache key prevents stale data from a previous user ever being shown
+  const presCacheKey = `hb_presentations_${user?.id}`;
+
   const prefs = (() => { try { return JSON.parse(localStorage.getItem('hb_prefs') || 'null'); } catch { return null; } })();
   const heroSubtitle = prefs
     ? (VIBE_SUBTITLES[prefs.design_vibe] || PRIORITY_SUBTITLES[prefs.priority] || 'What will you create today?')
@@ -453,7 +456,7 @@ export default function Dashboard() {
         const list = r.data.presentations || [];
         setPresentations(list);
         if (updateCache) {
-          try { sessionStorage.setItem('hb_presentations', JSON.stringify(list)); } catch {}
+          try { sessionStorage.setItem(presCacheKey, JSON.stringify(list)); } catch {}
         }
         return list;
       })
@@ -463,7 +466,7 @@ export default function Dashboard() {
   useEffect(() => {
     // Show cached data instantly while the HTTP fetch is in flight
     try {
-      const cached = sessionStorage.getItem('hb_presentations');
+      const cached = sessionStorage.getItem(presCacheKey);
       if (cached) {
         setPresentations(JSON.parse(cached));
         setPresLoading(false);
@@ -488,7 +491,7 @@ export default function Dashboard() {
       if (event.type === 'snapshot') {
         const list = event.presentations || [];
         setPresentations(list);
-        try { sessionStorage.setItem('hb_presentations', JSON.stringify(list)); } catch {}
+        try { sessionStorage.setItem(presCacheKey, JSON.stringify(list)); } catch {}
         setPresLoading(false);
       } else if (event.type === 'presentation_updated') {
         setPresentations(prev => {
@@ -497,7 +500,7 @@ export default function Dashboard() {
             ? prev.map(p => p.id === event.presentation.id ? event.presentation : p)
             : [event.presentation, ...prev];
           next.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-          try { sessionStorage.setItem('hb_presentations', JSON.stringify(next)); } catch {}
+          try { sessionStorage.setItem(presCacheKey, JSON.stringify(next)); } catch {}
           return next;
         });
       }
@@ -614,7 +617,7 @@ export default function Dashboard() {
   function handleDeletePresentation(id) {
     setPresentations(prev => {
       const next = prev.filter(p => p.id !== id);
-      try { sessionStorage.setItem('hb_presentations', JSON.stringify(next)); } catch {}
+      try { sessionStorage.setItem(presCacheKey, JSON.stringify(next)); } catch {}
       return next;
     });
   }
