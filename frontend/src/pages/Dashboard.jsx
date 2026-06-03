@@ -532,9 +532,17 @@ export default function Dashboard() {
         return list;
       })
       .catch(() => []);
-  }, []);
+  }, [presCacheKey]);
 
   useEffect(() => {
+    if (!user?.id) {
+      setPresentations([]);
+      setPresLoading(false);
+      return;
+    }
+
+    setPresLoading(true);
+
     // Show cached data instantly while the HTTP fetch is in flight
     try {
       const cached = sessionStorage.getItem(presCacheKey);
@@ -583,7 +591,7 @@ export default function Dashboard() {
       clearInterval(creditsInterval);
       sse.close();
     };
-  }, []);
+  }, [user?.id, fetchPresentations]);
 
   const allAttachments = [
     ...moodboardFiles.map(f => ({ ...f, category: 'moodboard' })),
