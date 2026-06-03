@@ -5,7 +5,7 @@ import { useDropzone } from 'react-dropzone';
 import {
   Sparkles, Send, LogOut, X, Clock, Trash2, Loader2,
   ImageIcon, Palette, Plus, ChevronDown, ChevronUp, Paperclip, Zap,
-  Sun, Moon, CreditCard, User, BarChart2,
+  Sun, Moon, CreditCard, User, BarChart2, Bot,
 } from 'lucide-react';
 import api from '../api/client';
 import OutOfCreditsModal from '../components/OutOfCreditsModal';
@@ -15,68 +15,139 @@ import { capture } from '../utils/posthog';
 import Logo from '../components/Logo';
 
 const ANALYZING_MESSAGES = [
-  'Reading your brief…',
-  'Identifying key themes…',
-  'Understanding your audience…',
-  'Crafting the right questions…',
-  'Almost there…',
+  { text: "ok let me read through this real quick…", emoji: "👀" },
+  { text: "hm. interesting brief. i like it.", emoji: "🤔" },
+  { text: "gonna ask you a few follow-up questions.", emoji: "💬" },
+  { text: "promise they won't be generic ahh questions.", emoji: "🙏" },
+  { text: "just figuring out what makes YOUR deck unique…", emoji: "✨" },
+  { text: "i need like 2 more seconds, bear with me.", emoji: "⏳" },
+  { text: "almost there — cooking something good.", emoji: "🍳" },
 ];
 
 function AnalyzingOverlay() {
   const [msgIdx, setMsgIdx] = useState(0);
+  const [blink, setBlink] = useState(false);
+
   useEffect(() => {
-    const t = setInterval(() => setMsgIdx(i => (i + 1) % ANALYZING_MESSAGES.length), 2200);
+    const t = setInterval(() => setMsgIdx(i => (i + 1) % ANALYZING_MESSAGES.length), 2400);
     return () => clearInterval(t);
   }, []);
+
+  // Random eye blink
+  useEffect(() => {
+    function scheduleBlink() {
+      const delay = 2000 + Math.random() * 3000;
+      return setTimeout(() => {
+        setBlink(true);
+        setTimeout(() => { setBlink(false); scheduleBlink(); }, 120);
+      }, delay);
+    }
+    const t = scheduleBlink();
+    return () => clearTimeout(t);
+  }, []);
+
+  const msg = ANALYZING_MESSAGES[msgIdx];
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(16px)' }}
+      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(18px)' }}
     >
       <motion.div
-        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        initial={{ scale: 0.88, opacity: 0, y: 24 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.9, opacity: 0, y: 20 }}
-        transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-        className="rounded-3xl px-10 py-10 max-w-xs w-full mx-4 text-center shadow-2xl bg-white dark:bg-hb-surface"
+        exit={{ scale: 0.88, opacity: 0, y: 24 }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        className="rounded-3xl w-full max-w-sm mx-4 shadow-2xl overflow-hidden"
+        style={{ background: 'linear-gradient(160deg, #18102e 0%, #0f172a 100%)', border: '1px solid rgba(139,92,246,0.25)' }}
       >
-        <div
-          className="w-16 h-16 rounded-2xl mx-auto mb-5 flex items-center justify-center"
-          style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
-        >
+        {/* Top glow strip */}
+        <div className="h-1 w-full" style={{ background: 'linear-gradient(90deg, #8B5CF6, #00F0FF, #8B5CF6)', backgroundSize: '200% 100%' }} />
+
+        <div className="px-8 py-8 flex flex-col items-center text-center">
+
+          {/* Robot avatar */}
           <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+            animate={{ y: [0, -5, 0] }}
+            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+            className="relative mb-6"
           >
-            <Sparkles size={26} className="text-white" />
+            {/* Glow */}
+            <div className="absolute inset-0 rounded-2xl blur-xl opacity-60"
+                 style={{ background: 'linear-gradient(135deg, #8B5CF6, #00F0FF)' }} />
+
+            {/* Robot face */}
+            <div className="relative w-20 h-20 rounded-2xl flex flex-col items-center justify-center gap-1.5"
+                 style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #06b6d4 100%)' }}>
+              {/* Eyes */}
+              <div className="flex gap-3">
+                {[0, 1].map(i => (
+                  <motion.div
+                    key={i}
+                    className="rounded-full bg-white"
+                    style={{
+                      width: 10, height: blink ? 2 : 10,
+                      transition: 'height 0.08s ease',
+                      boxShadow: '0 0 8px rgba(255,255,255,0.8)',
+                    }}
+                  />
+                ))}
+              </div>
+              {/* Mouth — wiggles while thinking */}
+              <motion.div
+                animate={{ scaleX: [1, 1.15, 0.9, 1] }}
+                transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                className="rounded-full bg-white/80"
+                style={{ width: 22, height: 4, borderRadius: 99 }}
+              />
+              {/* Antenna */}
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 flex flex-col items-center">
+                <motion.div
+                  animate={{ backgroundColor: ['#a78bfa', '#00F0FF', '#a78bfa'] }}
+                  transition={{ duration: 1.2, repeat: Infinity }}
+                  className="w-2.5 h-2.5 rounded-full"
+                />
+                <div className="w-0.5 h-3 bg-white/40" />
+              </div>
+            </div>
           </motion.div>
-        </div>
-        <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Analysing your brief</h3>
-        <AnimatePresence mode="wait">
-          <motion.p
-            key={msgIdx}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.3 }}
-            className="text-sm text-gray-500 dark:text-zinc-400 min-h-[20px]"
-          >
-            {ANALYZING_MESSAGES[msgIdx]}
-          </motion.p>
-        </AnimatePresence>
-        <div className="flex justify-center gap-1.5 mt-5">
-          {[0, 1, 2].map(i => (
-            <motion.div
-              key={i}
-              animate={{ scale: [1, 1.4, 1], opacity: [0.4, 1, 0.4] }}
-              transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
-              className="w-2 h-2 rounded-full"
-              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
-            />
-          ))}
+
+          {/* Title */}
+          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#a78bfa' }}>Nova is thinking</p>
+
+          {/* Speech bubble */}
+          <div className="relative w-full rounded-2xl px-5 py-4 mb-5"
+               style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={msgIdx}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.28 }}
+                className="flex items-center justify-center gap-2"
+              >
+                <span className="text-lg leading-none">{msg.emoji}</span>
+                <p className="text-sm font-medium text-white/80 leading-snug">{msg.text}</p>
+              </motion.div>
+            </AnimatePresence>
+          </div>
+
+          {/* Typing dots */}
+          <div className="flex gap-1.5">
+            {[0, 1, 2].map(i => (
+              <motion.div
+                key={i}
+                animate={{ y: [0, -5, 0], opacity: [0.4, 1, 0.4] }}
+                transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' }}
+                className="w-2 h-2 rounded-full"
+                style={{ background: 'linear-gradient(135deg, #8B5CF6, #00F0FF)' }}
+              />
+            ))}
+          </div>
         </div>
       </motion.div>
     </motion.div>
