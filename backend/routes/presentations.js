@@ -461,6 +461,11 @@ router.get('/:id/events', (req, res) => {
 
   const { id } = req.params;
 
+  const ownedPres = getDb()
+    .prepare('SELECT id FROM presentations WHERE id = ? AND user_id = ?')
+    .get(id, userId);
+  if (!ownedPres) return res.status(404).end();
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
