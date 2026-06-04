@@ -64,9 +64,6 @@ function AnalyzingOverlay() {
         className="rounded-3xl w-full max-w-sm mx-4 shadow-2xl overflow-hidden"
         style={{ background: 'linear-gradient(160deg, #18102e 0%, #0f172a 100%)', border: '1px solid rgba(139,92,246,0.25)' }}
       >
-        {/* Top glow strip */}
-        <div className="h-1 w-full" style={{ background: 'linear-gradient(90deg, #8B5CF6, #00F0FF, #8B5CF6)', backgroundSize: '200% 100%' }} />
-
         <div className="px-8 py-8 flex flex-col items-center text-center">
 
           {/* Robot avatar */}
@@ -76,7 +73,7 @@ function AnalyzingOverlay() {
             className="relative mb-6"
           >
             {/* Glow */}
-            <div className="absolute inset-0 rounded-2xl blur-xl opacity-60"
+            <div className="absolute inset-0 rounded-2xl blur-xl opacity-20"
                  style={{ background: 'linear-gradient(135deg, #8B5CF6, #00F0FF)' }} />
 
             {/* Robot face */}
@@ -141,7 +138,7 @@ function AnalyzingOverlay() {
                 animate={{ y: [0, -5, 0], opacity: [0.4, 1, 0.4] }}
                 transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' }}
                 className="w-2 h-2 rounded-full"
-                style={{ background: 'linear-gradient(135deg, #8B5CF6, #00F0FF)' }}
+                style={{ background: '#8B5CF6' }}
               />
             ))}
           </div>

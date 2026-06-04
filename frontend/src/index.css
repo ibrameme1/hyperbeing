@@ -141,11 +141,11 @@
            active:scale-[0.97] transition-all duration-150
            disabled:opacity-40 disabled:pointer-events-none;
     background: linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%);
-    box-shadow: 0 4px 24px rgba(139,92,246,0.35);
+    box-shadow: 0 2px 12px rgba(139,92,246,0.18);
   }
   .hb-btn:hover {
     background: linear-gradient(135deg, #7C3AED 0%, #00C4D4 100%);
-    box-shadow: 0 6px 32px rgba(139,92,246,0.45);
+    box-shadow: 0 4px 16px rgba(139,92,246,0.28);
   }
   .hb-chip {
     @apply px-4 py-3 rounded-2xl text-sm font-semibold border-2 transition-all duration-200 cursor-pointer text-left;

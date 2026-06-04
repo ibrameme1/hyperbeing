@@ -70,22 +70,6 @@ export default function Homepage() {
       <div className="relative min-h-screen flex flex-col overflow-hidden">
         <BackgroundVideo />
 
-        {/* Animated gradient orbs */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-          <div
-            className="animate-orb-1 absolute top-[-8%] left-[-8%] w-[640px] h-[640px] rounded-full opacity-35"
-            style={{ background: 'radial-gradient(circle, #8B5CF6 0%, transparent 68%)', filter: 'blur(90px)' }}
-          />
-          <div
-            className="animate-orb-2 absolute top-[5%] right-[-12%] w-[560px] h-[560px] rounded-full opacity-25"
-            style={{ background: 'radial-gradient(circle, #00C4D4 0%, transparent 68%)', filter: 'blur(100px)' }}
-          />
-          <div
-            className="animate-orb-3 absolute bottom-[0%] left-[25%] w-[440px] h-[440px] rounded-full opacity-20"
-            style={{ background: 'radial-gradient(circle, #4C1D95 0%, transparent 68%)', filter: 'blur(110px)' }}
-          />
-        </div>
-
         {/* Navbar */}
         <motion.nav
           initial={{ y: -20, opacity: 0 }}
@@ -123,7 +107,7 @@ export default function Homepage() {
                   <button
                     onClick={() => navigate('/login')}
                     className="rounded-full px-5 py-2 text-sm font-semibold text-white cursor-pointer transition-all duration-200 hover:opacity-90 active:scale-[0.97]"
-                    style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00C4D4 100%)', boxShadow: '0 4px 20px rgba(139,92,246,0.4)' }}
+                    style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00C4D4 100%)', boxShadow: '0 2px 10px rgba(139,92,246,0.22)' }}
                   >
                     Get started free
                   </button>
@@ -175,7 +159,7 @@ export default function Homepage() {
               <button
                 onClick={() => navigate('/login')}
                 className="group px-8 py-4 rounded-2xl font-bold text-white flex items-center gap-2.5 transition-all duration-200 hover:opacity-90 active:scale-[0.97]"
-                style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 8px 40px rgba(139,92,246,0.45)' }}
+                style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 4px 16px rgba(139,92,246,0.25)' }}
               >
                 Start for free
                 <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform duration-200" />
@@ -491,7 +475,7 @@ export default function Homepage() {
         >
           {/* Soft glow inside CTA */}
           <div
-            className="absolute top-0 left-1/2 -translate-x-1/2 w-[480px] h-[240px] rounded-full opacity-18 pointer-events-none"
+            className="absolute top-0 left-1/2 -translate-x-1/2 w-[480px] h-[240px] rounded-full opacity-8 pointer-events-none"
             style={{ background: 'radial-gradient(circle, #8B5CF6 0%, transparent 70%)', filter: 'blur(70px)' }}
           />
 
@@ -506,7 +490,7 @@ export default function Homepage() {
             <button
               onClick={() => navigate('/login')}
               className="group inline-flex items-center gap-2.5 px-10 py-4 rounded-2xl font-bold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.97]"
-              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 8px 40px rgba(139,92,246,0.45)' }}
+              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 4px 16px rgba(139,92,246,0.25)' }}
             >
               Start for free
               <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform duration-200" />
