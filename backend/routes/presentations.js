@@ -103,12 +103,10 @@ router.get('/', authenticateToken, (req, res) => {
     )
     .all(req.user.id);
 
-  if (rows.length > 0) {
-    const lastModified = new Date(rows[0].updated_at + 'Z');
-    res.setHeader('Last-Modified', lastModified.toUTCString());
-    const ims = req.headers['if-modified-since'];
-    if (ims && new Date(ims) >= lastModified) return res.status(304).end();
-  }
+  // Prevent the browser from caching user-specific data across sessions.
+  // Without this, a browser that cached user X's response would serve it
+  // to user Y (different Authorization token, same URL, no Vary header).
+  res.setHeader('Cache-Control', 'no-store');
 
   res.json({ presentations: rows });
 });
