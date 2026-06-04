@@ -61,6 +61,9 @@ function AnalyzingOverlay() {
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.88, opacity: 0, y: 24 }}
         transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Nova is analyzing your brief"
         className="rounded-3xl w-full max-w-sm mx-4 shadow-2xl overflow-hidden"
         style={{ background: 'linear-gradient(160deg, #18102e 0%, #0f172a 100%)', border: '1px solid rgba(139,92,246,0.25)' }}
       >
@@ -86,8 +89,9 @@ function AnalyzingOverlay() {
                     key={i}
                     className="rounded-full bg-white"
                     style={{
-                      width: 10, height: blink ? 2 : 10,
-                      transition: 'height 0.08s ease',
+                      width: 10, height: 10,
+                      transform: blink ? 'scaleY(0.2)' : 'scaleY(1)',
+                      transition: 'transform 0.08s ease',
                       boxShadow: '0 0 8px rgba(255,255,255,0.8)',
                     }}
                   />
@@ -123,8 +127,10 @@ function AnalyzingOverlay() {
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.28 }}
                 className="flex items-center justify-center gap-2"
+                aria-live="polite"
+                aria-atomic="true"
               >
-                <span className="text-lg leading-none">{msg.emoji}</span>
+                <span className="text-lg leading-none" aria-hidden="true">{msg.emoji}</span>
                 <p className="text-sm font-medium text-white/80 leading-snug">{msg.text}</p>
               </motion.div>
             </AnimatePresence>
@@ -223,7 +229,8 @@ function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove }) 
                      className="h-14 w-14 rounded-xl object-cover border border-ios-gray5 dark:border-hb-border" />
                 <button
                   onClick={e => { e.stopPropagation(); onRemove(f.id); }}
-                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-800 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label={`Remove ${f.name}`}
+                  className="absolute -top-2 -right-2 w-6 h-6 bg-gray-800 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <X size={10} />
                 </button>
@@ -272,18 +279,22 @@ function PresentationCard({ pres, onDelete }) {
   return (
     <motion.div
       layout
+      role="button"
+      tabIndex={0}
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       whileHover={{ scale: 1.02, y: -2 }}
       whileTap={{ scale: 0.98 }}
       onClick={() => navigate(`/presentations/${pres.id}`, { state: { presentation: pres } })}
-      className="bg-white dark:bg-hb-surface rounded-2xl overflow-hidden shadow-ios cursor-pointer group relative"
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/presentations/${pres.id}`, { state: { presentation: pres } }); } }}
+      aria-label={pres.title}
+      className="bg-white dark:bg-hb-surface rounded-2xl overflow-hidden shadow-ios cursor-pointer group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-hb-primary"
     >
       <div className="aspect-[16/9] overflow-hidden"
            style={{ background: 'linear-gradient(135deg, #8B5CF622 0%, #00F0FF22 100%)' }}>
         {pres.thumbnail ? (
-          <img src={pres.thumbnail} alt={pres.title} className="w-full h-full object-cover" />
+          <img src={pres.thumbnail} alt="" loading="lazy" className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <Sparkles className="w-7 h-7 text-ios-indigo opacity-40" />
@@ -313,13 +324,13 @@ function PresentationCard({ pres, onDelete }) {
         >
           <button
             onClick={handleDelete}
-            className="px-2 py-1 rounded-lg bg-red-500 text-white text-[10px] font-bold hover:bg-red-600 transition-colors"
+            className="px-3 py-2 rounded-lg bg-red-500 text-white text-xs font-bold hover:bg-red-600 transition-colors"
           >
             Delete
           </button>
           <button
             onClick={handleCancelDelete}
-            className="px-2 py-1 rounded-lg text-[10px] font-semibold text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors"
+            className="px-3 py-2 rounded-lg text-xs font-semibold text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors"
           >
             Cancel
           </button>
@@ -328,7 +339,8 @@ function PresentationCard({ pres, onDelete }) {
         <button
           onClick={handleDelete}
           disabled={deleting}
-          className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity w-7 h-7 rounded-xl bg-white/90 dark:bg-hb-surface shadow-ios flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400"
+          aria-label={`Delete ${pres.title}`}
+          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity w-9 h-9 rounded-xl bg-white/90 dark:bg-hb-surface shadow-ios flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
         >
           {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
         </button>
@@ -752,6 +764,9 @@ export default function Dashboard() {
           style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(16px)' }}
         >
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Reading your links"
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
@@ -777,6 +792,9 @@ export default function Dashboard() {
           style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(16px)' }}
         >
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Starting your presentation"
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
@@ -829,7 +847,7 @@ export default function Dashboard() {
             onClick={toggleTheme}
             className="w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 hover:opacity-70"
             style={{ background: 'var(--bg-input)' }}
-            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             {isDark
               ? <Sun size={15} className="text-yellow-400" />
@@ -885,10 +903,17 @@ export default function Dashboard() {
               <div className="flex items-center gap-2 px-5 pb-5 pt-1 border-t border-ios-gray5 dark:border-hb-border">
                 {/* Aspect ratio selector */}
                 <div className="flex items-center gap-1 bg-ios-gray5 dark:bg-hb-surface-2 rounded-xl p-1">
-                  {['16:9', '4:3', '1:1', '9:16'].map(ratio => (
+                  {[
+                    { ratio: '16:9', label: '16:9 widescreen' },
+                    { ratio: '4:3', label: '4:3 standard' },
+                    { ratio: '1:1', label: '1:1 square' },
+                    { ratio: '9:16', label: '9:16 vertical' },
+                  ].map(({ ratio, label }) => (
                     <button
                       key={ratio}
                       onClick={() => setSelectedAspectRatio(ratio)}
+                      aria-label={label}
+                      aria-pressed={selectedAspectRatio === ratio}
                       className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-150 ${
                         selectedAspectRatio === ratio
                           ? 'bg-white dark:bg-hb-dark text-gray-900 dark:text-white shadow-sm'
@@ -1004,7 +1029,7 @@ export default function Dashboard() {
                   <AttachZone
                     label="Moodboard"
                     icon={Palette}
-                    accentColor="#764ba2"
+                    accentColor="#8B5CF6"
                     files={moodboardFiles}
                     onAdd={f => setMoodboardFiles(prev => [...prev, f])}
                     onRemove={id => setMoodboardFiles(prev => prev.filter(f => f.id !== id))}
@@ -1026,7 +1051,7 @@ export default function Dashboard() {
             transition={{ duration: 0.5, delay: 0.2 }}
           >
             <div className="flex items-center justify-between mb-5">
-              <h2 className="font-bold text-gray-900 dark:text-white text-xl">Recents</h2>
+              <h2 className="font-sans font-bold text-gray-900 dark:text-white text-xl">Recents</h2>
             </div>
 
             {presLoading ? (
@@ -1054,12 +1079,31 @@ export default function Dashboard() {
         )}
 
         {!presLoading && presentations.length === 0 && (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 rounded-3xl mx-auto mb-4 flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #8B5CF622 0%, #00F0FF22 100%)' }}>
-              <Sparkles size={28} className="text-ios-indigo opacity-60" />
+          <div className="text-center py-10">
+            <div className="w-14 h-14 rounded-3xl mx-auto mb-4 flex items-center justify-center"
+                 style={{ background: 'var(--bg-input)' }}>
+              <Bot size={24} style={{ color: 'var(--text-muted)' }} />
             </div>
-            <p className="text-gray-500 dark:text-zinc-400 text-sm">Your presentations will appear here.</p>
+            <p className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Your first deck is one brief away</p>
+            <p className="text-sm mb-6 max-w-xs mx-auto" style={{ color: 'var(--text-muted)' }}>
+              Describe your presentation above — audience, purpose, tone. Nova handles the rest.
+            </p>
+            <div className="flex flex-wrap justify-center gap-2 max-w-lg mx-auto">
+              {[
+                '5-slide investor pitch for a B2B SaaS at Series A',
+                'Competitive analysis comparing us to Notion and Asana',
+                'Q2 roadmap presentation for an engineering all-hands',
+              ].map(example => (
+                <button
+                  key={example}
+                  onClick={() => { setInput(example); textareaRef.current?.focus(); }}
+                  className="text-xs font-medium px-3 py-2 rounded-xl border transition-all duration-150 text-left hover:opacity-80"
+                  style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)', borderColor: 'var(--border-input)' }}
+                >
+                  {example}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </main>
