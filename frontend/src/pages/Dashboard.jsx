@@ -115,9 +115,6 @@ function AnalyzingOverlay() {
             </div>
           </motion.div>
 
-          {/* Title */}
-          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: '#a78bfa' }}>Nova is thinking</p>
-
           {/* Speech bubble */}
           <div className="relative w-full rounded-2xl px-5 py-4 mb-5"
                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
@@ -249,14 +246,22 @@ function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove }) 
 function PresentationCard({ pres, onDelete }) {
   const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   async function handleDelete(e) {
     e.stopPropagation();
+    if (!confirmDelete) { setConfirmDelete(true); return; }
     setDeleting(true);
+    setConfirmDelete(false);
     try {
       await api.delete(`/presentations/${pres.id}`);
       onDelete(pres.id);
     } catch { setDeleting(false); }
+  }
+
+  function handleCancelDelete(e) {
+    e.stopPropagation();
+    setConfirmDelete(false);
   }
 
   const statusColors = {
@@ -304,13 +309,33 @@ function PresentationCard({ pres, onDelete }) {
         </div>
       </div>
 
-      <button
-        onClick={handleDelete}
-        disabled={deleting}
-        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity w-7 h-7 rounded-xl bg-white/90 dark:bg-hb-surface shadow-ios flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-600 hover:text-red-500 dark:text-zinc-400 dark:hover:text-red-400"
-      >
-        {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-      </button>
+      {confirmDelete ? (
+        <div
+          onClick={e => e.stopPropagation()}
+          className="absolute top-2 right-2 flex items-center gap-1 bg-white dark:bg-hb-surface rounded-xl p-1.5 shadow-ios-md z-10"
+        >
+          <button
+            onClick={handleDelete}
+            className="px-2 py-1 rounded-lg bg-red-500 text-white text-[10px] font-bold hover:bg-red-600 transition-colors"
+          >
+            Delete
+          </button>
+          <button
+            onClick={handleCancelDelete}
+            className="px-2 py-1 rounded-lg text-[10px] font-semibold text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity w-7 h-7 rounded-xl bg-white/90 dark:bg-hb-surface shadow-ios flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400"
+        >
+          {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+        </button>
+      )}
     </motion.div>
   );
 }
@@ -833,14 +858,10 @@ export default function Dashboard() {
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             className="text-center mb-8"
           >
-            <p className="text-xs font-semibold tracking-widest uppercase mb-2" style={{ color: '#8B5CF6' }}>
-              {greeting(user?.name || 'there')}
-            </p>
-            <h1 className="text-5xl font-bold leading-tight tracking-tight"
-                style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <h1 className="text-5xl font-bold leading-tight tracking-tight" style={{ color: 'var(--text-primary)' }}>
               What will you<br />create today?
             </h1>
-            <p className="text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>{heroSubtitle}</p>
+            <p className="text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>{greeting(user?.name || 'there')} — {heroSubtitle}</p>
           </motion.div>
 
           {/* Composer card */}

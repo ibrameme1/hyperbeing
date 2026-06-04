@@ -12,7 +12,7 @@
   --bg-hero:        linear-gradient(160deg, #EDE9FE 0%, #F0EEFF 40%, #FFE8F3 100%);
   --text-primary:   #18132E;
   --text-secondary: #6B6285;
-  --text-muted:     #8E8E93;
+  --text-muted:     #737373;
   --border:         #EDE9FE;
   --border-input:   #E2E0EC;
   --skeleton-from:  #e8e8e8;
@@ -128,10 +128,7 @@
     background: linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%);
   }
   .hb-gradient-text {
-    background: linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: #C4B5FD;
   }
   .hb-surface {
     background: rgba(24,24,27,0.75);
@@ -234,12 +231,9 @@
 .animate-orb-2 { animation: orb-float-2 15s ease-in-out infinite 2s; }
 .animate-orb-3 { animation: orb-float-3 18s ease-in-out infinite 4s; }
 
-/* Gradient text for stats */
+/* Stat highlight color */
 .stat-gradient {
-  background: linear-gradient(135deg, #C4B5FD 0%, #00F0FF 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #C4B5FD;
 }
 
 /* Dark feature card — used on landing */
