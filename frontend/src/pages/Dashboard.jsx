@@ -198,6 +198,7 @@ function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove }) 
         mimeType: file.type,
         data: e.target.result,
       });
+      reader.onerror = () => {};
       reader.readAsDataURL(file);
     });
   }, [onAdd]);
@@ -261,17 +262,28 @@ function PresentationCard({ pres, onDelete }) {
   const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState(false);
   const shouldReduceMotion = useReducedMotion();
+  const cancelBtnRef = useRef(null);
+
+  useEffect(() => {
+    if (confirmDelete) cancelBtnRef.current?.focus();
+  }, [confirmDelete]);
 
   async function handleDelete(e) {
     e.stopPropagation();
     if (!confirmDelete) { setConfirmDelete(true); return; }
     setDeleting(true);
     setConfirmDelete(false);
+    setDeleteError(false);
     try {
       await api.delete(`/presentations/${pres.id}`);
       onDelete(pres.id);
-    } catch { setDeleting(false); }
+    } catch {
+      setDeleting(false);
+      setDeleteError(true);
+      setTimeout(() => setDeleteError(false), 3000);
+    }
   }
 
   function handleCancelDelete(e) {
@@ -322,11 +334,17 @@ function PresentationCard({ pres, onDelete }) {
               {new Date(pres.updated_at).toLocaleDateString()}
             </p>
           </div>
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg flex-shrink-0 ${statusColors[pres.status] || 'bg-gray-100 text-gray-600'}`}>
-            {statusLabels[pres.status] || pres.status}
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg flex-shrink-0 ${statusColors[pres.status] || 'bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-zinc-400'}`}>
+            {statusLabels[pres.status] ?? '—'}
           </span>
         </div>
       </div>
+
+      {deleteError && (
+        <div className="absolute bottom-0 inset-x-0 px-3 py-1.5 rounded-b-2xl text-xs text-center text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20">
+          Couldn't delete — try again.
+        </div>
+      )}
 
       {confirmDelete ? (
         <div
@@ -340,8 +358,9 @@ function PresentationCard({ pres, onDelete }) {
             Delete
           </button>
           <button
+            ref={cancelBtnRef}
             onClick={handleCancelDelete}
-            className="px-3 py-2 rounded-lg text-xs font-semibold text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors"
+            className="px-3 py-2 rounded-lg text-xs font-semibold text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-hb-primary"
           >
             Cancel
           </button>
@@ -544,6 +563,7 @@ export default function Dashboard() {
   const [submitError, setSubmitError] = useState('');
   const [presentations, setPresentations] = useState([]);
   const [presLoading, setPresLoading] = useState(true);
+  const [presError, setPresError] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [fetchingUrls, setFetchingUrls] = useState([]);
   const [analysis, setAnalysis] = useState(null);
@@ -577,12 +597,16 @@ export default function Dashboard() {
       .then(r => {
         const list = r.data.presentations || [];
         setPresentations(list);
+        setPresError(false);
         if (updateCache) {
           try { sessionStorage.setItem(presCacheKey, JSON.stringify(list)); } catch {}
         }
         return list;
       })
-      .catch(() => []);
+      .catch(() => {
+        setPresError(true);
+        return [];
+      });
   }, [presCacheKey]);
 
   useEffect(() => {
@@ -776,6 +800,7 @@ export default function Dashboard() {
         id: Math.random().toString(36).slice(2),
         name: file.name, type: 'image', mimeType: file.type, data: ev.target.result,
       }]);
+      reader.onerror = () => {};
       reader.readAsDataURL(file);
     });
   }
@@ -923,6 +948,7 @@ export default function Dashboard() {
                   onDragOver={e => e.preventDefault()}
                   onDrop={handleTextareaDrop}
                   placeholder="Describe your presentation — paste your brief, add your content, mention your audience and tone… (drag images here to attach)"
+                  aria-label="Presentation brief"
                   rows={4}
                   className="w-full resize-none border-none outline-none text-gray-800 dark:text-zinc-100 placeholder:text-ios-gray2 dark:placeholder:text-zinc-500 text-base bg-transparent leading-relaxed"
                 />
@@ -962,6 +988,7 @@ export default function Dashboard() {
                         <input
                           ref={slideCountInputRef}
                           type="number"
+                          aria-label="Number of slides (1–50)"
                           min={1}
                           max={50}
                           value={adminSlideCount ?? ''}
@@ -1081,6 +1108,19 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-5">
               <h2 className="font-sans font-bold text-gray-900 dark:text-white text-xl">Recents</h2>
             </div>
+
+            {presError && presentations.length === 0 && !presLoading && (
+              <div className="text-center py-8 rounded-2xl" style={{ background: 'var(--bg-input)' }}>
+                <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>Couldn't load your presentations.</p>
+                <button
+                  onClick={() => { setPresLoading(true); fetchPresentations().finally(() => setPresLoading(false)); }}
+                  className="text-sm font-semibold transition-opacity hover:opacity-70"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  Try again →
+                </button>
+              </div>
+            )}
 
             {presLoading ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
