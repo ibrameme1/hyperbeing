@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import {
   Sparkles, Send, LogOut, X, Clock, Trash2, Loader2,
@@ -24,9 +24,10 @@ const ANALYZING_MESSAGES = [
   { text: "almost there — cooking something good.", emoji: "🍳" },
 ];
 
-function AnalyzingOverlay() {
+function AnalyzingOverlay({ onCancel }) {
   const [msgIdx, setMsgIdx] = useState(0);
   const [blink, setBlink] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     const t = setInterval(() => setMsgIdx(i => (i + 1) % ANALYZING_MESSAGES.length), 2400);
@@ -71,7 +72,7 @@ function AnalyzingOverlay() {
 
           {/* Robot avatar */}
           <motion.div
-            animate={{ y: [0, -5, 0] }}
+            animate={shouldReduceMotion ? {} : { y: [0, -5, 0] }}
             transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
             className="relative mb-6"
           >
@@ -141,13 +142,22 @@ function AnalyzingOverlay() {
             {[0, 1, 2].map(i => (
               <motion.div
                 key={i}
-                animate={{ y: [0, -5, 0], opacity: [0.4, 1, 0.4] }}
+                animate={shouldReduceMotion ? {} : { y: [0, -5, 0], opacity: [0.4, 1, 0.4] }}
                 transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' }}
                 className="w-2 h-2 rounded-full"
                 style={{ background: '#8B5CF6' }}
               />
             ))}
           </div>
+
+          {onCancel && (
+            <button
+              onClick={onCancel}
+              className="mt-5 text-xs text-white/40 hover:text-white/70 transition-colors"
+            >
+              Cancel
+            </button>
+          )}
         </div>
       </motion.div>
     </motion.div>
@@ -251,6 +261,7 @@ function PresentationCard({ pres, onDelete }) {
   const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
 
   async function handleDelete(e) {
     e.stopPropagation();
@@ -284,8 +295,8 @@ function PresentationCard({ pres, onDelete }) {
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      whileHover={{ scale: 1.02, y: -2 }}
-      whileTap={{ scale: 0.98 }}
+      whileHover={shouldReduceMotion ? {} : { scale: 1.02, y: -2 }}
+      whileTap={shouldReduceMotion ? {} : { scale: 0.98 }}
       onClick={() => navigate(`/presentations/${pres.id}`, { state: { presentation: pres } })}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/presentations/${pres.id}`, { state: { presentation: pres } }); } }}
       aria-label={pres.title}
@@ -340,7 +351,7 @@ function PresentationCard({ pres, onDelete }) {
           onClick={handleDelete}
           disabled={deleting}
           aria-label={`Delete ${pres.title}`}
-          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity w-9 h-9 rounded-xl bg-white/90 dark:bg-hb-surface shadow-ios flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity w-9 h-9 rounded-xl bg-white/90 dark:bg-hb-surface shadow-ios flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/30 text-[color:var(--text-muted)] hover:text-red-600 dark:hover:text-red-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
         >
           {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
         </button>
@@ -378,13 +389,18 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(v => !v)}
+        aria-label={`Account menu for ${user?.name || 'your account'}`}
+        aria-expanded={open}
         className="relative w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white transition-all duration-200 hover:scale-105"
         style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
-        title="Account"
       >
         {/* Credit ring */}
         <svg className="absolute inset-0 w-10 h-10 -rotate-90" viewBox="0 0 40 40">
-          <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="2.5" />
+          <circle
+            cx="20" cy="20" r="18" fill="none"
+            stroke="rgba(255,255,255,0.15)" strokeWidth="2.5"
+            strokeDasharray={low ? '4 3' : undefined}
+          />
           <circle
             cx="20" cy="20" r="18" fill="none"
             stroke={ringColor} strokeWidth="2.5"
@@ -544,6 +560,7 @@ export default function Dashboard() {
   const [showSlideCountInput, setShowSlideCountInput] = useState(false);
   const slideCountInputRef = useRef(null);
   const textareaRef = useRef(null);
+  const analyzeAbortRef = useRef(null);
 
   function refreshCredits() {
     api.get('/billing/subscription')
@@ -632,12 +649,21 @@ export default function Dashboard() {
     ...brandingFiles.map(f => ({ ...f, category: 'branding' })),
   ];
 
+  function handleCancelAnalyzing() {
+    analyzeAbortRef.current?.abort();
+    analyzeAbortRef.current = null;
+    setAnalyzing(false);
+    setFetchingUrls([]);
+  }
+
   async function handleSubmit() {
     if (!input.trim() && allAttachments.length === 0) return;
     capture('prompt_submitted', {
       has_attachments: allAttachments.length > 0,
       aspect_ratio: selectedAspectRatio,
     });
+    const controller = new AbortController();
+    analyzeAbortRef.current = controller;
     setAnalyzing(true);
     setSubmitError('');
 
@@ -669,12 +695,13 @@ export default function Dashboard() {
       const { data } = await api.post('/presentations/analyze', {
         message: enrichedMessage,
         attachments: allAttachments.map(a => ({ type: a.type, name: a.name, data: a.data, mimeType: a.mimeType, category: a.category })),
-      });
+      }, { signal: controller.signal });
       setPendingInput(enrichedMessage);
       setPendingAttachments(allAttachments.map(a => ({ type: a.type, name: a.name, data: a.data, mimeType: a.mimeType, category: a.category })));
       setAnalysis(data);
       setShowQuestionFlow(true);
     } catch (err) {
+      if (err.code === 'ERR_CANCELED' || err.name === 'CanceledError') return;
       const status = err.response?.status;
       setSubmitError(
         err.response?.data?.error ||
@@ -684,6 +711,7 @@ export default function Dashboard() {
       );
     } finally {
       setAnalyzing(false);
+      analyzeAbortRef.current = null;
     }
   }
 
@@ -783,7 +811,7 @@ export default function Dashboard() {
           </motion.div>
         </motion.div>
       )}
-      {analyzing && <AnalyzingOverlay />}
+      {analyzing && <AnalyzingOverlay onCancel={handleCancelAnalyzing} />}
       {creatingPresentation && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -811,8 +839,8 @@ export default function Dashboard() {
                 <Sparkles size={26} className="text-white" />
               </motion.div>
             </div>
-            <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Starting your presentation</h3>
-            <p className="text-sm text-gray-500 dark:text-zinc-400">Nova is getting ready…</p>
+            <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">ok, building it now…</h3>
+            <p className="text-sm text-gray-500 dark:text-zinc-400">this usually takes about a minute.</p>
           </motion.div>
         </motion.div>
       )}
@@ -873,7 +901,7 @@ export default function Dashboard() {
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             className="text-center mb-8"
           >
-            <h1 className="text-5xl font-bold leading-tight tracking-tight" style={{ color: 'var(--text-primary)' }}>
+            <h1 className="font-sans text-5xl font-bold leading-tight tracking-tight" style={{ color: 'var(--text-primary)' }}>
               What will you<br />create today?
             </h1>
             <p className="text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>{greeting(user?.name || 'there')} — {heroSubtitle}</p>
@@ -963,7 +991,7 @@ export default function Dashboard() {
                             ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-400'
                             : 'border-dashed border-amber-300 dark:border-amber-700 text-amber-500 dark:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20'
                         }`}
-                        title="Admin: override slide count"
+                        aria-label="Admin: override slide count"
                       >
                         <Zap size={12} />
                         {adminSlideCount ? `${adminSlideCount} slides` : 'Slides: Auto'}
