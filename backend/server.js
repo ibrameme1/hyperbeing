@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import * as Sentry from '@sentry/node';
 import express from 'express';
 import cors from 'cors';
 import session from 'express-session';
@@ -111,6 +112,9 @@ app.use('/admin', (req, res, next) => {
 }, adminDashboardRouter);
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok', uptime: process.uptime() }));
+
+// Sentry must catch errors before the global handler so it can capture them
+Sentry.setupExpressErrorHandler(app);
 
 // Global error handler — never leak stack traces or internal messages to clients
 app.use((err, req, res, next) => {
