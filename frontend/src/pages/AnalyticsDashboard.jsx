@@ -9,9 +9,10 @@ import {
 import {
   Users, FileText, MessageSquare, Zap, Activity,
   TrendingUp, TrendingDown, Clock, Eye, Star,
-  ChevronRight, Circle, BarChart2, RefreshCw,
+  ChevronRight, ChevronDown, ChevronUp, Circle, BarChart2, RefreshCw,
   Terminal, Cpu, Search, AlertCircle, Info, AlertTriangle, Bug,
-  Pencil, Check, X, ArrowLeft, Trash2,
+  Pencil, Check, X, ArrowLeft, Trash2, Database, Save, ExternalLink,
+  TableProperties, ChevronLeft,
 } from 'lucide-react';
 import api from '../api/client';
 
@@ -200,6 +201,42 @@ export default function AnalyticsDashboard() {
   const [creditSaveError, setCreditSaveError] = useState(null);
   const [deletingUserId, setDeletingUserId] = useState(null);
 
+  // ── All Users section ──────────────────────────────────────────────────────
+  const [allUsers, setAllUsers] = useState(null);
+  const [allUsersLoading, setAllUsersLoading] = useState(false);
+  const [allUsersSearch, setAllUsersSearch] = useState('');
+  const [allUsersOffset, setAllUsersOffset] = useState(0);
+  const [allUsersTotal, setAllUsersTotal] = useState(0);
+  const [editUserId, setEditUserId] = useState(null);
+  const [editUserForm, setEditUserForm] = useState({});
+  const [editUserSaving, setEditUserSaving] = useState(false);
+
+  // ── All Presentations section ──────────────────────────────────────────────
+  const [allPresList, setAllPresList] = useState(null);
+  const [allPresLoading, setAllPresLoading] = useState(false);
+  const [allPresSearch, setAllPresSearch] = useState('');
+  const [allPresOffset, setAllPresOffset] = useState(0);
+  const [allPresTotal, setAllPresTotal] = useState(0);
+  const [selectedPresId, setSelectedPresId] = useState(null);
+  const [selectedPresDetail, setSelectedPresDetail] = useState(null);
+  const [selectedPresLoading, setSelectedPresLoading] = useState(false);
+  const [editPresId, setEditPresId] = useState(null);
+  const [editPresTitle, setEditPresTitle] = useState('');
+  const [presDeleting, setPresDeleting] = useState(null);
+
+  // ── Database browser ───────────────────────────────────────────────────────
+  const [dbTables, setDbTables] = useState(null);
+  const [dbActiveTable, setDbActiveTable] = useState('users');
+  const [dbData, setDbData] = useState(null);
+  const [dbLoading, setDbLoading] = useState(false);
+  const [dbSearch, setDbSearch] = useState('');
+  const [dbOffset, setDbOffset] = useState(0);
+  const [dbOrderCol, setDbOrderCol] = useState('');
+  const [dbOrderDir, setDbOrderDir] = useState('desc');
+  const [dbEditRow, setDbEditRow] = useState(null);
+  const [dbEditForm, setDbEditForm] = useState({});
+  const [dbEditSaving, setDbEditSaving] = useState(false);
+
   async function handleDeleteUser(userId) {
     if (!window.confirm('Permanently delete this user and all their data? This cannot be undone.')) return;
     setDeletingUserId(userId);
@@ -288,6 +325,64 @@ export default function AnalyticsDashboard() {
     }
   }, []);
 
+  const fetchAllUsers = useCallback(async (search, offset) => {
+    const s = search ?? allUsersSearch;
+    const o = offset ?? allUsersOffset;
+    setAllUsersLoading(true);
+    try {
+      const p = new URLSearchParams({ limit: 50, offset: o, search: s });
+      const { data } = await api.get(`/admin/users/all?${p}`);
+      setAllUsers(data.users);
+      setAllUsersTotal(data.total);
+      setAllUsersOffset(o);
+    } catch {} finally { setAllUsersLoading(false); }
+  }, [allUsersSearch, allUsersOffset]);
+
+  const fetchAllPres = useCallback(async (search, offset) => {
+    const s = search ?? allPresSearch;
+    const o = offset ?? allPresOffset;
+    setAllPresLoading(true);
+    try {
+      const p = new URLSearchParams({ limit: 50, offset: o, search: s });
+      const { data } = await api.get(`/admin/presentations/all?${p}`);
+      setAllPresList(data.presentations);
+      setAllPresTotal(data.total);
+      setAllPresOffset(o);
+    } catch {} finally { setAllPresLoading(false); }
+  }, [allPresSearch, allPresOffset]);
+
+  const fetchPresDetail = async (id) => {
+    setSelectedPresId(id);
+    setSelectedPresDetail(null);
+    setSelectedPresLoading(true);
+    try {
+      const { data } = await api.get(`/admin/presentations/${id}/detail`);
+      setSelectedPresDetail(data);
+    } catch {} finally { setSelectedPresLoading(false); }
+  };
+
+  const fetchDbTables = async () => {
+    try {
+      const { data } = await api.get('/admin/db/tables');
+      setDbTables(data.tables);
+    } catch {}
+  };
+
+  const fetchDbData = useCallback(async (table, search, offset, orderCol, orderDir) => {
+    const t  = table    ?? dbActiveTable;
+    const s  = search   ?? dbSearch;
+    const o  = offset   ?? dbOffset;
+    const oc = orderCol ?? dbOrderCol;
+    const od = orderDir ?? dbOrderDir;
+    setDbLoading(true);
+    try {
+      const p = new URLSearchParams({ limit: 50, offset: o, search: s, orderBy: oc, orderDir: od });
+      const { data } = await api.get(`/admin/db/${t}?${p}`);
+      setDbData(data);
+      setDbOffset(o);
+    } catch {} finally { setDbLoading(false); }
+  }, [dbActiveTable, dbSearch, dbOffset, dbOrderCol, dbOrderDir]);
+
   // SSE live feed
   useEffect(() => {
     const base = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
@@ -309,10 +404,16 @@ export default function AnalyticsDashboard() {
     return () => { es.close(); setLiveConnected(false); };
   }, []);
 
-  // Auto-fetch logs/metrics when switching to those tabs
+  // Auto-fetch on tab switch
   useEffect(() => {
     if (activeTab === 'logs') fetchLogs();
     if (activeTab === 'metrics') fetchMetrics();
+    if (activeTab === 'users' && !allUsers) fetchAllUsers();
+    if (activeTab === 'presentations' && !allPresList) fetchAllPres();
+    if (activeTab === 'database') {
+      if (!dbTables) fetchDbTables();
+      fetchDbData();
+    }
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initial + auto-refresh
@@ -394,6 +495,7 @@ export default function AnalyticsDashboard() {
     { id: 'events',        label: 'Events',          icon: Activity },
     { id: 'logs',          label: 'Logs',            icon: Terminal },
     { id: 'metrics',       label: 'Metrics',         icon: Cpu },
+    { id: 'database',      label: 'Database',        icon: Database },
   ];
 
   return (
@@ -837,6 +939,197 @@ export default function AnalyticsDashboard() {
                 ))}
               </div>
             </ChartCard>
+
+            {/* ── Full User Database ── */}
+            <ChartCard title={`All Users${allUsersTotal ? ` (${allUsersTotal})` : ''}`}>
+              <div className="mb-3 flex items-center gap-2">
+                <div className="flex flex-1 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                  <Search size={13} className="text-gray-500 flex-shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="Search name or email…"
+                    value={allUsersSearch}
+                    onChange={e => setAllUsersSearch(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { setAllUsersOffset(0); fetchAllUsers(allUsersSearch, 0); } }}
+                    className="w-full bg-transparent text-xs text-gray-200 placeholder-gray-600 outline-none"
+                  />
+                </div>
+                <button
+                  onClick={() => { setAllUsersOffset(0); fetchAllUsers(allUsersSearch, 0); }}
+                  disabled={allUsersLoading}
+                  className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 hover:bg-white/10 transition disabled:opacity-50"
+                >
+                  <RefreshCw size={12} className={allUsersLoading ? 'animate-spin' : ''} />
+                  {allUsersLoading ? 'Loading…' : 'Search'}
+                </button>
+              </div>
+
+              {allUsers && (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-white/10 text-gray-500 text-left">
+                          <th className="pb-2 pr-3">User</th>
+                          <th className="pb-2 pr-3">Plan</th>
+                          <th className="pb-2 pr-3">Credits</th>
+                          <th className="pb-2 pr-3">Decks</th>
+                          <th className="pb-2 pr-3">Tokens used</th>
+                          <th className="pb-2 pr-3">Joined</th>
+                          <th className="pb-2"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allUsers.map((u, i) => (
+                          editUserId === u.id ? (
+                            <tr key={u.id} className="border-b border-purple-500/30 bg-purple-900/10">
+                              <td colSpan={7} className="py-3 px-2">
+                                <div className="flex flex-wrap gap-3 items-end">
+                                  <div>
+                                    <p className="text-[10px] text-gray-500 mb-1">Name</p>
+                                    <input
+                                      value={editUserForm.name ?? ''}
+                                      onChange={e => setEditUserForm(f => ({ ...f, name: e.target.value }))}
+                                      className="bg-gray-800 border border-white/20 rounded px-2 py-1 text-xs text-white w-36 outline-none focus:border-purple-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] text-gray-500 mb-1">Email</p>
+                                    <input
+                                      value={editUserForm.email ?? ''}
+                                      onChange={e => setEditUserForm(f => ({ ...f, email: e.target.value }))}
+                                      className="bg-gray-800 border border-white/20 rounded px-2 py-1 text-xs text-white w-48 outline-none focus:border-purple-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] text-gray-500 mb-1">Plan</p>
+                                    <select
+                                      value={editUserForm.plan ?? 'free'}
+                                      onChange={e => setEditUserForm(f => ({ ...f, plan: e.target.value }))}
+                                      className="bg-gray-800 border border-white/20 rounded px-2 py-1 text-xs text-white outline-none focus:border-purple-500"
+                                    >
+                                      <option value="free">free</option>
+                                      <option value="starter">starter</option>
+                                      <option value="pro">pro</option>
+                                      <option value="unlimited">unlimited</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] text-gray-500 mb-1">Credits</p>
+                                    <input
+                                      type="number" min="0"
+                                      value={editUserForm.credits_remaining ?? ''}
+                                      onChange={e => setEditUserForm(f => ({ ...f, credits_remaining: e.target.value }))}
+                                      className="bg-gray-800 border border-white/20 rounded px-2 py-1 text-xs text-white w-20 outline-none focus:border-purple-500"
+                                    />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      disabled={editUserSaving}
+                                      onClick={async () => {
+                                        setEditUserSaving(true);
+                                        try {
+                                          await api.patch(`/admin/users/${u.id}`, editUserForm);
+                                          setAllUsers(prev => prev.map(x => x.id === u.id ? { ...x, ...editUserForm } : x));
+                                          setEditUserId(null);
+                                        } catch (err) {
+                                          alert(err.response?.data?.error || 'Save failed');
+                                        } finally { setEditUserSaving(false); }
+                                      }}
+                                      className="flex items-center gap-1 rounded-lg bg-green-700 hover:bg-green-600 px-3 py-1.5 text-xs text-white transition disabled:opacity-50"
+                                    >
+                                      <Save size={11} />
+                                      {editUserSaving ? 'Saving…' : 'Save'}
+                                    </button>
+                                    <button
+                                      onClick={() => setEditUserId(null)}
+                                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 transition"
+                                    >Cancel</button>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : (
+                            <tr key={u.id} className="border-b border-white/5 hover:bg-white/5 transition group">
+                              <td className="py-2 pr-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold flex-shrink-0"
+                                    style={{ background: PIE_COLORS[i % PIE_COLORS.length] + '33', color: PIE_COLORS[i % PIE_COLORS.length] }}>
+                                    {u.name?.[0]?.toUpperCase() ?? '?'}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <p className="font-medium text-gray-200 truncate max-w-[140px]">{u.name}</p>
+                                    <p className="text-gray-600 truncate max-w-[140px]">{u.email}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="pr-3">
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${u.plan === 'free' ? 'bg-gray-800 text-gray-400' : 'bg-purple-900/50 text-purple-300'}`}>
+                                  {u.plan}
+                                </span>
+                              </td>
+                              <td className="pr-3 font-mono text-gray-300">{u.credits_remaining}</td>
+                              <td className="pr-3 font-mono text-gray-300">{u.presentation_count}</td>
+                              <td className="pr-3 font-mono text-gray-500">{fmt(u.tokens_used)}</td>
+                              <td className="pr-3 text-gray-500">{relTime(u.created_at)}</td>
+                              <td>
+                                <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => { setEditUserId(u.id); setEditUserForm({ name: u.name, email: u.email, plan: u.plan, credits_remaining: u.credits_remaining }); }}
+                                    className="text-gray-600 hover:text-purple-400"
+                                    title="Edit user"
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteUser(u.id)}
+                                    className="text-gray-600 hover:text-red-400"
+                                    title="Delete user"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {/* Pagination */}
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-xs text-gray-600">
+                      {allUsersOffset + 1}–{Math.min(allUsersOffset + 50, allUsersTotal)} of {allUsersTotal}
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        disabled={allUsersOffset === 0 || allUsersLoading}
+                        onClick={() => fetchAllUsers(allUsersSearch, Math.max(0, allUsersOffset - 50))}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 disabled:opacity-30 hover:bg-white/10 transition"
+                      >
+                        <ChevronLeft size={12} />
+                      </button>
+                      <button
+                        disabled={allUsersOffset + 50 >= allUsersTotal || allUsersLoading}
+                        onClick={() => fetchAllUsers(allUsersSearch, allUsersOffset + 50)}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 disabled:opacity-30 hover:bg-white/10 transition"
+                      >
+                        <ChevronRight size={12} />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {!allUsers && !allUsersLoading && (
+                <button
+                  onClick={() => fetchAllUsers('', 0)}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 py-4 text-xs text-gray-400 hover:bg-white/10 transition"
+                >
+                  Load all users
+                </button>
+              )}
+            </ChartCard>
           </motion.div>
         )}
 
@@ -948,6 +1241,200 @@ export default function AnalyticsDashboard() {
                   </tbody>
                 </table>
               </div>
+            </ChartCard>
+
+            {/* ── All Presentations with full edit ── */}
+            <ChartCard title={`All Presentations${allPresTotal ? ` (${allPresTotal})` : ''}`}>
+              <div className="mb-3 flex items-center gap-2">
+                <div className="flex flex-1 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                  <Search size={13} className="text-gray-500 flex-shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="Search title, user name or email…"
+                    value={allPresSearch}
+                    onChange={e => setAllPresSearch(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { setAllPresOffset(0); fetchAllPres(allPresSearch, 0); } }}
+                    className="w-full bg-transparent text-xs text-gray-200 placeholder-gray-600 outline-none"
+                  />
+                </div>
+                <button
+                  onClick={() => { setAllPresOffset(0); fetchAllPres(allPresSearch, 0); }}
+                  disabled={allPresLoading}
+                  className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 hover:bg-white/10 transition disabled:opacity-50"
+                >
+                  <RefreshCw size={12} className={allPresLoading ? 'animate-spin' : ''} />
+                  {allPresLoading ? 'Loading…' : 'Search'}
+                </button>
+              </div>
+
+              {allPresList && (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-white/10 text-gray-500 text-left">
+                          <th className="pb-2 pr-3">Title</th>
+                          <th className="pb-2 pr-3">User</th>
+                          <th className="pb-2 pr-3">Status</th>
+                          <th className="pb-2 pr-3">Slides</th>
+                          <th className="pb-2 pr-3">Updated</th>
+                          <th className="pb-2"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allPresList.map(p => (
+                          <>
+                            <tr key={p.id} className="border-b border-white/5 hover:bg-white/5 transition group">
+                              <td className="py-2 pr-3">
+                                {editPresId === p.id ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      value={editPresTitle}
+                                      onChange={e => setEditPresTitle(e.target.value)}
+                                      onKeyDown={async e => {
+                                        if (e.key === 'Enter') {
+                                          await api.patch(`/admin/presentations/${p.id}`, { title: editPresTitle });
+                                          setAllPresList(prev => prev.map(x => x.id === p.id ? { ...x, title: editPresTitle } : x));
+                                          setEditPresId(null);
+                                        }
+                                        if (e.key === 'Escape') setEditPresId(null);
+                                      }}
+                                      autoFocus
+                                      className="bg-gray-800 border border-purple-500 rounded px-2 py-0.5 text-xs text-white w-44 outline-none"
+                                    />
+                                    <button onClick={async () => {
+                                      await api.patch(`/admin/presentations/${p.id}`, { title: editPresTitle });
+                                      setAllPresList(prev => prev.map(x => x.id === p.id ? { ...x, title: editPresTitle } : x));
+                                      setEditPresId(null);
+                                    }} className="text-green-400 hover:text-green-300"><Check size={12} /></button>
+                                    <button onClick={() => setEditPresId(null)} className="text-gray-500 hover:text-gray-300"><X size={12} /></button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1.5 group/title">
+                                    <span className="font-medium text-gray-200 max-w-[180px] truncate block">{p.title}</span>
+                                    <button
+                                      onClick={() => { setEditPresId(p.id); setEditPresTitle(p.title); }}
+                                      className="opacity-0 group-hover/title:opacity-100 text-gray-600 hover:text-purple-400 transition-opacity flex-shrink-0"
+                                    ><Pencil size={11} /></button>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="pr-3">
+                                <div>
+                                  <p className="text-gray-300">{p.user_name}</p>
+                                  <p className="text-gray-600 text-[10px]">{p.user_email}</p>
+                                </div>
+                              </td>
+                              <td className="pr-3"><StatusBadge status={p.status} /></td>
+                              <td className="pr-3 font-mono text-gray-300">{p.slide_count}</td>
+                              <td className="pr-3 text-gray-500">{relTime(p.updated_at)}</td>
+                              <td>
+                                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => selectedPresId === p.id ? setSelectedPresId(null) : fetchPresDetail(p.id)}
+                                    className="text-gray-600 hover:text-blue-400"
+                                    title="View slides"
+                                  ><Eye size={13} /></button>
+                                  <button
+                                    onClick={async () => {
+                                      if (!window.confirm('Delete this presentation?')) return;
+                                      setPresDeleting(p.id);
+                                      try {
+                                        await api.delete(`/admin/presentations/${p.id}`);
+                                        setAllPresList(prev => prev.filter(x => x.id !== p.id));
+                                        setAllPresTotal(t => t - 1);
+                                        if (selectedPresId === p.id) setSelectedPresId(null);
+                                      } catch (err) {
+                                        alert(err.response?.data?.error || 'Delete failed');
+                                      } finally { setPresDeleting(null); }
+                                    }}
+                                    disabled={presDeleting === p.id}
+                                    className="text-gray-600 hover:text-red-400 disabled:opacity-40"
+                                    title="Delete"
+                                  >{presDeleting === p.id ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}</button>
+                                </div>
+                              </td>
+                            </tr>
+                            {/* Slide detail panel */}
+                            {selectedPresId === p.id && (
+                              <tr key={`${p.id}-detail`}>
+                                <td colSpan={6} className="bg-gray-900/60 border-b border-white/10">
+                                  <div className="px-4 py-3">
+                                    {selectedPresLoading ? (
+                                      <div className="flex items-center gap-2 py-4 text-xs text-gray-500">
+                                        <RefreshCw size={12} className="animate-spin" />
+                                        Loading slides…
+                                      </div>
+                                    ) : selectedPresDetail && (
+                                      <div className="space-y-2">
+                                        <div className="flex items-center gap-3 mb-2">
+                                          <p className="text-xs font-semibold text-gray-300">
+                                            {selectedPresDetail.slides_data?.length ?? 0} slides
+                                          </p>
+                                          <span className="text-xs text-gray-600">Theme: {selectedPresDetail.slide_plan?.theme ?? '—'}</span>
+                                          <span className="text-xs text-gray-600">
+                                            Palette: {JSON.stringify(selectedPresDetail.slide_plan?.color_palette ?? {})}
+                                          </span>
+                                        </div>
+                                        {(selectedPresDetail.slides_data ?? []).map((slide, si) => (
+                                          <div key={si} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                                            <div className="flex items-center gap-3 mb-1">
+                                              <span className="font-mono text-[10px] text-gray-600">#{si}</span>
+                                              <span className="text-[10px] rounded-full px-2 py-0.5 bg-blue-900/40 text-blue-400">{slide.type}</span>
+                                              <p className="text-xs font-semibold text-gray-200 truncate">{slide.title}</p>
+                                            </div>
+                                            {slide.subtitle && <p className="text-[10px] text-gray-500 mb-1">{slide.subtitle}</p>}
+                                            {(slide.key_points ?? []).length > 0 && (
+                                              <ul className="list-disc list-inside space-y-0.5 text-[10px] text-gray-500 mb-1">
+                                                {slide.key_points.map((kp, ki) => <li key={ki}>{kp}</li>)}
+                                              </ul>
+                                            )}
+                                            {slide.nano_banana_prompt && (
+                                              <p className="text-[10px] text-gray-600 line-clamp-2 mt-1 italic">
+                                                {slide.nano_banana_prompt.slice(0, 200)}…
+                                              </p>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-xs text-gray-600">
+                      {allPresOffset + 1}–{Math.min(allPresOffset + 50, allPresTotal)} of {allPresTotal}
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        disabled={allPresOffset === 0 || allPresLoading}
+                        onClick={() => fetchAllPres(allPresSearch, Math.max(0, allPresOffset - 50))}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 disabled:opacity-30 hover:bg-white/10 transition"
+                      ><ChevronLeft size={12} /></button>
+                      <button
+                        disabled={allPresOffset + 50 >= allPresTotal || allPresLoading}
+                        onClick={() => fetchAllPres(allPresSearch, allPresOffset + 50)}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 disabled:opacity-30 hover:bg-white/10 transition"
+                      ><ChevronRight size={12} /></button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {!allPresList && !allPresLoading && (
+                <button
+                  onClick={() => fetchAllPres('', 0)}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 py-4 text-xs text-gray-400 hover:bg-white/10 transition"
+                >
+                  Load all presentations
+                </button>
+              )}
             </ChartCard>
           </motion.div>
         )}
@@ -1306,6 +1793,246 @@ export default function AnalyticsDashboard() {
                 </table>
               </div>
             </ChartCard>
+          </motion.div>
+        )}
+
+        {/* ── DATABASE TAB ── */}
+        {activeTab === 'database' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+            <div className="flex items-center justify-between">
+              <SectionTitle>Live Database</SectionTitle>
+            </div>
+
+            {/* Table picker + stats */}
+            {dbTables && (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+                {dbTables.map(t => (
+                  <button
+                    key={t.name}
+                    onClick={() => {
+                      setDbActiveTable(t.name);
+                      setDbSearch('');
+                      setDbOffset(0);
+                      setDbOrderCol('');
+                      setDbData(null);
+                      setDbEditRow(null);
+                      fetchDbData(t.name, '', 0, '', 'desc');
+                    }}
+                    className={`rounded-xl border p-3 text-left transition ${
+                      dbActiveTable === t.name
+                        ? 'border-purple-500 bg-purple-900/20 text-purple-300'
+                        : 'border-white/10 bg-white/5 text-gray-400 hover:bg-white/10'
+                    }`}
+                  >
+                    <p className="text-xs font-semibold truncate">{t.name}</p>
+                    <p className="mt-1 font-mono text-lg font-bold text-white">{fmt(t.count)}</p>
+                    <p className="text-[10px] text-gray-600">{t.columns.length} cols</p>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Data table */}
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 flex-1 min-w-0">
+                  <Search size={13} className="text-gray-500 flex-shrink-0" />
+                  <input
+                    type="text"
+                    placeholder={`Search ${dbActiveTable}…`}
+                    value={dbSearch}
+                    onChange={e => setDbSearch(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        setDbOffset(0);
+                        fetchDbData(dbActiveTable, dbSearch, 0, dbOrderCol, dbOrderDir);
+                      }
+                    }}
+                    className="w-full bg-transparent text-xs text-gray-200 placeholder-gray-600 outline-none"
+                  />
+                </div>
+                <button
+                  onClick={() => { setDbOffset(0); fetchDbData(dbActiveTable, dbSearch, 0, dbOrderCol, dbOrderDir); }}
+                  disabled={dbLoading}
+                  className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 hover:bg-white/10 transition disabled:opacity-50"
+                >
+                  <RefreshCw size={12} className={dbLoading ? 'animate-spin' : ''} />
+                  {dbLoading ? 'Loading…' : 'Reload'}
+                </button>
+                {dbData && (
+                  <span className="text-xs text-gray-600 ml-auto">
+                    {dbOffset + 1}–{Math.min(dbOffset + 50, dbData.total)} of {dbData.total} rows
+                  </span>
+                )}
+              </div>
+
+              {dbData && (
+                <>
+                  {/* Edit row panel */}
+                  {dbEditRow && (
+                    <div className="mb-4 rounded-xl border border-purple-500/40 bg-purple-900/10 p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-semibold text-purple-300">Editing row</p>
+                        <button onClick={() => setDbEditRow(null)} className="text-gray-500 hover:text-gray-300"><X size={14} /></button>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {dbData.columns.filter(c => !c.pk).map(col => (
+                          <div key={col.name}>
+                            <p className="text-[10px] text-gray-500 mb-1 font-mono">{col.name} <span className="text-gray-700">{col.type}</span></p>
+                            {String(dbEditForm[col.name] ?? '').length > 60 ? (
+                              <textarea
+                                value={dbEditForm[col.name] ?? ''}
+                                onChange={e => setDbEditForm(f => ({ ...f, [col.name]: e.target.value }))}
+                                rows={3}
+                                className="w-full bg-gray-800 border border-white/20 rounded px-2 py-1 text-xs text-white font-mono outline-none focus:border-purple-500 resize-y"
+                              />
+                            ) : (
+                              <input
+                                value={dbEditForm[col.name] ?? ''}
+                                onChange={e => setDbEditForm(f => ({ ...f, [col.name]: e.target.value }))}
+                                className="w-full bg-gray-800 border border-white/20 rounded px-2 py-1 text-xs text-white font-mono outline-none focus:border-purple-500"
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          disabled={dbEditSaving}
+                          onClick={async () => {
+                            setDbEditSaving(true);
+                            const pkCol = dbData.columns.find(c => c.pk);
+                            const pkVal = dbEditRow[pkCol?.name ?? 'id'];
+                            try {
+                              await api.patch(`/admin/db/${dbActiveTable}/${pkVal}`, dbEditForm);
+                              setDbData(prev => ({
+                                ...prev,
+                                rows: prev.rows.map(r => r[pkCol?.name ?? 'id'] === pkVal ? { ...r, ...dbEditForm } : r),
+                              }));
+                              setDbEditRow(null);
+                            } catch (err) {
+                              alert(err.response?.data?.error || 'Save failed');
+                            } finally { setDbEditSaving(false); }
+                          }}
+                          className="flex items-center gap-1.5 rounded-lg bg-green-700 hover:bg-green-600 px-4 py-1.5 text-xs text-white transition disabled:opacity-50"
+                        >
+                          <Save size={12} />
+                          {dbEditSaving ? 'Saving…' : 'Save changes'}
+                        </button>
+                        <button
+                          onClick={() => setDbEditRow(null)}
+                          className="rounded-lg border border-white/10 bg-white/5 px-4 py-1.5 text-xs text-gray-300 hover:bg-white/10 transition"
+                        >Cancel</button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-white/10 text-gray-500 text-left">
+                          {dbData.columns.map(col => (
+                            <th
+                              key={col.name}
+                              className="pb-2 pr-3 whitespace-nowrap cursor-pointer hover:text-gray-300 transition select-none"
+                              onClick={() => {
+                                const newDir = dbOrderCol === col.name && dbOrderDir === 'desc' ? 'asc' : 'desc';
+                                setDbOrderCol(col.name);
+                                setDbOrderDir(newDir);
+                                fetchDbData(dbActiveTable, dbSearch, dbOffset, col.name, newDir);
+                              }}
+                            >
+                              <span className="flex items-center gap-1">
+                                {col.name}
+                                {col.pk && <span className="text-purple-500 text-[9px]">PK</span>}
+                                {dbOrderCol === col.name && (
+                                  dbOrderDir === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />
+                                )}
+                              </span>
+                            </th>
+                          ))}
+                          <th className="pb-2"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dbData.rows.map((row, ri) => {
+                          const pkCol = dbData.columns.find(c => c.pk);
+                          const pkVal = row[pkCol?.name ?? 'id'];
+                          return (
+                            <tr key={ri} className="border-b border-white/5 hover:bg-white/5 transition group">
+                              {dbData.columns.map(col => (
+                                <td key={col.name} className="py-2 pr-3 align-top font-mono max-w-[200px]">
+                                  <div className="truncate text-gray-300" title={String(row[col.name] ?? '')}>
+                                    {row[col.name] === null
+                                      ? <span className="text-gray-700 italic">null</span>
+                                      : String(row[col.name]).length > 60
+                                        ? String(row[col.name]).slice(0, 60) + '…'
+                                        : String(row[col.name])
+                                    }
+                                  </div>
+                                </td>
+                              ))}
+                              <td className="py-2 align-top">
+                                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => {
+                                      const form = {};
+                                      dbData.columns.filter(c => !c.pk).forEach(c => { form[c.name] = row[c.name] ?? ''; });
+                                      setDbEditForm(form);
+                                      setDbEditRow(row);
+                                    }}
+                                    className="text-gray-600 hover:text-purple-400"
+                                    title="Edit row"
+                                  ><Pencil size={12} /></button>
+                                  <button
+                                    onClick={async () => {
+                                      if (!window.confirm(`Delete row where ${pkCol?.name}=${pkVal}?`)) return;
+                                      try {
+                                        await api.delete(`/admin/db/${dbActiveTable}/${pkVal}`);
+                                        setDbData(prev => ({ ...prev, rows: prev.rows.filter((_, i) => i !== ri), total: prev.total - 1 }));
+                                      } catch (err) {
+                                        alert(err.response?.data?.error || 'Delete failed');
+                                      }
+                                    }}
+                                    className="text-gray-600 hover:text-red-400"
+                                    title="Delete row"
+                                  ><Trash2 size={12} /></button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Pagination */}
+                  <div className="mt-4 flex items-center justify-between">
+                    <span className="text-xs text-gray-600">
+                      {dbData.total === 0 ? 'No rows' : `${dbOffset + 1}–${Math.min(dbOffset + 50, dbData.total)} of ${dbData.total}`}
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        disabled={dbOffset === 0 || dbLoading}
+                        onClick={() => fetchDbData(dbActiveTable, dbSearch, Math.max(0, dbOffset - 50), dbOrderCol, dbOrderDir)}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 disabled:opacity-30 hover:bg-white/10 transition"
+                      ><ChevronLeft size={12} /></button>
+                      <button
+                        disabled={dbOffset + 50 >= dbData.total || dbLoading}
+                        onClick={() => fetchDbData(dbActiveTable, dbSearch, dbOffset + 50, dbOrderCol, dbOrderDir)}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 disabled:opacity-30 hover:bg-white/10 transition"
+                      ><ChevronRight size={12} /></button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {!dbData && !dbLoading && (
+                <div className="py-8 text-center text-xs text-gray-600">
+                  Select a table above to browse data
+                </div>
+              )}
+            </div>
           </motion.div>
         )}
 

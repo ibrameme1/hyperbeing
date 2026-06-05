@@ -928,7 +928,7 @@ export default function Dashboard() {
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             className="text-center mb-8"
           >
-            <h1 className="font-sans text-5xl font-bold leading-tight tracking-tight" style={{ color: 'var(--text-primary)' }}>
+            <h1 className="font-sans text-3xl sm:text-5xl font-bold leading-tight tracking-tight" style={{ color: 'var(--text-primary)' }}>
               What will you<br />create today?
             </h1>
             <p className="text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>{greeting(user?.name || 'there')} — {heroSubtitle}</p>
@@ -949,115 +949,142 @@ export default function Dashboard() {
                   onKeyDown={handleKeyDown}
                   onDragOver={e => e.preventDefault()}
                   onDrop={handleTextareaDrop}
-                  placeholder="Describe your presentation — paste your brief, add your content, mention your audience and tone… (drag images here to attach)"
+                  placeholder="Describe your presentation — topic, audience, tone…"
                   aria-label="Presentation brief"
                   rows={4}
                   className="w-full resize-none border-none outline-none text-gray-800 dark:text-zinc-100 placeholder:text-ios-gray2 dark:placeholder:text-zinc-500 text-base bg-transparent leading-relaxed"
                 />
               </div>
 
-              <div className="flex items-center gap-2 px-5 pb-5 pt-1 border-t border-ios-gray5 dark:border-hb-border">
-                {/* Aspect ratio selector */}
-                <div className="flex items-center gap-1 bg-ios-gray5 dark:bg-hb-surface-2 rounded-xl p-1">
-                  {[
-                    { ratio: '16:9', label: '16:9 widescreen' },
-                    { ratio: '4:3', label: '4:3 standard' },
-                    { ratio: '1:1', label: '1:1 square' },
-                    { ratio: '9:16', label: '9:16 vertical' },
-                  ].map(({ ratio, label }) => (
-                    <button
-                      key={ratio}
-                      onClick={() => setSelectedAspectRatio(ratio)}
-                      aria-label={label}
-                      aria-pressed={selectedAspectRatio === ratio}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-150 ${
-                        selectedAspectRatio === ratio
-                          ? 'bg-white dark:bg-hb-dark text-gray-900 dark:text-white shadow-sm'
-                          : 'text-ios-gray1 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-white'
-                      }`}
-                    >
-                      {ratio}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Admin: fixed slide count override */}
-                {isAdmin && (
-                  <div className="relative">
-                    {showSlideCountInput ? (
-                      <div className="flex items-center gap-1 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-600 rounded-xl px-2 py-1">
-                        <Zap size={12} className="text-amber-500 flex-shrink-0" />
-                        <input
-                          ref={slideCountInputRef}
-                          type="number"
-                          aria-label="Number of slides (1–50)"
-                          min={1}
-                          max={50}
-                          value={adminSlideCount ?? ''}
-                          onChange={e => {
-                            const v = e.target.value;
-                            setAdminSlideCount(v === '' ? null : Math.min(50, Math.max(1, parseInt(v) || 1)));
-                          }}
-                          onBlur={() => setShowSlideCountInput(false)}
-                          onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') setShowSlideCountInput(false); }}
-                          placeholder="1–50"
-                          className="w-12 text-xs bg-transparent outline-none font-semibold text-amber-700 dark:text-amber-400 placeholder:text-amber-400"
-                        />
-                        {adminSlideCount && (
-                          <button
-                            onMouseDown={e => { e.preventDefault(); setAdminSlideCount(null); setShowSlideCountInput(false); }}
-                            className="text-amber-400 hover:text-amber-600"
-                          >
-                            <X size={10} />
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => { setShowSlideCountInput(true); setTimeout(() => slideCountInputRef.current?.select(), 10); }}
-                        className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-xl border transition-all ${
-                          adminSlideCount
-                            ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-400'
-                            : 'border-dashed border-amber-300 dark:border-amber-700 text-amber-500 dark:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20'
-                        }`}
-                        aria-label="Admin: override slide count"
-                      >
-                        <Zap size={12} />
-                        {adminSlideCount ? `${adminSlideCount} slides` : 'Slides: Auto'}
-                      </button>
-                    )}
+              <div className="px-5 pb-5 pt-1 border-t border-ios-gray5 dark:border-hb-border">
+                {/* Controls row */}
+                <div className="flex items-center gap-2 py-2 flex-wrap">
+                  {/* Format selector */}
+                  <div className="flex items-center gap-1 bg-ios-gray5 dark:bg-hb-surface-2 rounded-xl p-1 flex-shrink-0">
+                    {[
+                      { ratio: '16:9', label: 'Horizontal', w: 20, h: 12 },
+                      { ratio: '1:1',  label: 'Square',     w: 14, h: 14 },
+                      { ratio: '9:16', label: 'Portrait',   w: 10, h: 16 },
+                    ].map(({ ratio, label, w, h }) => {
+                      const active = selectedAspectRatio === ratio;
+                      return (
+                        <button
+                          key={ratio}
+                          onClick={() => setSelectedAspectRatio(ratio)}
+                          aria-label={label}
+                          aria-pressed={active}
+                          className={`flex flex-col items-center gap-1 px-2.5 py-1.5 rounded-lg transition-all duration-150 cursor-pointer ${
+                            active
+                              ? 'bg-white dark:bg-hb-dark shadow-sm'
+                              : 'hover:bg-white/50 dark:hover:bg-white/5'
+                          }`}
+                        >
+                          <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+                            <rect
+                              x="0.5" y="0.5" width={w - 1} height={h - 1}
+                              rx="1.5"
+                              fill={active ? 'rgba(139,92,246,0.15)' : 'transparent'}
+                              stroke={active ? '#8B5CF6' : 'currentColor'}
+                              strokeWidth="1.5"
+                              className={active ? '' : 'text-ios-gray2 dark:text-zinc-500'}
+                            />
+                          </svg>
+                          <span className={`text-[10px] font-semibold leading-none ${
+                            active ? 'text-hb-primary' : 'text-ios-gray1 dark:text-zinc-400'
+                          }`}>{label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
-                )}
 
-                {/* Toggle attach zones */}
-                <button
-                  onClick={() => setShowZones(v => !v)}
-                  className={`flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-xl transition-colors ${
-                    showZones || totalAttachments > 0
-                      ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
-                      : 'text-ios-gray1 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white hover:bg-ios-gray5 dark:hover:bg-hb-surface-2'
-                  }`}
-                >
-                  <ImageIcon size={15} />
-                  Add references
-                  {totalAttachments > 0 && (
-                    <span className="bg-purple-600 text-white rounded-full text-xs w-5 h-5 flex items-center justify-center font-bold">
-                      {totalAttachments}
-                    </span>
+                  {/* Admin: fixed slide count override */}
+                  {isAdmin && (
+                    <div className="relative">
+                      {showSlideCountInput ? (
+                        <div className="flex items-center gap-1 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-600 rounded-xl px-2 py-1">
+                          <Zap size={12} className="text-amber-500 flex-shrink-0" />
+                          <input
+                            ref={slideCountInputRef}
+                            type="number"
+                            aria-label="Number of slides (1–50)"
+                            min={1}
+                            max={50}
+                            value={adminSlideCount ?? ''}
+                            onChange={e => {
+                              const v = e.target.value;
+                              setAdminSlideCount(v === '' ? null : Math.min(50, Math.max(1, parseInt(v) || 1)));
+                            }}
+                            onBlur={() => setShowSlideCountInput(false)}
+                            onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') setShowSlideCountInput(false); }}
+                            placeholder="1–50"
+                            className="w-12 text-xs bg-transparent outline-none font-semibold text-amber-700 dark:text-amber-400 placeholder:text-amber-400"
+                          />
+                          {adminSlideCount && (
+                            <button
+                              onMouseDown={e => { e.preventDefault(); setAdminSlideCount(null); setShowSlideCountInput(false); }}
+                              className="text-amber-400 hover:text-amber-600"
+                            >
+                              <X size={10} />
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setShowSlideCountInput(true); setTimeout(() => slideCountInputRef.current?.select(), 10); }}
+                          className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-xl border transition-all ${
+                            adminSlideCount
+                              ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-400'
+                              : 'border-dashed border-amber-300 dark:border-amber-700 text-amber-500 dark:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                          }`}
+                          aria-label="Admin: override slide count"
+                        >
+                          <Zap size={12} />
+                          {adminSlideCount ? `${adminSlideCount} slides` : 'Slides: Auto'}
+                        </button>
+                      )}
+                    </div>
                   )}
-                  {showZones ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                </button>
 
-                <div className="ml-auto flex items-center gap-2">
-                  <p className="text-xs text-ios-gray2 dark:text-zinc-500 hidden sm:block">⌘ + Enter</p>
+                  {/* Toggle attach zones — icon-only on mobile */}
                   <button
-                    onClick={handleSubmit}
-                    disabled={analyzing || (!input.trim() && allAttachments.length === 0)}
-                    className="ios-btn py-2 px-5 text-sm"
+                    onClick={() => setShowZones(v => !v)}
+                    className={`flex items-center gap-1.5 font-medium px-2.5 sm:px-3 py-1.5 rounded-xl transition-colors text-sm ${
+                      showZones || totalAttachments > 0
+                        ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                        : 'text-ios-gray1 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white hover:bg-ios-gray5 dark:hover:bg-hb-surface-2'
+                    }`}
                   >
-                    <Send size={15} /> Create
+                    <ImageIcon size={15} />
+                    <span className="hidden sm:inline">Add references</span>
+                    {totalAttachments > 0 && (
+                      <span className="bg-purple-600 text-white rounded-full text-xs w-5 h-5 flex items-center justify-center font-bold">
+                        {totalAttachments}
+                      </span>
+                    )}
+                    {showZones ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                   </button>
+
+                  {/* Desktop-only: shortcut hint + Create button */}
+                  <div className="hidden sm:flex items-center gap-2 ml-auto">
+                    <p className="text-xs text-ios-gray2 dark:text-zinc-500">⌘ + Enter</p>
+                    <button
+                      onClick={handleSubmit}
+                      disabled={analyzing || (!input.trim() && allAttachments.length === 0)}
+                      className="ios-btn py-2 px-5 text-sm"
+                    >
+                      <Send size={15} /> Create
+                    </button>
+                  </div>
                 </div>
+
+                {/* Mobile-only: full-width Create button */}
+                <button
+                  onClick={handleSubmit}
+                  disabled={analyzing || (!input.trim() && allAttachments.length === 0)}
+                  className="sm:hidden w-full ios-btn py-3 text-sm justify-center"
+                >
+                  <Send size={15} /> Create presentation
+                </button>
               </div>
               {submitError && (
                 <div className="px-5 pb-4">

@@ -430,7 +430,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       </div>
 
       {/* ── Main canvas ──────────────────────────────────────── */}
-      <div className="flex-1 flex items-center justify-center relative min-h-0" style={{ background: 'var(--bg-input)' }}>
+      <div className="flex-1 flex items-center justify-center relative min-h-0 overflow-hidden" style={{ background: 'var(--bg-input)' }}>
 
         <button
           onClick={() => goTo(current - 1)}
@@ -440,7 +440,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
           <ChevronLeft size={20} />
         </button>
 
-        <div className="px-16 py-6 w-full flex items-center justify-center min-h-0">
+        <div className="px-16 py-3 w-full h-full flex items-center justify-center overflow-hidden">
           <AnimatePresence mode="wait">
             <motion.div
               key={current}
@@ -448,7 +448,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               animate={{ opacity: 1, x: 0, scale: 1 }}
               exit={{ opacity: 0, x: -40, scale: 0.97 }}
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-              className="relative w-full max-w-4xl"
+              className="relative w-full"
+              style={{ maxWidth: 'min(896px, calc((100vh - 260px) * 16 / 9))' }}
             >
               <SlideRenderer slide={activeSlide} className="rounded-xl shadow-2xl" />
 

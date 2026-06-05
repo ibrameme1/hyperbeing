@@ -296,16 +296,18 @@ Where slide_plan contains:
 NANO BANANA PROMPT FORMAT — write this for every slide:
 Each nano_banana_prompt must be 250–600 words of continuous prose following the mandatory 5-layer structure below. Vague prompts are not acceptable. A designer must be able to build the slide from the prompt alone.
 
-SLIDE STRUCTURE RULES:
+SLIDE STRUCTURE RULES (title format only — these do NOT affect nano_banana_prompt format):
 - Every slide (EXCEPT cover/title slides at index 0) must have a KEY TAKEAWAY headline as its title. This headline must communicate the main point of that slide on its own — someone reading only the headlines should be able to follow the full story of the presentation.
 - Below the headline in key_points, include supporting detail: data points, explanation, or context that expands on the headline.
 - Cover and title slides (type "cover") keep their original format — do not force a key takeaway structure on them.
+
+NOTE: The SLIDE STRUCTURE RULES above ONLY govern the slide title format. For nano_banana_prompt, the cover slide (index 0) follows the EXACT SAME 5-layer structure and design language as every other slide — same black/near-black background, same hot pink accent, same neon green details. No exceptions.
 
 ══════════════════════════════════════════
 MANDATORY 5-LAYER STRUCTURE FOR EVERY PROMPT
 ══════════════════════════════════════════
 
-Every nano_banana_prompt must contain these layers in this order:
+APPLIES TO ALL SLIDES INCLUDING THE COVER (index 0). Every nano_banana_prompt must contain these layers in this order:
 
 1. BACKGROUND
    State the exact color (with hex when relevant) AND one sentence on WHY this color serves the slide's mood.
@@ -328,6 +330,8 @@ Every nano_banana_prompt must contain these layers in this order:
 
    D) ISOMETRIC 3D RENDER — for ecosystem/architecture/data slides. Specify floors, rings, or pods. State materials (frosted glass, marble, metallic finish), lighting (soft ambient from top), color accents per layer, and what each element CONTAINS (icons, mini visuals, stat callouts).
 
+   FOR THE COVER SLIDE (index 0): Use SINGLE HERO PHOTOGRAPH (a specific person, product, or moment that embodies the core concept of the full presentation brief) or ISOMETRIC 3D RENDER (for tech/platform decks). The cover has no key_points — derive its visual entirely from the full user brief and presentation theme. It must establish the SAME design language as all other slides in the deck.
+
 4. CALLOUT CARDS
    Specify for each card: border color, background tint, internal text verbatim, emoji used, size relative to other elements.
    Common forms: hot pink rounded rectangles with emoji, dark green cards with neon green borders, prize badges with country flags, glassmorphism floating cards.
@@ -335,6 +339,7 @@ Every nano_banana_prompt must contain these layers in this order:
 5. BOTTOM STRIP
    Full-width strip — dark green or pure black. One bold white centered line that delivers the slide's verdict. Optionally followed by a smaller neon green italic line that adds a second beat.
    The verdict line should land like a punchline: declarative, surprising, final.
+   For cover slides: the verdict captures the CORE THESIS of the entire presentation.
    Examples of the register to aim for: "The most powerful marketing tool in Pakistan right now is a number going down." / "First mover doesn't just lead. First mover locks the market."
 
 ══════════════════════════════════════════
@@ -352,6 +357,8 @@ Default to this palette unless the user's brand explicitly requires otherwise:
 - Frosted glass tints at 5–10% opacity — subtle warm purple, red-pink, red, yellow over near-black
 
 For 3D infographic slides: pure white (#FFFFFF) base OR dark navy gradient (#0A0E1A to #1B4F9C), with electric green (#00FFA3) for digital accents.
+
+This palette applies to ALL slides including the cover. Never deviate to "soft pastels", "warm atmospheric gradients", or "cinematic haze" on the cover — those are not in this palette.
 
 ══════════════════════════════════════════
 QUALITY REQUIREMENTS — EVERY PROMPT MUST HAVE
@@ -381,9 +388,11 @@ STYLE SELECTION
 
 Default to EDITORIAL/CAMPAIGN style (pure black, ALL-CAPS, hot pink accent, photo collages) for:
 - Marketing slides, insight slides, campaign concepts, audience slides, content strategy
+- Cover slides for marketing/brand/campaign decks
 
 Default to 3D INFOGRAPHIC style (clean white or navy, isometric renders, glassmorphism, floating cards) for:
 - Ecosystem slides, architecture slides, defensibility/moat slides, platform overviews, data dashboards
+- Cover slides for tech/product/platform decks
 
 ══════════════════════════════════════════
 SELF-CHECK BEFORE OUTPUTTING EACH PROMPT
@@ -398,6 +407,8 @@ Verify all are present:
 - Stats paired with consequences
 - Callouts specify color, border, and content
 - Bottom strip has a thesis/verdict line
+
+FOR COVER SLIDE SPECIFICALLY: Does this prompt look and feel like it belongs to the SAME DECK as the other slides? If it uses abstract gradients, atmospheric haze, or generic cinematic backgrounds — rewrite it. The cover must be as specific, editorial, and design-directed as any other slide.
 
 NEVER mention aspect ratio in the prompt text — aspect ratio is handled separately as an API parameter.
 BANNED FOREVER — never use: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart", "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization". Always find a specific, real, directed visual concept.
@@ -780,8 +791,9 @@ SLIDE:{"index":N,"nano_banana_prompt":"...250-600 word prompt per NANO BANANA FO
 
 Rules:
 - Output a SLIDE: line for EVERY slide in the provided outline — do not skip any index
-- This includes the cover slide at index 0 — it needs the full 5-layer prompt just like every other slide
 - nano_banana_prompt must be 250–600 words following the MANDATORY 5-LAYER STRUCTURE below
+- EVERY slide including the cover (index 0) follows the EXACT SAME 5-layer structure and NON-NEGOTIABLE COLOR PALETTE — no exceptions, no special cases
+- COVER SLIDE (index 0, type "cover"): The cover has no key_points, so derive its visual concept entirely from the Original Brief and the presentation theme. The cover MUST open the deck with the same black/near-black background, hot pink accent, and neon green design language as all other slides — it must feel like it belongs to the same deck. For MAIN BODY use SINGLE HERO PHOTOGRAPH (a specific person, product, or moment that embodies the core concept) or ISOMETRIC 3D RENDER (for tech/platform decks). NEVER use abstract gradients, atmospheric haze, floating geometric shapes, or generic "cinematic atmosphere" for the cover — those violate the BANNED FOREVER list and are the #1 reason cover slides look wrong. The BOTTOM STRIP verdict must capture the core thesis of the entire presentation.
 
 ══════════════════════════════════════════
 MANDATORY 5-LAYER STRUCTURE FOR EVERY PROMPT
@@ -1106,16 +1118,18 @@ Rules:
 - Choose total_slides based on what best serves the brief — typically 5–15 slides. Never pad, never truncate.
 - nano_banana_prompt must be 250–600 words following the MANDATORY 5-LAYER STRUCTURE below
 
-SLIDE STRUCTURE RULES:
+SLIDE STRUCTURE RULES (title format only — these do NOT affect nano_banana_prompt format):
 - Every slide (EXCEPT cover/title slides at index 0) must have a KEY TAKEAWAY headline as its title. This headline must communicate the main point of that slide on its own — someone reading only the headlines should be able to follow the full story of the presentation.
 - Below the headline in key_points, include supporting detail: data points, explanation, or context that expands on the headline.
 - Cover and title slides (type "cover") keep their original format — do not force a key takeaway structure on them.
+
+NOTE: The SLIDE STRUCTURE RULES above ONLY govern the slide title format. For nano_banana_prompt, the cover slide (index 0) follows the EXACT SAME 5-layer structure and design language as every other slide — same black/near-black background, same hot pink accent, same neon green details. No exceptions.
 
 ══════════════════════════════════════════
 MANDATORY 5-LAYER STRUCTURE FOR EVERY PROMPT
 ══════════════════════════════════════════
 
-Every nano_banana_prompt must contain these layers in this order:
+APPLIES TO ALL SLIDES INCLUDING THE COVER (index 0). Every nano_banana_prompt must contain these layers in this order:
 
 1. BACKGROUND
    State the exact color (with hex when relevant) AND one sentence on WHY this color serves the slide's mood.
@@ -1138,6 +1152,8 @@ Every nano_banana_prompt must contain these layers in this order:
 
    D) ISOMETRIC 3D RENDER — for ecosystem/architecture/data slides. Specify floors, rings, or pods. State materials (frosted glass, marble, metallic finish), lighting (soft ambient from top), color accents per layer, and what each element CONTAINS (icons, mini visuals, stat callouts).
 
+   FOR THE COVER SLIDE (index 0): Use SINGLE HERO PHOTOGRAPH (a specific person, product, or moment that embodies the core concept of the full presentation brief) or ISOMETRIC 3D RENDER (for tech/platform decks). Derive the visual entirely from the full user brief — the cover must establish the SAME design language as all other slides in the deck.
+
 4. CALLOUT CARDS
    Specify for each card: border color, background tint, internal text verbatim, emoji used, size relative to other elements.
    Common forms: hot pink rounded rectangles with emoji, dark green cards with neon green borders, prize badges with country flags, glassmorphism floating cards.
@@ -1145,6 +1161,7 @@ Every nano_banana_prompt must contain these layers in this order:
 5. BOTTOM STRIP
    Full-width strip — dark green or pure black. One bold white centered line that delivers the slide's verdict. Optionally followed by a smaller neon green italic line that adds a second beat.
    The verdict line should land like a punchline: declarative, surprising, final.
+   For cover slides: the verdict captures the CORE THESIS of the entire presentation.
    Examples of the register to aim for: "The most powerful marketing tool in Pakistan right now is a number going down." / "First mover doesn't just lead. First mover locks the market."
 
 ══════════════════════════════════════════
@@ -1162,6 +1179,8 @@ Default to this palette unless the user's brand explicitly requires otherwise:
 - Frosted glass tints at 5–10% opacity — subtle warm purple, red-pink, red, yellow over near-black
 
 For 3D infographic slides: pure white (#FFFFFF) base OR dark navy gradient (#0A0E1A to #1B4F9C), with electric green (#00FFA3) for digital accents.
+
+This palette applies to ALL slides including the cover. Never deviate to "soft pastels", "warm atmospheric gradients", or "cinematic haze" on the cover — those are not in this palette.
 
 ══════════════════════════════════════════
 QUALITY REQUIREMENTS — EVERY PROMPT MUST HAVE
@@ -1191,9 +1210,11 @@ STYLE SELECTION
 
 Default to EDITORIAL/CAMPAIGN style (pure black, ALL-CAPS, hot pink accent, photo collages) for:
 - Marketing slides, insight slides, campaign concepts, audience slides, content strategy
+- Cover slides for marketing/brand/campaign decks
 
 Default to 3D INFOGRAPHIC style (clean white or navy, isometric renders, glassmorphism, floating cards) for:
 - Ecosystem slides, architecture slides, defensibility/moat slides, platform overviews, data dashboards
+- Cover slides for tech/product/platform decks
 
 ══════════════════════════════════════════
 SELF-CHECK BEFORE OUTPUTTING EACH PROMPT
@@ -1208,6 +1229,8 @@ Verify all are present:
 - Stats paired with consequences
 - Callouts specify color, border, and content
 - Bottom strip has a thesis/verdict line
+
+FOR COVER SLIDE SPECIFICALLY: Does this prompt look and feel like it belongs to the SAME DECK as the other slides? If it uses abstract gradients, atmospheric haze, or generic cinematic backgrounds — rewrite it. The cover must be as specific, editorial, and design-directed as any other slide.
 
 NEVER mention aspect ratio in the prompt text — aspect ratio is handled separately as an API parameter.
 BANNED FOREVER — never use: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart", "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization". Always find a specific, real, directed visual concept.
