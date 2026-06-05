@@ -889,33 +889,35 @@ export default function Dashboard() {
     </AnimatePresence>
     <div className="min-h-screen" style={{ background: 'var(--bg-page)' }}>
       {/* Nav */}
-      <nav className="sticky top-0 z-50 flex items-center justify-between px-6 py-3"
-           style={{ background: 'var(--bg-nav)', backdropFilter: 'blur(20px)', borderBottom: '1px solid var(--border)' }}>
-        <div className="flex items-center">
-          <Logo dark={isDark} height={40} />
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Theme toggle */}
-          <button
-            onClick={toggleTheme}
-            className="w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 hover:opacity-70"
-            style={{ background: 'var(--bg-input)' }}
-            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {isDark
-              ? <Sun size={15} className="text-yellow-400" />
-              : <Moon size={15} className="text-hb-primary" />}
-          </button>
-          <AccountMenu
-            user={user}
-            credits={credits}
-            currentPlan={currentPlan}
-            isAdmin={isAdmin}
-            onLogout={logout}
-            onUpgrade={() => navigate('/pricing')}
-          />
-        </div>
-      </nav>
+      <div className="sticky top-0 z-50 px-4 pt-3 pb-1">
+        <nav className="flex items-center justify-between px-5 py-2.5 rounded-2xl"
+             style={{ background: 'var(--bg-nav)', backdropFilter: 'blur(20px)', border: '1px solid var(--border)', boxShadow: '0 2px 20px rgba(0,0,0,0.07)' }}>
+          <div className="flex items-center">
+            <Logo dark={isDark} height={40} />
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Theme toggle */}
+            <button
+              onClick={toggleTheme}
+              className="w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 hover:opacity-70"
+              style={{ background: 'var(--bg-input)' }}
+              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {isDark
+                ? <Sun size={15} className="text-yellow-400" />
+                : <Moon size={15} className="text-hb-primary" />}
+            </button>
+            <AccountMenu
+              user={user}
+              credits={credits}
+              currentPlan={currentPlan}
+              isAdmin={isAdmin}
+              onLogout={logout}
+              onUpgrade={() => navigate('/pricing')}
+            />
+          </div>
+        </nav>
+      </div>
 
       {/* Hero gradient section */}
       <div style={{ background: 'var(--bg-hero)' }}>
@@ -1147,16 +1149,26 @@ export default function Dashboard() {
         )}
 
         {!presLoading && presentations.length === 0 && (
-          <div className="text-center py-10">
-            <div className="w-14 h-14 rounded-3xl mx-auto mb-4 flex items-center justify-center"
-                 style={{ background: 'var(--bg-input)' }}>
-              <Bot size={24} style={{ color: 'var(--text-muted)' }} />
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+            className="text-center py-8"
+          >
+            <div className="inline-flex w-16 h-16 rounded-3xl mb-5 items-center justify-center"
+                 style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(0,240,255,0.1) 100%)', border: '1px solid rgba(139,92,246,0.2)' }}>
+              <motion.div
+                animate={{ rotate: [0, 10, -10, 0] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                <Bot size={26} style={{ color: '#8B5CF6' }} />
+              </motion.div>
             </div>
-            <p className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Your first deck is one brief away</p>
-            <p className="text-sm mb-6 max-w-xs mx-auto" style={{ color: 'var(--text-muted)' }}>
+            <p className="font-bold text-lg mb-2" style={{ color: 'var(--text-primary)' }}>Your first deck is one brief away</p>
+            <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed" style={{ color: 'var(--text-muted)' }}>
               Describe your presentation above — audience, purpose, tone. Nova handles the rest.
             </p>
-            <div className="flex flex-wrap justify-center gap-2 max-w-lg mx-auto">
+            <div className="flex flex-wrap justify-center gap-2 max-w-2xl mx-auto">
               {[
                 '5-slide investor pitch for a B2B SaaS at Series A',
                 'Competitive analysis comparing us to Notion and Asana',
@@ -1165,14 +1177,14 @@ export default function Dashboard() {
                 <button
                   key={example}
                   onClick={() => { setInput(example); textareaRef.current?.focus(); }}
-                  className="text-xs font-medium px-3 py-2 rounded-xl border transition-all duration-150 text-left hover:opacity-80"
+                  className="text-xs font-medium px-4 py-2.5 rounded-xl border transition-all duration-200 text-left cursor-pointer hover:scale-[1.02] hover:border-purple-300 dark:hover:border-purple-700"
                   style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)', borderColor: 'var(--border-input)' }}
                 >
                   {example}
                 </button>
               ))}
             </div>
-          </div>
+          </motion.div>
         )}
       </main>
     </div>

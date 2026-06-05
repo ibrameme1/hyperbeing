@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -8,6 +9,33 @@ import { useAuth } from '../contexts/AuthContext';
 import BackgroundVideo from '../components/BackgroundVideo';
 import Logo from '../components/Logo';
 
+function CountUp({ to, suffix = '', decimals = 0 }) {
+  const [count, setCount] = useState(0);
+  const ref = useRef(null);
+  const started = useRef(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !started.current) {
+        started.current = true;
+        const duration = 1400;
+        const startTime = performance.now();
+        const animate = (now) => {
+          const progress = Math.min((now - startTime) / duration, 1);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          setCount(parseFloat((to * eased).toFixed(decimals)));
+          if (progress < 1) requestAnimationFrame(animate);
+        };
+        requestAnimationFrame(animate);
+      }
+    }, { threshold: 0.5 });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [to, decimals]);
+  return <span ref={ref}>{decimals > 0 ? count.toFixed(decimals) : Math.round(count)}{suffix}</span>;
+}
+
 const STEPS = [
   { num: '01', title: 'Describe your presentation', desc: 'Tell Nova your topic, audience, tone, and goals. Upload brand assets if you have them.' },
   { num: '02', title: 'Nova plans the deck', desc: 'The AI builds a narrative structure, writes slide content, and chooses a visual direction.' },
@@ -16,9 +44,9 @@ const STEPS = [
 ];
 
 const STATS = [
-  { value: '50K+', label: 'Presentations created' },
-  { value: '< 60s', label: 'Avg. generation time' },
-  { value: '4.9/5', label: 'User rating' },
+  { value: '50K+', label: 'Presentations created', countTo: 50, suffix: 'K+' },
+  { value: '< 60s', label: 'Avg. generation time', static: true },
+  { value: '4.9/5', label: 'User rating', countTo: 4.9, suffix: '/5', decimals: 1 },
 ];
 
 const TESTIMONIALS = [
@@ -121,6 +149,17 @@ export default function Homepage() {
         <section className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 pb-20">
           <div className="text-center max-w-5xl mx-auto flex flex-col items-center gap-8">
 
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold mb-2"
+              style={{ background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', color: '#C4B5FD' }}
+            >
+              <Zap size={12} />
+              50,000+ presentations created
+            </motion.div>
+
             <motion.h1
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
@@ -200,11 +239,23 @@ export default function Homepage() {
         >
           {STATS.map((s) => (
             <div key={s.label} className="text-center px-4">
-              <p className="text-3xl md:text-4xl font-bold mb-1.5 stat-gradient">{s.value}</p>
+              <p className="text-3xl md:text-4xl font-bold mb-1.5 stat-gradient">
+                {s.static ? s.value : <CountUp to={s.countTo} suffix={s.suffix} decimals={s.decimals || 0} />}
+              </p>
               <p className="text-white/55 text-sm">{s.label}</p>
             </div>
           ))}
         </motion.div>
+      </section>
+
+      {/* ── Trusted by ── */}
+      <section className="relative z-10 max-w-3xl mx-auto px-6 py-8 text-center">
+        <p className="text-white/35 text-xs font-semibold tracking-[0.18em] uppercase mb-6">Trusted by teams at</p>
+        <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3">
+          {['Vela AI', 'Northstar Labs', 'Drift Protocol', 'Arc Ventures', 'Luminary Co', 'Helix Studio'].map(name => (
+            <span key={name} className="text-white/30 text-sm font-semibold hover:text-white/50 transition-colors duration-200">{name}</span>
+          ))}
+        </div>
       </section>
 
       {/* ── How it works ── */}
@@ -230,7 +281,8 @@ export default function Homepage() {
             <br />
             <span className="text-white/55">in 60 seconds</span>
           </motion.h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="relative grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="hidden lg:block absolute top-8 left-[12.5%] right-[12.5%] h-px" style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(139,92,246,0.3) 20%, rgba(139,92,246,0.3) 80%, transparent 100%)' }} />
             {STEPS.map((step) => (
               <motion.div
                 key={step.num}
@@ -438,6 +490,9 @@ export default function Homepage() {
         >
           {TESTIMONIALS.map((t) => (
             <motion.div key={t.name} variants={stagger.item} className="testimonial-card p-6 flex flex-col gap-4">
+              <svg width="20" height="14" viewBox="0 0 20 14" fill="none" style={{ color: 'rgba(139,92,246,0.4)' }}>
+                <path d="M0 14V8.4C0 6.13333 0.6 4.2 1.8 2.6C3 1 4.6 0.133333 6.6 0L7.4 1.6C6.13333 1.86667 5.1 2.5 4.3 3.5C3.5 4.46667 3.1 5.6 3.1 6.9H6V14H0ZM11 14V8.4C11 6.13333 11.6333 4.2 12.9 2.6C14.1667 1 15.8 0.133333 17.8 0L18.6 1.6C17.3333 1.86667 16.3 2.5 15.5 3.5C14.7 4.46667 14.3 5.6 14.3 6.9H17.2V14H11Z" fill="currentColor"/>
+              </svg>
               <div className="flex gap-0.5">
                 {Array.from({ length: t.stars }).map((_, i) => (
                   <Star key={i} size={14} fill="#F59E0B" strokeWidth={0} />

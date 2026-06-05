@@ -46,7 +46,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Geist', '-apple-system', 'BlinkMacSystemFont', '"Helvetica Neue"', 'Arial', 'sans-serif'],
+        sans: ['"Plus Jakarta Sans"', 'Geist', '-apple-system', 'BlinkMacSystemFont', '"Helvetica Neue"', 'Arial', 'sans-serif'],
         serif: ['Newsreader', 'Georgia', 'serif'],
         display: ['Newsreader', 'Georgia', 'serif'],
       },
