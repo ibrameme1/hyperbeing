@@ -957,28 +957,42 @@ export default function Dashboard() {
               </div>
 
               <div className="flex items-center gap-2 px-5 pb-5 pt-1 border-t border-ios-gray5 dark:border-hb-border">
-                {/* Aspect ratio selector */}
+                {/* Format selector */}
                 <div className="flex items-center gap-1 bg-ios-gray5 dark:bg-hb-surface-2 rounded-xl p-1">
                   {[
-                    { ratio: '16:9', label: '16:9 widescreen' },
-                    { ratio: '4:3', label: '4:3 standard' },
-                    { ratio: '1:1', label: '1:1 square' },
-                    { ratio: '9:16', label: '9:16 vertical' },
-                  ].map(({ ratio, label }) => (
-                    <button
-                      key={ratio}
-                      onClick={() => setSelectedAspectRatio(ratio)}
-                      aria-label={label}
-                      aria-pressed={selectedAspectRatio === ratio}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-150 ${
-                        selectedAspectRatio === ratio
-                          ? 'bg-white dark:bg-hb-dark text-gray-900 dark:text-white shadow-sm'
-                          : 'text-ios-gray1 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-white'
-                      }`}
-                    >
-                      {ratio}
-                    </button>
-                  ))}
+                    { ratio: '16:9', label: 'Horizontal', w: 20, h: 12 },
+                    { ratio: '1:1',  label: 'Square',     w: 14, h: 14 },
+                    { ratio: '9:16', label: 'Portrait',   w: 10, h: 16 },
+                  ].map(({ ratio, label, w, h }) => {
+                    const active = selectedAspectRatio === ratio;
+                    return (
+                      <button
+                        key={ratio}
+                        onClick={() => setSelectedAspectRatio(ratio)}
+                        aria-label={label}
+                        aria-pressed={active}
+                        className={`flex flex-col items-center gap-1 px-2.5 py-1.5 rounded-lg transition-all duration-150 cursor-pointer ${
+                          active
+                            ? 'bg-white dark:bg-hb-dark shadow-sm'
+                            : 'hover:bg-white/50 dark:hover:bg-white/5'
+                        }`}
+                      >
+                        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+                          <rect
+                            x="0.5" y="0.5" width={w - 1} height={h - 1}
+                            rx="1.5"
+                            fill={active ? 'rgba(139,92,246,0.15)' : 'transparent'}
+                            stroke={active ? '#8B5CF6' : 'currentColor'}
+                            strokeWidth="1.5"
+                            className={active ? '' : 'text-ios-gray2 dark:text-zinc-500'}
+                          />
+                        </svg>
+                        <span className={`text-[10px] font-semibold leading-none ${
+                          active ? 'text-hb-primary' : 'text-ios-gray1 dark:text-zinc-400'
+                        }`}>{label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* Admin: fixed slide count override */}
