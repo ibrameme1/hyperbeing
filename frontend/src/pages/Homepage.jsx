@@ -128,7 +128,7 @@ export default function Homepage() {
                 <>
                   <button
                     onClick={() => navigate('/login')}
-                    className="text-white/60 hover:text-white transition-colors text-sm font-medium cursor-pointer"
+                    className="hidden sm:block text-white/60 hover:text-white transition-colors text-sm font-medium cursor-pointer"
                   >
                     Sign in
                   </button>
@@ -183,7 +183,7 @@ export default function Homepage() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25, duration: 0.7 }}
-              className="text-white/70 text-xl max-w-2xl mx-auto leading-relaxed"
+              className="text-white/70 text-base sm:text-xl max-w-2xl mx-auto leading-relaxed"
             >
               Describe what you need. Nova — our AI — designs every slide like a senior art director,
               writes your narrative like a strategist, and generates custom visuals in under a minute.
@@ -234,12 +234,12 @@ export default function Homepage() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="max-w-3xl mx-auto px-6 py-12 grid grid-cols-3 divide-x"
+          className="max-w-3xl mx-auto px-4 py-10 grid grid-cols-3 divide-x"
           style={{ '--tw-divide-opacity': 1, borderColor: 'rgba(255,255,255,0.05)' }}
         >
           {STATS.map((s) => (
             <div key={s.label} className="text-center px-4">
-              <p className="text-3xl md:text-4xl font-bold mb-1.5 stat-gradient">
+              <p className="text-2xl md:text-4xl font-bold mb-1.5 stat-gradient">
                 {s.static ? s.value : <CountUp to={s.countTo} suffix={s.suffix} decimals={s.decimals || 0} />}
               </p>
               <p className="text-white/55 text-sm">{s.label}</p>
