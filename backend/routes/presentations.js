@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { streamChat, analyzePresentation, generateCompactPlan, streamSlidePrompts, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
+import { streamChat, analyzePresentation, generateCompactPlan, streamSlidePrompts, generateSingleSlidePrompt, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
 import { generateSlideImage } from '../services/imageGeneration.js';
 import { deductCredits, getOrCreateSubscription, CREDIT_COSTS, checkTokenBudget } from '../services/stripeService.js';
 import { validate, isString, isOptionalString, isEnum, isArray, isIntBetween } from '../middleware/validate.js';
@@ -356,12 +356,19 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
     onPrompt(slide) { startSlideGeneration(slide); },
   }, userId);
 
-  // Fallback: if streamSlidePrompts failed to emit a prompt for any slide, generate with title
-  for (const slide of slides) {
-    if (!promptedIndices.has(slide.index)) {
-      logger.warn('slide prompt missing — using title fallback', { slideIndex: slide.index });
-      startSlideGeneration(slide);
-    }
+  // Fallback: if any slide was missed by the stream, generate a proper prompt via a targeted call
+  const missingSlides = slides.filter(s => !promptedIndices.has(s.index));
+  if (missingSlides.length > 0) {
+    logger.warn('slide prompts missing — generating targeted fallback prompts', { missing: missingSlides.map(s => s.index) });
+    await Promise.all(missingSlides.map(async (slide) => {
+      try {
+        const singlePrompt = await generateSingleSlidePrompt(slide, header, message, allImages.slice(0, 3), userId);
+        startSlideGeneration({ ...slide, ...singlePrompt });
+      } catch (err) {
+        logger.error('targeted prompt fallback failed, using title', { slideIndex: slide.index, errorMessage: err.message });
+        startSlideGeneration(slide);
+      }
+    }));
   }
 
   // Wait for all image generations to finish

@@ -1034,17 +1034,20 @@ export async function streamSlidePrompts(slides, header, message, attachments, c
   const _t = Date.now();
   tracer.recordStep(_tid, 'claude_prompt_gen', 'started', 0);
 
-  const outlineText = slides.map(s =>
+  // Sort slides by index so position-based matching is deterministic
+  const sortedSlides = [...slides].sort((a, b) => a.index - b.index);
+
+  const outlineText = sortedSlides.map(s =>
     `Slide ${s.index} [${s.type}]: "${s.title}"${s.subtitle ? ` — ${s.subtitle}` : ''}. Key points: ${(s.key_points || []).join('; ')}`
   ).join('\n');
 
-  const firstIdx = Math.min(...slides.map(s => s.index));
-  const lastIdx  = Math.max(...slides.map(s => s.index));
-  const isCoverIncluded = slides.some(s => s.index === 0 && s.type === 'cover');
+  const firstIdx = sortedSlides[0].index;
+  const lastIdx  = sortedSlides[sortedSlides.length - 1].index;
+  const isCoverIncluded = sortedSlides.some(s => s.index === 0 && s.type === 'cover');
 
-  const promptMessage = `Generate nano_banana_prompts for ALL ${slides.length} slides (indices ${firstIdx} through ${lastIdx}).
+  const promptMessage = `Generate nano_banana_prompts for ALL ${sortedSlides.length} slides (indices ${firstIdx} through ${lastIdx}).
 
-OUTPUT REQUIREMENT: You MUST output exactly ${slides.length} SLIDE: lines — one per index from ${firstIdx} to ${lastIdx}, in order. The FIRST line must be SLIDE:{"index":${firstIdx},...}. Never skip any index.${
+OUTPUT REQUIREMENT: You MUST output exactly ${sortedSlides.length} SLIDE: lines — one per index from ${firstIdx} to ${lastIdx}, in order. The FIRST line must be SLIDE:{"index":${firstIdx},...}. Never skip any index.${
     isCoverIncluded
       ? `\n\nCOVER SLIDE (index 0): It has no key_points. Derive its entire visual concept from the Original Brief and presentation theme below. Same design language (black background, hot pink accent, neon green) as all other slides — no exceptions.`
       : ''
@@ -1062,7 +1065,7 @@ Original brief: ${message}`;
   const userContent = buildUserContent(promptMessage, attachments);
 
   const t0 = Date.now();
-  logger.info('claude prompt generation start', { slideCount: slides.length });
+  logger.info('claude prompt generation start', { slideCount: sortedSlides.length });
 
   const stream = client.messages.stream({
     model: 'claude-sonnet-4-6',
@@ -1072,6 +1075,21 @@ Original brief: ${message}`;
   });
 
   let buffer = '';
+  // Position-based mapping: the Nth SLIDE: output maps to the Nth slide in sorted order.
+  // This is robust against Claude emitting wrong index numbers (e.g. starting at 1 instead of 0).
+  let promptPosition = 0;
+
+  function handleParsedPrompt(promptData) {
+    // Map by position first; fall back to index-based lookup if position overflows
+    const slide = sortedSlides[promptPosition] ?? sortedSlides.find(s => s.index === promptData.index) ?? {};
+    promptPosition++;
+    logger.debug('slide prompt generated', { position: promptPosition, claimedIndex: promptData.index, actualIndex: slide.index });
+    onPrompt({
+      ...slide,
+      nano_banana_prompt: promptData.nano_banana_prompt,
+      attach_image_categories: promptData.attach_image_categories ?? [],
+    });
+  }
 
   for await (const event of stream) {
     if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
@@ -1082,10 +1100,7 @@ Original brief: ${message}`;
       for (const { prefix, jsonStr } of objects) {
         if (prefix === 'SLIDE:') {
           try {
-            const promptData = parseJSON(jsonStr);
-            const slide = slides.find(s => s.index === promptData.index) || {};
-            logger.debug('slide prompt generated', { index: promptData.index });
-            onPrompt({ ...slide, ...promptData });
+            handleParsedPrompt(parseJSON(jsonStr));
           } catch (e) {
             logger.warn('failed to parse slide prompt', { errorMessage: e.message });
           }
@@ -1098,11 +1113,7 @@ Original brief: ${message}`;
     const { objects } = extractPrefixedObjects(buffer + '\n');
     for (const { prefix, jsonStr } of objects) {
       if (prefix === 'SLIDE:') {
-        try {
-          const promptData = parseJSON(jsonStr);
-          const slide = slides.find(s => s.index === promptData.index) || {};
-          onPrompt({ ...slide, ...promptData });
-        } catch {}
+        try { handleParsedPrompt(parseJSON(jsonStr)); } catch {}
       }
     }
   }
@@ -1470,6 +1481,82 @@ SELF-CHECK BEFORE OUTPUTTING EACH PROMPT
 NEVER mention aspect ratio in the prompt text.
 BANNED FOREVER: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart", "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization".
 If moodboard/reference images are in context, explicitly describe which visual elements carry into this slide.`;
+
+// ─── Targeted single-slide prompt (fallback for any slide missed by the stream) ─
+// Plain-text output — no JSON parsing required, eliminating the failure mode
+// where a long prose prompt with embedded quotes/apostrophes breaks jsonrepair.
+
+const SINGLE_SLIDE_PROMPT_SYSTEM = `You are Nova. Generate a nano_banana_prompt for one presentation slide.
+
+Output ONLY the visual prompt as plain prose — 250 to 600 words. No JSON, no markdown, no labels, no "SLIDE:", no bullet points — just the prompt text itself.
+
+The prompt MUST follow the MANDATORY 5-LAYER STRUCTURE in this order:
+
+1. BACKGROUND — state exact color (hex when relevant) and one sentence on WHY it serves the mood.
+2. TOP / HEADER — bold white ALL-CAPS display type, 2–3 short lines, LAST line in HOT PINK, followed by a WHITE ITALIC subhead.
+3. MAIN BODY — choose ONE: A) SINGLE HERO PHOTOGRAPH, B) COLLAGE OF REAL MOMENTS, C) STRUCTURED COLUMNS/GRID, D) ISOMETRIC 3D RENDER. Describe every detail.
+4. CALLOUT CARDS — for each: border color, background tint, verbatim text, emoji, size.
+5. BOTTOM STRIP — full-width dark green or black strip with a bold white verdict line, optionally a neon green italic second beat.
+
+NON-NEGOTIABLE PALETTE: pure black (#000000) backgrounds, hot pink accents, neon green dividers/subtext, white type.
+
+QUALITY: include at least 3 sensory details, 1 verbatim on-screen text (when phones/screens appear), 1 named human emotional state, culturally specific markers, stats paired with consequences.
+
+BANNED FOREVER: "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization", "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart".`;
+
+export async function generateSingleSlidePrompt(slide, header, originalBrief, attachments = [], userId = null) {
+  if (MOCK_MODE) {
+    return { nano_banana_prompt: slide.title, attach_image_categories: ['moodboard'] };
+  }
+
+  const coverNote = (slide.index === 0 || slide.type === 'cover')
+    ? '\nCOVER SLIDE: No key_points exist — derive the entire visual concept from the Original Brief and presentation theme. Must use black/near-black background, hot pink accent, neon green design language. Use SINGLE HERO PHOTOGRAPH or ISOMETRIC 3D RENDER for the main body. Absolutely no abstract gradients or atmospheric haze.'
+    : '';
+
+  const slideContext = [
+    `Presentation: "${header.presentation_title}"`,
+    `Theme: ${header.theme}`,
+    `Color palette: ${JSON.stringify(header.color_palette)}`,
+    ``,
+    `Slide index: ${slide.index}`,
+    `Type: ${slide.type}`,
+    `Title: "${slide.title}"`,
+    slide.subtitle  ? `Subtitle: "${slide.subtitle}"` : null,
+    slide.key_points?.length ? `Key points: ${slide.key_points.join(' | ')}` : null,
+    coverNote,
+    ``,
+    `Original brief: ${originalBrief}`,
+  ].filter(Boolean).join('\n');
+
+  const userContent = buildUserContent(slideContext, attachments.slice(0, 3));
+
+  const _tid = requestContext.getStore()?.requestId;
+  const _t = Date.now();
+
+  logger.info('generating targeted single-slide prompt', { slideIndex: slide.index, type: slide.type });
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1200,
+    system: SINGLE_SLIDE_PROMPT_SYSTEM,
+    messages: [{ role: 'user', content: userContent }],
+  });
+
+  if (userId) {
+    try {
+      recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+      metrics.recordAICall({ fn: 'generateSingleSlidePrompt', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs: Date.now() - _t });
+    } catch {}
+  }
+
+  const promptText = response.content[0].text.trim();
+  logger.info('targeted single-slide prompt complete', { slideIndex: slide.index, promptLength: promptText.length });
+
+  return {
+    nano_banana_prompt: promptText,
+    attach_image_categories: attachments.length > 0 ? ['moodboard'] : [],
+  };
+}
 
 export async function streamNewSlides(description, count, startIndex, presentationContext, onSlide, userId = null) {
   const isAuto = count === null || count === 'auto';
