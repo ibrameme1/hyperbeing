@@ -1176,13 +1176,6 @@ export default function Dashboard() {
         )}
       </main>
     </div>
-    {/* TEMPORARY: Sentry test button — delete once error appears in Sentry dashboard */}
-    <button
-      onClick={() => { throw new Error('Sentry test error'); }}
-      style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 9999, background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, cursor: 'pointer', opacity: 0.85 }}
-    >
-      Test Sentry
-    </button>
-    </>
+</>
   );
 }
