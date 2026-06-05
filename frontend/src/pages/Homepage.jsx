@@ -1,7 +1,7 @@
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  Sparkles, ArrowRight, Zap, Layers, TrendingUp,
+  ArrowRight, Zap, Layers, TrendingUp,
   ImageIcon, Download, Star,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -70,22 +70,6 @@ export default function Homepage() {
       <div className="relative min-h-screen flex flex-col overflow-hidden">
         <BackgroundVideo />
 
-        {/* Animated gradient orbs */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-          <div
-            className="animate-orb-1 absolute top-[-8%] left-[-8%] w-[640px] h-[640px] rounded-full opacity-35"
-            style={{ background: 'radial-gradient(circle, #8B5CF6 0%, transparent 68%)', filter: 'blur(90px)' }}
-          />
-          <div
-            className="animate-orb-2 absolute top-[5%] right-[-12%] w-[560px] h-[560px] rounded-full opacity-25"
-            style={{ background: 'radial-gradient(circle, #00C4D4 0%, transparent 68%)', filter: 'blur(100px)' }}
-          />
-          <div
-            className="animate-orb-3 absolute bottom-[0%] left-[25%] w-[440px] h-[440px] rounded-full opacity-20"
-            style={{ background: 'radial-gradient(circle, #4C1D95 0%, transparent 68%)', filter: 'blur(110px)' }}
-          />
-        </div>
-
         {/* Navbar */}
         <motion.nav
           initial={{ y: -20, opacity: 0 }}
@@ -123,7 +107,7 @@ export default function Homepage() {
                   <button
                     onClick={() => navigate('/login')}
                     className="rounded-full px-5 py-2 text-sm font-semibold text-white cursor-pointer transition-all duration-200 hover:opacity-90 active:scale-[0.97]"
-                    style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00C4D4 100%)', boxShadow: '0 4px 20px rgba(139,92,246,0.4)' }}
+                    style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00C4D4 100%)', boxShadow: '0 2px 10px rgba(139,92,246,0.22)' }}
                   >
                     Get started free
                   </button>
@@ -137,19 +121,6 @@ export default function Homepage() {
         <section className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 pb-20">
           <div className="text-center max-w-5xl mx-auto flex flex-col items-center gap-8">
 
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <div
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold"
-                style={{ background: 'rgba(139,92,246,0.12)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.28)' }}
-              >
-                <Sparkles size={12} /> AI Presentation Maker
-              </div>
-            </motion.div>
-
             <motion.h1
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
@@ -157,17 +128,14 @@ export default function Homepage() {
               className="text-5xl md:text-[78px] font-medium tracking-[-0.02em] leading-[1.04]"
               style={{ fontFamily: "'Instrument Serif', serif" }}
             >
-              <span className="bg-gradient-to-b from-white via-white/95 to-white/55 bg-clip-text text-transparent">
+              <span className="text-white">
                 Presentations that make
               </span>
               <br />
-              <span className="bg-gradient-to-b from-white via-white/95 to-white/55 bg-clip-text text-transparent">
+              <span className="text-white">
                 people go{' '}
               </span>
-              <span
-                className="bg-gradient-to-r from-[#C4B5FD] to-[#00F0FF] bg-clip-text text-transparent"
-                style={{ fontStyle: 'italic' }}
-              >
+              <span style={{ fontStyle: 'italic', color: '#C4B5FD' }}>
                 "wait, how?"
               </span>
             </motion.h1>
@@ -176,7 +144,7 @@ export default function Homepage() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25, duration: 0.7 }}
-              className="text-white/50 text-xl max-w-2xl mx-auto leading-relaxed"
+              className="text-white/70 text-xl max-w-2xl mx-auto leading-relaxed"
             >
               Describe what you need. Nova — our AI — designs every slide like a senior art director,
               writes your narrative like a strategist, and generates custom visuals in under a minute.
@@ -191,14 +159,14 @@ export default function Homepage() {
               <button
                 onClick={() => navigate('/login')}
                 className="group px-8 py-4 rounded-2xl font-bold text-white flex items-center gap-2.5 transition-all duration-200 hover:opacity-90 active:scale-[0.97]"
-                style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 8px 40px rgba(139,92,246,0.45)' }}
+                style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 4px 16px rgba(139,92,246,0.25)' }}
               >
                 Start for free
                 <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform duration-200" />
               </button>
               <button
                 onClick={() => navigate('/pricing')}
-                className="px-8 py-4 rounded-2xl font-semibold text-white/55 hover:text-white transition-colors duration-200"
+                className="px-8 py-4 rounded-2xl font-semibold text-white/75 hover:text-white transition-colors duration-200"
                 style={{ border: '1px solid rgba(255,255,255,0.1)' }}
               >
                 See pricing
@@ -209,7 +177,7 @@ export default function Homepage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.55 }}
-              className="text-white/22 text-sm"
+              className="text-white/50 text-sm"
             >
               50 free credits on signup · No card required
             </motion.p>
@@ -233,7 +201,7 @@ export default function Homepage() {
           {STATS.map((s) => (
             <div key={s.label} className="text-center px-4">
               <p className="text-3xl md:text-4xl font-bold mb-1.5 stat-gradient">{s.value}</p>
-              <p className="text-white/38 text-sm">{s.label}</p>
+              <p className="text-white/55 text-sm">{s.label}</p>
             </div>
           ))}
         </motion.div>
@@ -260,7 +228,7 @@ export default function Homepage() {
           >
             From brief to deck
             <br />
-            <span className="text-white/38">in 60 seconds</span>
+            <span className="text-white/55">in 60 seconds</span>
           </motion.h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {STEPS.map((step) => (
@@ -271,7 +239,7 @@ export default function Homepage() {
               >
                 <p className="text-4xl font-bold mb-5 stat-gradient">{step.num}</p>
                 <p className="text-white font-semibold mb-2">{step.title}</p>
-                <p className="text-white/40 text-sm leading-relaxed">{step.desc}</p>
+                <p className="text-white/65 text-sm leading-relaxed">{step.desc}</p>
               </motion.div>
             ))}
           </div>
@@ -287,13 +255,10 @@ export default function Homepage() {
           transition={{ duration: 0.5 }}
           className="mb-16 text-center"
         >
-          <p className="text-xs font-semibold tracking-[0.2em] uppercase mb-4" style={{ color: '#00C4D4' }}>
-            Everything included
-          </p>
           <h2 className="text-4xl md:text-5xl font-bold text-white leading-tight">
             Built for people who
             <br />
-            <span className="text-white/38">care about the output</span>
+            <span className="text-white/55">care about the output</span>
           </h2>
         </motion.div>
 
@@ -317,7 +282,7 @@ export default function Homepage() {
                 <Layers size={20} style={{ color: '#8B5CF6' }} />
               </div>
               <p className="text-white text-xl font-semibold mb-2">AI art direction</p>
-              <p className="text-white/42 text-sm leading-relaxed max-w-xs">
+              <p className="text-white/65 text-sm leading-relaxed max-w-xs">
                 Every slide professionally designed — layouts, typography, colour, imagery. Looks like you hired a senior designer.
               </p>
             </div>
@@ -347,11 +312,11 @@ export default function Homepage() {
                 <Zap size={20} style={{ color: '#F59E0B' }} />
               </div>
               <p className="text-white text-xl font-semibold mb-2">Instant generation</p>
-              <p className="text-white/42 text-sm leading-relaxed">Full deck in under 60 seconds. Describe it, Nova handles the rest.</p>
+              <p className="text-white/65 text-sm leading-relaxed">Full deck in under 60 seconds. Describe it, Nova handles the rest.</p>
             </div>
             <div className="mt-8">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-white/35 text-xs">Generation time</span>
+                <span className="text-white/55 text-xs">Generation time</span>
                 <span className="text-white/55 text-xs font-semibold">~58s</span>
               </div>
               <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
@@ -379,7 +344,7 @@ export default function Homepage() {
               <ImageIcon size={20} style={{ color: '#10B981' }} />
             </div>
             <p className="text-white text-xl font-semibold mb-2">AI image generation</p>
-            <p className="text-white/42 text-sm leading-relaxed">
+            <p className="text-white/65 text-sm leading-relaxed">
               Custom visuals per slide. No stock photos, no generic clipart — every image made for your content.
             </p>
           </motion.div>
@@ -397,8 +362,8 @@ export default function Homepage() {
                 <TrendingUp size={20} style={{ color: '#00C4D4' }} />
               </div>
               <p className="text-white text-xl font-semibold mb-2">Strategy baked in</p>
-              <p className="text-white/42 text-sm leading-relaxed max-w-xs">
-                Nova thinks like a McKinsey + Apple hybrid. Structure, narrative, impact — all handled for you.
+              <p className="text-white/65 text-sm leading-relaxed max-w-xs">
+                Nova writes the narrative structure, picks the visual direction, and generates a custom image for every slide.
               </p>
             </div>
             <div className="mt-8 flex flex-wrap gap-2">
@@ -428,7 +393,7 @@ export default function Homepage() {
               </div>
               <div>
                 <p className="text-white text-xl font-semibold mb-1.5">Export anywhere</p>
-                <p className="text-white/42 text-sm leading-relaxed">
+                <p className="text-white/65 text-sm leading-relaxed">
                   Download as PDF or PNG. Ready for Keynote, PowerPoint, or the web.
                 </p>
               </div>
@@ -457,13 +422,10 @@ export default function Homepage() {
           transition={{ duration: 0.5 }}
           className="mb-16 text-center"
         >
-          <p className="text-xs font-semibold tracking-[0.2em] uppercase mb-4" style={{ color: '#8B5CF6' }}>
-            What people say
-          </p>
           <h2 className="text-4xl md:text-5xl font-bold text-white leading-tight">
             Loved by creators,
             <br />
-            <span className="text-white/38">trusted by teams</span>
+            <span className="text-white/55">trusted by teams</span>
           </h2>
         </motion.div>
 
@@ -494,7 +456,7 @@ export default function Homepage() {
                 </div>
                 <div>
                   <p className="text-white text-sm font-semibold leading-none mb-0.5">{t.name}</p>
-                  <p className="text-white/38 text-xs">{t.role}</p>
+                  <p className="text-white/55 text-xs">{t.role}</p>
                 </div>
               </div>
             </motion.div>
@@ -513,30 +475,27 @@ export default function Homepage() {
         >
           {/* Soft glow inside CTA */}
           <div
-            className="absolute top-0 left-1/2 -translate-x-1/2 w-[480px] h-[240px] rounded-full opacity-18 pointer-events-none"
+            className="absolute top-0 left-1/2 -translate-x-1/2 w-[480px] h-[240px] rounded-full opacity-8 pointer-events-none"
             style={{ background: 'radial-gradient(circle, #8B5CF6 0%, transparent 70%)', filter: 'blur(70px)' }}
           />
 
           <div className="relative z-10">
-            <p className="text-xs font-semibold tracking-[0.2em] uppercase mb-6" style={{ color: '#8B5CF6' }}>
-              Get started today
-            </p>
             <h2 className="text-4xl md:text-5xl font-bold text-white mb-4 leading-tight">
               Ready to stop dreading
               <br />presentations?
             </h2>
-            <p className="text-white/38 mb-10 max-w-lg mx-auto">
+            <p className="text-white/65 mb-10 max-w-lg mx-auto">
               Start free, no card required. Your first presentation takes about 60 seconds.
             </p>
             <button
               onClick={() => navigate('/login')}
               className="group inline-flex items-center gap-2.5 px-10 py-4 rounded-2xl font-bold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.97]"
-              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 8px 40px rgba(139,92,246,0.45)' }}
+              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 4px 16px rgba(139,92,246,0.25)' }}
             >
-              Get started free
+              Start for free
               <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform duration-200" />
             </button>
-            <p className="text-white/20 text-sm mt-5">50 free credits · No card required</p>
+            <p className="text-white/40 text-sm mt-5">50 free credits · No card required</p>
           </div>
         </motion.div>
       </section>
@@ -547,13 +506,13 @@ export default function Homepage() {
           <div className="flex items-center">
             <Logo dark height={36} />
           </div>
-          <div className="flex items-center gap-6 text-sm text-white/30">
+          <div className="flex items-center gap-6 text-sm text-white/50">
             <Link to="/pricing" className="hover:text-white/60 transition-colors">Pricing</Link>
             <Link to="/terms" className="hover:text-white/60 transition-colors">Terms</Link>
             <Link to="/privacy" className="hover:text-white/60 transition-colors">Privacy</Link>
             <a href="mailto:team@hyperbeing.co" className="hover:text-white/60 transition-colors">Contact</a>
           </div>
-          <p className="text-white/20 text-xs">© {new Date().getFullYear()} HyperBeing. All rights reserved.</p>
+          <p className="text-white/35 text-xs">© {new Date().getFullYear()} HyperBeing. All rights reserved.</p>
         </div>
       </footer>
 

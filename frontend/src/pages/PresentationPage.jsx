@@ -15,14 +15,14 @@ import { capture } from '../utils/posthog';
 
 // ─── Generating messages ───────────────────────────────────────────────────
 const GENERATING_MESSAGES = [
-  'Nova is reading your mind… 🔮',
-  'Crafting slides pixel by pixel…',
-  'Good things take time ⏳',
-  'Consulting the design spirits…',
-  'Making it look expensive…',
-  'Aligning every atom carefully…',
-  'Adding magic sprinkles ✨',
-  'Your future audience will thank you…',
+  'Reading the brief one more time…',
+  'Laying out the narrative structure…',
+  'Writing the content for each slide…',
+  'Generating custom visuals…',
+  'Dialing in the typography…',
+  'Aligning every element…',
+  'Almost there — final touches…',
+  'Your audience will thank you for this…',
   'Professional quality in progress…',
   'Almost presentation-ready…',
 ];
@@ -38,13 +38,13 @@ function GeneratingScreen() {
   return (
     <div
       className="h-screen flex flex-col items-center justify-center relative overflow-hidden"
-      style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
+      style={{ background: 'linear-gradient(135deg, #0A0A0B 0%, #0f0c29 50%, #1a0a2e 100%)' }}
     >
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-1/3 left-1/3 w-96 h-96 rounded-full opacity-20 animate-float"
-             style={{ background: 'radial-gradient(circle, #7b61ff 0%, transparent 70%)' }} />
+             style={{ background: 'radial-gradient(circle, #8B5CF6 0%, transparent 70%)' }} />
         <div className="absolute bottom-1/3 right-1/3 w-80 h-80 rounded-full opacity-15 animate-float"
-             style={{ background: 'radial-gradient(circle, #00b4ff 0%, transparent 70%)', animationDelay: '2s' }} />
+             style={{ background: 'radial-gradient(circle, #00C4D4 0%, transparent 70%)', animationDelay: '2s' }} />
       </div>
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
@@ -56,10 +56,10 @@ function GeneratingScreen() {
             animate={{ scale: [1, 1.15, 1], opacity: [0.5, 1, 0.5] }}
             transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
             className="absolute inset-0 rounded-3xl blur-xl"
-            style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+            style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
           />
           <div className="relative w-16 h-16 rounded-3xl flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
             <Sparkles size={28} className="text-white" />
           </div>
         </div>
@@ -72,7 +72,7 @@ function GeneratingScreen() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.35 }}
-              className="text-white/50 text-sm min-h-[20px]"
+              className="text-white/65 text-sm min-h-[20px]"
             >
               {GENERATING_MESSAGES[msgIdx]}
             </motion.p>

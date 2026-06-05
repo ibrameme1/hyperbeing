@@ -73,7 +73,7 @@ export default function HeroSection() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
           style={{ fontFamily: "'Instrument Serif', serif" }}
-          className="text-4xl md:text-[64px] font-medium tracking-[-0.01em] leading-[1.1] mb-6 bg-gradient-to-b from-white via-white/95 to-white/70 bg-clip-text text-transparent max-w-4xl"
+          className="text-4xl md:text-[64px] font-medium tracking-[-0.01em] leading-[1.1] mb-6 text-white max-w-4xl"
         >
           A new way to think and create{' '}
           <br className="hidden md:block" />
@@ -109,7 +109,9 @@ export default function HeroSection() {
                 onSubmit={handleSubmit}
                 className="flex items-center gap-2 pl-5 pr-1.5 py-1.5 text-[14px] font-medium border border-white/20 rounded-full bg-white/[0.02] backdrop-blur-sm w-full max-w-[320px] focus-within:border-white/40 transition-colors duration-300"
               >
+                <label htmlFor="hero-email" className="sr-only">Your email address</label>
                 <input
+                  id="hero-email"
                   type="email"
                   placeholder={placeholder}
                   autoFocus

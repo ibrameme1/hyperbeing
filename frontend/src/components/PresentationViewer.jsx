@@ -531,7 +531,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
           <div className="flex flex-col items-center gap-1.5 flex-shrink-0" style={{ listStyle: 'none' }}>
             <button
               onClick={() => setShowAddSlides(true)}
-              className="w-24 rounded-lg border-2 border-dashed border-gray-300 dark:border-zinc-700 hover:border-purple-400 dark:hover:border-purple-500 transition-colors flex flex-col items-center justify-center gap-1 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-gray-400 dark:text-zinc-500 hover:text-purple-500 dark:hover:text-purple-400"
+              className="w-24 rounded-lg border-2 border-dashed border-gray-300 dark:border-zinc-700 hover:border-purple-400 dark:hover:border-purple-500 flex flex-col items-center justify-center gap-1 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-[color:var(--text-muted)] hover:text-purple-500 dark:hover:text-purple-400 transition-none"
               style={{ aspectRatio: '16/9' }}
               title="Add more slides"
             >
