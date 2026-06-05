@@ -5,8 +5,8 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node --import ./instrument.js server.js",
+    "dev": "nodemon --import ./instrument.js server.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.0",
