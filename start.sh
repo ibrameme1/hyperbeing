@@ -20,7 +20,7 @@ inject_secret GOOGLE_API_KEY
 inject_secret JWT_SECRET
 
 npm install --silent
-node server.js &
+node --import ./instrument.js server.js &
 BACKEND_PID=$!
 echo "✅ Backend running (PID $BACKEND_PID)"
 
