@@ -1,576 +1,732 @@
-import { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import {
-  ArrowRight, Zap, Layers, TrendingUp,
-  ImageIcon, Download, Star,
-} from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { motion, useInView, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
-import BackgroundVideo from '../components/BackgroundVideo';
-import Logo from '../components/Logo';
+import TextRotate from '../components/TextRotate';
 
-function CountUp({ to, suffix = '', decimals = 0 }) {
-  const [count, setCount] = useState(0);
-  const ref = useRef(null);
-  const started = useRef(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting && !started.current) {
-        started.current = true;
-        const duration = 1400;
-        const startTime = performance.now();
-        const animate = (now) => {
-          const progress = Math.min((now - startTime) / duration, 1);
-          const eased = 1 - Math.pow(1 - progress, 3);
-          setCount(parseFloat((to * eased).toFixed(decimals)));
-          if (progress < 1) requestAnimationFrame(animate);
-        };
-        requestAnimationFrame(animate);
-      }
-    }, { threshold: 0.5 });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [to, decimals]);
-  return <span ref={ref}>{decimals > 0 ? count.toFixed(decimals) : Math.round(count)}{suffix}</span>;
+/* ─── Pricing constants (keep in sync with backend) ─── */
+const PLANS = [
+  {
+    name: 'Basic',
+    price: '$9',
+    period: '/mo',
+    desc: 'For individuals getting started.',
+    features: ['30 presentations/month', '10 slides per deck', 'AI image generation', 'PDF export', 'Email support'],
+    cta: 'Start Basic →',
+    highlighted: false,
+  },
+  {
+    name: 'Pro',
+    price: '$29',
+    period: '/mo',
+    desc: 'For professionals who present often.',
+    features: ['Unlimited presentations', '25 slides per deck', 'Priority generation', 'All export formats', 'Slide editing', 'Priority support'],
+    cta: 'Start Pro →',
+    highlighted: true,
+  },
+  {
+    name: 'Ultra',
+    price: '$79',
+    period: '/mo',
+    desc: 'For teams and power users.',
+    features: ['Everything in Pro', '40 slides per deck', 'Brand kit upload', 'Team workspace', 'SSO + audit logs', 'Dedicated support'],
+    cta: 'Contact sales →',
+    highlighted: false,
+  },
+];
+
+const FEATURES = [
+  { icon: '◈', title: 'Art-directed images', desc: 'Each slide gets its own generated visual. Context-aware, brand-aware, purpose-built.' },
+  { icon: '◎', title: 'Narrative intelligence', desc: 'Claude reads your entire outline before writing a single word. The story comes first.' },
+  { icon: '▦', title: 'Slide map preview', desc: 'Approve the structure before the images generate. No surprises.' },
+  { icon: '◉', title: 'Brand memory', desc: 'Upload your brand kit once. Every deck stays on-brand automatically.', soon: true },
+  { icon: '↗', title: 'One-click export', desc: 'Download as PowerPoint, PDF, or shareable link. Integration-ready.' },
+  { icon: '⬡', title: 'Enterprise grade', desc: 'SSO, audit logs, team workspaces, and volume pricing. Built to scale.' },
+];
+
+const FEATURE_SPLITS = [
+  {
+    headline: 'Your context, not a template.',
+    body: 'Every slide is art-directed from scratch. Paste your deck outline — HyperBeing reads the room, understands your narrative arc, and generates images that match each slide\'s specific message.',
+    visual: 'left-panel',
+    side: 'right',
+  },
+  {
+    headline: 'The kind of slides that close deals.',
+    body: 'Consultants, VCs, and agency leads use HyperBeing for their highest-stakes presentations. When the deck has to land, this is the tool.',
+    visual: 'deck-grid',
+    side: 'left',
+  },
+  {
+    headline: '20 slides. 3 minutes.',
+    body: 'From a rough outline to a fully designed, image-complete deck. No waiting for a designer. No back-and-forth. Just done.',
+    visual: 'progress-strip',
+    side: 'right',
+  },
+];
+
+/* ─── HB Icon ─── */
+function HBIcon({ size = 32, className = '' }) {
+  return (
+    <div
+      className={`flex items-center justify-center flex-shrink-0 ${className}`}
+      style={{
+        width: size, height: size,
+        background: '#5B50FF',
+        clipPath: 'polygon(0 0, 100% 0, 100% 78%, 78% 100%, 0 100%)',
+      }}
+    >
+      <span style={{ fontFamily: 'Inter,sans-serif', fontWeight: 800, color: '#fff', fontSize: size * 0.38, letterSpacing: '-0.05em' }}>HB</span>
+    </div>
+  );
 }
 
-const STEPS = [
-  { num: '01', title: 'Describe your presentation', desc: 'Tell Nova your topic, audience, tone, and goals. Upload brand assets if you have them.' },
-  { num: '02', title: 'Nova plans the deck', desc: 'The AI builds a narrative structure, writes slide content, and chooses a visual direction.' },
-  { num: '03', title: 'Slides generate live', desc: 'Watch each slide appear in real time with custom visuals and professional layouts.' },
-  { num: '04', title: 'Export and present', desc: 'Download your deck as PDF or PNG. Done in under a minute.' },
-];
+/* ─── Scroll-reveal wrapper ─── */
+function Reveal({ children, delay = 0, className = '' }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, margin: '-80px' });
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: 28 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.6, delay, ease: [0.16, 1, 0.3, 1] }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
 
-const STATS = [
-  { value: '50K+', label: 'Presentations created', countTo: 50, suffix: 'K+' },
-  { value: '< 60s', label: 'Avg. generation time', static: true },
-  { value: '4.9/5', label: 'User rating', countTo: 4.9, suffix: '/5', decimals: 1 },
-];
+/* ─── Animated product mockup (demo section) ─── */
+function ProductMockup() {
+  const [phase, setPhase] = useState(0); // 0=typing, 1=plan, 2=generating, 3=done
+  const [typed, setTyped] = useState('');
+  const [visibleSlides, setVisibleSlides] = useState(0);
+  const prompt = 'Series A pitch deck for a fintech startup disrupting B2B payments';
 
-const TESTIMONIALS = [
-  {
-    name: 'Sarah Chen',
-    role: 'Startup Founder · Vela AI',
-    initials: 'SC',
-    avatarColor: '#8B5CF6',
-    text: "HyperBeing replaced our entire slide design workflow. What used to take a day now takes 60 seconds — and the output honestly looks better.",
-    stars: 5,
-  },
-  {
-    name: 'Marcus Reid',
-    role: 'Head of Marketing · Northstar Labs',
-    initials: 'MR',
-    avatarColor: '#00C4D4',
-    text: "I pitched to investors with a HyperBeing deck. Three of them asked who our designer was. I said 'AI' and watched their jaws drop.",
-    stars: 5,
-  },
-  {
-    name: 'Priya Sharma',
-    role: 'Product Manager · Drift Protocol',
-    initials: 'PS',
-    avatarColor: '#10B981',
-    text: "The AI images are what got me. Every slide gets a custom visual that actually fits the content. No more trawling stock photo sites.",
-    stars: 5,
-  },
-];
+  useEffect(() => {
+    let timeout;
+    if (phase === 0) {
+      if (typed.length < prompt.length) {
+        timeout = setTimeout(() => setTyped(prompt.slice(0, typed.length + 1)), 40);
+      } else {
+        timeout = setTimeout(() => setPhase(1), 800);
+      }
+    } else if (phase === 1) {
+      timeout = setTimeout(() => setPhase(2), 1200);
+    } else if (phase === 2) {
+      if (visibleSlides < 6) {
+        timeout = setTimeout(() => setVisibleSlides(v => v + 1), 400);
+      } else {
+        timeout = setTimeout(() => setPhase(3), 600);
+      }
+    } else if (phase === 3) {
+      timeout = setTimeout(() => { setPhase(0); setTyped(''); setVisibleSlides(0); }, 3000);
+    }
+    return () => clearTimeout(timeout);
+  }, [phase, typed, visibleSlides]);
 
-const stagger = {
-  container: {
-    hidden: {},
-    show: { transition: { staggerChildren: 0.1 } },
-  },
-  item: {
-    hidden: { opacity: 0, y: 22 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.16, 1, 0.3, 1] } },
-  },
-};
+  const slideColors = [
+    'linear-gradient(135deg, #1a1540 0%, #5B50FF 100%)',
+    'linear-gradient(135deg, #0f0f0f 0%, #1e1e1e 100%)',
+    'linear-gradient(135deg, #14102e 0%, #3B2FFF 100%)',
+    'linear-gradient(135deg, #080808 0%, #141414 100%)',
+    'linear-gradient(135deg, #0a0818 0%, #8B80FF 100%)',
+    'linear-gradient(135deg, #0f0f0f 0%, #2a2a2a 100%)',
+  ];
 
+  return (
+    <div style={{ background: '#0f0f0f', borderRadius: '8px', border: '0.5px solid #1e1e1e', overflow: 'hidden' }}>
+      {/* Top bar */}
+      <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #1e1e1e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1e1e1e' }} />
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1e1e1e' }} />
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1e1e1e' }} />
+        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#555', letterSpacing: '0.1em', marginLeft: '8px' }}>HYPERBEING STUDIO</span>
+      </div>
+      {/* Content area */}
+      <div style={{ padding: '24px' }}>
+        {/* Input */}
+        <div style={{ marginBottom: '20px' }}>
+          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '8px' }}>PROMPT</p>
+          <div style={{ background: '#141414', borderRadius: '6px', border: '0.5px solid #2a2a2a', padding: '12px 14px', minHeight: '48px' }}>
+            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#f0f0ee' }}>{typed}</span>
+            {phase === 0 && <span style={{ display: 'inline-block', width: '2px', height: '14px', background: '#5B50FF', marginLeft: '2px', verticalAlign: 'text-bottom', animation: 'blink 1s step-end infinite' }} />}
+          </div>
+        </div>
+
+        {/* Slide grid */}
+        <AnimatePresence>
+          {phase >= 1 && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+              <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '12px' }}>
+                {phase === 1 ? 'PLANNING STRUCTURE…' : phase === 2 ? 'GENERATING SLIDES…' : 'DECK COMPLETE'}
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <motion.div
+                    key={i}
+                    style={{ aspectRatio: '16/9', borderRadius: '4px', border: '0.5px solid #1e1e1e', overflow: 'hidden', position: 'relative' }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: i * 0.05 }}
+                  >
+                    {i < visibleSlides ? (
+                      <div style={{ width: '100%', height: '100%', background: slideColors[i], display: 'flex', alignItems: 'flex-end', padding: '6px' }}>
+                        <div style={{ width: '60%', height: '3px', background: 'rgba(255,255,255,0.3)', borderRadius: '2px' }} />
+                      </div>
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', background: '#141414', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {phase >= 2 && i <= visibleSlides && (
+                          <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '1.5px solid #5B50FF', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
+                        )}
+                      </div>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+              {phase >= 2 && (
+                <div style={{ marginTop: '12px' }}>
+                  <div style={{ height: '1.5px', background: '#1e1e1e', borderRadius: '1px', overflow: 'hidden' }}>
+                    <motion.div
+                      style={{ height: '100%', background: 'linear-gradient(90deg, #5B50FF, #8B80FF)', borderRadius: '1px' }}
+                      animate={{ width: `${Math.round((visibleSlides / 6) * 100)}%` }}
+                      transition={{ duration: 0.4 }}
+                    />
+                  </div>
+                  <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#555', marginTop: '6px' }}>
+                    slide_{String(visibleSlides).padStart(2, '0')}.visual.generating — {Math.round((visibleSlides / 6) * 100)}%
+                  </p>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Deck thumbnail card (gallery) ─── */
+function DeckCard({ title, category, gradient, delay = 0 }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: 20 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.5, delay }}
+      whileHover={{ y: -4, boxShadow: 'rgba(91,80,255,0.3) 0px 0px 24px 0px' }}
+      style={{ borderRadius: '8px', overflow: 'hidden', border: '0.5px solid #1e1e1e', cursor: 'pointer', flexShrink: 0, width: '280px' }}
+    >
+      <div style={{ aspectRatio: '16/9', background: gradient, position: 'relative', padding: '20px' }}>
+        <div style={{ position: 'absolute', bottom: '14px', left: '14px', right: '14px' }}>
+          <div style={{ height: '2px', background: 'rgba(255,255,255,0.2)', borderRadius: '1px', marginBottom: '8px' }} />
+          <div style={{ height: '2px', width: '60%', background: 'rgba(255,255,255,0.12)', borderRadius: '1px' }} />
+        </div>
+        <div style={{ position: 'absolute', top: '12px', left: '12px' }}>
+          <HBIcon size={18} />
+        </div>
+      </div>
+      <div style={{ padding: '12px 14px', background: '#0f0f0f' }}>
+        <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#8B80FF', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '4px' }}>{category}</p>
+        <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#f0f0ee', fontWeight: 500 }}>{title}</p>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─── Feature visual placeholders ─── */
+function FeatureVisual({ type }) {
+  if (type === 'left-panel') {
+    return (
+      <div style={{ background: '#141414', borderRadius: '8px', border: '0.5px solid #1e1e1e', padding: '16px', aspectRatio: '4/3' }}>
+        <div style={{ marginBottom: '12px' }}>
+          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '8px' }}>BRIEF</p>
+          <div style={{ background: '#0f0f0f', borderRadius: '6px', border: '0.5px solid #2a2a2a', padding: '10px' }}>
+            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#888' }}>Series A pitch for a fintech startup targeting SMBs in emerging markets…</p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {['Slide 01 — Market Opportunity', 'Slide 02 — Problem', 'Slide 03 — Solution', 'Slide 04 — Traction'].map((s, i) => (
+            <div key={s} style={{ background: '#0f0f0f', borderRadius: '4px', border: '0.5px solid #1e1e1e', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '8px', color: '#5B50FF' }}>0{i+1}</span>
+              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', color: '#888' }}>{s.split(' — ')[1]}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (type === 'deck-grid') {
+    const g = [
+      'linear-gradient(135deg, #1a1040 0%, #5B50FF 100%)',
+      'linear-gradient(135deg, #0a1628 0%, #1e3a5f 100%)',
+      'linear-gradient(135deg, #1a0a2e 0%, #4a1882 100%)',
+      'linear-gradient(135deg, #0a1a18 0%, #0d5c52 100%)',
+    ];
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+        {g.map((grad, i) => (
+          <div key={i} style={{ aspectRatio: '16/9', background: grad, borderRadius: '6px', border: '0.5px solid #1e1e1e' }} />
+        ))}
+      </div>
+    );
+  }
+  if (type === 'progress-strip') {
+    return (
+      <div style={{ background: '#141414', borderRadius: '8px', border: '0.5px solid #1e1e1e', padding: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {['Slide 01', 'Slide 02', 'Slide 03', 'Slide 04', 'Slide 05'].map((s, i) => (
+          <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#8B80FF', width: '48px' }}>{s}</span>
+            <div style={{ flex: 1, height: '2px', background: '#1e1e1e', borderRadius: '1px', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${[100, 100, 100, 65, 20][i]}%`, background: 'linear-gradient(90deg, #5B50FF, #8B80FF)', borderRadius: '1px' }} />
+            </div>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: i < 3 ? '#22c55e' : '#555' }}>
+              {i < 3 ? '✓' : i === 3 ? '65%' : '…'}
+            </span>
+          </div>
+        ))}
+        <div style={{ marginTop: '8px', borderTop: '0.5px solid #1e1e1e', paddingTop: '12px' }}>
+          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#5B50FF', letterSpacing: '0.1em' }}>3 of 5 slides complete · ~45s remaining</p>
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
+/* ─── Main component ─── */
 export default function Homepage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setScrolled(window.scrollY > 10);
+    window.addEventListener('scroll', handler, { passive: true });
+    return () => window.removeEventListener('scroll', handler);
+  }, []);
+
+  const goToApp = () => navigate(user ? '/dashboard' : '/login');
 
   return (
-    <div style={{ background: '#000000', color: '#fff' }}>
+    <div data-theme="light" style={{ fontFamily: 'Inter, system-ui, sans-serif', background: '#f5f5f5', color: '#0d0b1a' }}>
 
-      {/* ── Full-viewport hero ── */}
-      <div className="relative min-h-screen flex flex-col overflow-hidden">
-        <BackgroundVideo />
+      {/* ── 1. NAV ── */}
+      <nav style={{
+        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
+        height: '60px',
+        background: scrolled ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.7)',
+        backdropFilter: 'blur(12px)',
+        borderBottom: scrolled ? '0.5px solid #e8e8f0' : '0.5px solid transparent',
+        transition: 'all 0.2s ease',
+        display: 'flex', alignItems: 'center',
+      }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', width: '100%', padding: '0 24px', display: 'flex', alignItems: 'center', gap: '32px' }}>
+          {/* Logo */}
+          <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', flexShrink: 0 }}>
+            <HBIcon size={28} />
+            <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '15px', color: '#0d0b1a', letterSpacing: '-0.02em' }}>HyperBeing</span>
+          </Link>
 
-        {/* Navbar */}
-        <motion.nav
-          initial={{ y: -20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="relative z-20 px-6 py-6 w-full shrink-0"
-        >
-          <div className="liquid-glass rounded-full px-6 py-3 flex items-center justify-between max-w-5xl mx-auto">
-            <div className="flex items-center gap-8">
-              <div className="flex items-center">
-                <Logo dark height={44} />
-              </div>
-              <div className="hidden md:flex items-center gap-8 text-white/65 text-sm font-medium">
-                <Link to="/pricing" className="hover:text-white transition-colors duration-200">Pricing</Link>
-                <Link to="/terms" className="hover:text-white transition-colors duration-200">Terms</Link>
-                <Link to="/privacy" className="hover:text-white transition-colors duration-200">Privacy</Link>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              {user ? (
-                <button
-                  onClick={() => navigate('/dashboard')}
-                  className="liquid-glass rounded-full px-6 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity cursor-pointer"
-                >
-                  Dashboard →
-                </button>
-              ) : (
-                <>
-                  <button
-                    onClick={() => navigate('/login')}
-                    className="hidden sm:block text-white/60 hover:text-white transition-colors text-sm font-medium cursor-pointer"
-                  >
-                    Sign in
-                  </button>
-                  <button
-                    onClick={() => navigate('/login')}
-                    className="rounded-full px-5 py-2 text-sm font-semibold text-white cursor-pointer transition-all duration-200 hover:opacity-90 active:scale-[0.97]"
-                    style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00C4D4 100%)', boxShadow: '0 2px 10px rgba(139,92,246,0.22)' }}
-                  >
-                    Get started free
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </motion.nav>
-
-        {/* Hero content */}
-        <section className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 pb-20">
-          <div className="text-center max-w-5xl mx-auto flex flex-col items-center gap-8">
-
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold mb-2"
-              style={{ background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', color: '#C4B5FD' }}
-            >
-              <Zap size={12} />
-              50,000+ presentations created
-            </motion.div>
-
-            <motion.h1
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
-              className="text-5xl md:text-[78px] font-medium tracking-[-0.02em] leading-[1.04]"
-              style={{ fontFamily: "'Instrument Serif', serif" }}
-            >
-              <span className="text-white">
-                Presentations that make
-              </span>
-              <br />
-              <span className="text-white">
-                people go{' '}
-              </span>
-              <span style={{ fontStyle: 'italic', color: '#C4B5FD' }}>
-                "wait, how?"
-              </span>
-            </motion.h1>
-
-            <motion.p
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.25, duration: 0.7 }}
-              className="text-white/70 text-base sm:text-xl max-w-2xl mx-auto leading-relaxed"
-            >
-              Describe what you need. Nova — our AI — designs every slide like a senior art director,
-              writes your narrative like a strategist, and generates custom visuals in under a minute.
-            </motion.p>
-
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.38 }}
-              className="flex items-center justify-center gap-4 flex-wrap"
-            >
-              <button
-                onClick={() => navigate('/login')}
-                className="group px-8 py-4 rounded-2xl font-bold text-white flex items-center gap-2.5 transition-all duration-200 hover:opacity-90 active:scale-[0.97]"
-                style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 4px 16px rgba(139,92,246,0.25)' }}
+          {/* Center links */}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '32px' }}>
+            {['Product', 'Examples', 'Pricing', 'Enterprise'].map(link => (
+              <a
+                key={link}
+                href={link === 'Pricing' ? '#pricing' : '#'}
+                style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#6b6490', textDecoration: 'none', transition: 'color 0.15s' }}
+                onMouseEnter={e => e.target.style.color = '#0d0b1a'}
+                onMouseLeave={e => e.target.style.color = '#6b6490'}
               >
-                Start for free
-                <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform duration-200" />
-              </button>
-              <button
-                onClick={() => navigate('/pricing')}
-                className="px-8 py-4 rounded-2xl font-semibold text-white/75 hover:text-white transition-colors duration-200"
-                style={{ border: '1px solid rgba(255,255,255,0.1)' }}
-              >
-                See pricing
-              </button>
-            </motion.div>
-
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.55 }}
-              className="text-white/50 text-sm"
-            >
-              50 free credits on signup · No card required
-            </motion.p>
+                {link}
+              </a>
+            ))}
           </div>
-        </section>
-      </div>
 
-      {/* ── Stats bar ── */}
-      <section
-        className="relative z-10 border-y"
-        style={{ borderColor: 'rgba(255,255,255,0.05)' }}
-      >
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="max-w-3xl mx-auto px-4 py-10 grid grid-cols-3 divide-x"
-          style={{ '--tw-divide-opacity': 1, borderColor: 'rgba(255,255,255,0.05)' }}
-        >
-          {STATS.map((s) => (
-            <div key={s.label} className="text-center px-4">
-              <p className="text-2xl md:text-4xl font-bold mb-1.5 stat-gradient">
-                {s.static ? s.value : <CountUp to={s.countTo} suffix={s.suffix} decimals={s.decimals || 0} />}
-              </p>
-              <p className="text-white/55 text-sm">{s.label}</p>
-            </div>
-          ))}
-        </motion.div>
+          {/* Right buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <button
+              onClick={() => navigate('/login')}
+              style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 500, color: '#0d0b1a', background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px 12px' }}
+            >
+              Sign in
+            </button>
+            <button
+              onClick={goToApp}
+              style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600, color: '#fff', background: '#5B50FF', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.15s' }}
+              onMouseEnter={e => e.target.style.background = '#6E63FF'}
+              onMouseLeave={e => e.target.style.background = '#5B50FF'}
+            >
+              Start free →
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* ── 2. HERO ── */}
+      <section style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '80px', paddingBottom: '80px', position: 'relative', overflow: 'hidden', background: '#f5f5f5' }}>
+        {/* Atmospheric glow */}
+        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 65% 40%, rgba(91,80,255,0.08), transparent 60%)', pointerEvents: 'none' }} />
+
+        <div style={{ maxWidth: '900px', margin: '0 auto', padding: '0 24px', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+          {/* Beta badge */}
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(91,80,255,0.08)', border: '0.5px solid rgba(91,80,255,0.2)', borderRadius: '9999px', padding: '4px 12px', marginBottom: '32px' }}
+          >
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#5B50FF', display: 'inline-block' }} />
+            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#5B50FF', fontWeight: 500 }}>Now in public beta</span>
+          </motion.div>
+
+          {/* Headline */}
+          <motion.h1
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.1 }}
+            style={{
+              fontFamily: 'Playfair Display, Georgia, serif',
+              fontSize: 'clamp(48px, 8vw, 80px)',
+              fontWeight: 400,
+              lineHeight: 0.96,
+              letterSpacing: '-0.04em',
+              color: '#0d0b1a',
+              marginBottom: '20px',
+            }}
+          >
+            Presentations that make<br />
+            {'people go '}
+            <span style={{ display: 'inline-flex', background: '#5B50FF', borderRadius: '6px', verticalAlign: 'baseline', overflow: 'hidden' }}>
+              <TextRotate
+                texts={['how?', 'wow.', 'really?', 'that fast?', 'just you?', 'with AI?']}
+                rotationInterval={2200}
+                staggerDuration={0.025}
+                staggerFrom="last"
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '-120%' }}
+                transition={{ type: 'spring', damping: 30, stiffness: 400 }}
+                mainClassName="text-white px-3 py-1 overflow-hidden justify-center"
+                splitLevelClassName="overflow-hidden pb-0.5"
+              />
+            </span>
+          </motion.h1>
+
+          {/* Subheadline */}
+          <motion.p
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.25 }}
+            style={{ fontFamily: 'Inter, sans-serif', fontSize: '18px', fontWeight: 400, color: '#3d3660', maxWidth: '560px', margin: '0 auto 36px', lineHeight: 1.6 }}
+          >
+            HyperBeing generates each slide as a fully art-directed image.{' '}
+            No templates. No compromise. McKinsey substance, Apple finish.
+          </motion.p>
+
+          {/* CTA row */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.35 }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}
+          >
+            <button
+              onClick={goToApp}
+              style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 600, color: '#fff', background: '#5B50FF', border: 'none', borderRadius: '6px', padding: '12px 24px', cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.15s', boxShadow: 'rgba(91,80,255,0.25) 0px 4px 16px' }}
+              onMouseEnter={e => e.target.style.background = '#6E63FF'}
+              onMouseLeave={e => e.target.style.background = '#5B50FF'}
+            >
+              Generate your first deck →
+            </button>
+            <a
+              href="#demo"
+              style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 500, color: '#0d0b1a', background: 'transparent', border: '0.5px solid #e8e8f0', borderRadius: '6px', padding: '12px 24px', textDecoration: 'none', transition: 'border-color 0.15s' }}
+              onMouseEnter={e => e.target.style.borderColor = 'rgba(91,80,255,0.3)'}
+              onMouseLeave={e => e.target.style.borderColor = '#e8e8f0'}
+            >
+              See examples
+            </a>
+          </motion.div>
+
+          {/* Trust line */}
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5 }}
+            style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490' }}
+          >
+            Used by consultants, founders &amp; agencies at Series A+
+          </motion.p>
+        </div>
       </section>
 
-      {/* ── Trusted by ── */}
-      <section className="relative z-10 max-w-3xl mx-auto px-6 py-8 text-center">
-        <p className="text-white/35 text-xs font-semibold tracking-[0.18em] uppercase mb-6">Trusted by teams at</p>
-        <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3">
-          {['Vela AI', 'Northstar Labs', 'Drift Protocol', 'Arc Ventures', 'Luminary Co', 'Helix Studio'].map(name => (
-            <span key={name} className="text-white/30 text-sm font-semibold hover:text-white/50 transition-colors duration-200">{name}</span>
+      {/* ── 3. SOCIAL PROOF ── */}
+      <section style={{ background: '#ffffff', padding: '80px 24px' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center' }}>
+          <Reveal>
+            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#6b6490', marginBottom: '40px' }}>Trusted by teams at</p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '48px', flexWrap: 'wrap' }}>
+              {[
+                { label: 'McKinsey-type', abbr: 'MCK' },
+                { label: 'VC Firm', abbr: 'A16Z' },
+                { label: 'Agency', abbr: 'BBDO' },
+                { label: 'Startup', abbr: 'YC' },
+                { label: 'Enterprise', abbr: 'IBM' },
+              ].map(co => (
+                <div key={co.abbr} style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.4 }}>
+                  <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '18px', color: '#0d0b1a', letterSpacing: '-0.03em' }}>{co.abbr}</span>
+                </div>
+              ))}
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ── 4. PRODUCT DEMO ── */}
+      <section id="demo" style={{ background: '#080808', padding: '120px 24px' }}>
+        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+          <Reveal>
+            <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase', marginBottom: '20px', textAlign: 'center' }}>HYPERBEING IN ACTION</p>
+            <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(36px, 5vw, 56px)', fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.03em', color: '#f0f0ee', textAlign: 'center', marginBottom: '56px' }}>
+              Watch the blank become{' '}
+              <em>brilliant.</em>
+            </h2>
+          </Reveal>
+          <Reveal delay={0.1}>
+            <div style={{ boxShadow: 'rgba(91,80,255,0.25) 0px 0px 48px 0px' }}>
+              <ProductMockup />
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ── 5. FEATURE SPLITS ── */}
+      <section style={{ background: '#f5f5f5', padding: '120px 24px' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '120px' }}>
+          {FEATURE_SPLITS.map((f, i) => (
+            <Reveal key={i} delay={0.05}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '80px', alignItems: 'center' }}>
+                {/* Text side */}
+                <div style={{ order: f.side === 'right' ? 0 : 1 }}>
+                  <h3 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(32px, 4vw, 48px)', fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#0d0b1a', marginBottom: '20px' }}>
+                    <em>{f.headline}</em>
+                  </h3>
+                  <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', color: '#3d3660', lineHeight: 1.65 }}>{f.body}</p>
+                </div>
+                {/* Visual side */}
+                <div style={{ order: f.side === 'right' ? 1 : 0 }}>
+                  <FeatureVisual type={f.visual} />
+                </div>
+              </div>
+            </Reveal>
           ))}
         </div>
       </section>
 
-      {/* ── How it works ── */}
-      <section className="relative z-10 max-w-5xl mx-auto px-6 py-24">
-        <motion.div
-          variants={stagger.container}
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, margin: '-80px' }}
-        >
-          <motion.p
-            variants={stagger.item}
-            className="text-center text-xs font-semibold tracking-[0.2em] uppercase mb-4"
-            style={{ color: '#8B5CF6' }}
-          >
-            How it works
-          </motion.p>
-          <motion.h2
-            variants={stagger.item}
-            className="text-center text-4xl md:text-5xl font-bold text-white mb-16 leading-tight"
-          >
-            From brief to deck
-            <br />
-            <span className="text-white/55">in 60 seconds</span>
-          </motion.h2>
-          <div className="relative grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="hidden lg:block absolute top-8 left-[12.5%] right-[12.5%] h-px" style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(139,92,246,0.3) 20%, rgba(139,92,246,0.3) 80%, transparent 100%)' }} />
-            {STEPS.map((step) => (
-              <motion.div
-                key={step.num}
-                variants={stagger.item}
-                className="feature-card-dark rounded-2xl p-6"
-              >
-                <p className="text-4xl font-bold mb-5 stat-gradient">{step.num}</p>
-                <p className="text-white font-semibold mb-2">{step.title}</p>
-                <p className="text-white/65 text-sm leading-relaxed">{step.desc}</p>
-              </motion.div>
+      {/* ── 6. DECK GALLERY ── */}
+      <section style={{ background: '#080808', padding: '120px 0' }}>
+        <Reveal>
+          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase', marginBottom: '20px', textAlign: 'center' }}>MADE WITH HYPERBEING</p>
+          <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(36px, 5vw, 56px)', fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.03em', color: '#f0f0ee', textAlign: 'center', marginBottom: '64px' }}>
+            Decks that do the talking.
+          </h2>
+        </Reveal>
+        <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', padding: '0 48px 16px', scrollbarWidth: 'none' }}>
+          {[
+            { title: 'Series A Pitch', category: 'FINTECH · 2024', gradient: 'linear-gradient(135deg, #1a1040 0%, #5B50FF 100%)' },
+            { title: 'Board Update Q4', category: 'ENTERPRISE · 2024', gradient: 'linear-gradient(135deg, #0a1628 0%, #1e3a5f 100%)' },
+            { title: 'Agency Case Study', category: 'AGENCY · 2024', gradient: 'linear-gradient(135deg, #1a0a2e 0%, #4a1882 100%)' },
+            { title: 'Product Launch', category: 'SAAS · 2024', gradient: 'linear-gradient(135deg, #0a1a18 0%, #0d5c52 100%)' },
+            { title: 'Investor Deck', category: 'VC · 2024', gradient: 'linear-gradient(135deg, #1a1200 0%, #856512 100%)' },
+            { title: 'Sales Deck', category: 'SALES · 2024', gradient: 'linear-gradient(135deg, #1a0808 0%, #8B1a1a 100%)' },
+          ].map((deck, i) => (
+            <DeckCard key={deck.title} delay={i * 0.07} {...deck} />
+          ))}
+        </div>
+      </section>
+
+      {/* ── 7. FEATURE GRID ── */}
+      <section style={{ background: '#ffffff', padding: '120px 24px' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+          <Reveal>
+            <div style={{ textAlign: 'center', marginBottom: '64px' }}>
+              <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase', marginBottom: '16px' }}>FEATURES</p>
+              <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(32px, 4vw, 48px)', fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#0d0b1a' }}>
+                Everything you need.<br /><em>Nothing you don't.</em>
+              </h2>
+            </div>
+          </Reveal>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1px', background: '#e8e8f0', border: '0.5px solid #e8e8f0', borderRadius: '8px', overflow: 'hidden' }}>
+            {FEATURES.map((f, i) => (
+              <Reveal key={f.title} delay={i * 0.05}>
+                <div
+                  style={{ background: '#ffffff', padding: '32px', position: 'relative', transition: 'background 0.2s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#fafaff'}
+                  onMouseLeave={e => e.currentTarget.style.background = '#ffffff'}
+                >
+                  <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                    <span style={{ fontSize: '20px', color: '#5B50FF' }}>{f.icon}</span>
+                  </div>
+                  <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', fontWeight: 600, color: '#0d0b1a', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {f.title}
+                    {f.soon && (
+                      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '9px', fontWeight: 600, color: '#5B50FF', background: 'rgba(91,80,255,0.1)', border: '0.5px solid rgba(91,80,255,0.2)', borderRadius: '4px', padding: '2px 6px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Soon</span>
+                    )}
+                  </h3>
+                  <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#6b6490', lineHeight: 1.6 }}>{f.desc}</p>
+                </div>
+              </Reveal>
             ))}
           </div>
-        </motion.div>
+        </div>
       </section>
 
-      {/* ── Features bento grid ── */}
-      <section className="relative z-10 max-w-5xl mx-auto px-6 pb-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="mb-16 text-center"
-        >
-          <h2 className="text-4xl md:text-5xl font-bold text-white leading-tight">
-            Built for people who
-            <br />
-            <span className="text-white/55">care about the output</span>
+      {/* ── 8. PRICING ── */}
+      <section id="pricing" style={{ background: '#f5f5f5', padding: '120px 24px' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+          <Reveal>
+            <div style={{ textAlign: 'center', marginBottom: '64px' }}>
+              <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase', marginBottom: '16px' }}>PRICING</p>
+              <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(32px, 4vw, 48px)', fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#0d0b1a' }}>
+                Start free. Scale as you grow.
+              </h2>
+            </div>
+          </Reveal>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', alignItems: 'start' }}>
+            {PLANS.map((plan, i) => (
+              <Reveal key={plan.name} delay={i * 0.08}>
+                <div style={{
+                  background: plan.highlighted ? '#5B50FF' : '#ffffff',
+                  borderRadius: '8px',
+                  border: plan.highlighted ? 'none' : '0.5px solid #e8e8f0',
+                  padding: '32px',
+                  boxShadow: plan.highlighted ? 'rgba(91,80,255,0.3) 0px 8px 32px' : 'rgba(91,80,255,0.06) 0px 4px 16px',
+                  position: 'relative',
+                }}>
+                  {plan.highlighted && (
+                    <div style={{ position: 'absolute', top: '-12px', left: '50%', transform: 'translateX(-50%)', background: '#0d0b1a', color: '#fff', fontFamily: 'Inter, sans-serif', fontSize: '10px', fontWeight: 600, padding: '4px 12px', borderRadius: '9999px', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Most popular</div>
+                  )}
+                  <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', fontWeight: 600, color: plan.highlighted ? 'rgba(255,255,255,0.7)' : '#6b6490', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>{plan.name}</h3>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginBottom: '8px' }}>
+                    <span style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '48px', fontWeight: 700, color: plan.highlighted ? '#ffffff' : '#0d0b1a', lineHeight: 1 }}>{plan.price}</span>
+                    <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: plan.highlighted ? 'rgba(255,255,255,0.6)' : '#6b6490' }}>{plan.period}</span>
+                  </div>
+                  <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: plan.highlighted ? 'rgba(255,255,255,0.7)' : '#3d3660', marginBottom: '24px', lineHeight: 1.5 }}>{plan.desc}</p>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 28px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {plan.features.map(feature => (
+                      <li key={feature} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'Inter, sans-serif', fontSize: '13px', color: plan.highlighted ? 'rgba(255,255,255,0.85)' : '#0d0b1a' }}>
+                        <span style={{ color: plan.highlighted ? '#ffffff' : '#22c55e', fontWeight: 700, fontSize: '12px' }}>✓</span>
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    onClick={goToApp}
+                    style={{
+                      width: '100%', fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600,
+                      color: plan.highlighted ? '#5B50FF' : '#ffffff',
+                      background: plan.highlighted ? '#ffffff' : '#5B50FF',
+                      border: 'none', borderRadius: '6px', padding: '10px 20px', cursor: 'pointer',
+                      letterSpacing: '0.01em', transition: 'opacity 0.15s',
+                    }}
+                    onMouseEnter={e => e.target.style.opacity = '0.85'}
+                    onMouseLeave={e => e.target.style.opacity = '1'}
+                  >
+                    {plan.cta}
+                  </button>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── 9. FINAL CTA ── */}
+      <section style={{ background: '#5B50FF', padding: '120px 24px', textAlign: 'center' }}>
+        <Reveal>
+          <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(36px, 5vw, 64px)', fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.03em', color: '#ffffff', marginBottom: '16px' }}>
+            Your next deck is{' '}
+            <em>3 minutes away.</em>
           </h2>
-        </motion.div>
-
-        <motion.div
-          variants={stagger.container}
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, margin: '-80px' }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-4"
-        >
-          {/* Large left — AI art direction */}
-          <motion.div
-            variants={stagger.item}
-            className="md:col-span-2 feature-card-dark rounded-2xl p-8 flex flex-col justify-between min-h-[260px]"
+          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '18px', color: 'rgba(255,255,255,0.75)', marginBottom: '40px' }}>
+            No design experience needed. No templates. Just your ideas.
+          </p>
+          <button
+            onClick={goToApp}
+            style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 600, color: '#5B50FF', background: '#ffffff', border: 'none', borderRadius: '6px', padding: '14px 32px', cursor: 'pointer', transition: 'opacity 0.15s', boxShadow: 'rgba(0,0,0,0.2) 0px 4px 16px' }}
+            onMouseEnter={e => e.target.style.opacity = '0.9'}
+            onMouseLeave={e => e.target.style.opacity = '1'}
           >
-            <div>
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center mb-5"
-                style={{ background: 'rgba(139,92,246,0.14)', border: '1px solid rgba(139,92,246,0.28)' }}
-              >
-                <Layers size={20} style={{ color: '#8B5CF6' }} />
-              </div>
-              <p className="text-white text-xl font-semibold mb-2">AI art direction</p>
-              <p className="text-white/65 text-sm leading-relaxed max-w-xs">
-                Every slide professionally designed — layouts, typography, colour, imagery. Looks like you hired a senior designer.
-              </p>
-            </div>
-            <div className="mt-8 grid grid-cols-3 gap-2">
-              {['Title Slide', 'Data Viz', 'Team Slide'].map((label) => (
-                <div
-                  key={label}
-                  className="rounded-xl p-3 text-center"
-                  style={{ background: 'rgba(139,92,246,0.07)', border: '1px solid rgba(139,92,246,0.14)' }}
-                >
-                  <p className="text-white/55 text-xs font-medium">{label}</p>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-
-          {/* Small right — Speed */}
-          <motion.div
-            variants={stagger.item}
-            className="feature-card-dark rounded-2xl p-8 flex flex-col justify-between"
-          >
-            <div>
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center mb-5"
-                style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.24)' }}
-              >
-                <Zap size={20} style={{ color: '#F59E0B' }} />
-              </div>
-              <p className="text-white text-xl font-semibold mb-2">Instant generation</p>
-              <p className="text-white/65 text-sm leading-relaxed">Full deck in under 60 seconds. Describe it, Nova handles the rest.</p>
-            </div>
-            <div className="mt-8">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-white/55 text-xs">Generation time</span>
-                <span className="text-white/55 text-xs font-semibold">~58s</span>
-              </div>
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                <motion.div
-                  className="h-full rounded-full"
-                  style={{ background: 'linear-gradient(90deg, #F59E0B, #EF4444)' }}
-                  initial={{ width: '0%' }}
-                  whileInView={{ width: '88%' }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 1.6, ease: 'easeOut', delay: 0.4 }}
-                />
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Small left — AI images */}
-          <motion.div
-            variants={stagger.item}
-            className="feature-card-dark rounded-2xl p-8 flex flex-col"
-          >
-            <div
-              className="w-11 h-11 rounded-xl flex items-center justify-center mb-5"
-              style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.24)' }}
-            >
-              <ImageIcon size={20} style={{ color: '#10B981' }} />
-            </div>
-            <p className="text-white text-xl font-semibold mb-2">AI image generation</p>
-            <p className="text-white/65 text-sm leading-relaxed">
-              Custom visuals per slide. No stock photos, no generic clipart — every image made for your content.
-            </p>
-          </motion.div>
-
-          {/* Large right — Strategy */}
-          <motion.div
-            variants={stagger.item}
-            className="md:col-span-2 feature-card-dark rounded-2xl p-8 flex flex-col justify-between"
-          >
-            <div>
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center mb-5"
-                style={{ background: 'rgba(0,196,212,0.1)', border: '1px solid rgba(0,196,212,0.2)' }}
-              >
-                <TrendingUp size={20} style={{ color: '#00C4D4' }} />
-              </div>
-              <p className="text-white text-xl font-semibold mb-2">Strategy baked in</p>
-              <p className="text-white/65 text-sm leading-relaxed max-w-xs">
-                Nova writes the narrative structure, picks the visual direction, and generates a custom image for every slide.
-              </p>
-            </div>
-            <div className="mt-8 flex flex-wrap gap-2">
-              {['Problem → Solution', 'Data storytelling', 'Executive summary', 'Pitch structure'].map((tag) => (
-                <span
-                  key={tag}
-                  className="px-3 py-1.5 rounded-full text-xs font-medium"
-                  style={{ background: 'rgba(0,196,212,0.08)', color: '#67E8F9', border: '1px solid rgba(0,196,212,0.16)' }}
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          </motion.div>
-
-          {/* Full-width — Export */}
-          <motion.div
-            variants={stagger.item}
-            className="md:col-span-3 feature-card-dark rounded-2xl p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6"
-          >
-            <div className="flex items-start gap-5">
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: 'rgba(236,72,153,0.12)', border: '1px solid rgba(236,72,153,0.24)' }}
-              >
-                <Download size={20} style={{ color: '#EC4899' }} />
-              </div>
-              <div>
-                <p className="text-white text-xl font-semibold mb-1.5">Export anywhere</p>
-                <p className="text-white/65 text-sm leading-relaxed">
-                  Download as PDF or PNG. Ready for Keynote, PowerPoint, or the web.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              {['PDF', 'PNG', 'PPT-ready'].map((fmt) => (
-                <div
-                  key={fmt}
-                  className="px-4 py-2 rounded-xl text-sm font-semibold"
-                  style={{ background: 'rgba(236,72,153,0.08)', color: '#F9A8D4', border: '1px solid rgba(236,72,153,0.18)' }}
-                >
-                  {fmt}
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        </motion.div>
+            Start for free →
+          </button>
+        </Reveal>
       </section>
 
-      {/* ── Testimonials ── */}
-      <section className="relative z-10 max-w-5xl mx-auto px-6 py-24">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="mb-16 text-center"
-        >
-          <h2 className="text-4xl md:text-5xl font-bold text-white leading-tight">
-            Loved by creators,
-            <br />
-            <span className="text-white/55">trusted by teams</span>
-          </h2>
-        </motion.div>
-
-        <motion.div
-          variants={stagger.container}
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, margin: '-80px' }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-5"
-        >
-          {TESTIMONIALS.map((t) => (
-            <motion.div key={t.name} variants={stagger.item} className="testimonial-card p-6 flex flex-col gap-4">
-              <svg width="20" height="14" viewBox="0 0 20 14" fill="none" style={{ color: 'rgba(139,92,246,0.4)' }}>
-                <path d="M0 14V8.4C0 6.13333 0.6 4.2 1.8 2.6C3 1 4.6 0.133333 6.6 0L7.4 1.6C6.13333 1.86667 5.1 2.5 4.3 3.5C3.5 4.46667 3.1 5.6 3.1 6.9H6V14H0ZM11 14V8.4C11 6.13333 11.6333 4.2 12.9 2.6C14.1667 1 15.8 0.133333 17.8 0L18.6 1.6C17.3333 1.86667 16.3 2.5 15.5 3.5C14.7 4.46667 14.3 5.6 14.3 6.9H17.2V14H11Z" fill="currentColor"/>
-              </svg>
-              <div className="flex gap-0.5">
-                {Array.from({ length: t.stars }).map((_, i) => (
-                  <Star key={i} size={14} fill="#F59E0B" strokeWidth={0} />
-                ))}
-              </div>
-              <p className="text-white/70 text-sm leading-relaxed flex-1">"{t.text}"</p>
-              <div
-                className="flex items-center gap-3 pt-4 border-t"
-                style={{ borderColor: 'rgba(255,255,255,0.06)' }}
-              >
-                <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                  style={{ background: t.avatarColor }}
-                >
-                  {t.initials}
-                </div>
-                <div>
-                  <p className="text-white text-sm font-semibold leading-none mb-0.5">{t.name}</p>
-                  <p className="text-white/55 text-xs">{t.role}</p>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </motion.div>
-      </section>
-
-      {/* ── CTA banner ── */}
-      <section className="relative z-10 max-w-5xl mx-auto px-6 pb-24">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="gradient-border-card rounded-3xl p-14 text-center relative overflow-hidden"
-        >
-          {/* Soft glow inside CTA */}
-          <div
-            className="absolute top-0 left-1/2 -translate-x-1/2 w-[480px] h-[240px] rounded-full opacity-8 pointer-events-none"
-            style={{ background: 'radial-gradient(circle, #8B5CF6 0%, transparent 70%)', filter: 'blur(70px)' }}
-          />
-
-          <div className="relative z-10">
-            <h2 className="text-4xl md:text-5xl font-bold text-white mb-4 leading-tight">
-              Ready to stop dreading
-              <br />presentations?
-            </h2>
-            <p className="text-white/65 mb-10 max-w-lg mx-auto">
-              Start free, no card required. Your first presentation takes about 60 seconds.
-            </p>
-            <button
-              onClick={() => navigate('/login')}
-              className="group inline-flex items-center gap-2.5 px-10 py-4 rounded-2xl font-bold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.97]"
-              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 4px 16px rgba(139,92,246,0.25)' }}
-            >
-              Start for free
-              <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform duration-200" />
-            </button>
-            <p className="text-white/40 text-sm mt-5">50 free credits · No card required</p>
+      {/* ── 10. FOOTER ── */}
+      <footer style={{ background: '#ffffff', borderTop: '0.5px solid #e8e8f0', padding: '64px 24px 40px' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr 1fr', gap: '48px', marginBottom: '48px' }}>
+            {/* Brand */}
+            <div>
+              <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', marginBottom: '12px' }}>
+                <HBIcon size={24} />
+                <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '14px', color: '#0d0b1a', letterSpacing: '-0.02em' }}>HyperBeing</span>
+              </Link>
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490', maxWidth: '180px', lineHeight: 1.6 }}>AI-powered presentation studio.</p>
+            </div>
+            {/* Product */}
+            <div>
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 600, color: '#0d0b1a', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>Product</p>
+              {['Features', 'Examples', 'Pricing', 'Enterprise'].map(l => (
+                <a key={l} href="#" style={{ display: 'block', fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#6b6490', textDecoration: 'none', marginBottom: '10px', transition: 'color 0.15s' }}
+                   onMouseEnter={e => e.target.style.color = '#0d0b1a'}
+                   onMouseLeave={e => e.target.style.color = '#6b6490'}>{l}</a>
+              ))}
+            </div>
+            {/* Company */}
+            <div>
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 600, color: '#0d0b1a', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>Company</p>
+              {['About', 'Blog', 'Careers', 'Contact'].map(l => (
+                <a key={l} href="#" style={{ display: 'block', fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#6b6490', textDecoration: 'none', marginBottom: '10px', transition: 'color 0.15s' }}
+                   onMouseEnter={e => e.target.style.color = '#0d0b1a'}
+                   onMouseLeave={e => e.target.style.color = '#6b6490'}>{l}</a>
+              ))}
+            </div>
+            {/* Legal */}
+            <div>
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 600, color: '#0d0b1a', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>Legal</p>
+              {[{ label: 'Privacy', to: '/privacy' }, { label: 'Terms', to: '/terms' }].map(l => (
+                <Link key={l.label} to={l.to} style={{ display: 'block', fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#6b6490', textDecoration: 'none', marginBottom: '10px' }}>{l.label}</Link>
+              ))}
+            </div>
           </div>
-        </motion.div>
-      </section>
-
-      {/* ── Footer ── */}
-      <footer className="relative z-10 border-t px-8 py-8" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center">
-            <Logo dark height={36} />
+          <div style={{ borderTop: '0.5px solid #e8e8f0', paddingTop: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490' }}>&copy; {new Date().getFullYear()} HyperBeing. All rights reserved.</p>
+            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490' }}>Made with ✦ and a lot of AI</p>
           </div>
-          <div className="flex items-center gap-6 text-sm text-white/50">
-            <Link to="/pricing" className="hover:text-white/60 transition-colors">Pricing</Link>
-            <Link to="/terms" className="hover:text-white/60 transition-colors">Terms</Link>
-            <Link to="/privacy" className="hover:text-white/60 transition-colors">Privacy</Link>
-            <a href="mailto:team@hyperbeing.co" className="hover:text-white/60 transition-colors">Contact</a>
-          </div>
-          <p className="text-white/35 text-xs">© {new Date().getFullYear()} HyperBeing. All rights reserved.</p>
         </div>
       </footer>
 
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+        @media (max-width: 768px) {
+          section > div > div[style*="grid-template-columns: 1fr 1fr"] {
+            grid-template-columns: 1fr !important;
+          }
+          footer > div > div[style*="grid-template-columns: auto 1fr 1fr 1fr"] {
+            grid-template-columns: 1fr 1fr !important;
+          }
+          div[style*="gap: 48px"][style*="align-items: center"] > div[style*="order:"] {
+            order: unset !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

@@ -66,7 +66,7 @@ function AnalyzingOverlay({ onCancel }) {
         aria-modal="true"
         aria-label="Nova is analyzing your brief"
         className="rounded-3xl w-full max-w-sm mx-4 shadow-2xl overflow-hidden"
-        style={{ background: 'linear-gradient(160deg, #18102e 0%, #0f172a 100%)', border: '1px solid rgba(139,92,246,0.25)' }}
+        style={{ background: 'linear-gradient(160deg, #0d0b1a 0%, #0f0f0f 100%)', border: '0.5px solid rgba(91,80,255,0.25)' }}
       >
         <div className="px-8 py-8 flex flex-col items-center text-center">
 
@@ -78,11 +78,11 @@ function AnalyzingOverlay({ onCancel }) {
           >
             {/* Glow */}
             <div className="absolute inset-0 rounded-2xl blur-xl opacity-20"
-                 style={{ background: 'linear-gradient(135deg, #8B5CF6, #00F0FF)' }} />
+                 style={{ background: 'linear-gradient(135deg, #5B50FF, #8B80FF)' }} />
 
             {/* Robot face */}
             <div className="relative w-20 h-20 rounded-2xl flex flex-col items-center justify-center gap-1.5"
-                 style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #06b6d4 100%)' }}>
+                 style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}>
               {/* Eyes */}
               <div className="flex gap-3">
                 {[0, 1].map(i => (
@@ -108,7 +108,7 @@ function AnalyzingOverlay({ onCancel }) {
               {/* Antenna */}
               <div className="absolute -top-4 left-1/2 -translate-x-1/2 flex flex-col items-center">
                 <motion.div
-                  animate={{ backgroundColor: ['#a78bfa', '#00F0FF', '#a78bfa'] }}
+                  animate={{ backgroundColor: ['#8B80FF', '#6E63FF', '#8B80FF'] }}
                   transition={{ duration: 1.2, repeat: Infinity }}
                   className="w-2.5 h-2.5 rounded-full"
                 />
@@ -145,7 +145,7 @@ function AnalyzingOverlay({ onCancel }) {
                 animate={shouldReduceMotion ? {} : { y: [0, -5, 0], opacity: [0.4, 1, 0.4] }}
                 transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' }}
                 className="w-2 h-2 rounded-full"
-                style={{ background: '#8B5CF6' }}
+                style={{ background: '#5B50FF' }}
               />
             ))}
           </div>
@@ -315,7 +315,7 @@ function PresentationCard({ pres, onDelete }) {
       className="bg-white dark:bg-hb-surface rounded-2xl overflow-hidden shadow-ios cursor-pointer group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-hb-primary"
     >
       <div className="aspect-[16/9] overflow-hidden"
-           style={{ background: 'linear-gradient(135deg, #8B5CF622 0%, #00F0FF22 100%)' }}>
+           style={{ background: 'linear-gradient(135deg, rgba(91,80,255,0.1) 0%, rgba(139,128,255,0.1) 100%)' }}>
         {pres.thumbnail ? (
           <img src={pres.thumbnail} alt="" loading="lazy" className="w-full h-full object-cover" />
         ) : (
@@ -397,7 +397,7 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
   const pct = isAdmin ? 100 : planMax > 0 ? Math.min(100, Math.round((credits / planMax) * 100)) : 0;
   const low = !isAdmin && credits !== null && credits < 10;
 
-  const ringColor = isAdmin ? '#8B5CF6'
+  const ringColor = isAdmin ? '#5B50FF'
     : pct <= 20 ? '#f87171'
     : pct <= 50 ? '#f59e0b'
     : '#22c55e';
@@ -411,7 +411,7 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
         aria-label={`Account menu for ${user?.name || 'your account'}`}
         aria-expanded={open}
         className="relative w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white transition-all duration-200 hover:scale-105"
-        style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+        style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}
       >
         {/* Credit ring */}
         <svg className="absolute inset-0 w-10 h-10 -rotate-90" viewBox="0 0 40 40">
@@ -445,7 +445,7 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
             <div className="px-5 pt-5 pb-4">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white flex-shrink-0"
-                     style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
+                     style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}>
                   {initials}
                 </div>
                 <div className="min-w-0">
@@ -454,7 +454,7 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
                 </div>
                 {isAdmin && (
                   <span className="text-xs font-bold px-2 py-0.5 rounded-lg text-white flex-shrink-0"
-                        style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>Admin</span>
+                        style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}>Admin</span>
                 )}
               </div>
 
@@ -463,7 +463,7 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
                 <div className="rounded-xl p-3" style={{ background: 'var(--bg-input)' }}>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Credits remaining</span>
-                    <span className="text-xs font-bold" style={{ color: low ? '#f87171' : '#8B5CF6' }}>
+                    <span className="text-xs font-bold" style={{ color: low ? '#f87171' : '#5B50FF' }}>
                       {isAdmin ? '∞' : (credits * 10).toLocaleString()} / {isAdmin ? '∞' : (planMax * 10).toLocaleString()}
                     </span>
                   </div>
@@ -474,7 +474,7 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
                         width: `${pct}%`,
                         background: low
                           ? 'linear-gradient(90deg, #f87171 0%, #fca5a5 100%)'
-                          : 'linear-gradient(90deg, #8B5CF6 0%, #00F0FF 100%)',
+                          : 'linear-gradient(90deg, #5B50FF 0%, #8B80FF 100%)',
                       }}
                     />
                   </div>
@@ -488,7 +488,7 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
                     <button
                       onClick={() => { onUpgrade(); setOpen(false); }}
                       className="text-xs font-semibold transition-colors hover:opacity-80"
-                      style={{ color: '#8B5CF6' }}
+                      style={{ color: '#5B50FF' }}
                     >
                       {currentPlan === 'free' ? 'Upgrade →' : 'Manage plan →'}
                     </button>
@@ -516,7 +516,7 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:opacity-80 text-left"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                <User size={15} style={{ color: '#00F0FF' }} />
+                <User size={15} style={{ color: '#8B80FF' }} />
                 View profile
               </button>
               <button
@@ -524,7 +524,7 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:opacity-80 text-left"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                <CreditCard size={15} style={{ color: '#8B5CF6' }} />
+                <CreditCard size={15} style={{ color: '#5B50FF' }} />
                 {currentPlan === 'free' ? 'Upgrade plan' : 'Billing & plans'}
               </button>
               <button
@@ -826,7 +826,7 @@ export default function Dashboard() {
             className="rounded-3xl px-10 py-10 max-w-xs w-full mx-4 text-center shadow-2xl bg-white dark:bg-hb-surface"
           >
             <div className="w-14 h-14 rounded-2xl mx-auto mb-5 flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
+                 style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}>
               <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
                 <Sparkles size={24} className="text-white" />
               </motion.div>
@@ -855,7 +855,7 @@ export default function Dashboard() {
           >
             <div
               className="w-16 h-16 rounded-2xl mx-auto mb-5 flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+              style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}
             >
               <motion.div
                 animate={{ rotate: 360 }}
@@ -920,7 +920,7 @@ export default function Dashboard() {
       </div>
 
       {/* Hero gradient section */}
-      <div style={{ background: 'var(--bg-hero)' }}>
+      <div style={{ background: isDark ? '#0f0f0f' : '#f5f5f5' }}>
         <div className="max-w-3xl mx-auto px-4 pt-12 pb-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -984,7 +984,7 @@ export default function Dashboard() {
                               x="0.5" y="0.5" width={w - 1} height={h - 1}
                               rx="1.5"
                               fill={active ? 'rgba(139,92,246,0.15)' : 'transparent'}
-                              stroke={active ? '#8B5CF6' : 'currentColor'}
+                              stroke={active ? '#5B50FF' : 'currentColor'}
                               strokeWidth="1.5"
                               className={active ? '' : 'text-ios-gray2 dark:text-zinc-500'}
                             />
@@ -1070,7 +1070,8 @@ export default function Dashboard() {
                     <button
                       onClick={handleSubmit}
                       disabled={analyzing || (!input.trim() && allAttachments.length === 0)}
-                      className="ios-btn py-2 px-5 text-sm"
+                      className="py-2 px-5 text-sm font-semibold text-white rounded-btn flex items-center gap-2 disabled:opacity-40"
+                      style={{ background: '#5B50FF', border: 'none', cursor: 'pointer' }}
                     >
                       <Send size={15} /> Create
                     </button>
@@ -1113,7 +1114,7 @@ export default function Dashboard() {
                   <AttachZone
                     label="Moodboard"
                     icon={Palette}
-                    accentColor="#8B5CF6"
+                    accentColor="#5B50FF"
                     files={moodboardFiles}
                     onAdd={f => setMoodboardFiles(prev => [...prev, f])}
                     onRemove={id => setMoodboardFiles(prev => prev.filter(f => f.id !== id))}
@@ -1188,7 +1189,7 @@ export default function Dashboard() {
                 animate={{ rotate: [0, 10, -10, 0] }}
                 transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
               >
-                <Bot size={26} style={{ color: '#8B5CF6' }} />
+                <Bot size={26} style={{ color: '#5B50FF' }} />
               </motion.div>
             </div>
             <p className="font-bold text-lg mb-2" style={{ color: 'var(--text-primary)' }}>Your first deck is one brief away</p>
