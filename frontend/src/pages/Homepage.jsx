@@ -43,10 +43,10 @@ function HBIcon({ size = 32, className = '' }) {
       style={{
         width: size, height: size,
         background: '#5B50FF',
-        clipPath: 'polygon(0 0, 100% 0, 100% 78%, 78% 100%, 0 100%)',
+        borderRadius: Math.round(size * 0.22),
       }}
     >
-      <span style={{ fontFamily: 'Inter,sans-serif', fontWeight: 800, color: '#fff', fontSize: size * 0.38, letterSpacing: '-0.05em' }}>HB</span>
+      <span style={{ fontFamily: 'Inter,Arial,sans-serif', fontWeight: 900, color: '#fff', fontSize: size * 0.46, letterSpacing: '-0.1em', paddingRight: '0.1em', display: 'block', lineHeight: 1 }}>HB</span>
     </div>
   );
 }
@@ -362,17 +362,6 @@ export default function Homepage() {
         <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 65% 40%, rgba(91,80,255,0.08), transparent 60%)', pointerEvents: 'none' }} />
 
         <div style={{ maxWidth: '900px', margin: '0 auto', padding: '0 24px', textAlign: 'center', position: 'relative', zIndex: 1 }}>
-          {/* Beta badge */}
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(91,80,255,0.08)', border: '0.5px solid rgba(91,80,255,0.2)', borderRadius: '9999px', padding: '4px 12px', marginBottom: '32px' }}
-          >
-            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#5B50FF', display: 'inline-block' }} />
-            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#5B50FF', fontWeight: 500 }}>Now in public beta</span>
-          </motion.div>
-
           {/* Headline */}
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
@@ -390,7 +379,7 @@ export default function Homepage() {
           >
             Presentations that make<br />
             {'people go '}
-            <span style={{ display: 'inline-flex', background: '#5B50FF', borderRadius: '6px', verticalAlign: 'baseline', overflow: 'hidden' }}>
+            <span style={{ display: 'inline-flex', background: '#5B50FF', borderRadius: '6px', verticalAlign: 'bottom', overflow: 'hidden', paddingBottom: '3px' }}>
               <TextRotate
                 texts={['how?', 'wow.', 'really?', 'that fast?', 'just you?', 'with AI?']}
                 rotationInterval={2200}
@@ -449,35 +438,15 @@ export default function Homepage() {
             transition={{ delay: 0.5 }}
             style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490' }}
           >
-            Used by consultants, founders &amp; agencies at Series A+
+            Used by brand teams, investors, analysts &amp; agencies at top-tier companies
           </motion.p>
         </div>
-      </section>
-
-      {/* ── 3. SOCIAL PROOF ── */}
-      <section style={{ background: '#ffffff', padding: '80px 24px' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center' }}>
-          <Reveal>
-            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#6b6490', marginBottom: '40px' }}>Trusted by teams at</p>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '48px', flexWrap: 'wrap' }}>
-              {[
-                { label: 'McKinsey-type', abbr: 'MCK' },
-                { label: 'VC Firm', abbr: 'A16Z' },
-                { label: 'Agency', abbr: 'BBDO' },
-                { label: 'Startup', abbr: 'YC' },
-                { label: 'Enterprise', abbr: 'IBM' },
-              ].map(co => (
-                <div key={co.abbr} style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.4 }}>
-                  <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '18px', color: '#0d0b1a', letterSpacing: '-0.03em' }}>{co.abbr}</span>
-                </div>
-              ))}
-            </div>
-          </Reveal>
-        </div>
+        {/* Blend into dark section */}
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 160, background: 'linear-gradient(to bottom, transparent, #080808)', pointerEvents: 'none', zIndex: 2 }} />
       </section>
 
       {/* ── 4. PRODUCT DEMO ── */}
-      <section id="demo" style={{ background: '#080808', padding: '120px 24px' }}>
+      <section id="demo" style={{ background: '#080808', padding: '0 24px 120px' }}>
         <div style={{ maxWidth: '900px', margin: '0 auto' }}>
           <Reveal>
             <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase', marginBottom: '20px', textAlign: 'center' }}>HYPERBEING IN ACTION</p>

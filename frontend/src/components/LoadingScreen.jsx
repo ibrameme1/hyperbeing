@@ -84,10 +84,10 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
           className="w-12 h-12 flex items-center justify-center"
           style={{
             background: '#5B50FF',
-            clipPath: 'polygon(0 0, 100% 0, 100% 78%, 78% 100%, 0 100%)',
+            borderRadius: 11,
           }}
         >
-          <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 800, color: '#fff', fontSize: '15px', letterSpacing: '-0.05em' }}>HB</span>
+          <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 900, color: '#fff', fontSize: '22px', letterSpacing: '-0.1em', paddingRight: '0.05em' }}>HB</span>
         </div>
 
         {/* Status label */}

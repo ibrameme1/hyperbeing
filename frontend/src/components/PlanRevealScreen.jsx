@@ -118,7 +118,7 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
           style={{
             background: '#5B50FF',
             borderRadius: 8,
-            clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
+            borderRadius: 12,
           }}
         >
           <Sparkles size={20} className="text-white" />
