@@ -11,30 +11,60 @@ export default function MessageBubble({ message }) {
       initial={{ opacity: 0, y: 12, scale: 0.97 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-      className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+      style={{ display: 'flex', gap: 12, flexDirection: isUser ? 'row-reverse' : 'row' }}
     >
       {/* Avatar */}
       {!isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-2xl flex items-center justify-center self-end"
-             style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-          <Sparkles size={14} className="text-white" />
+        <div
+          style={{
+            flexShrink: 0,
+            width: 32,
+            height: 32,
+            borderRadius: 4,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            alignSelf: 'flex-end',
+            background: '#5B50FF',
+          }}
+        >
+          <Sparkles size={14} style={{ color: '#ffffff' }} />
         </div>
       )}
 
-      <div className={`max-w-[78%] flex flex-col gap-2 ${isUser ? 'items-end' : 'items-start'}`}>
+      <div style={{ maxWidth: '78%', display: 'flex', flexDirection: 'column', gap: 8, alignItems: isUser ? 'flex-end' : 'flex-start' }}>
         {/* Image attachments */}
         {attachments.filter(a => a.type === 'image').map((att, i) => (
           <img
             key={i}
             src={att.data}
             alt={att.name}
-            className="max-h-40 rounded-2xl object-cover shadow-ios"
+            style={{ maxHeight: 160, borderRadius: 12, objectFit: 'cover' }}
           />
         ))}
 
         {/* Text */}
         {text && (
-          <div className={isUser ? 'bubble-user' : 'bubble-ai'}>
+          <div
+            style={isUser ? {
+              background: '#5B50FF',
+              color: '#ffffff',
+              borderRadius: '12px 12px 4px 12px',
+              padding: '10px 14px',
+              fontFamily: 'Inter,sans-serif',
+              fontSize: 14,
+              lineHeight: 1.5,
+            } : {
+              background: '#141414',
+              color: '#b8b8b8',
+              border: '0.5px solid #1e1e1e',
+              borderRadius: '12px 12px 12px 4px',
+              padding: '10px 14px',
+              fontFamily: 'Inter,sans-serif',
+              fontSize: 14,
+              lineHeight: 1.5,
+            }}
+          >
             {text.split('\n').map((line, i, arr) => (
               <span key={i}>
                 {line}
@@ -42,7 +72,7 @@ export default function MessageBubble({ message }) {
               </span>
             ))}
             {message.streaming && (
-              <span className="inline-block w-0.5 h-4 ml-0.5 bg-current align-middle animate-pulse" />
+              <span style={{ display: 'inline-block', width: 2, height: 16, marginLeft: 2, background: 'currentColor', verticalAlign: 'middle' }} className="animate-pulse" />
             )}
           </div>
         )}
