@@ -983,7 +983,7 @@ export default function Dashboard() {
                             <rect
                               x="0.5" y="0.5" width={w - 1} height={h - 1}
                               rx="1.5"
-                              fill={active ? 'rgba(139,92,246,0.15)' : 'transparent'}
+                              fill={active ? 'rgba(91,80,255,0.15)' : 'transparent'}
                               stroke={active ? '#5B50FF' : 'currentColor'}
                               strokeWidth="1.5"
                               className={active ? '' : 'text-ios-gray2 dark:text-zinc-500'}
@@ -1184,7 +1184,7 @@ export default function Dashboard() {
             className="text-center py-8"
           >
             <div className="inline-flex w-16 h-16 rounded-3xl mb-5 items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(0,240,255,0.1) 100%)', border: '1px solid rgba(139,92,246,0.2)' }}>
+                 style={{ background: 'linear-gradient(135deg, rgba(91,80,255,0.15) 0%, rgba(0,240,255,0.1) 100%)', border: '1px solid rgba(91,80,255,0.2)' }}>
               <motion.div
                 animate={{ rotate: [0, 10, -10, 0] }}
                 transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}

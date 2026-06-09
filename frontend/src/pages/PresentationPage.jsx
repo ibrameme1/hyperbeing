@@ -38,13 +38,13 @@ function GeneratingScreen() {
   return (
     <div
       className="h-screen flex flex-col items-center justify-center relative overflow-hidden"
-      style={{ background: 'linear-gradient(135deg, #0A0A0B 0%, #0f0c29 50%, #1a0a2e 100%)' }}
+      style={{ background: 'linear-gradient(135deg, #080808 0%, #080808 50%, #0a0818 100%)' }}
     >
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-1/3 left-1/3 w-96 h-96 rounded-full opacity-20 animate-float"
-             style={{ background: 'radial-gradient(circle, #8B5CF6 0%, transparent 70%)' }} />
+             style={{ background: 'radial-gradient(circle, rgba(91,80,255,0.12) 0%, transparent 70%)' }} />
         <div className="absolute bottom-1/3 right-1/3 w-80 h-80 rounded-full opacity-15 animate-float"
-             style={{ background: 'radial-gradient(circle, #00C4D4 0%, transparent 70%)', animationDelay: '2s' }} />
+             style={{ background: 'radial-gradient(circle, rgba(91,80,255,0.08) 0%, transparent 70%)', animationDelay: '2s' }} />
       </div>
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
@@ -55,11 +55,11 @@ function GeneratingScreen() {
           <motion.div
             animate={{ scale: [1, 1.15, 1], opacity: [0.5, 1, 0.5] }}
             transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute inset-0 rounded-3xl blur-xl"
-            style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+            className="absolute inset-0 rounded-xl blur-xl"
+            style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}
           />
-          <div className="relative w-16 h-16 rounded-3xl flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
+          <div className="relative w-16 h-16 rounded-xl flex items-center justify-center"
+               style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}>
             <Sparkles size={28} className="text-white" />
           </div>
         </div>
@@ -276,8 +276,8 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
 
         {sending && streamingContent === null && (
           <div className="flex gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-2xl flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center"
+                 style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}>
               <Sparkles size={14} className="text-white" />
             </div>
             <div className="bubble-ai flex items-center gap-2 text-ios-gray1">
@@ -289,7 +289,7 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
 
         {sendError && (
           <div className="flex justify-center">
-            <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-2xl px-4 py-2.5 max-w-sm text-center">{sendError}</p>
+            <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-4 py-2.5 max-w-sm text-center">{sendError}</p>
           </div>
         )}
 
@@ -302,7 +302,7 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
             <button
               onClick={() => onGenerate(presentation)}
               className="ios-btn py-3 px-8 text-base shadow-ios-lg"
-              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+              style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}
             >
               <Wand2 size={18} />
               Generate Presentation
@@ -318,7 +318,7 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
            style={{ background: 'var(--bg-nav)', backdropFilter: 'blur(20px)' }}>
         <div
           {...getRootProps()}
-          className={`rounded-3xl shadow-ios transition-all duration-200 ${
+          className={`rounded-xl shadow-ios transition-all duration-200 ${
             isDragActive ? 'ring-2 ring-ios-blue' : ''
           }`}
           style={{ background: 'var(--bg-card)' }}
@@ -360,8 +360,8 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
               onKeyDown={handleKeyDown}
               placeholder={isDragActive ? 'Drop images here…' : 'Reply to Nova…'}
               rows={2}
-              className="flex-1 resize-none border-none outline-none placeholder:text-ios-gray2 dark:placeholder:text-zinc-500 text-sm bg-transparent leading-relaxed"
-              style={{ color: 'var(--text-primary)' }}
+              className="flex-1 resize-none leading-relaxed"
+              style={{ background: '#141414', color: '#f0f0ee', border: '0.5px solid #1e1e1e', borderRadius: 6, fontFamily: 'Inter,sans-serif', fontSize: 14, outline: 'none', padding: '8px 12px' }}
             />
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
@@ -374,14 +374,14 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
                 onClick={handleSend}
                 disabled={sending || (!input.trim() && attachments.length === 0)}
                 className="w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-150 active:scale-95 disabled:opacity-40"
-                style={{ background: '#007AFF' }}
+                style={{ background: '#5B50FF' }}
               >
                 <Send size={14} className="text-white" />
               </button>
             </div>
           </div>
         </div>
-        <p className="text-center text-[11px] text-ios-gray2 mt-2">⌘ + Enter to send</p>
+        <p className="text-center text-[11px] mt-2" style={{ color: '#555555', fontFamily: 'Inter,sans-serif' }}>⌘ + Enter to send</p>
       </div>
     </div>
   );
@@ -745,8 +745,8 @@ export default function PresentationPage() {
     return (
       <div className="h-screen flex items-center justify-center" style={{ background: 'var(--bg-page)' }}>
         <div className="flex flex-col items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center animate-pulse"
-               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
+          <div className="w-12 h-12 rounded-lg flex items-center justify-center animate-pulse"
+               style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}>
             <Sparkles size={24} className="text-white" />
           </div>
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading…</p>
@@ -811,9 +811,9 @@ export default function PresentationPage() {
     return (
       <div
         className="h-screen flex flex-col items-center justify-center gap-6"
-        style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
+        style={{ background: 'linear-gradient(135deg, #080808 0%, #1a1540 50%, #141414 100%)' }}
       >
-        <div className="w-14 h-14 rounded-2xl bg-red-500/20 flex items-center justify-center">
+        <div className="w-14 h-14 rounded-lg bg-red-500/20 flex items-center justify-center">
           <AlertTriangle size={28} className="text-red-400" />
         </div>
         <div className="text-center">
@@ -824,7 +824,7 @@ export default function PresentationPage() {
         </div>
         <button
           onClick={() => navigate('/dashboard')}
-          className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white text-gray-900 font-semibold text-sm hover:bg-gray-100 transition-colors active:scale-95"
+          className="flex items-center gap-2 px-6 py-3 rounded-lg bg-white text-gray-900 font-semibold text-sm hover:bg-gray-100 transition-colors active:scale-95"
         >
           <ArrowLeft size={16} />
           Back to Dashboard
