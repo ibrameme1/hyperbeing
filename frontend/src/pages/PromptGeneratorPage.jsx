@@ -18,15 +18,15 @@ function DeliveryBlock({ text, onUsePrompt }) {
 
   return (
     <div className="flex flex-col gap-2 max-w-[85%]">
-      <div className="bg-gray-900 text-gray-100 rounded-3xl rounded-bl-md px-5 py-4 text-sm leading-relaxed font-mono whitespace-pre-wrap shadow-ios-lg border border-gray-700">
+      <div style={{ background: '#141414', color: '#f0f0ee', borderRadius: '12px 12px 4px 12px', padding: '16px 20px', fontSize: 14, lineHeight: 1.6, fontFamily: 'JetBrains Mono,monospace', whiteSpace: 'pre-wrap', border: '0.5px solid #1e1e1e' }}>
         {text}
       </div>
       <motion.button
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         onClick={handleCopy}
-        className="self-start flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-semibold text-white transition-all active:scale-95"
-        style={{ background: copied ? '#34C759' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+        className="self-start flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all active:scale-95"
+        style={{ background: copied ? '#22c55e' : '#5B50FF' }}
       >
         {copied ? <><Check size={14} /> Copied!</> : <><Copy size={14} /> Use this prompt</>}
       </motion.button>
@@ -44,8 +44,8 @@ function ChatMessage({ msg }) {
         animate={{ opacity: 1, y: 0 }}
         className="flex gap-3"
       >
-        <div className="flex-shrink-0 w-8 h-8 rounded-2xl flex items-center justify-center self-end"
-             style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+        <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center self-end"
+             style={{ background: '#5B50FF' }}>
           <Sparkles size={14} className="text-white" />
         </div>
         <DeliveryBlock text={msg.content} />
@@ -60,14 +60,14 @@ function ChatMessage({ msg }) {
       className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
     >
       {!isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-2xl flex items-center justify-center self-end"
-             style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+        <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center self-end"
+             style={{ background: '#5B50FF' }}>
           <Sparkles size={14} className="text-white" />
         </div>
       )}
       <div className={`max-w-[78%] flex flex-col gap-2 ${isUser ? 'items-end' : 'items-start'}`}>
         {msg.images?.map((img, i) => (
-          <img key={i} src={img} alt="" className="max-h-32 rounded-2xl object-cover shadow-ios" />
+          <img key={i} src={img} alt="" className="max-h-32 rounded-lg object-cover shadow-ios" />
         ))}
         {msg.content && (
           <div className={isUser ? 'bubble-user' : 'bubble-ai'}>
@@ -206,11 +206,11 @@ export default function PromptGeneratorPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col" style={{ background: '#F2F2F7' }}>
+    <div className="h-screen flex flex-col" style={{ background: '#080808' }}>
       {/* Top bar */}
       <div
-        className="flex items-center gap-3 px-5 py-4 border-b border-ios-gray5 flex-shrink-0"
-        style={{ background: 'rgba(242,242,247,0.9)', backdropFilter: 'blur(20px)' }}
+        className="flex items-center gap-3 px-5 py-4 flex-shrink-0"
+        style={{ background: 'rgba(10,10,10,0.92)', backdropFilter: 'blur(20px)', borderBottom: '0.5px solid #1e1e1e' }}
       >
         <button
           onClick={() => navigate('/dashboard')}
@@ -220,10 +220,10 @@ export default function PromptGeneratorPage() {
         </button>
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0"
-               style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+               style={{ background: '#5B50FF' }}>
             <Sparkles size={13} className="text-white" />
           </div>
-          <p className="font-semibold text-gray-900 text-sm truncate">Prompt Generator</p>
+          <p style={{ fontFamily: 'Inter,sans-serif', fontWeight: 600, color: '#f0f0ee', fontSize: 14 }}>Prompt Generator</p>
         </div>
         <button
           onClick={handleStartOver}
@@ -242,13 +242,13 @@ export default function PromptGeneratorPage() {
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col items-center justify-center h-full gap-4 text-center py-16"
           >
-            <div className="w-16 h-16 rounded-3xl flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #667eea22 0%, #764ba222 100%)' }}>
+            <div className="w-16 h-16 rounded-xl flex items-center justify-center"
+                 style={{ background: 'rgba(91,80,255,0.08)' }}>
               <Sparkles size={28} className="text-ios-indigo opacity-60" />
             </div>
             <div>
-              <p className="font-semibold text-gray-900 text-base mb-1">Describe your slide</p>
-              <p className="text-ios-gray1 text-sm max-w-xs">Tell me what you need — a brand, a product, a stat, a moment. I'll ask what I need and generate a detailed image prompt.</p>
+              <p style={{ fontFamily: 'Inter,sans-serif', fontWeight: 600, color: '#f0f0ee', fontSize: 15, marginBottom: 4 }}>Describe your slide</p>
+              <p style={{ fontFamily: 'Inter,sans-serif', color: '#888888', fontSize: 14, maxWidth: 280 }}>Tell me what you need — a brand, a product, a stat, a moment. I'll ask what I need and generate a detailed image prompt.</p>
             </div>
           </motion.div>
         )}
@@ -259,8 +259,8 @@ export default function PromptGeneratorPage() {
 
         {loading && (
           <div className="flex gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-2xl flex items-center justify-center self-end"
-                 style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center self-end"
+                 style={{ background: '#5B50FF' }}>
               <Sparkles size={14} className="text-white" />
             </div>
             <div className="bubble-ai flex items-center gap-2 text-ios-gray1">
@@ -275,10 +275,10 @@ export default function PromptGeneratorPage() {
 
       {/* Input */}
       <div
-        className="border-t border-ios-gray5 p-4 flex-shrink-0"
-        style={{ background: 'rgba(242,242,247,0.95)', backdropFilter: 'blur(20px)' }}
+        className="p-4 flex-shrink-0"
+        style={{ background: 'rgba(10,10,10,0.92)', backdropFilter: 'blur(20px)', borderTop: '0.5px solid #1e1e1e' }}
       >
-        <div {...getRootProps()} className="bg-white rounded-3xl shadow-ios">
+        <div {...getRootProps()} className="rounded-lg" style={{ background: '#141414', border: '0.5px solid #1e1e1e' }}>
           <input {...getInputProps()} />
 
           <AnimatePresence>
@@ -312,7 +312,8 @@ export default function PromptGeneratorPage() {
               onKeyDown={handleKeyDown}
               placeholder="Describe your slide — brand, product, stat, campaign moment…"
               rows={2}
-              className="flex-1 resize-none border-none outline-none text-gray-800 placeholder:text-ios-gray2 text-sm bg-transparent leading-relaxed"
+              className="flex-1 resize-none leading-relaxed"
+              style={{ background: '#141414', color: '#f0f0ee', border: 'none', outline: 'none', fontFamily: 'Inter,sans-serif', fontSize: 14 }}
             />
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
@@ -325,14 +326,14 @@ export default function PromptGeneratorPage() {
                 onClick={handleSend}
                 disabled={loading || (!input.trim() && images.length === 0)}
                 className="w-8 h-8 rounded-xl flex items-center justify-center transition-all active:scale-95 disabled:opacity-40"
-                style={{ background: '#007AFF' }}
+                style={{ background: '#5B50FF' }}
               >
                 <Send size={14} className="text-white" />
               </button>
             </div>
           </div>
         </div>
-        <p className="text-center text-[11px] text-ios-gray2 mt-2">⌘ + Enter to send</p>
+        <p className="text-center text-[11px] mt-2" style={{ color: '#555555', fontFamily: 'Inter,sans-serif' }}>⌘ + Enter to send</p>
       </div>
     </div>
   );
