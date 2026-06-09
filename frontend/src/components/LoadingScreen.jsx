@@ -19,12 +19,13 @@ const GENERATING_MESSAGES = [
 ];
 
 function ShaderBackground() {
-  const [Shader, setShader] = useState(null);
+  const [mods, setMods] = useState({});
   useEffect(() => {
-    import('@paper-design/shaders-react').then(mod => setShader(() => mod.MeshGradient)).catch(() => {});
+    import('@paper-design/shaders-react').then(mod => setMods(mod)).catch(() => {});
   }, []);
+  const { MeshGradient, DotOrbit } = mods;
 
-  if (!Shader) {
+  if (!MeshGradient) {
     return (
       <div className="absolute inset-0" style={{
         background: 'linear-gradient(135deg, #080808 0%, #0f0f0f 40%, #1a1540 70%, #5B50FF 100%)'
@@ -32,13 +33,27 @@ function ShaderBackground() {
     );
   }
   return (
-    <Shader
-      className="absolute inset-0 w-full h-full"
-      colors={['#080808', '#0f0f0f', '#1a1540', '#5B50FF']}
-      speed={0.4}
-      backgroundColor="#080808"
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
-    />
+    <>
+      <MeshGradient
+        className="absolute inset-0 w-full h-full"
+        colors={['#080808', '#0a0818', '#1a1540', '#2d1f8f']}
+        speed={0.3}
+        backgroundColor="#080808"
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+      />
+      {DotOrbit && (
+        <div className="absolute inset-0 opacity-20">
+          <DotOrbit
+            className="w-full h-full"
+            dotColor="#5B50FF"
+            orbitColor="#8B80FF"
+            speed={0.6}
+            intensity={0.8}
+            style={{ width: '100%', height: '100%' }}
+          />
+        </div>
+      )}
+    </>
   );
 }
 
