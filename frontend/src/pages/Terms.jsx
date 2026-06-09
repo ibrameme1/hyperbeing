@@ -15,7 +15,7 @@ export default function Terms() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#080808', fontFamily: 'Inter, sans-serif' }}>
-      <div style={{ borderBottom: '0.5px solid #1e1e1e', padding: '0 32px', height: 60, display: 'flex', alignItems: 'center' }}>
+      <div style={{ borderBottom: '0.5px solid #1e1e1e', padding: '0 16px', height: 56, display: 'flex', alignItems: 'center' }}>
         <button onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer' }}>
           <HBIcon />
           <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 14, color: '#f0f0ee', letterSpacing: '-0.02em' }}>HyperBeing</span>
