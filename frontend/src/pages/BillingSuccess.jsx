@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, ArrowRight } from 'lucide-react';
+import { CheckCircle2, Sparkles, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 
@@ -8,6 +8,7 @@ export default function BillingSuccess() {
   const navigate = useNavigate();
   const [plan, setPlan] = useState(null);
   const [credits, setCredits] = useState(null);
+  const [fetchError, setFetchError] = useState(false);
 
   useEffect(() => {
     api.get('/billing/subscription')
@@ -15,61 +16,66 @@ export default function BillingSuccess() {
         setPlan(r.data.plan?.name);
         setCredits(r.data.subscription?.credits_remaining);
       })
-      .catch(() => {});
+      .catch(() => { setFetchError(true); });
   }, []);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ position: 'fixed', top: '30%', left: '50%', transform: 'translateX(-50%)', width: 400, height: 400, background: 'radial-gradient(circle, rgba(91,80,255,0.12) 0%, transparent 70%)', pointerEvents: 'none' }} />
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#0A0A0B' }}>
+      <div className="fixed top-1/4 left-1/4 w-[600px] h-[600px] rounded-full pointer-events-none"
+           style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.2) 0%, transparent 65%)', filter: 'blur(80px)' }} />
 
       <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-        style={{ maxWidth: 420, width: '100%', textAlign: 'center', position: 'relative', zIndex: 1 }}
+        initial={{ opacity: 0, scale: 0.92 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        className="relative z-10 text-center max-w-md w-full"
       >
         <motion.div
-          initial={{ scale: 0, rotate: -20 }}
+          initial={{ scale: 0, rotate: -15 }}
           animate={{ scale: 1, rotate: 0 }}
-          transition={{ type: 'spring', stiffness: 260, damping: 18, delay: 0.1 }}
-          style={{ margin: '0 auto 32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          transition={{ type: 'spring', stiffness: 280, damping: 18, delay: 0.1 }}
+          className="w-24 h-24 rounded-3xl mx-auto mb-8 flex items-center justify-center"
+          style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 0 60px rgba(139,92,246,0.5)' }}
         >
-          <div style={{
-            width: 72, height: 72, background: '#5B50FF',
-            borderRadius: 16,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: 'rgba(91,80,255,0.5) 0px 0px 48px',
-          }}>
-            <Check size={32} color="#fff" strokeWidth={2.5} />
-          </div>
+          <CheckCircle2 size={42} className="text-white" />
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-          <h1 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 36, fontWeight: 400, color: '#f0f0ee', marginBottom: 12, letterSpacing: '-0.02em' }}>
-            You're on <em>{plan || 'your new plan'}</em>.
-          </h1>
-          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 15, color: '#888888', marginBottom: 8 }}>
-            Payment confirmed. Nova is ready to create.
-          </p>
+          <h1 className="font-display text-3xl font-bold text-white mb-3">You're on {plan || 'your new plan'}!</h1>
+          <p className="text-white/50 mb-2">Payment confirmed. Nova is ready to create.</p>
           {credits !== null && (
-            <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: '#8B80FF', letterSpacing: '0.1em', marginBottom: 40 }}>
-              {(credits * 10).toLocaleString()} credits available
+            <p className="text-white/35 text-sm mb-8">
+              <span style={{ color: '#C4B5FD', fontWeight: 600 }}>{(credits * 10).toLocaleString()} credits</span> added to your account.
+            </p>
+          )}
+
+          {fetchError && (
+            <p style={{
+              fontFamily: 'Inter, sans-serif',
+              fontSize: 13,
+              color: '#f87171',
+              background: 'rgba(239,68,68,0.08)',
+              border: '1px solid rgba(239,68,68,0.2)',
+              borderRadius: 8,
+              padding: '8px 12px',
+              marginBottom: 24,
+            }}>
+              We couldn't load your updated plan info —{' '}
+              <a
+                href="/pricing"
+                style={{ color: '#f87171', textDecoration: 'underline', cursor: 'pointer' }}
+              >
+                check your billing page
+              </a>.
             </p>
           )}
 
           <button
             onClick={() => navigate('/dashboard')}
-            style={{
-              width: '100%', padding: '13px 24px',
-              fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: '#fff',
-              background: '#5B50FF', border: 'none', borderRadius: 6, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              boxShadow: 'rgba(91,80,255,0.3) 0px 4px 20px', transition: 'background 0.15s',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = '#6E63FF'}
-            onMouseLeave={e => e.currentTarget.style.background = '#5B50FF'}
+            className="w-full py-4 rounded-2xl font-bold text-white flex items-center justify-center gap-2"
+            style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 4px 24px rgba(139,92,246,0.35)' }}
           >
-            Start creating <ArrowRight size={15} />
+            <Sparkles size={16} /> Start creating <ArrowRight size={15} />
           </button>
         </motion.div>
       </motion.div>

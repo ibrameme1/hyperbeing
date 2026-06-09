@@ -35,7 +35,7 @@ function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDe
           {slide.image_data && !slide.image_data.startsWith('data:image/svg') ? (
             <img src={slide.image_data} alt={slide.title} className="w-full h-full object-cover pointer-events-none" draggable={false} />
           ) : (
-            <div className="w-full h-full bg-gray-200 dark:bg-zinc-700 animate-pulse" />
+            <div className="w-full h-full skeleton" />
           )}
           {slide.status === 'generating' && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">

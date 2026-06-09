@@ -13,6 +13,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
 import Logo from '../components/Logo';
+import { SkeletonDashboardPage } from '../components/Skeleton';
 
 const ANALYZING_MESSAGES = [
   { text: "ok let me read through this real quick…", emoji: "👀" },

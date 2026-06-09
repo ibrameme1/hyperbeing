@@ -10,6 +10,7 @@ import MessageBubble from '../components/MessageBubble';
 import LoadingScreen from '../components/LoadingScreen';
 import PlanRevealScreen from '../components/PlanRevealScreen';
 import PresentationViewer from '../components/PresentationViewer';
+import { SkeletonPresentationViewer } from '../components/Skeleton';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
 
@@ -742,17 +743,7 @@ export default function PresentationPage() {
   }
 
   if (phase === 'loading' || !presentation) {
-    return (
-      <div className="h-screen flex items-center justify-center" style={{ background: 'var(--bg-page)' }}>
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-12 h-12 rounded-lg flex items-center justify-center animate-pulse"
-               style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}>
-            <Sparkles size={24} className="text-white" />
-          </div>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading…</p>
-        </div>
-      </div>
-    );
+    return <SkeletonPresentationViewer />;
   }
 
   if (phase === 'generating') {
