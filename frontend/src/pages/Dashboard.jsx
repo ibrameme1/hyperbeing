@@ -169,22 +169,42 @@ import QuestionFlow from '../components/QuestionFlow';
 
 function greeting(name) {
   const h = new Date().getHours();
-  const time = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
-  return `Good ${time}, ${name.split(' ')[0]}`;
+  const first = name.split(' ')[0];
+  const day = new Date().getDay(); // 0=Sun, 6=Sat
+  if (h < 5)  return `Still up, ${first}? Let's make something.`;
+  if (h < 12) {
+    const morning = ['Morning, ', 'Good morning, ', 'Hey ', 'Rise and create, '];
+    return morning[day % morning.length] + first;
+  }
+  if (h < 17) {
+    const afternoon = ['Afternoon, ', 'Good afternoon, ', 'Hey ', 'Mid-day grind, '];
+    return afternoon[day % afternoon.length] + first;
+  }
+  const evening = ['Evening, ', 'Good evening, ', 'Late session, ', 'Hey '];
+  return evening[day % evening.length] + first;
 }
 
 const VIBE_SUBTITLES = {
   'dark-editorial': 'Ready to make something that looks like a magazine cover?',
   'clean-minimal': 'Clean, sharp, minimal — just how you like it.',
   'bold-punchy': 'Time to make something that gets a reaction.',
-  'colorful': 'Let\'s make something that brings the energy.',
+  'colorful': "Let's make something that brings the energy.",
 };
 const PRIORITY_SUBTITLES = {
-  speed: 'Nova\'s warmed up and ready to move fast.',
-  quality: 'Nova\'s in full art-director mode today.',
-  storytelling: 'Let\'s build a narrative that lands.',
+  speed: "Nova's warmed up and ready to move fast.",
+  quality: "Nova's in full art-director mode today.",
+  storytelling: "Let's build a narrative that lands.",
   automation: 'Describe it. Nova handles the rest.',
 };
+
+const PLACEHOLDER_EXAMPLES = [
+  'e.g. 10-slide investor pitch for a fintech startup — Series A, US market, bold and confident tone',
+  'e.g. Brand strategy deck for a luxury skincare launch — aspirational, editorial feel, 12 slides',
+  'e.g. Quarterly business review for a SaaS company — data-heavy, clean minimal, 8 slides',
+  'e.g. Go-to-market plan for a B2B analytics tool — storytelling-first, 15 slides',
+  'e.g. Marketing campaign proposal for a CPG brand — colorful, punchy, built for a CMO audience',
+];
+const PLACEHOLDER_TEXT = PLACEHOLDER_EXAMPLES[new Date().getDay() % PLACEHOLDER_EXAMPLES.length];
 
 // ─── Attachment Drop Zone ──────────────────────────────────────────────────
 function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove, isDark }) {
@@ -939,10 +959,11 @@ export default function Dashboard() {
         <nav style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '8px 20px', borderRadius: 12,
-          background: isDark ? 'rgba(20,20,20,0.95)' : 'rgba(255,255,255,0.95)',
-          backdropFilter: 'blur(20px)',
-          border: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8',
-          boxShadow: isDark ? '0 2px 12px rgba(0,0,0,0.4)' : '0 2px 12px rgba(0,0,0,0.08)',
+          background: isDark ? 'rgba(10,10,16,0.55)' : 'rgba(255,255,255,0.72)',
+          backdropFilter: 'blur(28px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+          border: isDark ? '0.5px solid rgba(255,255,255,0.08)' : '0.5px solid rgba(0,0,0,0.08)',
+          boxShadow: isDark ? '0 2px 24px rgba(0,0,0,0.5)' : '0 2px 16px rgba(0,0,0,0.07)',
         }}>
           <div className="flex items-center">
             <Logo dark={isDark} height={40} />
@@ -1002,7 +1023,7 @@ export default function Dashboard() {
                   onDragOver={e => e.preventDefault()}
                   onDrop={handleTextareaDrop}
                   onFocus={e => e.target.style.outline = 'none'}
-                  placeholder="Describe your presentation: topic, audience, tone, and any references…"
+                  placeholder={PLACEHOLDER_TEXT}
                   aria-label="Presentation brief"
                   rows={4}
                   className="hb-ta w-full resize-none bg-transparent"

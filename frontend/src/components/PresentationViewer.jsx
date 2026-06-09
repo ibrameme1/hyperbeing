@@ -3,7 +3,7 @@ import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Download, Loader2, ArrowLeft,
   Sparkles, Send, Images, FileDown, Paperclip, X, Plus,
-  AlertTriangle, RefreshCw, Check, Pencil, Trash2,
+  AlertTriangle, RefreshCw, Check, Pencil, Trash2, ImageIcon,
 } from 'lucide-react';
 import SlideRenderer from './SlideRenderer';
 import { exportToPDF, exportImages } from '../utils/pdfExport';
@@ -28,15 +28,14 @@ function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDe
         <div
           onPointerUp={() => { if (!wasDragging.current) onGoTo(idx); }}
           className={`w-24 rounded-lg overflow-hidden transition-all duration-150 relative select-none ${
-            isCurrent ? '' : 'opacity-60 hover:opacity-90'
+            isCurrent ? 'ring-2 ring-purple-500 shadow-md' : 'opacity-60 hover:opacity-90'
           }`}
-          style={isCurrent ? { boxShadow: 'rgba(91,80,255,0.5) 0px 0px 0px 1.5px' } : {}}
           style={{ aspectRatio: '16/9' }}
         >
           {slide.image_data && !slide.image_data.startsWith('data:image/svg') ? (
             <img src={slide.image_data} alt={slide.title} className="w-full h-full object-cover pointer-events-none" draggable={false} />
           ) : (
-            <div className="w-full h-full animate-pulse" style={{ background: '#1e1e1e' }} />
+            <div className="w-full h-full bg-gray-200 dark:bg-zinc-700 animate-pulse" />
           )}
           {slide.status === 'generating' && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
@@ -55,6 +54,18 @@ function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDe
               </button>
             </div>
           )}
+          {slide.status !== 'generating' && slide.status !== 'error' &&
+           (!slide.image_data || slide.image_data === '' || slide.image_data?.startsWith('data:image/svg+xml')) && (
+            <div className="absolute inset-0 bg-indigo-900/60 flex flex-col items-center justify-center gap-1 rounded-lg">
+              <RefreshCw size={10} className="text-indigo-300" />
+              <button
+                onPointerUp={e => { e.stopPropagation(); if (!wasDragging.current) onRetry(idx); }}
+                className="text-[9px] font-semibold text-white/80 px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20"
+              >
+                Retry
+              </button>
+            </div>
+          )}
         </div>
         {canDelete && (
           <button
@@ -66,7 +77,7 @@ function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDe
           </button>
         )}
       </div>
-      <span className="text-xs font-medium transition-colors select-none" style={{ color: isCurrent ? '#8B80FF' : '#555555' }}>
+      <span className={`text-xs font-medium transition-colors select-none ${isCurrent ? 'text-purple-600 dark:text-purple-400' : 'text-gray-400 dark:text-zinc-500'}`}>
         {idx + 1}
       </span>
     </Reorder.Item>
@@ -323,26 +334,27 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   const activeSlide = localSlides[current];
   const isUpdating = updatingSlides.has(current) || activeSlide?.status === 'generating';
   const isFailed = activeSlide?.status === 'error' && !updatingSlides.has(current);
+  const isMissingImage = !isUpdating && !isFailed && activeSlide &&
+    (!activeSlide.image_data || activeSlide.image_data === '' || activeSlide.image_data?.startsWith('data:image/svg+xml'));
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden" style={{ background: '#080808' }}>
+    <div className="h-screen flex flex-col bg-white dark:bg-zinc-950 overflow-hidden">
 
       {/* ── Top bar ─────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-4 h-14 flex-shrink-0" style={{ background: '#141414', borderBottom: '0.5px solid #1e1e1e' }}>
+      <div className="flex items-center gap-3 px-4 h-14 border-b border-gray-200 dark:border-zinc-800 flex-shrink-0 bg-white dark:bg-zinc-950">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 transition-colors text-sm font-medium flex-shrink-0"
-          style={{ color: '#888888', fontFamily: 'Inter,sans-serif' }}
+          className="flex items-center gap-1.5 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-100 transition-colors text-sm font-medium flex-shrink-0"
         >
           <ArrowLeft size={16} />
           <span className="hidden sm:inline">Back</span>
         </button>
 
-        <div className="w-px h-5 flex-shrink-0" style={{ background: '#1e1e1e' }} />
+        <div className="w-px h-5 bg-gray-200 dark:bg-zinc-700 flex-shrink-0" />
 
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-               style={{ background: '#5B50FF' }}>
+               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
             <Sparkles size={13} className="text-white" />
           </div>
 
@@ -358,13 +370,12 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   if (e.key === 'Enter') handleTitleSave();
                   if (e.key === 'Escape') { setTitleValue(title); setTitleEditing(false); }
                 }}
-                className="font-semibold text-sm rounded px-2 py-1 outline-none flex-1 min-w-0"
-                style={{ background: '#0f0f0f', color: '#f0f0ee', border: '0.5px solid #1e1e1e', fontFamily: 'Inter,sans-serif', maxWidth: 260 }}
+                className="font-semibold text-gray-900 dark:text-zinc-100 text-sm bg-gray-100 dark:bg-zinc-800 rounded-lg px-2 py-1 outline-none flex-1 min-w-0"
+                style={{ maxWidth: 260 }}
               />
               <button
                 onClick={handleTitleSave}
-                className="w-6 h-6 flex items-center justify-center flex-shrink-0"
-                style={{ background: 'rgba(91,80,255,0.15)', borderRadius: 6, color: '#8B80FF' }}
+                className="w-6 h-6 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-900/50 flex-shrink-0"
               >
                 <Check size={12} />
               </button>
@@ -373,28 +384,26 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
             <div className="flex items-center gap-1.5 min-w-0">
               <button
                 onClick={() => setTitleEditing(true)}
-                className="font-semibold text-sm truncate group flex items-center gap-1 transition-colors"
-                style={{ color: '#f0f0ee', fontFamily: 'Inter,sans-serif' }}
+                className="font-semibold text-gray-900 dark:text-zinc-100 text-sm truncate hover:text-purple-700 dark:hover:text-purple-400 transition-colors group flex items-center gap-1"
                 title="Click to rename"
               >
                 {titleValue}
-                <Pencil size={11} style={{ color: '#555555' }} className="opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity" />
+                <Pencil size={11} className="text-gray-400 dark:text-zinc-500 opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity" />
               </button>
               <button
                 onClick={handleSuggestTitle}
                 disabled={titleSuggesting}
-                className="flex-shrink-0 w-6 h-6 flex items-center justify-center transition-colors"
-                style={{ background: 'rgba(91,80,255,0.1)', borderRadius: 6 }}
+                className="flex-shrink-0 w-6 h-6 rounded-lg bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors"
                 title="AI suggest title"
               >
                 {titleSuggesting
-                  ? <Loader2 size={11} className="animate-spin" style={{ color: '#8B80FF' }} />
-                  : <Sparkles size={11} style={{ color: '#8B80FF' }} />}
+                  ? <Loader2 size={11} className="animate-spin text-purple-500" />
+                  : <Sparkles size={11} className="text-purple-500" />}
               </button>
             </div>
           )}
 
-          <span className="text-xs flex-shrink-0 hidden sm:inline" style={{ color: '#555555', fontFamily: 'Inter,sans-serif' }}>
+          <span className="text-xs text-gray-400 dark:text-zinc-500 flex-shrink-0 hidden sm:inline">
             {current + 1} / {localSlides.length}
           </span>
         </div>
@@ -404,8 +413,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
           <button
             onClick={() => setShowExportMenu(v => !v)}
             disabled={exportingPDF || exportingImages}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white transition-all duration-150 active:scale-95"
-            style={{ background: '#5B50FF', borderRadius: 6, border: 'none', fontFamily: 'Inter,sans-serif' }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold text-white transition-all duration-150 active:scale-95"
+            style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
           >
             {(exportingPDF || exportingImages) ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             Export
@@ -418,15 +427,14 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 top-10 py-2 w-48 z-50"
-                style={{ background: '#0f0f0f', border: '0.5px solid #1e1e1e', borderRadius: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
+                className="absolute right-0 top-10 bg-white dark:bg-zinc-900 rounded-2xl shadow-ios-xl border border-gray-100 dark:border-zinc-800 py-2 w-48 z-50"
               >
-                <button onClick={handleExportImages} className="w-full flex items-center gap-2.5 px-4 py-2.5 transition-colors" style={{ color: '#b8b8b8', fontFamily: 'Inter,sans-serif', fontSize: 13, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-                  <Images size={15} style={{ color: '#5B50FF' }} />
+                <button onClick={handleExportImages} className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors text-sm text-gray-800 dark:text-zinc-200">
+                  <Images size={15} className="text-blue-500" />
                   Download as Images
                 </button>
-                <button onClick={handleExportPDF} className="w-full flex items-center gap-2.5 px-4 py-2.5 transition-colors" style={{ color: '#b8b8b8', fontFamily: 'Inter,sans-serif', fontSize: 13, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-                  <FileDown size={15} style={{ color: '#8B80FF' }} />
+                <button onClick={handleExportPDF} className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors text-sm text-gray-800 dark:text-zinc-200">
+                  <FileDown size={15} className="text-purple-600" />
                   Export as PDF
                 </button>
               </motion.div>
@@ -441,8 +449,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
         <button
           onClick={() => goTo(current - 1)}
           disabled={current === 0}
-          className="absolute left-4 z-10 w-10 h-10 flex items-center justify-center transition-all duration-150 disabled:opacity-30 active:scale-95"
-        style={{ background: '#141414', border: '0.5px solid #1e1e1e', borderRadius: 6, color: '#888888' }}
+          className="absolute left-4 z-10 w-10 h-10 rounded-2xl bg-white dark:bg-zinc-800 shadow-ios flex items-center justify-center text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-100 transition-all duration-150 disabled:opacity-30 active:scale-95"
         >
           <ChevronLeft size={20} />
         </button>
@@ -459,6 +466,36 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               style={{ maxWidth: 'min(896px, calc((100vh - 260px) * 16 / 9))' }}
             >
               <SlideRenderer slide={activeSlide} className="rounded-xl shadow-2xl" />
+
+              {/* Canva-style edit hint — hover overlay */}
+              {!isUpdating && !isFailed && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  whileHover={{ opacity: 1 }}
+                  style={{
+                    position: 'absolute', inset: 0, borderRadius: 12,
+                    display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+                    paddingBottom: 16, cursor: 'pointer',
+                    background: 'linear-gradient(to top, rgba(0,0,0,0.45) 0%, transparent 50%)',
+                  }}
+                  onClick={() => {
+                    editRef.current?.focus();
+                    editRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  }}
+                >
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: 'rgba(255,255,255,0.95)', color: '#0d0b1a',
+                    borderRadius: 8, padding: '7px 16px',
+                    fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600,
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+                    backdropFilter: 'blur(8px)',
+                  }}>
+                    <Pencil size={13} />
+                    Edit this slide
+                  </div>
+                </motion.div>
+              )}
 
               {/* Generating overlay */}
               {isUpdating && (
@@ -496,6 +533,33 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   </button>
                 </div>
               )}
+
+              {/* Missing image overlay */}
+              {isMissingImage && (
+                <div className="absolute inset-0 rounded-xl flex flex-col items-center justify-center gap-4"
+                     style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(91,80,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <ImageIcon size={22} style={{ color: '#8B80FF' }} />
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ color: '#fff', fontSize: 14, fontWeight: 600, fontFamily: 'Inter,sans-serif', marginBottom: 4 }}>Image didn't generate</p>
+                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, fontFamily: 'Inter,sans-serif' }}>Nova's prompt ran but no image came back. Try regenerating.</p>
+                  </div>
+                  <button
+                    onClick={() => handleRetrySlide(current)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px',
+                      borderRadius: 10, background: '#5B50FF', color: '#fff',
+                      fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600,
+                      border: 'none', cursor: 'pointer',
+                      boxShadow: '0 4px 16px rgba(91,80,255,0.4)',
+                    }}
+                  >
+                    <RefreshCw size={14} />
+                    Regenerate
+                  </button>
+                </div>
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -503,15 +567,14 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
         <button
           onClick={() => goTo(current + 1)}
           disabled={current === localSlides.length - 1}
-          className="absolute right-4 z-10 w-10 h-10 flex items-center justify-center transition-all duration-150 disabled:opacity-30 active:scale-95"
-          style={{ background: '#141414', border: '0.5px solid #1e1e1e', borderRadius: 6, color: '#888888' }}
+          className="absolute right-4 z-10 w-10 h-10 rounded-2xl bg-white dark:bg-zinc-800 shadow-ios flex items-center justify-center text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-100 transition-all duration-150 disabled:opacity-30 active:scale-95"
         >
           <ChevronRight size={20} />
         </button>
       </div>
 
       {/* ── Bottom panel ─────────────────────────────────────── */}
-      <div className="flex-shrink-0" style={{ background: '#141414', borderTop: '0.5px solid #1e1e1e' }}>
+      <div className="flex-shrink-0 bg-white dark:bg-zinc-950 border-t border-gray-200 dark:border-zinc-800">
 
         {/* Filmstrip */}
         <Reorder.Group
@@ -540,8 +603,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
           <div className="flex flex-col items-center gap-1.5 flex-shrink-0" style={{ listStyle: 'none' }}>
             <button
               onClick={() => setShowAddSlides(true)}
-              className="w-24 rounded-lg flex flex-col items-center justify-center gap-1 transition-none"
-              style={{ border: '1px dashed #2a2a2a', color: '#555555', background: 'transparent', cursor: 'pointer', aspectRatio: '16/9' }}
+              className="w-24 rounded-lg border-2 border-dashed border-gray-300 dark:border-zinc-700 hover:border-purple-400 dark:hover:border-purple-500 flex flex-col items-center justify-center gap-1 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-[color:var(--text-muted)] hover:text-purple-500 dark:hover:text-purple-400 transition-none"
+              style={{ aspectRatio: '16/9' }}
               title="Add more slides"
             >
               <Plus size={18} />
@@ -552,7 +615,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
         </Reorder.Group>
 
         {/* Edit panel */}
-        <div className="px-4 pt-2.5 pb-3" style={{ borderTop: '0.5px solid #1e1e1e' }}>
+        <div className="border-t border-gray-100 dark:border-zinc-800 px-4 pt-2.5 pb-3">
 
           {/* Hint — shown when idle */}
           <AnimatePresence>
@@ -564,8 +627,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 transition={{ duration: 0.2 }}
                 className="flex items-center gap-1.5 mb-1.5"
               >
-                <Pencil size={10} style={{ color: '#555555' }} className="flex-shrink-0" />
-                <p className="text-[11px]" style={{ color: '#555555', fontFamily: 'Inter,sans-serif' }}>
+                <Pencil size={10} className="text-gray-400 dark:text-zinc-500 flex-shrink-0" />
+                <p className="text-[11px] text-gray-400 dark:text-zinc-500">
                   Not happy with slide {current + 1}? Describe what you'd like to change — Nova will edit this slide directly.
                 </p>
               </motion.div>
@@ -594,8 +657,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
             <input ref={editFileRef} type="file" accept="image/*" multiple className="hidden"
                    onChange={e => handleEditAttach(e.target.files)} />
             <div
-              className="flex-1 flex items-center gap-2 px-3.5 py-2 transition-all"
-              style={{ background: '#0f0f0f', border: '0.5px solid #1e1e1e', borderRadius: 6 }}
+              className="flex-1 flex items-center gap-2 rounded-2xl px-3.5 py-2 transition-all"
+              style={{ background: 'var(--bg-input, #f3f4f6)' }}
             >
               <textarea
                 ref={editRef}
@@ -608,13 +671,12 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 onDrop={handleEditDrop}
                 placeholder={`e.g. "make the background darker" or "change the headline to bold red"`}
                 rows={1}
-                className="flex-1 bg-transparent text-sm outline-none resize-none leading-relaxed"
-                style={{ color: '#f0f0ee', fontFamily: 'Inter,sans-serif', maxHeight: 80 }}
+                className="flex-1 bg-transparent text-sm outline-none text-gray-800 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500 resize-none leading-relaxed"
+                style={{ maxHeight: 80 }}
               />
               <button
                 onClick={() => editFileRef.current?.click()}
-                className="flex-shrink-0 w-7 h-7 flex items-center justify-center transition-colors"
-                style={{ borderRadius: 6 }}
+                className="flex-shrink-0 w-7 h-7 rounded-xl flex items-center justify-center hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors"
                 title="Attach reference image (becomes pic2, pic3…)"
               >
                 <Paperclip size={13} className="text-gray-400 dark:text-zinc-500" />
@@ -623,8 +685,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
             <button
               onClick={handleEditSubmit}
               disabled={!editInstruction.trim() || editLoading || isUpdating}
-              className="w-9 h-9 flex items-center justify-center text-white transition-all duration-150 active:scale-95 disabled:opacity-40 flex-shrink-0"
-              style={{ background: '#5B50FF', borderRadius: 6, border: 'none' }}
+              className="w-9 h-9 rounded-2xl flex items-center justify-center text-white transition-all duration-150 active:scale-95 disabled:opacity-40 flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
             >
               {editLoading ? <Loader2 size={15} className="animate-spin" /> : <Send size={14} />}
             </button>
@@ -648,60 +710,62 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               animate={{ y: 0, opacity: 1, scale: 1 }}
               exit={{ y: 60, opacity: 0, scale: 0.97 }}
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-              className="w-full max-w-md overflow-hidden"
-              style={{ background: '#141414', border: '0.5px solid #1e1e1e', borderRadius: 12 }}
+              className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
             >
               <div className="flex items-center justify-between px-6 pt-6 pb-4">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-2xl flex items-center justify-center"
-                       style={{ background: '#5B50FF' }}>
+                       style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
                     <Plus size={15} className="text-white" />
                   </div>
                   <div>
-                    <h2 style={{ fontFamily: 'Inter,sans-serif', fontWeight: 700, color: '#f0f0ee', fontSize: 15 }}>Add More Slides</h2>
-                    <p style={{ fontFamily: 'Inter,sans-serif', fontSize: 12, color: '#888888' }}>Nova already knows your deck's context</p>
+                    <h2 className="font-bold text-gray-900 dark:text-zinc-100 text-base">Add More Slides</h2>
+                    <p className="text-xs text-gray-400 dark:text-zinc-500">Nova already knows your deck's context</p>
                   </div>
                 </div>
                 <button onClick={() => setShowAddSlides(false)}
-                        className="w-8 h-8 flex items-center justify-center transition-colors"
-                        style={{ background: '#0f0f0f', border: '0.5px solid #1e1e1e', borderRadius: 6 }}>
-                  <X size={15} style={{ color: '#888888' }} />
+                        className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-zinc-800 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors">
+                  <X size={15} className="text-gray-500 dark:text-zinc-400" />
                 </button>
               </div>
 
               <div className="px-6 pb-6 space-y-4">
                 <div>
-                  <p style={{ fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600, color: '#b8b8b8', marginBottom: 8 }}>How many slides?</p>
+                  <p className="text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-2">How many slides?</p>
                   <div className="flex gap-2 flex-wrap">
                     {[1, 2, 3, 4, 5].map(n => (
                       <button
                         key={n}
                         onClick={() => setAddCount(n)}
-                        className="w-10 py-2 text-sm font-semibold transition-all"
-                        style={addCount === n
-                          ? { background: '#5B50FF', color: '#fff', border: '0.5px solid #5B50FF', borderRadius: 6 }
-                          : { background: '#0f0f0f', color: '#b8b8b8', border: '0.5px solid #1e1e1e', borderRadius: 6 }}
+                        className={`w-10 py-2 rounded-xl text-sm font-semibold border-2 transition-all ${
+                          addCount === n
+                            ? 'border-transparent text-white'
+                            : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-400 bg-gray-50 dark:bg-zinc-800 hover:border-gray-300 dark:hover:border-zinc-600'
+                        }`}
+                        style={addCount === n ? { background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' } : {}}
                       >
                         {n}
                       </button>
                     ))}
                     <button
                       onClick={() => setAddCount('auto')}
-                      className="flex-1 py-2 text-xs font-semibold transition-all"
-                      style={addCount === 'auto'
-                        ? { background: '#5B50FF', color: '#fff', border: '0.5px solid #5B50FF', borderRadius: 6 }
-                        : { background: '#0f0f0f', color: '#b8b8b8', border: '0.5px solid #1e1e1e', borderRadius: 6 }}
+                      className={`flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all ${
+                        addCount === 'auto'
+                          ? 'border-transparent text-white'
+                          : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-400 bg-gray-50 dark:bg-zinc-800 hover:border-gray-300 dark:hover:border-zinc-600'
+                      }`}
+                      style={addCount === 'auto' ? { background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' } : {}}
                     >
                       ✦ Nova decides
                     </button>
                   </div>
                   {addCount === 'auto' && (
-                    <p style={{ fontFamily: 'Inter,sans-serif', fontSize: 11, color: '#8B80FF', marginTop: 6 }}>Nova will pick the right number of slides based on your content</p>
+                    <p className="text-[11px] text-purple-500 mt-1.5">Nova will pick the right number of slides based on your content</p>
                   )}
                 </div>
 
                 <div>
-                  <p style={{ fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600, color: '#b8b8b8', marginBottom: 8 }}>What should they cover?</p>
+                  <p className="text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-2">What should they cover?</p>
                   <textarea
                     value={addDesc}
                     onChange={e => setAddDesc(e.target.value)}
@@ -710,10 +774,9 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                     onDrop={handleAddDrop}
                     placeholder={`e.g. "A competitive analysis comparing the top 3 rivals" or "A closing call-to-action with next steps"`}
                     rows={3}
-                    className="w-full outline-none resize-none leading-relaxed"
-                    style={{ background: '#0f0f0f', border: '0.5px solid #1e1e1e', borderRadius: 6, padding: '12px 16px', fontFamily: 'Inter,sans-serif', fontSize: 14, color: '#f0f0ee', boxSizing: 'border-box' }}
+                    className="w-full bg-gray-100 dark:bg-zinc-800 rounded-2xl px-4 py-3 text-sm text-gray-800 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500 outline-none resize-none leading-relaxed"
                   />
-                  <p style={{ fontFamily: 'Inter,sans-serif', fontSize: 11, color: '#555555', marginTop: 4 }}>⌘+Enter to generate · drag images below to attach</p>
+                  <p className="text-[11px] text-gray-400 dark:text-zinc-500 mt-1">⌘+Enter to generate · drag images below to attach</p>
                 </div>
 
                 {/* Attachment row */}
@@ -743,8 +806,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   )}
                   <button
                     onClick={() => addFileRef.current?.click()}
-                    className="flex items-center gap-1.5 text-xs transition-colors"
-                    style={{ color: '#888888', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}
+                    className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-zinc-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
                   >
                     <Paperclip size={12} />
                     Attach reference images
@@ -754,8 +816,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 <button
                   onClick={handleAddSlides}
                   disabled={!addDesc.trim() || addLoading}
-                  className="w-full py-3 text-sm font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-40"
-                  style={{ background: '#5B50FF', borderRadius: 6, border: 'none', fontFamily: 'Inter,sans-serif', cursor: 'pointer' }}
+                  className="w-full py-3 rounded-2xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-40"
+                  style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
                 >
                   {addLoading ? (
                     <><Loader2 size={16} className="animate-spin" /> Generating…</>

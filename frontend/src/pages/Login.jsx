@@ -29,11 +29,11 @@ function HBIcon({ size = 32 }) {
       style={{
         width: size, height: size,
         background: '#5B50FF',
-        clipPath: 'polygon(0 0, 100% 0, 100% 78%, 78% 100%, 0 100%)',
+        borderRadius: Math.round(size * 0.22),
         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
       }}
     >
-      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 800, color: '#fff', fontSize: size * 0.38, letterSpacing: '-0.05em' }}>HB</span>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 900, color: '#fff', fontSize: size * 0.46, letterSpacing: '-0.1em', paddingRight: '0.05em' }}>HB</span>
     </div>
   );
 }

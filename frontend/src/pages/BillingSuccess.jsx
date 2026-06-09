@@ -36,7 +36,7 @@ export default function BillingSuccess() {
         >
           <div style={{
             width: 72, height: 72, background: '#5B50FF',
-            clipPath: 'polygon(0 0, 100% 0, 100% 78%, 78% 100%, 0 100%)',
+            borderRadius: 16,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             boxShadow: 'rgba(91,80,255,0.5) 0px 0px 48px',
           }}>
