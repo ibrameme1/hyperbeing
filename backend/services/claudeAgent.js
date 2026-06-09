@@ -775,7 +775,7 @@ SLIDE:{"index":N,"type":"cover|section|content|quote|data|image|conclusion","tit
 
 Rules:
 - Output HEADER: first, then ALL SLIDE: lines — no other text
-- If the brief says "Generate EXACTLY N slides", output exactly N slides
+- If the brief says "MUST create exactly N slides" OR "Generate EXACTLY N slides", you MUST output EXACTLY that number of slides — this overrides your judgment
 - Otherwise decide based on the brief (typically 5–15 slides)
 - total_slides in HEADER must equal the number of SLIDE: lines
 - Every slide except the cover (index 0) must have a KEY TAKEAWAY headline as its title — reading only titles should tell the full story
