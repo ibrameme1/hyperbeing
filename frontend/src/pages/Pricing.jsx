@@ -252,7 +252,7 @@ export default function Pricing() {
 
       <style>{sliderThumbStyle}</style>
       {/* Nav */}
-      <div className="relative z-10 flex items-center justify-between px-8 py-5 border-b" style={{ borderColor: '#1e1e1e', background: '#0f0f0f' }}>
+      <div className="relative z-10 flex items-center justify-between px-4 sm:px-8 py-4 sm:py-5 border-b" style={{ borderColor: '#1e1e1e', background: '#0f0f0f' }}>
         <div className="flex items-center gap-4">
           <button onClick={() => navigate('/')} className="flex items-center">
             <Logo dark height={40} />
@@ -267,7 +267,7 @@ export default function Pricing() {
         </div>
         <div className="flex items-center gap-3">
           {creditsLeft !== null && (
-            <span className="text-sm px-3 py-1.5 rounded-lg" style={{ background: 'rgba(91,80,255,0.12)', color: '#8B80FF', border: '0.5px solid rgba(91,80,255,0.3)', fontFamily: 'Inter,sans-serif' }}>
+            <span className="hidden sm:inline-block text-sm px-3 py-1.5 rounded-lg" style={{ background: 'rgba(91,80,255,0.12)', color: '#8B80FF', border: '0.5px solid rgba(91,80,255,0.3)', fontFamily: 'Inter,sans-serif' }}>
               {(creditsLeft * CM).toLocaleString()} credits left
             </span>
           )}
@@ -301,7 +301,7 @@ export default function Pricing() {
         </div>
       </div>
 
-      <div className="relative z-10 max-w-6xl mx-auto px-6 py-14">
+      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
 
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="text-center mb-10">
