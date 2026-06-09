@@ -252,7 +252,7 @@ export default function Pricing() {
 
       <style>{sliderThumbStyle}</style>
       {/* Nav */}
-      <div className="relative z-10 flex items-center justify-between px-8 py-5 border-b" style={{ borderColor: '#1e1e1e', background: '#0f0f0f' }}>
+      <div className="relative z-10 flex items-center justify-between px-4 sm:px-8 py-4 sm:py-5 border-b" style={{ borderColor: '#1e1e1e', background: '#0f0f0f' }}>
         <div className="flex items-center gap-4">
           <button onClick={() => navigate('/')} className="flex items-center">
             <Logo dark height={40} />
@@ -267,7 +267,7 @@ export default function Pricing() {
         </div>
         <div className="flex items-center gap-3">
           {creditsLeft !== null && (
-            <span className="text-sm px-3 py-1.5 rounded-lg" style={{ background: 'rgba(91,80,255,0.12)', color: '#8B80FF', border: '0.5px solid rgba(91,80,255,0.3)', fontFamily: 'Inter,sans-serif' }}>
+            <span className="hidden sm:inline-block text-sm px-3 py-1.5 rounded-lg" style={{ background: 'rgba(91,80,255,0.12)', color: '#8B80FF', border: '0.5px solid rgba(91,80,255,0.3)', fontFamily: 'Inter,sans-serif' }}>
               {(creditsLeft * CM).toLocaleString()} credits left
             </span>
           )}
@@ -301,7 +301,7 @@ export default function Pricing() {
         </div>
       </div>
 
-      <div className="relative z-10 max-w-6xl mx-auto px-6 py-14">
+      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
 
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="text-center mb-10">
@@ -360,19 +360,20 @@ export default function Pricing() {
                 className="relative flex flex-col overflow-hidden"
                 style={{
                   borderRadius: 12,
-                  border: plan.popular ? 'none' : `0.5px solid #1e1e1e`,
-                  background: plan.popular ? '#5B50FF' : '#141414',
+                  border: plan.popular ? 'none' : plan.bestValue ? '0.5px solid rgba(139,128,255,0.4)' : '0.5px solid #1e1e1e',
+                  background: plan.popular ? '#5B50FF' : plan.bestValue ? 'linear-gradient(160deg, #1a1540 0%, #2d1f6a 50%, #1a1540 100%)' : '#141414',
                   transform: (plan.popular || plan.bestValue) ? 'translateY(-20px)' : 'none',
-                  boxShadow: (plan.popular || plan.bestValue) ? `0 24px 64px ${plan.glow}` : 'none',
+                  boxShadow: plan.popular ? '0 24px 64px rgba(91,80,255,0.4)' : plan.bestValue ? '0 24px 64px rgba(139,128,255,0.2)' : 'none',
                   zIndex: (plan.popular || plan.bestValue) ? 1 : 0,
                 }}
               >
                 {/* Top badge — always rendered so plan names align across all 3 cards */}
-                <div className="py-2.5 text-center text-xs font-bold text-white tracking-widest uppercase"
+                <div className="py-2.5 text-center text-xs font-bold tracking-widest uppercase"
                      style={{
                        fontFamily: 'JetBrains Mono,monospace',
                        letterSpacing: '0.15em',
-                       background: (plan.popular || plan.bestValue) ? 'rgba(0,0,0,0.2)' : 'transparent',
+                       background: plan.popular ? 'rgba(0,0,0,0.25)' : plan.bestValue ? 'rgba(91,80,255,0.3)' : 'transparent',
+                       color: plan.popular ? '#fff' : plan.bestValue ? '#c4beff' : 'transparent',
                        opacity: (plan.popular || plan.bestValue) ? 1 : 0,
                      }}>
                   {plan.popular ? '♦ MOST POPULAR' : '♦ BEST VALUE'}
