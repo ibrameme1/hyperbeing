@@ -4,36 +4,6 @@ import { motion, useInView, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import TextRotate from '../components/TextRotate';
 
-/* ─── Pricing constants (keep in sync with backend) ─── */
-const PLANS = [
-  {
-    name: 'Basic',
-    price: '$9',
-    period: '/mo',
-    desc: 'For individuals getting started.',
-    features: ['30 presentations/month', '10 slides per deck', 'AI image generation', 'PDF export', 'Email support'],
-    cta: 'Start Basic →',
-    highlighted: false,
-  },
-  {
-    name: 'Pro',
-    price: '$29',
-    period: '/mo',
-    desc: 'For professionals who present often.',
-    features: ['Unlimited presentations', '25 slides per deck', 'Priority generation', 'All export formats', 'Slide editing', 'Priority support'],
-    cta: 'Start Pro →',
-    highlighted: true,
-  },
-  {
-    name: 'Ultra',
-    price: '$79',
-    period: '/mo',
-    desc: 'For teams and power users.',
-    features: ['Everything in Pro', '40 slides per deck', 'Brand kit upload', 'Team workspace', 'SSO + audit logs', 'Dedicated support'],
-    cta: 'Contact sales →',
-    highlighted: false,
-  },
-];
 
 const FEATURES = [
   { icon: '◈', title: 'Art-directed images', desc: 'Each slide gets its own generated visual. Context-aware, brand-aware, purpose-built.' },
@@ -334,35 +304,54 @@ export default function Homepage() {
 
           {/* Center links */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '32px' }}>
-            {['Product', 'Examples', 'Pricing', 'Enterprise'].map(link => (
+            {[
+              { label: 'Product', href: '#demo' },
+              { label: 'Examples', href: '#gallery' },
+              { label: 'Pricing', href: '/pricing' },
+              { label: 'Enterprise', href: 'mailto:team@hyperbeing.co?subject=Enterprise%20Enquiry' },
+            ].map(({ label, href }) => (
               <a
-                key={link}
-                href={link === 'Pricing' ? '#pricing' : '#'}
-                style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#6b6490', textDecoration: 'none', transition: 'color 0.15s' }}
+                key={label}
+                href={href}
+                onClick={label === 'Pricing' ? (e) => { e.preventDefault(); navigate('/pricing'); } : undefined}
+                style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#6b6490', textDecoration: 'none', transition: 'color 0.15s', cursor: 'pointer' }}
                 onMouseEnter={e => e.target.style.color = '#0d0b1a'}
                 onMouseLeave={e => e.target.style.color = '#6b6490'}
               >
-                {link}
+                {label}
               </a>
             ))}
           </div>
 
           {/* Right buttons */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-            <button
-              onClick={() => navigate('/login')}
-              style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 500, color: '#0d0b1a', background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px 12px' }}
-            >
-              Sign in
-            </button>
-            <button
-              onClick={goToApp}
-              style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600, color: '#fff', background: '#5B50FF', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.15s' }}
-              onMouseEnter={e => e.target.style.background = '#6E63FF'}
-              onMouseLeave={e => e.target.style.background = '#5B50FF'}
-            >
-              Start free →
-            </button>
+            {user ? (
+              <button
+                onClick={() => navigate('/dashboard')}
+                style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600, color: '#fff', background: '#5B50FF', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.15s' }}
+                onMouseEnter={e => e.target.style.background = '#6E63FF'}
+                onMouseLeave={e => e.target.style.background = '#5B50FF'}
+              >
+                Return to dashboard →
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => navigate('/login')}
+                  style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 500, color: '#0d0b1a', background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px 12px' }}
+                >
+                  Sign in
+                </button>
+                <button
+                  onClick={goToApp}
+                  style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600, color: '#fff', background: '#5B50FF', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.15s' }}
+                  onMouseEnter={e => e.target.style.background = '#6E63FF'}
+                  onMouseLeave={e => e.target.style.background = '#5B50FF'}
+                >
+                  Start free →
+                </button>
+              </>
+            )}
           </div>
         </div>
       </nav>
@@ -586,66 +575,6 @@ export default function Homepage() {
         </div>
       </section>
 
-      {/* ── 8. PRICING ── */}
-      <section id="pricing" style={{ background: '#f5f5f5', padding: '120px 24px' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-          <Reveal>
-            <div style={{ textAlign: 'center', marginBottom: '64px' }}>
-              <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase', marginBottom: '16px' }}>PRICING</p>
-              <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(32px, 4vw, 48px)', fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#0d0b1a' }}>
-                Start free. Scale as you grow.
-              </h2>
-            </div>
-          </Reveal>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', alignItems: 'start' }}>
-            {PLANS.map((plan, i) => (
-              <Reveal key={plan.name} delay={i * 0.08}>
-                <div style={{
-                  background: plan.highlighted ? '#5B50FF' : '#ffffff',
-                  borderRadius: '8px',
-                  border: plan.highlighted ? 'none' : '0.5px solid #e8e8f0',
-                  padding: '32px',
-                  boxShadow: plan.highlighted ? 'rgba(91,80,255,0.3) 0px 8px 32px' : 'rgba(91,80,255,0.06) 0px 4px 16px',
-                  position: 'relative',
-                }}>
-                  {plan.highlighted && (
-                    <div style={{ position: 'absolute', top: '-12px', left: '50%', transform: 'translateX(-50%)', background: '#0d0b1a', color: '#fff', fontFamily: 'Inter, sans-serif', fontSize: '10px', fontWeight: 600, padding: '4px 12px', borderRadius: '9999px', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Most popular</div>
-                  )}
-                  <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', fontWeight: 600, color: plan.highlighted ? 'rgba(255,255,255,0.7)' : '#6b6490', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>{plan.name}</h3>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginBottom: '8px' }}>
-                    <span style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '48px', fontWeight: 700, color: plan.highlighted ? '#ffffff' : '#0d0b1a', lineHeight: 1 }}>{plan.price}</span>
-                    <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: plan.highlighted ? 'rgba(255,255,255,0.6)' : '#6b6490' }}>{plan.period}</span>
-                  </div>
-                  <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: plan.highlighted ? 'rgba(255,255,255,0.7)' : '#3d3660', marginBottom: '24px', lineHeight: 1.5 }}>{plan.desc}</p>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 28px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {plan.features.map(feature => (
-                      <li key={feature} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'Inter, sans-serif', fontSize: '13px', color: plan.highlighted ? 'rgba(255,255,255,0.85)' : '#0d0b1a' }}>
-                        <span style={{ color: plan.highlighted ? '#ffffff' : '#22c55e', fontWeight: 700, fontSize: '12px' }}>✓</span>
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-                  <button
-                    onClick={goToApp}
-                    style={{
-                      width: '100%', fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600,
-                      color: plan.highlighted ? '#5B50FF' : '#ffffff',
-                      background: plan.highlighted ? '#ffffff' : '#5B50FF',
-                      border: 'none', borderRadius: '6px', padding: '10px 20px', cursor: 'pointer',
-                      letterSpacing: '0.01em', transition: 'opacity 0.15s',
-                    }}
-                    onMouseEnter={e => e.target.style.opacity = '0.85'}
-                    onMouseLeave={e => e.target.style.opacity = '1'}
-                  >
-                    {plan.cta}
-                  </button>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ── 9. FINAL CTA ── */}
       <section style={{ background: '#5B50FF', padding: '120px 24px', textAlign: 'center' }}>
         <Reveal>
@@ -724,6 +653,12 @@ export default function Homepage() {
           }
           div[style*="gap: 48px"][style*="align-items: center"] > div[style*="order:"] {
             order: unset !important;
+          }
+          nav > div[style*="max-width: 1200px"] > div[style*="justify-content: center"] {
+            display: none !important;
+          }
+          nav > div[style*="max-width: 1200px"] {
+            gap: 12px !important;
           }
         }
       `}</style>
