@@ -56,13 +56,15 @@ function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDe
           )}
           {slide.status !== 'generating' && slide.status !== 'error' &&
            (!slide.image_data || slide.image_data === '' || slide.image_data?.startsWith('data:image/svg+xml')) && (
-            <div className="absolute inset-0 bg-indigo-900/60 flex flex-col items-center justify-center gap-1 rounded-lg">
-              <RefreshCw size={10} className="text-indigo-300" />
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-lg"
+                 style={{ background: 'rgba(91,80,255,0.15)' }}>
+              <ImageIcon size={10} style={{ color: '#8B80FF' }} />
               <button
                 onPointerUp={e => { e.stopPropagation(); if (!wasDragging.current) onRetry(idx); }}
-                className="text-[9px] font-semibold text-white/80 px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20"
+                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-semibold text-white"
+                style={{ background: '#5B50FF' }}
               >
-                Retry
+                <RefreshCw size={7} /> Retry
               </button>
             </div>
           )}
@@ -108,6 +110,12 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   const [addAttachments, setAddAttachments] = useState([]);
   const [addLoading, setAddLoading] = useState(false);
   const addFileRef = useRef(null);
+
+  // Error states
+  const [editError, setEditError] = useState('');
+  const [addError, setAddError] = useState('');
+  const [titleSuggestError, setTitleSuggestError] = useState('');
+  const [reorderError, setReorderError] = useState('');
 
   const [slowSlideWarning, setSlowSlideWarning] = useState(false);
   const slowTimerRef = useRef(null);
@@ -186,6 +194,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       });
     } catch (err) {
       console.error('Reorder failed:', err);
+      setReorderError("Slide order couldn't be saved.");
+      setTimeout(() => setReorderError(''), 3000);
     }
   }
 
@@ -206,6 +216,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
     if (!editInstruction.trim() || editLoading) return;
     const slideIndex = localSlides[current]?.index;
     setEditLoading(true);
+    setEditError('');
     setUpdatingSlides(prev => new Set([...prev, current]));
     setLocalSlides(prev => prev.map((s, i) => i === current ? { ...s, status: 'generating' } : s));
     try {
@@ -223,6 +234,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       console.error('Edit failed:', err);
       setLocalSlides(prev => prev.map((s, i) => i === current ? { ...s, status: 'error' } : s));
       setUpdatingSlides(prev => { const n = new Set(prev); n.delete(current); return n; });
+      setEditError('Edit failed — please try again.');
     } finally {
       setEditLoading(false);
     }
@@ -280,11 +292,16 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
 
   async function handleSuggestTitle() {
     setTitleSuggesting(true);
+    setTitleSuggestError('');
     try {
       const { data } = await api.post(`/presentations/${presentationId}/suggest-title`);
       setTitleValue(data.title);
       setTitleEditing(true);
-    } catch {} finally { setTitleSuggesting(false); }
+    } catch {
+      setTitleSuggestError("Couldn't generate a title suggestion.");
+    } finally {
+      setTitleSuggesting(false);
+    }
   }
 
   function handleAddAttach(files) {
@@ -314,6 +331,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   async function handleAddSlides() {
     if (!addDesc.trim() || addLoading) return;
     setAddLoading(true);
+    setAddError('');
     try {
       await api.post(`/presentations/${presentationId}/add-slides`, {
         description: addDesc.trim(),
@@ -326,6 +344,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       setAddAttachments([]);
     } catch (err) {
       console.error('Add slides failed:', err);
+      setAddError('Could not add slides — please try again.');
     } finally {
       setAddLoading(false);
     }
@@ -335,10 +354,39 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   const isUpdating = updatingSlides.has(current) || activeSlide?.status === 'generating';
   const isFailed = activeSlide?.status === 'error' && !updatingSlides.has(current);
   const isMissingImage = !isUpdating && !isFailed && activeSlide &&
-    (!activeSlide.image_data || activeSlide.image_data === '' || activeSlide.image_data?.startsWith('data:image/svg+xml'));
+    (!activeSlide.image_data || activeSlide.image_data === '' ||
+     activeSlide.image_data?.startsWith('data:image/svg+xml'));
 
   return (
     <div className="h-screen flex flex-col bg-white dark:bg-zinc-950 overflow-hidden">
+
+      {/* ── Reorder error toast ──────────────────────────────── */}
+      <AnimatePresence>
+        {reorderError && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            style={{
+              position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
+              color: '#ef4444', borderRadius: 10, padding: '8px 16px',
+              fontFamily: 'Inter, sans-serif', fontSize: 13, zIndex: 100,
+              display: 'flex', alignItems: 'center', gap: 8,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+            }}
+          >
+            {reorderError}
+            <button
+              onClick={() => setReorderError('')}
+              style={{ color: '#888', cursor: 'pointer', background: 'none', border: 'none', fontSize: 16, lineHeight: 1, padding: 0 }}
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Top bar ─────────────────────────────────────────── */}
       <div className="flex items-center gap-3 px-4 h-14 border-b border-gray-200 dark:border-zinc-800 flex-shrink-0 bg-white dark:bg-zinc-950">
@@ -400,6 +448,11 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   ? <Loader2 size={11} className="animate-spin text-purple-500" />
                   : <Sparkles size={11} className="text-purple-500" />}
               </button>
+              {titleSuggestError && (
+                <span style={{ color: '#ef4444', fontSize: 11, fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap' }}>
+                  {titleSuggestError}
+                </span>
+              )}
             </div>
           )}
 
@@ -467,34 +520,40 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
             >
               <SlideRenderer slide={activeSlide} className="rounded-xl shadow-2xl" />
 
-              {/* Canva-style edit hint — hover overlay */}
+              {/* Canva-style hover-to-edit overlay */}
               {!isUpdating && !isFailed && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   whileHover={{ opacity: 1 }}
-                  style={{
-                    position: 'absolute', inset: 0, borderRadius: 12,
-                    display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-                    paddingBottom: 16, cursor: 'pointer',
-                    background: 'linear-gradient(to top, rgba(0,0,0,0.45) 0%, transparent 50%)',
-                  }}
-                  onClick={() => {
-                    editRef.current?.focus();
-                    editRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                  }}
+                  style={{ position: 'absolute', inset: 0, borderRadius: 12,
+                           background: 'linear-gradient(to top, rgba(0,0,0,0.45) 0%, transparent 50%)',
+                           cursor: 'pointer', display: 'flex', alignItems: 'flex-end',
+                           justifyContent: 'center', paddingBottom: 16 }}
+                  onClick={() => { editRef.current?.focus(); editRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }}
                 >
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    background: 'rgba(255,255,255,0.95)', color: '#0d0b1a',
-                    borderRadius: 8, padding: '7px 16px',
-                    fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600,
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
-                    backdropFilter: 'blur(8px)',
-                  }}>
-                    <Pencil size={13} />
-                    Edit this slide
+                  <div style={{ background: 'rgba(255,255,255,0.95)', borderRadius: 20, padding: '6px 14px',
+                                display: 'flex', alignItems: 'center', gap: 6,
+                                fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600, color: '#1a1a2e',
+                                boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
+                    <Pencil size={13} /> Edit this slide
                   </div>
                 </motion.div>
+              )}
+
+              {/* Missing image overlay */}
+              {isMissingImage && (
+                <div className="absolute inset-0 rounded-xl flex flex-col items-center justify-center gap-3"
+                     style={{ background: 'rgba(91,80,255,0.12)', backdropFilter: 'blur(2px)' }}>
+                  <ImageIcon size={28} style={{ color: 'rgba(91,80,255,0.6)' }} />
+                  <p className="text-sm font-semibold" style={{ color: '#5B50FF' }}>Image not generated</p>
+                  <button
+                    onClick={() => handleRetrySlide(current)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-colors active:scale-95"
+                    style={{ background: '#5B50FF' }}
+                  >
+                    <RefreshCw size={13} /> Regenerate
+                  </button>
+                </div>
               )}
 
               {/* Generating overlay */}
@@ -527,33 +586,6 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   <button
                     onClick={() => handleRetrySlide(current)}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-gray-900 text-sm font-semibold hover:bg-gray-100 transition-colors active:scale-95"
-                  >
-                    <RefreshCw size={14} />
-                    Regenerate
-                  </button>
-                </div>
-              )}
-
-              {/* Missing image overlay */}
-              {isMissingImage && (
-                <div className="absolute inset-0 rounded-xl flex flex-col items-center justify-center gap-4"
-                     style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
-                  <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(91,80,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <ImageIcon size={22} style={{ color: '#8B80FF' }} />
-                  </div>
-                  <div style={{ textAlign: 'center' }}>
-                    <p style={{ color: '#fff', fontSize: 14, fontWeight: 600, fontFamily: 'Inter,sans-serif', marginBottom: 4 }}>Image didn't generate</p>
-                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, fontFamily: 'Inter,sans-serif' }}>Nova's prompt ran but no image came back. Try regenerating.</p>
-                  </div>
-                  <button
-                    onClick={() => handleRetrySlide(current)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px',
-                      borderRadius: 10, background: '#5B50FF', color: '#fff',
-                      fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600,
-                      border: 'none', cursor: 'pointer',
-                      boxShadow: '0 4px 16px rgba(91,80,255,0.4)',
-                    }}
                   >
                     <RefreshCw size={14} />
                     Regenerate
@@ -691,6 +723,11 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               {editLoading ? <Loader2 size={15} className="animate-spin" /> : <Send size={14} />}
             </button>
           </div>
+          {editError && (
+            <p style={{ color: '#ef4444', fontSize: 12, fontFamily: 'Inter, sans-serif', marginTop: 6 }}>
+              {editError}
+            </p>
+          )}
         </div>
       </div>
 
@@ -827,6 +864,11 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                     <><Sparkles size={15} /> Generate {addCount} Slide{addCount > 1 ? 's' : ''}</>
                   )}
                 </button>
+                {addError && (
+                  <p style={{ color: '#ef4444', fontSize: 12, fontFamily: 'Inter, sans-serif', textAlign: 'center', marginTop: 4 }}>
+                    {addError}
+                  </p>
+                )}
               </div>
             </motion.div>
           </motion.div>
