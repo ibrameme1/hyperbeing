@@ -195,6 +195,14 @@ export default function AnalyticsDashboard() {
   const sseRef = useRef(null);
   const refreshTimer = useRef(null);
 
+  // ── Per-section error states ───────────────────────────────────────────────
+  const [logsError,       setLogsError]       = useState(false);
+  const [metricsError,    setMetricsError]    = useState(false);
+  const [allUsersError,   setAllUsersError]   = useState(false);
+  const [allPresError,    setAllPresError]    = useState(false);
+  const [presDetailError, setPresDetailError] = useState(false);
+  const [dbError,         setDbError]         = useState(false);
+
   const [editingUserId, setEditingUserId] = useState(null);
   const [editCreditsValue, setEditCreditsValue] = useState('');
   const [creditSaving, setCreditSaving] = useState(false);
@@ -277,6 +285,7 @@ export default function AnalyticsDashboard() {
 
   const fetchLogs = useCallback(async (filter = logsFilter) => {
     setLogsLoading(true);
+    setLogsError(false);
     try {
       const params = new URLSearchParams({ limit: filter.limit });
       if (filter.level) params.set('level', filter.level);
@@ -287,16 +296,17 @@ export default function AnalyticsDashboard() {
       ]);
       setLogsData(logsRes.data);
       setLogsSummary(summaryRes.data);
-    } catch {} finally {
+    } catch { setLogsError(true); } finally {
       setLogsLoading(false);
     }
   }, [logsFilter]);
 
   const fetchMetrics = useCallback(async () => {
+    setMetricsError(false);
     try {
       const res = await api.get('/admin/metrics');
       setMetricsData(res.data);
-    } catch {}
+    } catch { setMetricsError(true); }
   }, []);
 
   const fetchAll = useCallback(async () => {
@@ -329,36 +339,39 @@ export default function AnalyticsDashboard() {
     const s = search ?? allUsersSearch;
     const o = offset ?? allUsersOffset;
     setAllUsersLoading(true);
+    setAllUsersError(false);
     try {
       const p = new URLSearchParams({ limit: 50, offset: o, search: s });
       const { data } = await api.get(`/admin/users/all?${p}`);
       setAllUsers(data.users);
       setAllUsersTotal(data.total);
       setAllUsersOffset(o);
-    } catch {} finally { setAllUsersLoading(false); }
+    } catch { setAllUsersError(true); } finally { setAllUsersLoading(false); }
   }, [allUsersSearch, allUsersOffset]);
 
   const fetchAllPres = useCallback(async (search, offset) => {
     const s = search ?? allPresSearch;
     const o = offset ?? allPresOffset;
     setAllPresLoading(true);
+    setAllPresError(false);
     try {
       const p = new URLSearchParams({ limit: 50, offset: o, search: s });
       const { data } = await api.get(`/admin/presentations/all?${p}`);
       setAllPresList(data.presentations);
       setAllPresTotal(data.total);
       setAllPresOffset(o);
-    } catch {} finally { setAllPresLoading(false); }
+    } catch { setAllPresError(true); } finally { setAllPresLoading(false); }
   }, [allPresSearch, allPresOffset]);
 
   const fetchPresDetail = async (id) => {
     setSelectedPresId(id);
     setSelectedPresDetail(null);
     setSelectedPresLoading(true);
+    setPresDetailError(false);
     try {
       const { data } = await api.get(`/admin/presentations/${id}/detail`);
       setSelectedPresDetail(data);
-    } catch {} finally { setSelectedPresLoading(false); }
+    } catch { setPresDetailError(true); } finally { setSelectedPresLoading(false); }
   };
 
   const fetchDbTables = async () => {
@@ -375,12 +388,13 @@ export default function AnalyticsDashboard() {
     const oc = orderCol ?? dbOrderCol;
     const od = orderDir ?? dbOrderDir;
     setDbLoading(true);
+    setDbError(false);
     try {
       const p = new URLSearchParams({ limit: 50, offset: o, search: s, orderBy: oc, orderDir: od });
       const { data } = await api.get(`/admin/db/${t}?${p}`);
       setDbData(data);
       setDbOffset(o);
-    } catch {} finally { setDbLoading(false); }
+    } catch { setDbError(true); } finally { setDbLoading(false); }
   }, [dbActiveTable, dbSearch, dbOffset, dbOrderCol, dbOrderDir]);
 
   // SSE live feed
@@ -964,6 +978,8 @@ export default function AnalyticsDashboard() {
                 </button>
               </div>
 
+              {allUsersError && <SectionError onRetry={() => fetchAllUsers(allUsersSearch, allUsersOffset)} />}
+
               {allUsers && (
                 <>
                   <div className="overflow-x-auto">
@@ -1267,6 +1283,8 @@ export default function AnalyticsDashboard() {
                 </button>
               </div>
 
+              {allPresError && <SectionError onRetry={() => fetchAllPres(allPresSearch, allPresOffset)} />}
+
               {allPresList && (
                 <>
                   <div className="overflow-x-auto">
@@ -1365,6 +1383,8 @@ export default function AnalyticsDashboard() {
                                         <RefreshCw size={12} className="animate-spin" />
                                         Loading slides…
                                       </div>
+                                    ) : presDetailError ? (
+                                      <SectionError onRetry={() => fetchPresDetail(p.id)} />
                                     ) : selectedPresDetail && (
                                       <div className="space-y-2">
                                         <div className="flex items-center gap-3 mb-2">
@@ -1508,6 +1528,8 @@ export default function AnalyticsDashboard() {
               </div>
             )}
 
+            {logsError && <SectionError onRetry={() => fetchLogs(logsFilter)} />}
+
             {/* Recent errors callout */}
             {logsSummary?.recentErrors?.length > 0 && (
               <div className="rounded-xl border border-red-900/40 bg-red-900/10 p-4">
@@ -1589,6 +1611,8 @@ export default function AnalyticsDashboard() {
                 Refresh
               </button>
             </div>
+
+            {metricsError && <SectionError onRetry={fetchMetrics} />}
 
             {metricsData && (
               <>
@@ -1866,6 +1890,8 @@ export default function AnalyticsDashboard() {
                 )}
               </div>
 
+              {dbError && <SectionError onRetry={() => fetchDbData(dbActiveTable, dbSearch, dbOffset, dbOrderCol, dbOrderDir)} />}
+
               {dbData && (
                 <>
                   {/* Edit row panel */}
@@ -2042,6 +2068,31 @@ export default function AnalyticsDashboard() {
 }
 
 // ── Minor sub-components ──────────────────────────────────────────────────────
+function SectionError({ onRetry }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#ef4444' }}>
+        Failed to load.
+      </span>
+      <button
+        onClick={onRetry}
+        style={{
+          background: 'rgba(239,68,68,0.1)',
+          color: '#ef4444',
+          border: '0.5px solid rgba(239,68,68,0.3)',
+          borderRadius: 6,
+          padding: '4px 10px',
+          fontSize: 12,
+          fontFamily: 'Inter, sans-serif',
+          cursor: 'pointer',
+        }}
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
 function ChartCard({ title, children }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-5">

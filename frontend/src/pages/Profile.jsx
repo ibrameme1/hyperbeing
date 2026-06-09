@@ -36,25 +36,29 @@ export default function Profile() {
   const [useCase, setUseCase]   = useState('');
   const [industry, setIndustry] = useState('');
 
+  const [email, setEmail] = useState('');
+  const [nameError,  setNameError]  = useState('');
+  const [emailError, setEmailError] = useState('');
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
   const [sub, setSub]     = useState(null);
   const [plan, setPlan]   = useState(null);
   const [saving, setSaving]   = useState(false);
   const [saved, setSaved]     = useState(false);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
 
-  function fetchProfile() {
-    setLoading(true);
-    setLoadError(false);
+  useEffect(() => {
     Promise.all([
       api.get('/auth/profile'),
       api.get('/billing/subscription'),
     ]).then(([profileRes, billingRes]) => {
       const p = profileRes.data;
       setName(p.name || '');
+      setEmail(p.email || '');
       setBio(p.profile_data?.bio || '');
       setCompany(p.profile_data?.company || '');
       setJobTitle(p.profile_data?.jobTitle || '');
@@ -62,10 +66,8 @@ export default function Profile() {
       setIndustry(p.profile_data?.industry || '');
       setSub(billingRes.data.subscription);
       setPlan(billingRes.data.plan);
-    }).catch(() => { setLoadError(true); }).finally(() => setLoading(false));
-  }
-
-  useEffect(() => { fetchProfile(); }, []);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
 
   async function handleDelete() {
     setDeleting(true);
@@ -83,7 +85,7 @@ export default function Profile() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.put('/auth/profile', { name, bio, company, jobTitle, useCase, industry });
+      await api.put('/auth/profile', { name, email, bio, company, jobTitle, useCase, industry });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {
@@ -126,34 +128,6 @@ export default function Profile() {
       <div className="max-w-3xl mx-auto px-6 py-10">
         {loading ? (
           <div className="flex justify-center py-20"><Loader2 size={28} className="animate-spin" style={{ color: '#8B5CF6' }} /></div>
-        ) : loadError ? (
-          <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            padding: '64px 24px', textAlign: 'center',
-            background: 'rgba(239,68,68,0.05)',
-            border: '1px solid rgba(239,68,68,0.15)',
-            borderRadius: 12,
-          }}>
-            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 15, color: '#f87171', marginBottom: 16 }}>
-              Couldn't load your profile.
-            </p>
-            <button
-              onClick={fetchProfile}
-              style={{
-                padding: '8px 16px',
-                borderRadius: 8,
-                fontFamily: 'Inter, sans-serif',
-                fontSize: 13,
-                fontWeight: 600,
-                color: '#fff',
-                background: '#5B50FF',
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              Retry
-            </button>
-          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
@@ -278,7 +252,28 @@ export default function Profile() {
                       className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none transition-all"
                       style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
                       placeholder="Your name"
+                      onFocus={() => setNameError('')}
+                      onBlur={() => { if (!name.trim()) setNameError("Name can't be empty."); }}
                     />
+                    {nameError && (
+                      <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#ef4444', marginTop: 4 }}>{nameError}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Email</label>
+                    <input
+                      type="email"
+                      value={email} onChange={e => setEmail(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none transition-all"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                      placeholder="your@email.com"
+                      onFocus={() => setEmailError('')}
+                      onBlur={() => { if (email && !EMAIL_RE.test(email)) setEmailError('Enter a valid email address.'); }}
+                    />
+                    {emailError && (
+                      <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#ef4444', marginTop: 4 }}>{emailError}</p>
+                    )}
                   </div>
 
                   <div>
@@ -341,7 +336,7 @@ export default function Profile() {
                   <div className="flex items-center gap-3 pt-2">
                     <button
                       type="submit"
-                      disabled={saving}
+                      disabled={saving || !!(nameError || emailError)}
                       className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-80 disabled:opacity-50 flex items-center gap-2"
                       style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
                     >

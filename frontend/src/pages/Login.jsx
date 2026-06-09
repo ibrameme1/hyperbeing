@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, EyeOff, Loader2, ArrowRight, Zap, Layers, TrendingUp } from 'lucide-react';
+import { Sparkles, Eye, EyeOff, Loader2, ArrowRight, Zap, Layers, TrendingUp } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import Logo from '../components/Logo';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -17,26 +18,27 @@ function GoogleIcon() {
   );
 }
 
-const FEATURES = [
-  { icon: Zap, title: 'Instant generation', desc: 'Full deck in under 60 seconds', color: '#5B50FF' },
-  { icon: Layers, title: 'AI art direction', desc: 'Every slide professionally designed', color: '#8B80FF' },
-  { icon: TrendingUp, title: 'Strategy baked in', desc: 'Nova thinks like a McKinsey + Apple hybrid', color: '#6E63FF' },
-];
-
-function HBIcon({ size = 32 }) {
+function MetaIcon() {
   return (
-    <div
-      style={{
-        width: size, height: size,
-        background: '#5B50FF',
-        borderRadius: Math.round(size * 0.22),
-        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-      }}
-    >
-      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 900, color: '#fff', fontSize: size * 0.46, letterSpacing: '-0.1em', paddingRight: '0.05em' }}>HB</span>
-    </div>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.989C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z" fill="#1877F2"/>
+    </svg>
   );
 }
+
+function TikTokIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.75a8.17 8.17 0 004.78 1.52V6.82a4.85 4.85 0 01-1.01-.13z"/>
+    </svg>
+  );
+}
+
+const FEATURES = [
+  { icon: Zap, title: 'Instant generation', desc: 'Full deck in under 60 seconds', color: '#8B5CF6' },
+  { icon: Layers, title: 'AI art direction', desc: 'Every slide professionally designed', color: '#00F0FF' },
+  { icon: TrendingUp, title: 'Strategy baked in', desc: 'Nova thinks like a McKinsey + Apple hybrid', color: '#00D4FF' },
+];
 
 export default function Login() {
   const [mode, setMode] = useState('login');
@@ -46,6 +48,10 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   const { login, register } = useAuth();
   const navigate = useNavigate();
@@ -57,7 +63,7 @@ export default function Login() {
   });
 
   const SOCIAL = [
-    { id: 'google', label: 'Continue with Google', Icon: GoogleIcon },
+    { id: 'google', label: 'Continue with Google', Icon: GoogleIcon, bg: '#fff', border: '#E2E0EC', color: '#18132E' },
   ];
 
   async function handleSubmit(e) {
@@ -78,112 +84,82 @@ export default function Login() {
         setError('__no_account__');
       } else {
         const status = err.response?.status;
-        setError(
-          err.response?.data?.error ||
-          (status === 429 ? `Too many attempts. Please wait ${err.response?.data?.retryAfter ?? 'a moment'} seconds and try again.` :
-           status === 409 ? 'An account with that email already exists. Try signing in.' :
-           mode === 'register' ? 'Could not create your account. Please check your details and try again.' :
-           'Sign-in failed. Please check your email and password.')
-        );
+      setError(
+        err.response?.data?.error ||
+        (status === 429 ? `Too many attempts. Please wait ${err.response?.data?.retryAfter ?? 'a moment'} seconds and try again.` :
+         status === 409 ? 'An account with that email already exists. Try signing in.' :
+         mode === 'register' ? 'Could not create your account. Please check your details and try again.' :
+         'Sign-in failed. Please check your email and password.')
+      );
       }
     } finally {
       setLoading(false);
     }
   }
 
-  const inputStyle = {
-    width: '100%',
-    padding: '12px 16px',
-    borderRadius: '6px',
-    border: '1px solid #e8e8f0',
-    fontFamily: 'Inter, sans-serif',
-    fontSize: '14px',
-    color: '#0d0b1a',
-    background: '#ffffff',
-    outline: 'none',
-    transition: 'border-color 0.15s',
-  };
-
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', fontFamily: 'Inter, system-ui, sans-serif', background: '#f5f5f5' }}>
+    <div className="min-h-screen flex" style={{ background: '#0A0A0B' }}>
 
       {/* ── Left brand panel ── */}
-      <div style={{
-        display: 'none',
-        flex: 1,
-        flexDirection: 'column',
-        padding: '40px',
-        background: '#080808',
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-        className="lg:flex"
-      >
-        {/* Subtle glow */}
-        <div style={{
-          position: 'absolute', top: '30%', left: '20%', width: '500px', height: '500px',
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(91,80,255,0.18) 0%, transparent 65%)',
-          filter: 'blur(40px)',
-          pointerEvents: 'none',
-        }} />
-        <div style={{
-          position: 'absolute', bottom: '20%', right: '10%', width: '300px', height: '300px',
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(139,128,255,0.12) 0%, transparent 65%)',
-          filter: 'blur(40px)',
-          pointerEvents: 'none',
-        }} />
+      <div className="hidden lg:flex lg:flex-1 relative overflow-hidden flex-col p-10"
+           style={{ background: 'linear-gradient(145deg, #0A0A0B 0%, #111113 50%, #0E0B1F 100%)' }}>
+
+        {/* Aurora blobs */}
+        <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full animate-aurora"
+             style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.25) 0%, transparent 65%)', filter: 'blur(40px)' }} />
+        <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] rounded-full animate-aurora-2"
+             style={{ background: 'radial-gradient(circle, rgba(0,240,255,0.20) 0%, transparent 65%)', filter: 'blur(40px)' }} />
+        <div className="absolute top-1/2 left-1/2 w-[300px] h-[300px] -translate-x-1/2 -translate-y-1/2 rounded-full animate-aurora-3"
+             style={{ background: 'radial-gradient(circle, rgba(0,212,255,0.12) 0%, transparent 65%)', filter: 'blur(40px)' }} />
 
         {/* Logo */}
-        <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <HBIcon size={28} />
-          <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '15px', color: '#f0f0ee', letterSpacing: '-0.02em' }}>HyperBeing</span>
+        <div className="relative z-10">
+          <Logo dark height={30} />
         </div>
 
         {/* Hero copy */}
-        <div style={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', maxWidth: '420px', paddingTop: '16px', paddingBottom: '16px' }}>
+        <div className="relative z-10 max-w-md flex-1 flex flex-col justify-center py-4">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
           >
-            <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase', marginBottom: '16px' }}>
-              AI Presentation Maker
-            </p>
-            <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '40px', fontWeight: 400, color: '#f0f0ee', lineHeight: 1.1, letterSpacing: '-0.03em', marginBottom: '16px' }}>
+            <p className="text-xs font-semibold tracking-[0.2em] uppercase mb-4"
+               style={{ color: '#8B5CF6' }}>AI Presentation Maker</p>
+            <h2 className="font-display text-4xl font-bold text-white leading-tight mb-4">
               Presentations that make people go{' '}
-              <em style={{ color: '#8B80FF' }}>"wait, how?"</em>
+              <span style={{
+                background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}>
+                "wait, how?"
+              </span>
             </h2>
-            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', color: 'rgba(240,240,238,0.5)', lineHeight: 1.65, marginBottom: '32px' }}>
+            <p className="text-white/50 text-lg leading-relaxed mb-6">
               Nova designs every slide like a senior art director. You just describe what you need.
             </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div className="space-y-3">
               {FEATURES.map(({ icon: Icon, title, desc, color }, i) => (
                 <motion.div
                   key={title}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.3 + i * 0.1, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                  className="flex items-center gap-3 p-3.5 rounded-2xl"
                   style={{
-                    display: 'flex', alignItems: 'center', gap: '12px', padding: '14px',
                     background: 'rgba(255,255,255,0.04)',
-                    border: '0.5px solid rgba(255,255,255,0.06)',
-                    borderRadius: '8px',
+                    border: '1px solid rgba(255,255,255,0.06)',
                   }}
                 >
-                  <div style={{
-                    width: '36px', height: '36px', borderRadius: '6px',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                    background: color + '20',
-                    border: `0.5px solid ${color}40`,
-                  }}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                       style={{ background: color + '20', border: `1px solid ${color}40` }}>
                     <Icon size={16} style={{ color }} />
                   </div>
                   <div>
-                    <p style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: '13px', color: '#f0f0ee' }}>{title}</p>
-                    <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: 'rgba(240,240,238,0.4)', marginTop: '2px' }}>{desc}</p>
+                    <p className="text-white font-semibold text-sm">{title}</p>
+                    <p className="text-white/40 text-xs mt-0.5">{desc}</p>
                   </div>
                 </motion.div>
               ))}
@@ -192,74 +168,62 @@ export default function Login() {
         </div>
 
         {/* Bottom quote */}
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <p style={{ fontFamily: 'Playfair Display, Georgia, serif', fontStyle: 'italic', fontSize: '14px', color: 'rgba(240,240,238,0.3)' }}>
+        <div className="relative z-10">
+          <p className="text-white/30 text-sm italic">
             "It's like Canva and a McKinsey consultant had a very talented baby."
           </p>
-          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: 'rgba(240,240,238,0.2)', marginTop: '4px' }}>— Someone who used to dread presentations</p>
+          <p className="text-white/20 text-xs mt-1">— Someone who used to dread presentations</p>
         </div>
       </div>
 
       {/* ── Right form panel ── */}
-      <div style={{
-        flex: 1, maxWidth: '480px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '24px 32px', background: '#ffffff',
-      }}
-        className="flex-1 lg:max-w-[480px]"
-      >
+      <div className="flex-1 lg:max-w-[480px] flex items-center justify-center p-6 lg:p-8"
+           style={{ background: 'var(--bg-page)' }}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          style={{ width: '100%', maxWidth: '360px' }}
+          className="w-full max-w-sm"
         >
           {/* Mobile logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '32px' }}
-               className="lg:hidden">
-            <HBIcon size={26} />
-            <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '15px', color: '#0d0b1a', letterSpacing: '-0.02em' }}>HyperBeing</span>
+          <div className="lg:hidden mb-8">
+            <Logo height={26} />
           </div>
 
-          <h1 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '28px', fontWeight: 400, color: '#0d0b1a', marginBottom: '4px', letterSpacing: '-0.02em' }}>
+          <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
             {mode === 'login' ? 'Welcome back' : 'Create your account'}
           </h1>
-          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#6b6490', marginBottom: '28px' }}>
+          <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
             {mode === 'login'
               ? 'Good to see you again. Nova missed you.'
               : 'Takes 30 seconds. No credit card.'}
           </p>
 
           {/* Toggle */}
-          <div style={{
-            display: 'flex', gap: '4px', padding: '4px',
-            background: '#f5f5f5', borderRadius: '8px', marginBottom: '24px',
-          }}>
+          <div className="flex gap-1 p-1 rounded-2xl mb-6"
+               style={{ background: 'var(--bg-input)' }}>
             {['login', 'register'].map(m => (
               <button
                 key={m}
-                onClick={() => { setMode(m); setError(''); }}
-                style={{
-                  flex: 1, padding: '8px', borderRadius: '6px',
-                  fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 500,
-                  border: 'none', cursor: 'pointer', transition: 'all 0.15s',
-                  ...(mode === m
-                    ? { background: '#ffffff', color: '#0d0b1a', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }
-                    : { background: 'transparent', color: '#6b6490' }),
-                }}
+                onClick={() => { setMode(m); setError(''); setEmailError(''); setPasswordError(''); }}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200`}
+                style={mode === m
+                  ? { background: 'var(--bg-card)', color: 'var(--text-primary)', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }
+                  : { color: 'var(--text-muted)' }}
               >
                 {m === 'login' ? 'Sign in' : 'Sign up'}
               </button>
             ))}
           </div>
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <form onSubmit={handleSubmit} className="space-y-3">
             <AnimatePresence mode="wait">
               {mode === 'register' && (
                 <motion.div
                   key="name-field"
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
+                  initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                  animate={{ opacity: 1, height: 'auto', marginBottom: 0 }}
+                  exit={{ opacity: 0, height: 0, marginBottom: 0 }}
                   transition={{ duration: 0.2 }}
                 >
                   <input
@@ -268,47 +232,63 @@ export default function Login() {
                     value={name}
                     onChange={e => setName(e.target.value)}
                     required
-                    style={inputStyle}
-                    onFocus={e => e.target.style.borderColor = '#5B50FF'}
-                    onBlur={e => e.target.style.borderColor = '#e8e8f0'}
+                    className="w-full px-4 py-3.5 rounded-2xl text-sm focus:outline-none transition-all duration-200 border-2"
+                    style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', borderColor: 'var(--border)', boxShadow: '0 1px 4px rgba(139,92,246,0.06)' }}
+                    onFocus={e => e.target.style.borderColor = '#8B5CF6'}
+                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
                   />
                 </motion.div>
               )}
             </AnimatePresence>
 
-            <input
-              type="email"
-              placeholder="Email address"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-              style={inputStyle}
-              onFocus={e => e.target.style.borderColor = '#5B50FF'}
-              onBlur={e => e.target.style.borderColor = '#e8e8f0'}
-            />
-
-            <div style={{ position: 'relative' }}>
+            <div>
               <input
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
+                type="email"
+                placeholder="Email address"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
                 required
-                style={{ ...inputStyle, paddingRight: '44px' }}
-                onFocus={e => e.target.style.borderColor = '#5B50FF'}
-                onBlur={e => e.target.style.borderColor = '#e8e8f0'}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(v => !v)}
-                style={{
-                  position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)',
-                  background: 'none', border: 'none', cursor: 'pointer', color: '#6b6490', padding: 0,
-                  display: 'flex', alignItems: 'center',
+                className="w-full px-4 py-3.5 rounded-2xl text-sm focus:outline-none transition-all duration-200 border-2"
+                style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', borderColor: 'var(--border)', boxShadow: '0 1px 4px rgba(139,92,246,0.06)' }}
+                onFocus={e => { e.target.style.borderColor = '#8B5CF6'; setEmailError(''); }}
+                onBlur={e => {
+                  e.target.style.borderColor = 'var(--border)';
+                  if (email && !EMAIL_RE.test(email)) setEmailError('Enter a valid email address.');
                 }}
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
+              />
+              {emailError && (
+                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#ef4444', marginTop: 4 }}>{emailError}</p>
+              )}
+            </div>
+
+            <div>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  className="w-full px-4 py-3.5 pr-12 rounded-2xl text-sm focus:outline-none transition-all duration-200 border-2"
+                  style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', borderColor: 'var(--border)', boxShadow: '0 1px 4px rgba(139,92,246,0.06)' }}
+                  onFocus={e => { e.target.style.borderColor = '#8B5CF6'; setPasswordError(''); }}
+                  onBlur={e => {
+                    e.target.style.borderColor = 'var(--border)';
+                    if (mode === 'register' && password && password.length < 8) setPasswordError('Password must be at least 8 characters.');
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              {passwordError && (
+                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#ef4444', marginTop: 4 }}>{passwordError}</p>
+              )}
             </div>
 
             <AnimatePresence>
@@ -317,26 +297,23 @@ export default function Login() {
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  style={{
-                    padding: '10px 14px', borderRadius: '6px',
-                    background: 'rgba(239,68,68,0.06)',
-                    border: '0.5px solid rgba(239,68,68,0.2)',
-                    fontFamily: 'Inter, sans-serif', fontSize: '13px', textAlign: 'center',
-                  }}
+                  className="py-2.5 px-4 rounded-xl text-xs text-center"
+                  style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}
                 >
                   {error === '__no_account__' ? (
-                    <span style={{ color: '#ef4444' }}>
+                    <span style={{ color: '#f87171' }}>
                       No account with that email.{' '}
                       <button
                         type="button"
                         onClick={() => { setMode('register'); setError(''); }}
-                        style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600, color: '#5B50FF', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                        className="underline font-semibold"
+                        style={{ color: '#8B5CF6' }}
                       >
                         Sign up instead →
                       </button>
                     </span>
                   ) : (
-                    <span style={{ color: '#ef4444' }}>{error}</span>
+                    <span className="text-red-400">{error}</span>
                   )}
                 </motion.div>
               )}
@@ -345,21 +322,14 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
+              className="w-full py-3.5 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mt-2 disabled:opacity-50"
               style={{
-                width: '100%', padding: '12px', borderRadius: '6px',
-                fontFamily: 'Inter, sans-serif', fontSize: '14px', fontWeight: 600, color: '#ffffff',
-                background: '#5B50FF', border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                transition: 'background 0.15s, opacity 0.15s',
-                opacity: loading ? 0.6 : 1,
-                marginTop: '4px',
-                boxShadow: 'rgba(91,80,255,0.2) 0px 4px 12px',
+                background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)',
+                boxShadow: '0 4px 24px rgba(139,92,246,0.35)',
               }}
-              onMouseEnter={e => { if (!loading) e.target.style.background = '#6E63FF'; }}
-              onMouseLeave={e => { e.target.style.background = '#5B50FF'; }}
             >
               {loading ? (
-                <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> {mode === 'login' ? 'Signing in…' : 'Creating account…'}</>
+                <><Loader2 size={16} className="animate-spin" /> {mode === 'login' ? 'Signing in…' : 'Creating account…'}</>
               ) : (
                 <>{mode === 'login' ? 'Sign in' : 'Create account'} <ArrowRight size={15} /></>
               )}
@@ -367,28 +337,20 @@ export default function Login() {
           </form>
 
           {/* Divider */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '20px 0' }}>
-            <div style={{ flex: 1, height: '0.5px', background: '#e8e8f0' }} />
-            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490' }}>or continue with</span>
-            <div style={{ flex: 1, height: '0.5px', background: '#e8e8f0' }} />
+          <div className="flex items-center gap-3 my-5">
+            <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+            <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>or continue with</span>
+            <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
           </div>
 
           {/* Social buttons */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {SOCIAL.map(({ id, label, Icon }) => (
+          <div className="space-y-2.5">
+            {SOCIAL.map(({ id, label, Icon, bg, border, color }) => (
               <a
                 key={id}
                 href={`${API_BASE}/api/auth/${id}`}
-                style={{
-                  width: '100%', padding: '11px', borderRadius: '6px',
-                  fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 500,
-                  color: '#0d0b1a', background: '#ffffff',
-                  border: '0.5px solid #e8e8f0',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                  textDecoration: 'none', transition: 'border-color 0.15s, background 0.15s',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(91,80,255,0.3)'; e.currentTarget.style.background = '#fafaff'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = '#e8e8f0'; e.currentTarget.style.background = '#ffffff'; }}
+                className="w-full py-3 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2.5 transition-all duration-200 active:scale-[0.97] border-2"
+                style={{ background: bg, borderColor: border, color, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
               >
                 <Icon />
                 {label}
@@ -397,24 +359,15 @@ export default function Login() {
           </div>
 
           {mode === 'register' && (
-            <p style={{ textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490', marginTop: '24px' }}>
+            <p className="text-center text-xs mt-6" style={{ color: 'var(--text-secondary)' }}>
               By signing up you agree to our{' '}
-              <Link to="/terms" style={{ color: '#5B50FF', textDecoration: 'underline' }}>Terms</Link>
+              <Link to="/terms" className="underline" style={{ color: '#8B5CF6' }}>Terms</Link>
               {' '}and{' '}
-              <Link to="/privacy" style={{ color: '#5B50FF', textDecoration: 'underline' }}>Privacy Policy</Link>
+              <Link to="/privacy" className="underline" style={{ color: '#8B5CF6' }}>Privacy Policy</Link>
             </p>
           )}
         </motion.div>
       </div>
-
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @media (min-width: 1024px) {
-          .lg\\:flex { display: flex !important; }
-          .lg\\:hidden { display: none !important; }
-          .lg\\:max-w-\\[480px\\] { max-width: 480px !important; }
-        }
-      `}</style>
     </div>
   );
 }
