@@ -27,25 +27,11 @@ const ANALYZING_MESSAGES = [
 
 function AnalyzingOverlay({ onCancel }) {
   const [msgIdx, setMsgIdx] = useState(0);
-  const [blink, setBlink] = useState(false);
   const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     const t = setInterval(() => setMsgIdx(i => (i + 1) % ANALYZING_MESSAGES.length), 2400);
     return () => clearInterval(t);
-  }, []);
-
-  // Random eye blink
-  useEffect(() => {
-    function scheduleBlink() {
-      const delay = 2000 + Math.random() * 3000;
-      return setTimeout(() => {
-        setBlink(true);
-        setTimeout(() => { setBlink(false); scheduleBlink(); }, 120);
-      }, delay);
-    }
-    const t = scheduleBlink();
-    return () => clearTimeout(t);
   }, []);
 
   const msg = ANALYZING_MESSAGES[msgIdx];
@@ -71,51 +57,29 @@ function AnalyzingOverlay({ onCancel }) {
       >
         <div className="px-8 py-8 flex flex-col items-center text-center">
 
-          {/* Robot avatar */}
+          {/* Nova mascot video */}
           <motion.div
-            animate={shouldReduceMotion ? {} : { y: [0, -5, 0] }}
-            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-            className="relative mb-6"
+            animate={shouldReduceMotion ? {} : { y: [0, -6, 0] }}
+            transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+            className="relative mb-4"
+            style={{ width: 128, height: 128 }}
           >
-            {/* Glow */}
-            <div className="absolute inset-0 rounded-2xl blur-xl opacity-20"
-                 style={{ background: 'linear-gradient(135deg, #8B5CF6, #00F0FF)' }} />
-
-            {/* Robot face */}
-            <div className="relative w-20 h-20 rounded-2xl flex flex-col items-center justify-center gap-1.5"
-                 style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #06b6d4 100%)' }}>
-              {/* Eyes */}
-              <div className="flex gap-3">
-                {[0, 1].map(i => (
-                  <motion.div
-                    key={i}
-                    className="rounded-full bg-white"
-                    style={{
-                      width: 10, height: 10,
-                      transform: blink ? 'scaleY(0.2)' : 'scaleY(1)',
-                      transition: 'transform 0.08s ease',
-                      boxShadow: '0 0 8px rgba(255,255,255,0.8)',
-                    }}
-                  />
-                ))}
-              </div>
-              {/* Mouth — wiggles while thinking */}
-              <motion.div
-                animate={{ scaleX: [1, 1.15, 0.9, 1] }}
-                transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-                className="rounded-full bg-white/80"
-                style={{ width: 22, height: 4, borderRadius: 99 }}
-              />
-              {/* Antenna */}
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 flex flex-col items-center">
-                <motion.div
-                  animate={{ backgroundColor: ['#a78bfa', '#00F0FF', '#a78bfa'] }}
-                  transition={{ duration: 1.2, repeat: Infinity }}
-                  className="w-2.5 h-2.5 rounded-full"
-                />
-                <div className="w-0.5 h-3 bg-white/40" />
-              </div>
-            </div>
+            {/* Ambient glow */}
+            <div style={{
+              position: 'absolute', inset: '-16px',
+              background: 'radial-gradient(ellipse, rgba(139,92,246,0.45) 0%, rgba(91,80,255,0.15) 45%, transparent 70%)',
+              borderRadius: '50%',
+              filter: 'blur(8px)',
+            }} />
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'relative', zIndex: 1 }}
+            >
+              <source src="/nova-mascot.mp4" type="video/mp4" />
+            </video>
           </motion.div>
 
           {/* Speech bubble */}

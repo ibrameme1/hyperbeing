@@ -16,21 +16,21 @@ const FEATURES = [
 
 const FEATURE_SPLITS = [
   {
-    headline: 'Your context, not a template.',
-    body: 'Every slide is art-directed from scratch. Paste your deck outline — HyperBeing reads the room, understands your narrative arc, and generates images that match each slide\'s specific message.',
-    visual: 'left-panel',
+    headline: 'Nova reads your room.',
+    body: 'Paste your brief and Nova — our AI agent — absorbs the whole thing before generating a single question. The plan it builds is specific to you: your audience, your story, your stakes.',
+    visual: 'nova-chat',
     side: 'right',
   },
   {
     headline: 'The kind of slides that close deals.',
-    body: 'Consultants, VCs, and agency leads use HyperBeing for their highest-stakes presentations. When the deck has to land, this is the tool.',
-    visual: 'deck-grid',
+    body: 'Every slide is a fully art-directed image. No clip art, no templates. Consultants, VCs, and agency leads use HyperBeing for their highest-stakes presentations.',
+    visual: 'slide-showcase',
     side: 'left',
   },
   {
-    headline: '20 slides. 3 minutes.',
+    headline: '20 slides. Under 3 minutes.',
     body: 'From a rough outline to a fully designed, image-complete deck. No waiting for a designer. No back-and-forth. Just done.',
-    visual: 'progress-strip',
+    visual: 'speed-meter',
     side: 'right',
   },
 ];
@@ -208,63 +208,221 @@ function DeckCard({ title, category, gradient, delay = 0 }) {
   );
 }
 
-/* ─── Feature visual placeholders ─── */
+/* ─── Feature visuals ─── */
 function FeatureVisual({ type }) {
-  if (type === 'left-panel') {
+
+  /* ── Nova chat interface ── */
+  if (type === 'nova-chat') {
+    const plan = [
+      { n: '01', title: 'Market Opportunity', note: 'TAM/SAM/SOM · growth vectors' },
+      { n: '02', title: 'The Problem',         note: 'B2B friction · incumbent gaps' },
+      { n: '03', title: 'Our Solution',         note: 'Core product · differentiation' },
+      { n: '04', title: 'Business Model',       note: 'Revenue · unit economics' },
+      { n: '05', title: 'Traction & Metrics',   note: 'ARR · growth rate · key logos' },
+      { n: '06', title: 'The Ask',              note: 'Raise · use of funds · milestones' },
+    ];
     return (
-      <div style={{ background: '#141414', borderRadius: '8px', border: '0.5px solid #1e1e1e', padding: '16px', aspectRatio: '4/3' }}>
-        <div style={{ marginBottom: '12px' }}>
-          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '8px' }}>BRIEF</p>
-          <div style={{ background: '#0f0f0f', borderRadius: '6px', border: '0.5px solid #2a2a2a', padding: '10px' }}>
-            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#888' }}>Series A pitch for a fintech startup targeting SMBs in emerging markets…</p>
+      <div style={{ background: '#080808', borderRadius: '12px', border: '0.5px solid #1a1a1a', overflow: 'hidden', fontFamily: 'Inter, sans-serif' }}>
+        {/* Title bar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '0.5px solid #1a1a1a', background: '#0a0a0b' }}>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {['#ff5f57', '#febc2e', '#28c840'].map((c, i) => (
+              <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: c, opacity: 0.45 }} />
+            ))}
+          </div>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#444', letterSpacing: '0.12em', marginLeft: 6 }}>HYPERBEING · NOVA CHAT</span>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e' }} />
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#22c55e' }}>NOVA ONLINE</span>
           </div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          {['Slide 01 — Market Opportunity', 'Slide 02 — Problem', 'Slide 03 — Solution', 'Slide 04 — Traction'].map((s, i) => (
-            <div key={s} style={{ background: '#0f0f0f', borderRadius: '4px', border: '0.5px solid #1e1e1e', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '8px', color: '#5B50FF' }}>0{i+1}</span>
-              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', color: '#888' }}>{s.split(' — ')[1]}</span>
+
+        {/* Messages */}
+        <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* User bubble */}
+          <div style={{ alignSelf: 'flex-end', maxWidth: '78%', background: '#14103a', border: '0.5px solid rgba(91,80,255,0.3)', borderRadius: '10px 10px 2px 10px', padding: '8px 12px' }}>
+            <p style={{ fontSize: 11, color: '#c8c4e8', margin: 0, lineHeight: 1.55 }}>
+              Series A pitch deck for a fintech startup disrupting B2B payments — targeting US mid-market CFOs
+            </p>
+          </div>
+
+          {/* Nova reply — video avatar drops naturally here */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <div style={{ width: 28, height: 28, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(139,92,246,0.35)', background: '#0a0a0b' }}>
+              <video autoPlay loop muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }}>
+                <source src="/nova-mascot.mp4" type="video/mp4" />
+              </video>
+            </div>
+            <div style={{ flex: 1, background: '#111', border: '0.5px solid #1e1e1e', borderRadius: '2px 10px 10px 10px', padding: '9px 12px' }}>
+              <p style={{ fontSize: 11, color: '#e0dcff', margin: '0 0 3px', lineHeight: 1.55 }}>ok i've read this. strong angle — CFO pain is real.</p>
+              <p style={{ fontSize: 11, color: '#666', margin: 0, lineHeight: 1.5 }}>here's the deck structure i'm building:</p>
+            </div>
+          </div>
+
+          {/* Slide plan card */}
+          <div style={{ background: '#0c0c0c', border: '0.5px solid rgba(91,80,255,0.18)', borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ padding: '7px 12px', borderBottom: '0.5px solid #161616', display: 'flex', alignItems: 'center' }}>
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#5B50FF', letterSpacing: '0.15em' }}>SLIDE PLAN · 12 SLIDES</span>
+              <div style={{ marginLeft: 'auto', background: 'rgba(91,80,255,0.1)', border: '0.5px solid rgba(91,80,255,0.28)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}>
+                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, color: '#8B80FF', fontWeight: 600, letterSpacing: '0.05em' }}>APPROVE →</span>
+              </div>
+            </div>
+            {plan.map(({ n, title, note }) => (
+              <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 12px', borderBottom: '0.5px solid #0f0f0f' }}>
+                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#5B50FF', width: 16, flexShrink: 0 }}>{n}</span>
+                <span style={{ fontSize: 10, color: '#ccc', flex: 1 }}>{title}</span>
+                <span style={{ fontSize: 9, color: '#3a3a3a', fontStyle: 'italic', whiteSpace: 'nowrap' }}>{note}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Slide output showcase ── */
+  if (type === 'slide-showcase') {
+    const slides = [
+      { g: 'linear-gradient(135deg, #0d0a2e 0%, #5B50FF 100%)', accent: '#8B80FF', n: '01' },
+      { g: 'linear-gradient(135deg, #06101e 0%, #0e4a7a 100%)', accent: '#38bdf8', n: '02' },
+      { g: 'linear-gradient(135deg, #0f0818 0%, #6d28d9 100%)', accent: '#a78bfa', n: '03', selected: true },
+      { g: 'linear-gradient(135deg, #050f0a 0%, #064e3b 100%)', accent: '#34d399', n: '04' },
+      { g: 'linear-gradient(135deg, #140904 0%, #9a3412 100%)', accent: '#fb923c', n: '05' },
+      { g: 'linear-gradient(135deg, #08080f 0%, #2d2b6e 100%)', accent: '#818cf8', n: '06' },
+    ];
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontFamily: 'Inter, sans-serif' }}>
+        {/* Deck meta row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#5B50FF', letterSpacing: '0.15em' }}>SERIES A PITCH · 12 SLIDES</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e' }} />
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#22c55e' }}>COMPLETE</span>
+          </div>
+        </div>
+
+        {/* 3×2 slide grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7 }}>
+          {slides.map(({ g, accent, n, selected }) => (
+            <div
+              key={n}
+              style={{
+                aspectRatio: '16/9', background: g, borderRadius: 6, overflow: 'hidden',
+                border: selected ? `1.5px solid ${accent}` : '0.5px solid #1a1a1a',
+                position: 'relative',
+                boxShadow: selected ? `0 0 16px rgba(167,139,250,0.22)` : 'none',
+              }}
+            >
+              {/* HB mark */}
+              <div style={{ position: 'absolute', top: 5, left: 5, width: 13, height: 13, background: '#5B50FF', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 900, fontSize: 6, color: '#fff', letterSpacing: '-0.1em' }}>HB</span>
+              </div>
+              {/* Slide index */}
+              <div style={{ position: 'absolute', bottom: 7, left: 7 }}>
+                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 7, color: accent, opacity: 0.9, marginBottom: 3 }}>{n}</div>
+                <div style={{ width: 36, height: 1.5, background: accent, opacity: 0.55, borderRadius: 1 }} />
+                <div style={{ width: 22, height: 1.5, background: accent, opacity: 0.25, borderRadius: 1, marginTop: 3 }} />
+              </div>
+              {/* Status dot */}
+              <div style={{ position: 'absolute', bottom: 6, right: 6, width: 5, height: 5, borderRadius: '50%', background: accent, opacity: 0.65 }} />
+              {/* Selected overlay ring */}
+              {selected && (
+                <div style={{ position: 'absolute', inset: 0, border: `1px solid ${accent}`, borderRadius: 5, opacity: 0.3, pointerEvents: 'none' }} />
+              )}
             </div>
           ))}
         </div>
-      </div>
-    );
-  }
-  if (type === 'deck-grid') {
-    const g = [
-      'linear-gradient(135deg, #1a1040 0%, #5B50FF 100%)',
-      'linear-gradient(135deg, #0a1628 0%, #1e3a5f 100%)',
-      'linear-gradient(135deg, #1a0a2e 0%, #4a1882 100%)',
-      'linear-gradient(135deg, #0a1a18 0%, #0d5c52 100%)',
-    ];
-    return (
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-        {g.map((grad, i) => (
-          <div key={i} style={{ aspectRatio: '16/9', background: grad, borderRadius: '6px', border: '0.5px solid #1e1e1e' }} />
-        ))}
-      </div>
-    );
-  }
-  if (type === 'progress-strip') {
-    return (
-      <div style={{ background: '#141414', borderRadius: '8px', border: '0.5px solid #1e1e1e', padding: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {['Slide 01', 'Slide 02', 'Slide 03', 'Slide 04', 'Slide 05'].map((s, i) => (
-          <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#8B80FF', width: '48px' }}>{s}</span>
-            <div style={{ flex: 1, height: '2px', background: '#1e1e1e', borderRadius: '1px', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${[100, 100, 100, 65, 20][i]}%`, background: 'linear-gradient(90deg, #5B50FF, #8B80FF)', borderRadius: '1px' }} />
+
+        {/* Slide editor strip */}
+        <div style={{ background: '#0a0a0b', border: '0.5px solid #1a1a1a', borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ padding: '8px 12px', borderBottom: '0.5px solid #111', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#a78bfa' }}>slide_03 · Our Solution</span>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+              {['Regenerate', 'Edit prompt', 'Download'].map(a => (
+                <div key={a} style={{ background: '#161616', border: '0.5px solid #252525', borderRadius: 4, padding: '2px 7px' }}>
+                  <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, color: '#555' }}>{a}</span>
+                </div>
+              ))}
             </div>
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: i < 3 ? '#22c55e' : '#555' }}>
-              {i < 3 ? '✓' : i === 3 ? '65%' : '…'}
-            </span>
           </div>
-        ))}
-        <div style={{ marginTop: '8px', borderTop: '0.5px solid #1e1e1e', paddingTop: '12px' }}>
-          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#5B50FF', letterSpacing: '0.1em' }}>3 of 5 slides complete · ~45s remaining</p>
+          <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1, height: 1, background: 'linear-gradient(to right, rgba(167,139,250,0.4), transparent)' }} />
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#333' }}>art-directed · Imagen 3</span>
+          </div>
+        </div>
+
+        {/* Export row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#0a0a0b', border: '0.5px solid #1a1a1a', borderRadius: 7, padding: '8px 12px' }}>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#444', flex: 1 }}>deck_series_a.pptx · 12 slides · 2.4 MB</span>
+          <div style={{ background: '#5B50FF', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>
+            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, fontWeight: 600, color: '#fff' }}>Export →</span>
+          </div>
         </div>
       </div>
     );
   }
+
+  /* ── Speed / generation log ── */
+  if (type === 'speed-meter') {
+    const steps = [
+      { label: 'Brief submitted',      time: '0:00', color: '#22c55e', detail: 'Series A fintech pitch · CFO focus' },
+      { label: 'Nova analyzes brief',  time: '0:14', color: '#22c55e', detail: '5 follow-up questions answered' },
+      { label: 'Slide plan approved',  time: '0:51', color: '#22c55e', detail: '12 slides · 3-act narrative arc' },
+      { label: 'Visuals generating',   time: '1:08', color: '#22c55e', detail: 'Imagen 3 · fully art-directed' },
+      { label: 'Deck complete',        time: '2:47', color: '#5B50FF', detail: 'Export ready', highlight: true },
+    ];
+    return (
+      <div style={{ background: '#080808', border: '0.5px solid #1a1a1a', borderRadius: 12, padding: '22px', fontFamily: 'Inter, sans-serif' }}>
+        {/* Big time */}
+        <div style={{ marginBottom: 24 }}>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#5B50FF', letterSpacing: '0.18em', display: 'block', marginBottom: 10 }}>GENERATION LOG</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <span style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 48, color: '#f0f0ee', fontWeight: 400, lineHeight: 1, letterSpacing: '-0.03em' }}>2:47</span>
+            <span style={{ fontSize: 13, color: '#444' }}>total</span>
+          </div>
+          {/* Thin progress bar full */}
+          <div style={{ marginTop: 12, height: 2, background: '#111', borderRadius: 1, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: '100%', background: 'linear-gradient(90deg, #5B50FF, #22c55e)', borderRadius: 1 }} />
+          </div>
+        </div>
+
+        {/* Timeline */}
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {steps.map(({ label, time, color, detail, highlight }, i) => (
+            <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              {/* Dot + line */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 18, flexShrink: 0 }}>
+                <div style={{
+                  width: highlight ? 10 : 7, height: highlight ? 10 : 7,
+                  borderRadius: '50%', background: color, marginTop: 3, flexShrink: 0,
+                  boxShadow: highlight ? '0 0 10px rgba(91,80,255,0.6)' : 'none',
+                  border: highlight ? '2px solid rgba(91,80,255,0.35)' : 'none',
+                }} />
+                {i < steps.length - 1 && (
+                  <div style={{ width: 1, flex: 1, minHeight: 18, background: 'rgba(34,197,94,0.15)', margin: '3px 0' }} />
+                )}
+              </div>
+              {/* Text */}
+              <div style={{ paddingBottom: i < steps.length - 1 ? 14 : 0, flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                  <span style={{ fontSize: 12, color: highlight ? '#f0f0ee' : '#999', fontWeight: highlight ? 500 : 400 }}>{label}</span>
+                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: highlight ? '#5B50FF' : '#333', marginLeft: 'auto', flexShrink: 0 }}>{time}</span>
+                </div>
+                <span style={{ fontSize: 10, color: '#333' }}>{detail}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '0.5px solid #111', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#22c55e', letterSpacing: '0.08em' }}>12 slides · fully art-directed · export ready</span>
+        </div>
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -357,8 +515,8 @@ export default function Homepage() {
       </nav>
 
       {/* ── 2. HERO ── */}
-      <section style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '80px', paddingBottom: '80px', position: 'relative', overflow: 'hidden', background: '#f5f5f5' }}>
-        {/* Atmospheric glow */}
+      <section style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '80px', paddingBottom: '160px', position: 'relative', background: '#f5f5f5' }}>
+        {/* Atmospheric glow top-right */}
         <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 65% 40%, rgba(91,80,255,0.08), transparent 60%)', pointerEvents: 'none' }} />
 
         <div style={{ maxWidth: '900px', margin: '0 auto', padding: '0 24px', textAlign: 'center', position: 'relative', zIndex: 1 }}>
@@ -441,15 +599,67 @@ export default function Homepage() {
             Used by brand teams, investors, analysts &amp; agencies at top-tier companies
           </motion.p>
         </div>
-        {/* Blend into dark section */}
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 160, background: 'linear-gradient(to bottom, transparent, #080808)', pointerEvents: 'none', zIndex: 2 }} />
+
+        {/* ── Creative hero→dark blend ── */}
+        {/* Multi-layer atmospheric darkening */}
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 320, pointerEvents: 'none', zIndex: 2 }}>
+          {/* Base dark fade */}
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 0%, rgba(20,10,45,0.55) 45%, rgba(8,8,8,0.92) 72%, #080808 100%)' }} />
+          {/* Purple corona bloom centered */}
+          <div style={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '700px', height: '260px', background: 'radial-gradient(ellipse at 50% 85%, rgba(139,92,246,0.28) 0%, rgba(91,80,255,0.10) 40%, transparent 70%)' }} />
+          {/* Subtle noise texture layer */}
+          <div style={{ position: 'absolute', inset: 0, opacity: 0.03, backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")', backgroundSize: '200px 200px' }} />
+        </div>
+
+        {/* Nova mascot — bridges hero into dark demo section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.7 }}
+          style={{ position: 'absolute', bottom: -52, left: '50%', transform: 'translateX(-50%)', zIndex: 10 }}
+        >
+          <motion.div
+            animate={{ y: [0, -7, 0] }}
+            transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+            style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+          >
+            {/* Outer glow ring */}
+            <div style={{
+              position: 'absolute', inset: '-20px',
+              background: 'radial-gradient(ellipse, rgba(139,92,246,0.35) 0%, rgba(91,80,255,0.12) 50%, transparent 72%)',
+              borderRadius: '50%',
+              filter: 'blur(12px)',
+            }} />
+            {/* Pulsing ring */}
+            <motion.div
+              animate={{ scale: [1, 1.18, 1], opacity: [0.4, 0.1, 0.4] }}
+              transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+              style={{
+                position: 'absolute', inset: '-8px',
+                border: '1.5px solid rgba(139,92,246,0.5)',
+                borderRadius: '50%',
+              }}
+            />
+            <video
+              autoPlay loop muted playsInline
+              style={{ width: 104, height: 104, objectFit: 'contain', position: 'relative', zIndex: 1 }}
+            >
+              <source src="/nova-mascot.mp4" type="video/mp4" />
+            </video>
+          </motion.div>
+        </motion.div>
       </section>
 
       {/* ── 4. PRODUCT DEMO ── */}
-      <section id="demo" style={{ background: '#080808', padding: '0 24px 120px' }}>
+      <section id="demo" style={{ background: '#080808', padding: '72px 24px 120px' }}>
         <div style={{ maxWidth: '900px', margin: '0 auto' }}>
           <Reveal>
-            <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase', marginBottom: '20px', textAlign: 'center' }}>HYPERBEING IN ACTION</p>
+            {/* Nova label above section heading */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
+              <div style={{ height: '1px', width: '32px', background: 'linear-gradient(to right, transparent, rgba(139,92,246,0.6))' }} />
+              <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#8B5CF6', textTransform: 'uppercase' }}>NOVA · HYPERBEING IN ACTION</p>
+              <div style={{ height: '1px', width: '32px', background: 'linear-gradient(to left, transparent, rgba(139,92,246,0.6))' }} />
+            </div>
             <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(36px, 5vw, 56px)', fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.03em', color: '#f0f0ee', textAlign: 'center', marginBottom: '56px' }}>
               Watch the blank become{' '}
               <em>brilliant.</em>
@@ -477,7 +687,7 @@ export default function Homepage() {
                   <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', color: '#3d3660', lineHeight: 1.65 }}>{f.body}</p>
                 </div>
                 {/* Visual side */}
-                <div style={{ order: f.side === 'right' ? 1 : 0 }}>
+                <div style={{ order: f.side === 'right' ? 1 : 0, borderRadius: '14px', boxShadow: '0 24px 80px rgba(13,11,26,0.14), 0 4px 24px rgba(91,80,255,0.08)' }}>
                   <FeatureVisual type={f.visual} />
                 </div>
               </div>
