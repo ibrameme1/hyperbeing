@@ -669,7 +669,7 @@ export default function Pricing() {
         </motion.div>
 
         <p className="text-center text-white/25 text-sm mb-14">
-          New accounts get <span className="text-white/55 font-semibold">50 free credits</span> to try HyperBeing — no card required.
+          New accounts get <span className="text-white/55 font-semibold">54 free credits</span> to try HyperBeing — no card required.
         </p>
       </div>
 

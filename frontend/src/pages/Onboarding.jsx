@@ -439,7 +439,7 @@ export default function Onboarding() {
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-white/70 text-sm font-semibold">Your starter credits</span>
-                  <span className="text-sm font-bold" style={{ color: '#8B80FF' }}>5 decks free</span>
+                  <span className="text-sm font-bold" style={{ color: '#8B80FF' }}>54 free credits</span>
                 </div>
                 <div className="h-1.5 rounded-full overflow-hidden mb-3" style={{ background: 'rgba(255,255,255,0.08)' }}>
                   <div className="h-full rounded-full" style={{ width: '100%', background: 'linear-gradient(90deg, #5B50FF, #8B80FF)' }} />

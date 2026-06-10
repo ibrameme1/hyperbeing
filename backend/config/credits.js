@@ -26,7 +26,7 @@ export const EDIT_TIER_THRESHOLDS = {
 
 // Monthly credit allocation per plan.
 export const PLAN_CREDITS = {
-  free:   15,
+  free:   54,                     // 3 slides * PER_SLIDE — caps a new user's first deck at 3 slides
   basic:  1200,
   pro:    3200,
   ultra1: 8000,

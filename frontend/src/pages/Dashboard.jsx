@@ -15,6 +15,7 @@ import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
 import Logo from '../components/Logo';
 import { SkeletonDashboardPage } from '../components/Skeleton';
+import FeedbackButton from '../components/FeedbackButton';
 
 const ANALYZING_MESSAGES = [
   { text: "ok let me read through this real quick…", emoji: "👀" },
@@ -1248,6 +1249,7 @@ export default function Dashboard() {
         )}
       </main>
     </div>
+    <FeedbackButton />
 </>
   );
 }

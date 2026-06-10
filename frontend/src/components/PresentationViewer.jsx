@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import SlideRenderer from './SlideRenderer';
 import OutOfCreditsModal from './OutOfCreditsModal';
+import FeedbackButton from './FeedbackButton';
 import { exportToPDF, exportImages } from '../utils/pdfExport';
 import api from '../api/client';
 import { capture } from '../utils/posthog';
@@ -975,6 +976,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
           />
         )}
       </AnimatePresence>
+
+      <FeedbackButton />
     </div>
   );
 }
