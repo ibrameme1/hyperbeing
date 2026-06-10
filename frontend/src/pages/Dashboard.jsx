@@ -76,7 +76,12 @@ function AnalyzingOverlay({ onCancel }) {
               loop
               muted
               playsInline
-              style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'relative', zIndex: 1 }}
+              style={{
+                width: '100%', height: '100%', objectFit: 'contain', position: 'relative', zIndex: 1,
+                mixBlendMode: 'screen',
+                maskImage: 'radial-gradient(circle, black 55%, transparent 78%)',
+                WebkitMaskImage: 'radial-gradient(circle, black 55%, transparent 78%)',
+              }}
             >
               <source src="/nova-mascot.mp4" type="video/mp4" />
             </video>

@@ -642,7 +642,12 @@ export default function Homepage() {
             />
             <video
               autoPlay loop muted playsInline
-              style={{ width: 104, height: 104, objectFit: 'contain', position: 'relative', zIndex: 1 }}
+              style={{
+                width: 104, height: 104, objectFit: 'contain', position: 'relative', zIndex: 1,
+                mixBlendMode: 'screen',
+                maskImage: 'radial-gradient(circle, black 55%, transparent 78%)',
+                WebkitMaskImage: 'radial-gradient(circle, black 55%, transparent 78%)',
+              }}
             >
               <source src="/nova-mascot.mp4" type="video/mp4" />
             </video>
