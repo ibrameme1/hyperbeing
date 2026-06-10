@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import {
   stripe, PLANS, ULTRA_TIERS, getOrCreateSubscription, resetCreditsForPlan, grantCredits, isAdmin,
+  applyPlanUpgrade, scheduleDowngrade, scheduleCancellation,
 } from '../services/stripeService.js';
 import { logger } from '../services/logger.js';
 import { getDb } from '../database.js';
@@ -70,16 +71,18 @@ router.post('/checkout', authMiddleware, billingLimiter,
   }),
   async (req, res) => {
   const { planKey, billing = 'monthly', ultraTier } = req.body;
-  const plan = PLANS[planKey];
   const isAnnual = billing === 'annual';
   let priceId;
+  let actualPlanKey = planKey;
   if (planKey === 'ultra') {
     const tier = ULTRA_TIERS[ultraTier];
     if (!tier) return res.status(400).json({ error: 'Invalid Ultra tier selected.' });
+    actualPlanKey = tier.planKey;
     priceId = isAnnual ? tier.annualPriceId : tier.priceId;
   } else {
-    priceId = isAnnual ? plan?.annualPriceId : plan?.priceId;
+    priceId = isAnnual ? PLANS[planKey]?.annualPriceId : PLANS[planKey]?.priceId;
   }
+  const plan = PLANS[actualPlanKey];
   if (!plan || !priceId) return res.status(400).json({ error: 'This plan isn\'t available for purchase. Please choose a different plan or contact support.' });
   if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not available right now. Please contact support.' });
 
@@ -107,19 +110,19 @@ router.post('/checkout', authMiddleware, billingLimiter,
       if (stripeSub) {
       const currentItemId = stripeSub.items.data[0]?.id;
 
-      const PLAN_RANK = { free: 0, basic: 1, pro: 2, ultra: 3 };
-      const isDowngrade = (PLAN_RANK[planKey] || 0) < (PLAN_RANK[sub.plan] || 0);
+      const PLAN_RANK = { free: 0, basic: 1, pro: 2, ultra: 3, ultra1: 3, ultra2: 4, ultra3: 5, ultra4: 6 };
+      const isDowngrade = (PLAN_RANK[actualPlanKey] ?? 0) < (PLAN_RANK[sub.plan] ?? 0);
 
       // Cancel a pending downgrade — user picks any plan other than the scheduled one
-      if (sub.pending_plan && planKey !== sub.pending_plan) {
+      if (sub.pending_plan && actualPlanKey !== sub.pending_plan) {
         await stripe.subscriptions.update(sub.stripe_subscription_id, {
           items: [{ id: currentItemId, price: priceId }],
           proration_behavior: 'none',
-          metadata: { userId: req.userId, planKey },
+          metadata: { userId: req.userId, planKey: actualPlanKey },
         });
         const db = getDb();
-        db.prepare('UPDATE subscriptions SET plan = ?, pending_plan = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?').run(planKey, req.userId);
-        return res.json({ upgraded: true, cancelledDowngrade: true, keptPlan: planKey });
+        db.prepare('UPDATE subscriptions SET plan = ?, pending_plan = NULL, credits_total = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?').run(actualPlanKey, plan.credits, req.userId);
+        return res.json({ upgraded: true, cancelledDowngrade: true, keptPlan: actualPlanKey });
       }
 
       if (isDowngrade) {
@@ -128,32 +131,29 @@ router.post('/checkout', authMiddleware, billingLimiter,
         const periodEnd = stripeSub.current_period_end
           ? new Date(stripeSub.current_period_end * 1000).toISOString()
           : null;
-        db.prepare(
-          'UPDATE subscriptions SET pending_plan = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
-        ).run(planKey, periodEnd, req.userId);
+        scheduleDowngrade(req.userId, actualPlanKey);
+        db.prepare('UPDATE subscriptions SET current_period_end = ? WHERE user_id = ?').run(periodEnd, req.userId);
         try {
           await stripe.subscriptions.update(sub.stripe_subscription_id, {
             items: [{ id: currentItemId, price: priceId }],
             proration_behavior: 'none',
-            metadata: { userId: req.userId, planKey },
+            metadata: { userId: req.userId, planKey: actualPlanKey },
           });
         } catch (stripeErr) {
-          db.prepare('UPDATE subscriptions SET pending_plan = NULL WHERE user_id = ?').run(req.userId);
+          db.prepare('UPDATE subscriptions SET pending_plan = NULL, credits_total = ? WHERE user_id = ?').run(PLANS[sub.plan]?.credits ?? sub.credits_total, req.userId);
           throw stripeErr;
         }
         const _downgradeUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.userId);
         if (_downgradeUser?.email) sendPlanDowngradeScheduled(_downgradeUser.name, _downgradeUser.email, PLANS[sub.plan]?.name || sub.plan, plan.name, periodEnd);
-        return res.json({ upgraded: true, isDowngrade: true, pendingPlan: planKey, periodEnd, currentPlan: sub.plan });
+        return res.json({ upgraded: true, isDowngrade: true, pendingPlan: actualPlanKey, periodEnd, currentPlan: sub.plan });
       } else {
         await stripe.subscriptions.update(sub.stripe_subscription_id, {
           items: [{ id: currentItemId, price: priceId }],
           proration_behavior: 'create_prorations',
           billing_cycle_anchor: 'now',
-          metadata: { userId: req.userId, planKey },
+          metadata: { userId: req.userId, planKey: actualPlanKey },
         });
-        const db = getDb();
-        db.prepare('UPDATE subscriptions SET pending_plan = NULL WHERE user_id = ?').run(req.userId);
-        resetCreditsForPlan(req.userId, planKey);
+        applyPlanUpgrade(req.userId, actualPlanKey);
         const _upgradeUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.userId);
         if (_upgradeUser?.email) sendPlanUpgraded(_upgradeUser.name, _upgradeUser.email, plan.name, plan.credits);
         return res.json({ upgraded: true, message: 'Plan upgraded successfully.' });
