@@ -114,7 +114,9 @@ export default function Login() {
 
         {/* Logo */}
         <div className="relative z-10">
-          <Logo dark height={30} />
+          <Link to="/" style={{ display: 'inline-flex', textDecoration: 'none' }}>
+            <Logo dark height={38} />
+          </Link>
         </div>
 
         {/* Hero copy */}
@@ -187,7 +189,9 @@ export default function Login() {
         >
           {/* Mobile logo */}
           <div className="lg:hidden mb-8">
-            <Logo height={26} />
+            <Link to="/" style={{ display: 'inline-flex', textDecoration: 'none' }}>
+              <Logo height={38} />
+            </Link>
           </div>
 
           <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>

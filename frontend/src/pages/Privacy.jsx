@@ -1,14 +1,7 @@
 import { useNavigate } from 'react-router-dom';
+import Logo from '../components/Logo';
 
 const LAST_UPDATED = 'May 28, 2025';
-
-function HBIcon() {
-  return (
-    <div style={{ width: 26, height: 26, background: '#5B50FF', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-      <span style={{ fontFamily: 'Inter,sans-serif', fontWeight: 900, color: '#fff', fontSize: 12, letterSpacing: '-0.1em', paddingRight: '0.05em' }}>HB</span>
-    </div>
-  );
-}
 
 const s = { color: '#8B80FF', textDecoration: 'none' };
 const h2Style = { fontFamily: 'Inter, sans-serif', fontSize: 16, fontWeight: 600, color: '#f0f0ee', marginBottom: 10 };
@@ -20,9 +13,8 @@ export default function Privacy() {
   return (
     <div style={{ minHeight: '100vh', background: '#080808', fontFamily: 'Inter, sans-serif' }}>
       <div style={{ borderBottom: '0.5px solid #1e1e1e', padding: '0 16px', height: 56, display: 'flex', alignItems: 'center' }}>
-        <button onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer' }}>
-          <HBIcon />
-          <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 14, color: '#f0f0ee', letterSpacing: '-0.02em' }}>HyperBeing</span>
+        <button onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', padding: 0 }}>
+          <Logo dark height={35} />
         </button>
       </div>
 

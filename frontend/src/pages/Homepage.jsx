@@ -4,6 +4,7 @@ import { motion, useInView, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import TextRotate from '../components/TextRotate';
 import NovaMascotVideo from '../components/NovaMascotVideo';
+import Logo from '../components/Logo';
 
 
 const FEATURES = [
@@ -456,9 +457,8 @@ export default function Homepage() {
       }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', width: '100%', padding: '0 24px', display: 'flex', alignItems: 'center', gap: '32px' }}>
           {/* Logo */}
-          <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', flexShrink: 0 }}>
-            <HBIcon size={28} />
-            <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '15px', color: '#0d0b1a', letterSpacing: '-0.02em' }}>HyperBeing</span>
+          <Link to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', flexShrink: 0 }}>
+            <Logo height={37} />
           </Link>
 
           {/* Center links */}
@@ -516,7 +516,7 @@ export default function Homepage() {
       </nav>
 
       {/* ── 2. HERO ── */}
-      <section style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '80px', paddingBottom: '160px', position: 'relative', background: '#f5f5f5' }}>
+      <section style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '80px', paddingBottom: '64px', position: 'relative', background: '#f5f5f5', overflow: 'hidden' }}>
         {/* Atmospheric glow top-right */}
         <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 65% 40%, rgba(91,80,255,0.08), transparent 60%)', pointerEvents: 'none' }} />
 
@@ -602,16 +602,15 @@ export default function Homepage() {
         </div>
 
         {/* Simple fade from hero into the dark demo section */}
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 160, background: 'linear-gradient(to bottom, transparent, #080808)', pointerEvents: 'none', zIndex: 2 }} />
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 64, background: 'linear-gradient(to bottom, transparent, #080808)', pointerEvents: 'none', zIndex: 2 }} />
       </section>
 
       {/* ── 4. PRODUCT DEMO ── */}
-      <section id="demo" style={{ background: '#080808', padding: '0 24px 120px', position: 'relative' }}>
+      <section id="demo" style={{ background: '#080808', padding: '64px 24px 120px', position: 'relative' }}>
         <div style={{ maxWidth: '900px', margin: '0 auto' }}>
           <Reveal>
             <div style={{
               position: 'relative',
-              marginTop: '-96px',
               background: '#0f0f0f',
               border: '0.5px solid #1e1e1e',
               borderRadius: '24px',
@@ -695,6 +694,15 @@ export default function Homepage() {
               </h2>
             </div>
           </Reveal>
+          <Reveal delay={0.05}>
+            <div style={{ borderRadius: '14px', overflow: 'hidden', marginBottom: '64px', boxShadow: '0 24px 80px rgba(13,11,26,0.14), 0 4px 24px rgba(91,80,255,0.08)', border: '0.5px solid #1a1a1a' }}>
+              <img
+                src="/screenshots/feature-nova-chat.png"
+                alt="Nova, HyperBeing's AI, planning a 12-slide Series A pitch deck from a single prompt"
+                style={{ width: '100%', display: 'block' }}
+              />
+            </div>
+          </Reveal>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1px', background: '#e8e8f0', border: '0.5px solid #e8e8f0', borderRadius: '8px', overflow: 'hidden' }}>
             {FEATURES.map((f, i) => (
               <Reveal key={f.title} delay={i * 0.05}>
@@ -747,9 +755,8 @@ export default function Homepage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr 1fr', gap: '48px', marginBottom: '48px' }}>
             {/* Brand */}
             <div>
-              <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', marginBottom: '12px' }}>
-                <HBIcon size={24} />
-                <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '14px', color: '#0d0b1a', letterSpacing: '-0.02em' }}>HyperBeing</span>
+              <Link to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', marginBottom: '12px' }}>
+                <Logo height={32} />
               </Link>
               <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490', maxWidth: '180px', lineHeight: 1.6 }}>AI-powered presentation studio.</p>
             </div>
@@ -781,7 +788,6 @@ export default function Homepage() {
           </div>
           <div style={{ borderTop: '0.5px solid #e8e8f0', paddingTop: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
             <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490' }}>&copy; {new Date().getFullYear()} HyperBeing. All rights reserved.</p>
-            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490' }}>Made with ✦ and a lot of AI</p>
           </div>
         </div>
       </footer>
