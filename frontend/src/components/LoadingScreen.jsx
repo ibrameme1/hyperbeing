@@ -29,7 +29,7 @@ function ShaderBackground() {
   if (!MeshGradient) {
     return (
       <div className="absolute inset-0" style={{
-        background: 'linear-gradient(135deg, #080808 0%, #0f0f0f 40%, #1a1540 70%, #5B50FF 100%)'
+        background: 'linear-gradient(135deg, #080808 0%, #0f0f0f 33%, #1a1540 66%, #5B50FF 100%)'
       }} />
     );
   }
@@ -37,8 +37,8 @@ function ShaderBackground() {
     <>
       <MeshGradient
         className="absolute inset-0 w-full h-full"
-        colors={['#080808', '#0a0818', '#1a1540', '#2d1f8f']}
-        speed={0.3}
+        colors={['#080808', '#0f0f0f', '#1a1540', '#5B50FF']}
+        speed={0.4}
         backgroundColor="#080808"
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
       />

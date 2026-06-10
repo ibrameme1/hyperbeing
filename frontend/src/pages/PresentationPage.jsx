@@ -455,7 +455,7 @@ export default function PresentationPage() {
       index: i,
       type: 'content',
       title: '',
-      status: 'complete',
+      status: 'loading',
       image_data: i === 0 ? (initPres?.thumbnail || null) : null,
     }));
   });

@@ -1,6 +1,6 @@
 import { useNavigate, Link } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
-import { motion, useInView, AnimatePresence } from 'framer-motion';
+import { motion, useInView, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import TextRotate from '../components/TextRotate';
 import NovaMascotVideo from '../components/NovaMascotVideo';
@@ -8,12 +8,12 @@ import Logo from '../components/Logo';
 
 
 const FEATURES = [
-  { icon: '◈', title: 'Art-directed images', desc: 'Each slide gets its own generated visual. Context-aware, brand-aware, purpose-built.' },
-  { icon: '◎', title: 'Narrative intelligence', desc: 'Claude reads your entire outline before writing a single word. The story comes first.' },
-  { icon: '▦', title: 'Slide map preview', desc: 'Approve the structure before the images generate. No surprises.' },
-  { icon: '◉', title: 'Brand memory', desc: 'Upload your brand kit once. Every deck stays on-brand automatically.', soon: true },
-  { icon: '↗', title: 'One-click export', desc: 'Download as PowerPoint, PDF, or shareable link. Integration-ready.' },
-  { icon: '⬡', title: 'Enterprise grade', desc: 'SSO, audit logs, team workspaces, and volume pricing. Built to scale.' },
+  { icon: '◈', title: 'Art-directed images', desc: 'Each slide gets its own generated visual. Context-aware, brand-aware, purpose-built.', visual: 'slide-showcase' },
+  { icon: '◎', title: 'Narrative intelligence', desc: 'Claude reads your entire outline before writing a single word. The story comes first.', visual: 'screenshot' },
+  { icon: '▦', title: 'Slide map preview', desc: 'Approve the structure before the images generate. No surprises.', visual: 'slide-map' },
+  { icon: '◉', title: 'Brand memory', desc: 'Upload your brand kit once. Every deck stays on-brand automatically.', soon: true, visual: 'brand-kit' },
+  { icon: '↗', title: 'One-click export', desc: 'Download as PowerPoint, PDF, or shareable link. Integration-ready.', visual: 'export-panel' },
+  { icon: '⬡', title: 'Enterprise grade', desc: 'SSO, audit logs, team workspaces, and volume pricing. Built to scale.', visual: 'enterprise' },
 ];
 
 const FEATURE_SPLITS = [
@@ -425,6 +425,197 @@ function FeatureVisual({ type }) {
     );
   }
 
+  /* ── Slide map preview (approval grid) ── */
+  if (type === 'slide-map') {
+    const slides = [
+      { g: 'linear-gradient(135deg, #0d0a2e 0%, #5B50FF 100%)', n: '01', label: 'Title' },
+      { g: 'linear-gradient(135deg, #06101e 0%, #0e4a7a 100%)', n: '02', label: 'Problem' },
+      { g: 'linear-gradient(135deg, #0f0818 0%, #6d28d9 100%)', n: '03', label: 'Solution' },
+      { g: 'linear-gradient(135deg, #050f0a 0%, #064e3b 100%)', n: '04', label: 'Market' },
+      { g: 'linear-gradient(135deg, #140904 0%, #9a3412 100%)', n: '05', label: 'Product' },
+      { g: 'linear-gradient(135deg, #08080f 0%, #2d2b6e 100%)', n: '06', label: 'Traction' },
+      { g: 'linear-gradient(135deg, #0a1a18 0%, #0d5c52 100%)', n: '07', label: 'Team' },
+      { g: 'linear-gradient(135deg, #1a1200 0%, #856512 100%)', n: '08', label: 'Roadmap' },
+      { g: 'linear-gradient(135deg, #1a0808 0%, #8B1a1a 100%)', n: '09', label: 'The Ask' },
+    ];
+    return (
+      <div style={{ background: '#080808', borderRadius: '12px', border: '0.5px solid #1a1a1a', overflow: 'hidden', fontFamily: 'Inter, sans-serif' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '0.5px solid #1a1a1a', background: '#0a0a0b' }}>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {['#ff5f57', '#febc2e', '#28c840'].map((c, i) => (
+              <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: c, opacity: 0.45 }} />
+            ))}
+          </div>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#444', letterSpacing: '0.12em', marginLeft: 6 }}>HYPERBEING · SLIDE MAP</span>
+          <div style={{ marginLeft: 'auto' }}>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#5B50FF', letterSpacing: '0.12em' }}>9 SLIDES PLANNED</span>
+          </div>
+        </div>
+        <div style={{ padding: '14px' }}>
+          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 10 }}>STRUCTURE · AWAITING APPROVAL</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
+            {slides.map(({ g, n, label }) => (
+              <div key={n} style={{ aspectRatio: '16/9', background: g, borderRadius: 5, position: 'relative', border: '0.5px solid #1a1a1a', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: 5, left: 5, fontFamily: 'JetBrains Mono, monospace', fontSize: 7, color: 'rgba(255,255,255,0.65)' }}>{n}</div>
+                <div style={{ position: 'absolute', bottom: 6, left: 6, right: 6 }}>
+                  <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.85)', fontWeight: 500 }}>{label}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#0a0a0b', border: '0.5px solid #1a1a1a', borderRadius: 7, padding: '10px 12px' }}>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#555', flex: 1 }}>review structure before visuals generate</span>
+            <div style={{ background: 'rgba(91,80,255,0.1)', border: '0.5px solid rgba(91,80,255,0.28)', borderRadius: 4, padding: '5px 12px', cursor: 'pointer' }}>
+              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, fontWeight: 600, color: '#8B80FF', letterSpacing: '0.05em' }}>APPROVE STRUCTURE →</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Brand memory / brand kit panel ── */
+  if (type === 'brand-kit') {
+    const swatches = ['#5B50FF', '#8B80FF', '#1a1540', '#f0f0ee', '#22c55e'];
+    return (
+      <div style={{ background: '#080808', borderRadius: '12px', border: '0.5px solid #1a1a1a', overflow: 'hidden', fontFamily: 'Inter, sans-serif' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '0.5px solid #1a1a1a', background: '#0a0a0b' }}>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {['#ff5f57', '#febc2e', '#28c840'].map((c, i) => (
+              <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: c, opacity: 0.45 }} />
+            ))}
+          </div>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#444', letterSpacing: '0.12em', marginLeft: 6 }}>HYPERBEING · BRAND KIT</span>
+          <div style={{ marginLeft: 'auto', background: 'rgba(91,80,255,0.1)', border: '0.5px solid rgba(91,80,255,0.28)', borderRadius: 4, padding: '2px 8px' }}>
+            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, fontWeight: 600, color: '#8B80FF', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Soon</span>
+          </div>
+        </div>
+        <div style={{ padding: '18px 16px' }}>
+          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 12 }}>BRAND ASSETS</p>
+
+          {/* Logo upload row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#0c0c0c', border: '0.5px solid #1a1a1a', borderRadius: 8, padding: '12px', marginBottom: 12 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 6, border: '1px dashed #2a2a2a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 900, fontSize: 11, color: '#3a3a3a', letterSpacing: '-0.1em' }}>HB</span>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: 11, color: '#ccc', margin: '0 0 3px', fontWeight: 500 }}>Acme Corp logo</p>
+              <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#444', margin: 0 }}>logo_primary.svg · uploaded</p>
+            </div>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+          </div>
+
+          {/* Color swatches */}
+          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#555', letterSpacing: '0.1em', marginBottom: 8 }}>BRAND PALETTE</p>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            {swatches.map((c, i) => (
+              <div key={i} style={{ flex: 1, aspectRatio: '1', borderRadius: 6, background: c, border: '0.5px solid rgba(255,255,255,0.08)' }} />
+            ))}
+          </div>
+
+          {/* Applied banner */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#0a0a0b', border: '0.5px solid rgba(91,80,255,0.18)', borderRadius: 7, padding: '10px 12px' }}>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#555', flex: 1 }}>every new deck inherits this kit automatically</span>
+            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, fontWeight: 600, color: '#8B80FF' }}>auto-applied</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Enterprise grade panel ── */
+  if (type === 'enterprise') {
+    const rows = [
+      { label: 'Single sign-on (SSO)', detail: 'SAML · Okta · Google Workspace', status: 'Active', color: '#22c55e' },
+      { label: 'Audit logs', detail: 'Every generation, export & edit tracked', status: 'Enabled', color: '#22c55e' },
+      { label: 'Team workspaces', detail: '12 members · 4 shared brand kits', status: 'Synced', color: '#5B50FF' },
+      { label: 'Volume pricing', detail: 'Custom seats · annual billing', status: 'Custom', color: '#8B80FF' },
+    ];
+    return (
+      <div style={{ background: '#080808', borderRadius: '12px', border: '0.5px solid #1a1a1a', overflow: 'hidden', fontFamily: 'Inter, sans-serif' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '0.5px solid #1a1a1a', background: '#0a0a0b' }}>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {['#ff5f57', '#febc2e', '#28c840'].map((c, i) => (
+              <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: c, opacity: 0.45 }} />
+            ))}
+          </div>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#444', letterSpacing: '0.12em', marginLeft: 6 }}>HYPERBEING · ADMIN CONSOLE</span>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e' }} />
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#22c55e' }}>WORKSPACE: ACME CORP</span>
+          </div>
+        </div>
+        <div style={{ padding: '8px 14px 14px' }}>
+          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', margin: '10px 0 4px' }}>SECURITY &amp; SCALE</p>
+          {rows.map(({ label, detail, status, color }) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '0.5px solid #131313' }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 11, color: '#e0dcff', margin: '0 0 2px', fontWeight: 500 }}>{label}</p>
+                <p style={{ fontSize: 9, color: '#3a3a3a', margin: 0 }}>{detail}</p>
+              </div>
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color, letterSpacing: '0.08em', flexShrink: 0 }}>{status}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  /* ── One-click export panel ── */
+  if (type === 'export-panel') {
+    const formats = [
+      { label: 'PowerPoint', ext: '.pptx', size: '2.4 MB' },
+      { label: 'PDF', ext: '.pdf', size: '5.1 MB' },
+      { label: 'Shareable link', ext: 'hyperbeing.co/d/8f3a', size: 'live' },
+    ];
+    return (
+      <div style={{ background: '#080808', borderRadius: '12px', border: '0.5px solid #1a1a1a', overflow: 'hidden', fontFamily: 'Inter, sans-serif' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '0.5px solid #1a1a1a', background: '#0a0a0b' }}>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {['#ff5f57', '#febc2e', '#28c840'].map((c, i) => (
+              <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: c, opacity: 0.45 }} />
+            ))}
+          </div>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#444', letterSpacing: '0.12em', marginLeft: 6 }}>HYPERBEING · EXPORT</span>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e' }} />
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#22c55e' }}>READY</span>
+          </div>
+        </div>
+        <div style={{ padding: '16px' }}>
+          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 12 }}>deck_series_a · 12 slides · export ready</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {formats.map(({ label, ext, size }) => (
+              <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#0a0a0b', border: '0.5px solid #1a1a1a', borderRadius: 7, padding: '10px 12px' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 11, color: '#e0dcff', margin: '0 0 2px', fontWeight: 500 }}>{label}</p>
+                  <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#444', margin: 0 }}>{ext} · {size}</p>
+                </div>
+                <div style={{ background: '#5B50FF', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', flexShrink: 0 }}>
+                  <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, fontWeight: 600, color: '#fff' }}>Export →</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Static screenshot wrapper ── */
+  if (type === 'screenshot') {
+    return (
+      <div style={{ borderRadius: '12px', overflow: 'hidden', border: '0.5px solid #1a1a1a' }}>
+        <img
+          src="/screenshots/feature-nova-chat.png"
+          alt="Nova, HyperBeing's AI, planning a 12-slide Series A pitch deck from a single prompt"
+          style={{ width: '100%', display: 'block' }}
+        />
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -433,6 +624,18 @@ export default function Homepage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
+  const [selectedFeature, setSelectedFeature] = useState(0);
+  const heroRef = useRef(null);
+
+  // Scroll-driven Nova "welcome" transition between Hero and Demo sections.
+  const { scrollYProgress: heroExitProgress } = useScroll({
+    target: heroRef,
+    offset: ['end end', 'end start'],
+  });
+  const novaScale = useTransform(heroExitProgress, [0, 1], [0.55, 1]);
+  const novaOpacity = useTransform(heroExitProgress, [0, 0.5, 1], [0, 0.85, 1]);
+  const novaY = useTransform(heroExitProgress, [0, 1], [60, -40]);
+  const chevronOpacity = useTransform(heroExitProgress, [0, 0.4, 0.7, 1], [0.6, 0.3, 0, 0]);
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 10);
@@ -516,7 +719,7 @@ export default function Homepage() {
       </nav>
 
       {/* ── 2. HERO ── */}
-      <section style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '80px', paddingBottom: '64px', position: 'relative', background: '#f5f5f5', overflow: 'hidden' }}>
+      <section ref={heroRef} style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '80px', paddingBottom: '64px', position: 'relative', background: '#f5f5f5', overflowX: 'hidden' }}>
         {/* Atmospheric glow top-right */}
         <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 65% 40%, rgba(91,80,255,0.08), transparent 60%)', pointerEvents: 'none' }} />
 
@@ -538,7 +741,7 @@ export default function Homepage() {
           >
             Presentations that make<br />
             {'people go '}
-            <span style={{ display: 'inline-flex', background: '#5B50FF', borderRadius: '6px', verticalAlign: 'bottom', overflow: 'hidden', paddingBottom: '3px' }}>
+            <span style={{ display: 'inline-flex', background: '#5B50FF', borderRadius: '6px', verticalAlign: 'bottom', overflow: 'hidden', paddingBottom: '6px' }}>
               <TextRotate
                 texts={['how?', 'wow.', 'really?', 'that fast?', 'just you?', 'with AI?']}
                 rotationInterval={2200}
@@ -548,8 +751,8 @@ export default function Homepage() {
                 animate={{ y: 0 }}
                 exit={{ y: '-120%' }}
                 transition={{ type: 'spring', damping: 30, stiffness: 400 }}
-                mainClassName="text-white px-3 py-1 overflow-hidden justify-center"
-                splitLevelClassName="overflow-hidden pb-0.5"
+                mainClassName="text-white px-3 py-1 overflow-hidden justify-center leading-[1.35]"
+                splitLevelClassName="overflow-hidden pb-0.5 leading-[1.35]"
               />
             </span>
           </motion.h1>
@@ -601,8 +804,36 @@ export default function Homepage() {
           </motion.p>
         </div>
 
-        {/* Simple fade from hero into the dark demo section */}
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 64, background: 'linear-gradient(to bottom, transparent, #080808)', pointerEvents: 'none', zIndex: 2 }} />
+        {/* Scroll-driven Nova "welcome" — grows and fades in as the user scrolls toward the demo section */}
+        <motion.div
+          style={{
+            position: 'absolute',
+            bottom: '-90px',
+            left: 0,
+            right: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '14px',
+            scale: novaScale,
+            opacity: novaOpacity,
+            y: novaY,
+            pointerEvents: 'none',
+            zIndex: 2,
+          }}
+        >
+          <NovaMascotVideo size={240} />
+          <motion.div
+            style={{ opacity: chevronOpacity, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}
+            animate={{ y: [0, 8, 0] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase' }}>SCROLL</span>
+            <svg width="14" height="8" viewBox="0 0 14 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M1 1L7 7L13 1" stroke="#5B50FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </motion.div>
+        </motion.div>
       </section>
 
       {/* ── 4. PRODUCT DEMO ── */}
@@ -617,11 +848,6 @@ export default function Homepage() {
               padding: '48px 32px 40px',
               boxShadow: 'rgba(8,8,8,0.6) 0px 24px 64px -16px, rgba(91,80,255,0.18) 0px 0px 64px -16px',
             }}>
-              {/* Nova mascot, floating freely in the middle of the card */}
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
-                <NovaMascotVideo size={120} />
-              </div>
-
               {/* Nova label above section heading */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
                 <div style={{ height: '1px', width: '32px', background: 'linear-gradient(to right, transparent, rgba(139,92,246,0.6))' }} />
@@ -695,35 +921,59 @@ export default function Homepage() {
             </div>
           </Reveal>
           <Reveal delay={0.05}>
-            <div style={{ borderRadius: '14px', overflow: 'hidden', marginBottom: '64px', boxShadow: '0 24px 80px rgba(13,11,26,0.14), 0 4px 24px rgba(91,80,255,0.08)', border: '0.5px solid #1a1a1a' }}>
-              <img
-                src="/screenshots/feature-nova-chat.png"
-                alt="Nova, HyperBeing's AI, planning a 12-slide Series A pitch deck from a single prompt"
-                style={{ width: '100%', display: 'block' }}
-              />
+            <div style={{
+              borderRadius: '14px', overflow: 'hidden', marginBottom: '24px', padding: '24px',
+              background: '#080808', border: '0.5px solid #1a1a1a',
+              boxShadow: '0 24px 80px rgba(13,11,26,0.14), 0 4px 24px rgba(91,80,255,0.08)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#8B80FF', textTransform: 'uppercase', margin: 0 }}>
+                  {FEATURES[selectedFeature].title} · IN ACTION
+                </p>
+              </div>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={selectedFeature}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <FeatureVisual type={FEATURES[selectedFeature].visual} />
+                </motion.div>
+              </AnimatePresence>
             </div>
           </Reveal>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1px', background: '#e8e8f0', border: '0.5px solid #e8e8f0', borderRadius: '8px', overflow: 'hidden' }}>
-            {FEATURES.map((f, i) => (
-              <Reveal key={f.title} delay={i * 0.05}>
-                <div
-                  style={{ background: '#ffffff', padding: '32px', position: 'relative', transition: 'background 0.2s' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#fafaff'}
-                  onMouseLeave={e => e.currentTarget.style.background = '#ffffff'}
-                >
-                  <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-                    <span style={{ fontSize: '20px', color: '#5B50FF' }}>{f.icon}</span>
+          <div className="features-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1px', background: '#e8e8f0', border: '0.5px solid #e8e8f0', borderRadius: '8px', overflow: 'hidden', marginBottom: '64px' }}>
+            {FEATURES.map((f, i) => {
+              const active = i === selectedFeature;
+              return (
+                <Reveal key={f.title} delay={i * 0.05}>
+                  <div
+                    onClick={() => setSelectedFeature(i)}
+                    style={{
+                      background: active ? '#fafaff' : '#ffffff',
+                      padding: '32px', position: 'relative', cursor: 'pointer',
+                      transition: 'background 0.2s, box-shadow 0.2s',
+                      boxShadow: active ? 'inset 4px 0 0 0 #5B50FF' : 'inset 4px 0 0 0 transparent',
+                    }}
+                    onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#fafaff'; }}
+                    onMouseLeave={e => { if (!active) e.currentTarget.style.background = '#ffffff'; }}
+                  >
+                    <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                      <span style={{ fontSize: '20px', color: '#5B50FF' }}>{f.icon}</span>
+                    </div>
+                    <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', fontWeight: 600, color: '#0d0b1a', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {f.title}
+                      {f.soon && (
+                        <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '9px', fontWeight: 600, color: '#5B50FF', background: 'rgba(91,80,255,0.1)', border: '0.5px solid rgba(91,80,255,0.2)', borderRadius: '4px', padding: '2px 6px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Soon</span>
+                      )}
+                    </h3>
+                    <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#6b6490', lineHeight: 1.6 }}>{f.desc}</p>
                   </div>
-                  <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', fontWeight: 600, color: '#0d0b1a', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {f.title}
-                    {f.soon && (
-                      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '9px', fontWeight: 600, color: '#5B50FF', background: 'rgba(91,80,255,0.1)', border: '0.5px solid rgba(91,80,255,0.2)', borderRadius: '4px', padding: '2px 6px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Soon</span>
-                    )}
-                  </h3>
-                  <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#6b6490', lineHeight: 1.6 }}>{f.desc}</p>
-                </div>
-              </Reveal>
-            ))}
+                </Reveal>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -798,6 +1048,14 @@ export default function Homepage() {
         @media (max-width: 768px) {
           section > div > div[style*="grid-template-columns: 1fr 1fr"] {
             grid-template-columns: 1fr !important;
+          }
+          .features-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+        @media (min-width: 769px) and (max-width: 1024px) {
+          .features-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
           }
           footer > div > div[style*="grid-template-columns: auto 1fr 1fr 1fr"] {
             grid-template-columns: 1fr 1fr !important;

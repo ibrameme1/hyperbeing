@@ -8,10 +8,10 @@ export default function Logo({ dark = false, height = 32, className = '' }) {
   const [hover, setHover] = useState(false);
   const iconSize = Math.round(height * 0.75);
 
-  const iconBg = hover && dark ? '#ffffff' : '#5B50FF';
-  const hbColor = hover && dark ? '#5B50FF' : '#ffffff';
+  const iconBg = hover ? (dark ? '#f0f0ee' : '#0d0b1a') : '#5B50FF';
+  const hbColor = hover ? '#5B50FF' : '#ffffff';
   const wordmarkColor = hover
-    ? (dark ? '#ffffff' : '#5B50FF')
+    ? '#5B50FF'
     : (dark ? '#f0f0ee' : '#0d0b1a');
 
   return (

@@ -117,7 +117,6 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
           className="w-11 h-11 flex items-center justify-center flex-shrink-0"
           style={{
             background: '#5B50FF',
-            borderRadius: 8,
             borderRadius: 12,
           }}
         >

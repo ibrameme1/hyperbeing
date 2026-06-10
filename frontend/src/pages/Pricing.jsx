@@ -261,7 +261,7 @@ export default function Pricing() {
           </button>
           <button
             onClick={() => navigate(user ? '/dashboard' : '/')}
-            className="flex items-center gap-1.5 text-xs font-semibold transition-opacity hover:opacity-80 px-3 py-1.5 rounded-xl"
+            className="flex items-center gap-1.5 text-xs font-semibold transition-opacity hover:opacity-80 px-3 py-1.5 rounded-btn"
             style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)' }}
           >
             <Home size={12} /> {user ? 'Dashboard' : 'Home'}
@@ -269,7 +269,7 @@ export default function Pricing() {
         </div>
         <div className="flex items-center gap-3">
           {creditsLeft !== null && (
-            <span className="text-sm px-3 py-1.5 rounded-xl" style={{ background: 'rgba(91,80,255,0.15)', color: '#8B80FF', border: '1px solid rgba(91,80,255,0.3)' }}>
+            <span className="text-sm px-3 py-1.5 rounded-badge" style={{ background: 'rgba(91,80,255,0.15)', color: '#8B80FF', border: '1px solid rgba(91,80,255,0.3)' }}>
               {creditsLeft.toLocaleString()} credits left
             </span>
           )}
@@ -296,7 +296,7 @@ export default function Pricing() {
           {!user && (
             <button
               onClick={() => navigate('/login')}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl transition-opacity hover:opacity-80"
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-btn transition-opacity hover:opacity-80"
               style={{ background: 'rgba(91,80,255,0.15)', color: '#8B80FF', border: '1px solid rgba(91,80,255,0.3)' }}
             >
               <User size={12} /> Sign in
@@ -309,13 +309,13 @@ export default function Pricing() {
       {fetchError && (
         <div style={{
           position: 'relative', zIndex: 10,
-          background: '#f8f8fc',
+          background: 'var(--raised)',
           border: '1px solid rgba(239,68,68,0.2)',
           borderLeft: '3px solid rgba(239,68,68,0.5)',
           padding: '10px 20px',
           fontFamily: 'Inter, sans-serif',
           fontSize: 13,
-          color: '#3d3660',
+          color: 'var(--t-high)',
         }}>
           Couldn't load your plan info. Reload to try again.
         </div>
@@ -340,21 +340,21 @@ export default function Pricing() {
           </p>
 
           {/* Billing toggle */}
-          <div className="inline-flex items-center gap-1 p-1 rounded-2xl" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="inline-flex items-center gap-1 p-1 rounded-modal" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <button
               onClick={() => setBilling('monthly')}
-              className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
+              className="px-5 py-2.5 rounded-btn text-sm font-semibold transition-all duration-200"
               style={billing === 'monthly' ? { background: 'rgba(255,255,255,0.1)', color: '#fff' } : { color: 'rgba(255,255,255,0.4)' }}
             >
               Monthly
             </button>
             <button
               onClick={() => setBilling('annual')}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-btn text-sm font-semibold transition-all duration-200"
               style={billing === 'annual' ? { background: 'rgba(255,255,255,0.1)', color: '#fff' } : { color: 'rgba(255,255,255,0.4)' }}
             >
               Annual
-              <span className="text-xs font-bold px-2 py-0.5 rounded-lg" style={{ background: 'rgba(16,185,129,0.2)', color: '#34D399' }}>
+              <span className="text-xs font-bold px-2 py-0.5 rounded-badge" style={{ background: 'rgba(16,185,129,0.2)', color: '#34D399' }}>
                 Save up to 30%
               </span>
             </button>
@@ -379,7 +379,7 @@ export default function Pricing() {
                 initial={{ opacity: 0, y: 28 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                className="relative rounded-3xl flex flex-col overflow-hidden"
+                className="relative rounded-card flex flex-col overflow-hidden"
                 style={{
                   border: `1px solid ${plan.border}`,
                   background: 'rgba(255,255,255,0.03)',
@@ -389,10 +389,14 @@ export default function Pricing() {
                 }}
               >
                 {/* Top badge — always rendered so plan names align across all 3 cards */}
-                <div className="py-2.5 text-center text-xs font-bold text-white tracking-widest uppercase"
+                <div className="py-2.5 text-center text-white uppercase"
                      style={{
                        background: (plan.popular || plan.bestValue) ? plan.gradient : 'transparent',
                        opacity: (plan.popular || plan.bestValue) ? 1 : 0,
+                       fontFamily: 'JetBrains Mono, monospace',
+                       fontSize: '10px',
+                       fontWeight: 600,
+                       letterSpacing: '0.20em',
                      }}>
                   {plan.popular ? '♦ MOST POPULAR' : '♦ BEST VALUE'}
                 </div>
@@ -401,7 +405,7 @@ export default function Pricing() {
                   {/* Plan name + speed */}
                   <div className="flex items-start justify-between mb-1">
                     <h3 className="text-2xl font-bold text-white">{plan.name}</h3>
-                    <span className="text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1"
+                    <span className="text-xs font-bold px-2.5 py-1 rounded-badge flex items-center gap-1"
                           style={{ background: `${plan.speed.color}18`, color: plan.speed.color, border: `1px solid ${plan.speed.color}30` }}>
                       {plan.speed.emoji} {plan.speed.label}
                     </span>
@@ -409,7 +413,7 @@ export default function Pricing() {
                   <p className="text-white/40 text-xs mb-5">{plan.tagline}</p>
 
                   {/* Credits */}
-                  <div className="rounded-2xl p-4 mb-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                  <div className="rounded-card p-4 mb-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-lg">✦</span>
                       <span className="text-xl font-bold text-white">{credits.toLocaleString()} credits/mo</span>
@@ -437,7 +441,7 @@ export default function Pricing() {
                       </AnimatePresence>
                       <span className="text-white/35 text-sm mb-1.5">/month</span>
                       {showDiscount && (
-                        <span className="text-xs font-bold px-2 py-0.5 rounded-lg mb-1.5"
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-badge mb-1.5"
                               style={{ background: 'rgba(16,185,129,0.15)', color: '#34D399', border: '1px solid rgba(16,185,129,0.2)' }}>
                           {Math.round(discount * 100)}% OFF
                         </span>
@@ -468,14 +472,14 @@ export default function Pricing() {
                           <button
                             onClick={() => handleSubscribe(plan.key)}
                             disabled={isLoadingThis}
-                            className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mb-3 disabled:opacity-60"
-                            style={{ background: plan.gradient, color: '#fff', boxShadow: `0 4px 20px ${plan.glow}` }}
+                            className="pricing-uv-cta w-full py-3.5 rounded-btn font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mb-3 disabled:opacity-60"
+                            style={{ background: '#5B50FF', color: '#fff' }}
                           >
                             {isLoadingThis
                               ? <Loader2 size={16} className="animate-spin" />
                               : <><span>Upgrade back to {plan.name}</span><ArrowRight size={14} /></>}
                           </button>
-                          <div className="text-xs text-center mb-4 px-2 py-2 rounded-xl"
+                          <div className="text-xs text-center mb-4 px-2 py-2 rounded-card"
                                style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.18)' }}>
                             <span style={{ color: '#F59E0B' }}>
                               {plan.name} benefits active{periodEnd
@@ -494,12 +498,12 @@ export default function Pricing() {
                           <button
                             onClick={handleManage}
                             disabled={loading === 'portal'}
-                            className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mb-3 disabled:opacity-60"
-                            style={{ background: plan.gradient, color: '#fff', boxShadow: `0 4px 20px ${plan.glow}` }}
+                            className="pricing-uv-cta w-full py-3.5 rounded-btn font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mb-3 disabled:opacity-60"
+                            style={{ background: '#5B50FF', color: '#fff' }}
                           >
                             {loading === 'portal' ? <Loader2 size={16} className="animate-spin" /> : 'Manage subscription'}
                           </button>
-                          <div className="text-xs text-center mb-4 px-2 py-2 rounded-xl"
+                          <div className="text-xs text-center mb-4 px-2 py-2 rounded-card"
                                style={{ background: 'rgba(91,80,255,0.06)', border: '1px solid rgba(91,80,255,0.18)' }}>
                             <span style={{ color: '#8B80FF' }}>
                               Switching to {plan.name}{periodEnd
@@ -522,7 +526,7 @@ export default function Pricing() {
                     const statusNode = isCurrent && subInfo && subInfo.plan !== 'free' ? (
                       <div className="text-xs text-center mb-4 px-1" style={{ color: 'rgba(255,255,255,0.35)' }}>
                         {(subInfo.status === 'cancelled' || subInfo.status === 'canceled') ? (
-                          <span style={{ color: '#f87171' }}>Cancelled — access ends {periodEnd}</span>
+                          <span style={{ color: '#f87171' }}>Cancelled - access ends {periodEnd}</span>
                         ) : subInfo.next_payment_date ? (
                           <>Renews {formatDate(subInfo.next_payment_date)}</>
                         ) : periodEnd ? (
@@ -536,10 +540,10 @@ export default function Pricing() {
                         <button
                           onClick={() => isCurrent ? handleManage() : handleSubscribe(plan.key)}
                           disabled={isLoading}
-                          className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mb-3 disabled:opacity-60"
+                          className={`w-full py-3.5 rounded-btn font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] mb-3 disabled:opacity-60 ${isCurrent ? '' : 'pricing-uv-cta'}`}
                           style={isCurrent
                             ? { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }
-                            : { background: plan.gradient, color: '#fff', boxShadow: `0 4px 20px ${plan.glow}` }
+                            : { background: '#5B50FF', color: '#fff' }
                           }
                         >
                           {isLoading ? <Loader2 size={16} className="animate-spin" /> :
@@ -552,7 +556,7 @@ export default function Pricing() {
 
                   {/* Ultra credit slider — below CTA so prices/buttons align across cards */}
                   {plan.key === 'ultra' && (
-                    <div className="mb-5 rounded-2xl p-4" style={{ background: 'rgba(91,80,255,0.05)', border: '1px solid rgba(91,80,255,0.15)' }}>
+                    <div className="mb-5 rounded-card p-4" style={{ background: 'rgba(91,80,255,0.05)', border: '1px solid rgba(91,80,255,0.15)' }}>
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-xs font-semibold text-white/50">Customize credits / month</span>
                         <span className="text-sm font-bold" style={{ color: '#8B80FF' }}>
@@ -586,7 +590,7 @@ export default function Pricing() {
                       </div>
                       {billing === 'annual' && (
                         <p className="text-xs text-center mt-2.5 font-semibold" style={{ color: '#34D399' }}>
-                          {Math.round(ULTRA_TIERS[ultraTier].annualDiscount * 100)}% off on annual — more credits = bigger discount
+                          {Math.round(ULTRA_TIERS[ultraTier].annualDiscount * 100)}% off on annual - more credits = bigger discount
                         </p>
                       )}
                     </div>
@@ -626,7 +630,7 @@ export default function Pricing() {
         {/* Enterprise */}
         <motion.div
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.5 }}
-          className="rounded-3xl p-10 flex flex-col md:flex-row items-center justify-between gap-8 mb-10"
+          className="rounded-card p-10 flex flex-col md:flex-row items-center justify-between gap-8 mb-10"
           style={{ background: 'rgba(91,80,255,0.08)', border: '1px solid rgba(91,80,255,0.2)' }}
         >
           <div>
@@ -642,8 +646,8 @@ export default function Pricing() {
           </div>
           <a
             href="mailto:team@hyperbeing.co?subject=Enterprise Plan Enquiry"
-            className="flex-shrink-0 px-8 py-4 rounded-2xl font-bold text-sm text-white transition-all duration-200 hover:opacity-90 active:scale-[0.97] whitespace-nowrap"
-            style={{ background: '#5B50FF', boxShadow: '0 4px 24px rgba(91,80,255,0.35)' }}
+            className="pricing-uv-cta flex-shrink-0 px-8 py-4 rounded-btn font-bold text-sm text-white transition-all duration-200 active:scale-[0.97] whitespace-nowrap"
+            style={{ background: '#5B50FF' }}
           >
             Contact us →
           </a>
@@ -652,14 +656,14 @@ export default function Pricing() {
         {/* Credit cost table */}
         <motion.div
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.5 }}
-          className="rounded-3xl p-8 mb-10"
+          className="rounded-card p-8 mb-10"
           style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
         >
           <h3 className="text-white font-bold text-xl mb-1.5">How credits work</h3>
           <p className="text-white/35 text-sm mb-6">Each AI action deducts credits from your monthly balance. Unused credits don't roll over.</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {CREDIT_TABLE.map(({ action, cost }) => (
-              <div key={action} className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div key={action} className="rounded-card p-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <p className="text-2xl font-bold mb-0.5" style={{ color: '#5B50FF' }}>{cost}</p>
                 <p className="text-xs font-semibold text-white/70 mb-0.5">credits</p>
                 <p className="text-xs text-white/35">{action}</p>
@@ -669,7 +673,7 @@ export default function Pricing() {
         </motion.div>
 
         <p className="text-center text-white/25 text-sm mb-14">
-          New accounts get <span className="text-white/55 font-semibold">54 free credits</span> to try HyperBeing — no card required.
+          New accounts get <span className="text-white/55 font-semibold">54 free credits</span> to try HyperBeing - no card required.
         </p>
       </div>
 
@@ -683,10 +687,10 @@ export default function Pricing() {
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md rounded-3xl p-7"
+              className="w-full max-w-md rounded-modal p-7"
               style={{ background: '#0f0f0f', border: '1px solid rgba(91,80,255,0.2)' }}
             >
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-5 text-2xl"
+              <div className="w-12 h-12 rounded-card flex items-center justify-center mb-5 text-2xl"
                    style={{ background: 'rgba(91,80,255,0.12)', border: '1px solid rgba(91,80,255,0.2)' }}>
                 📅
               </div>
@@ -701,7 +705,7 @@ export default function Pricing() {
                 <span className="font-semibold capitalize" style={{ color: '#8B80FF' }}>{downgradeModal.pendingPlan}</span> and you'll be billed at the{' '}
                 <span className="capitalize">{downgradeModal.pendingPlan}</span> plan rate going forward.
               </p>
-              <div className="rounded-2xl px-4 py-3 mb-6 flex items-start gap-2.5"
+              <div className="rounded-card px-4 py-3 mb-6 flex items-start gap-2.5"
                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
                 <span className="text-base mt-0.5">💡</span>
                 <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
@@ -711,7 +715,7 @@ export default function Pricing() {
               </div>
               <button
                 onClick={() => setDowngradeModal(null)}
-                className="w-full py-3.5 rounded-2xl font-bold text-sm text-white transition-opacity hover:opacity-85"
+                className="pricing-uv-cta w-full py-3.5 rounded-btn font-bold text-sm text-white"
                 style={{ background: '#5B50FF' }}
               >
                 Got it

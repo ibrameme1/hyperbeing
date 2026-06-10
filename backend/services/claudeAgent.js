@@ -5,9 +5,25 @@ import { logger, requestContext } from './logger.js';
 import { metrics } from './metrics.js';
 import { tracer } from './tracer.js';
 
+// Strip em/en dashes and horizontal bars from AI output — they're replaced
+// with a plain hyphen so generated copy never shows "—" / "–" characters.
+function sanitizeText(str) {
+  return str.replace(/[‒-―−]/g, '-');
+}
+
+function sanitizeDeep(value) {
+  if (typeof value === 'string') return sanitizeText(value);
+  if (Array.isArray(value)) return value.map(sanitizeDeep);
+  if (value && typeof value === 'object') {
+    for (const key of Object.keys(value)) value[key] = sanitizeDeep(value[key]);
+    return value;
+  }
+  return value;
+}
+
 function parseJSON(str) {
-  try { return JSON.parse(str); } catch (e1) {
-    try { return JSON.parse(jsonrepair(str)); } catch (e2) {
+  try { return sanitizeDeep(JSON.parse(str)); } catch (e1) {
+    try { return sanitizeDeep(JSON.parse(jsonrepair(str))); } catch (e2) {
       throw e1; // throw original error for logging
     }
   }
@@ -477,8 +493,9 @@ export async function chat(conversationHistory, userMessage, attachments = [], u
     const match = metadataStr.match(/\{[\s\S]*\}/);
     if (match) try { metadata = JSON.parse(match[0]); } catch {}
   }
+  metadata = sanitizeDeep(metadata);
 
-  const parsed = { message: messageText, ...metadata };
+  const parsed = { message: sanitizeText(messageText), ...metadata };
   logger.debug('claude chat parsed', { state: parsed.state, slideCount: parsed.slide_plan?.slides?.length });
 
   tracer.recordStep(_tid, 'claude_chat', 'completed', Date.now() - _t);
@@ -527,13 +544,13 @@ export async function streamChat(conversationHistory, userMessage, attachments =
       if (!separatorFound) {
         const sepIdx = buffer.indexOf(SEP);
         if (sepIdx !== -1) {
-          if (sepIdx > streamedIdx) onChunk(buffer.slice(streamedIdx, sepIdx));
+          if (sepIdx > streamedIdx) onChunk(sanitizeText(buffer.slice(streamedIdx, sepIdx)));
           streamedIdx = sepIdx;
           separatorFound = true;
         } else {
           const safeLen = Math.max(streamedIdx, buffer.length - SEP.length);
           if (safeLen > streamedIdx) {
-            onChunk(buffer.slice(streamedIdx, safeLen));
+            onChunk(sanitizeText(buffer.slice(streamedIdx, safeLen)));
             streamedIdx = safeLen;
           }
         }
@@ -545,7 +562,7 @@ export async function streamChat(conversationHistory, userMessage, attachments =
   const messageText = (sepIdx !== -1 ? buffer.slice(0, sepIdx) : buffer).trim();
   const metadataStr = (sepIdx !== -1 ? buffer.slice(sepIdx + SEP.length) : '').trim();
   const msgEnd = sepIdx !== -1 ? sepIdx : buffer.length;
-  if (streamedIdx < msgEnd) onChunk(buffer.slice(streamedIdx, msgEnd));
+  if (streamedIdx < msgEnd) onChunk(sanitizeText(buffer.slice(streamedIdx, msgEnd)));
 
   let metadata = { state: 'gathering_info', slide_plan: null };
   try {
@@ -560,6 +577,7 @@ export async function streamChat(conversationHistory, userMessage, attachments =
     const match = metadataStr.match(/\{[\s\S]*\}/);
     if (match) try { metadata = JSON.parse(match[0]); } catch {}
   }
+  metadata = sanitizeDeep(metadata);
 
   const t0Chat = Date.now();
   if (userId) {
@@ -572,7 +590,7 @@ export async function streamChat(conversationHistory, userMessage, attachments =
   logger.info('claude stream chat complete', { durationMs: Date.now() - t0Chat });
 
   tracer.recordStep(_tid, 'claude_chat', 'completed', Date.now() - _t);
-  return { message: messageText, ...metadata };
+  return { message: sanitizeText(messageText), ...metadata };
 }
 
 const ANALYZE_PROMPT = `You are a presentation intelligence system. A user has submitted a brief to create a presentation. Analyze their input and return a JSON object with contextual questions to gather exactly what's needed.
@@ -637,13 +655,13 @@ export async function analyzePresentation(message, attachments = [], userId = nu
   const jsonText = raw.startsWith('```') ? raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '') : raw;
 
   try {
-    const result = JSON.parse(jsonText);
+    const result = sanitizeDeep(JSON.parse(jsonText));
     tracer.recordStep(_tid, 'claude_question_gen', 'completed', Date.now() - _t);
     return result;
   } catch {
     const match = jsonText.match(/\{[\s\S]*\}/);
     if (match) {
-      const result = JSON.parse(match[0]);
+      const result = sanitizeDeep(JSON.parse(match[0]));
       tracer.recordStep(_tid, 'claude_question_gen', 'completed', Date.now() - _t);
       return result;
     }
@@ -717,14 +735,14 @@ Return ONLY the JSON object, nothing else.`,
     : raw;
 
   try {
-    const result = JSON.parse(jsonText);
+    const result = sanitizeDeep(JSON.parse(jsonText));
     tracer.recordStep(_tid, 'claude_regen_slide', 'completed', Date.now() - _t);
     return result;
   } catch {
     const match = jsonText.match(/\{[\s\S]*\}/);
     if (match) {
       tracer.recordStep(_tid, 'claude_regen_slide', 'completed', Date.now() - _t);
-      return JSON.parse(match[0]);
+      return sanitizeDeep(JSON.parse(match[0]));
     }
     tracer.recordStep(_tid, 'claude_regen_slide', 'failed', Date.now() - _t, 'Failed to parse updated slide from Claude');
     throw new Error('Failed to parse updated slide from Claude');
@@ -1385,7 +1403,7 @@ Return only the title text, nothing else.`,
   logger.info('claude suggest title complete', { durationMs: durationMsTitle });
 
   tracer.recordStep(_tid, 'claude_suggest_title', 'completed', Date.now() - _t);
-  return response.content[0].text.trim().replace(/^["']|["']$/g, '');
+  return sanitizeText(response.content[0].text.trim().replace(/^["']|["']$/g, ''));
 }
 
 // ─── Stream new slides (add-slides feature) ──────────────────────────────────
