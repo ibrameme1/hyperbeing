@@ -1,65 +1,66 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ArrowLeft, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
+import { track } from '../utils/track';
 import Logo from '../components/Logo';
+import NovaMascot from '../components/NovaMascot';
+
+const EASE = [0.16, 1, 0.3, 1];
 
 const QUESTIONS = [
   {
-    id: 'presenter_type',
-    emoji: '🎭',
-    question: 'What kind of presenter are you?',
-    subtext: 'Be honest. We won\'t judge.',
+    id: 'use_case',
+    emoji: '🎯',
+    novaLine: "Okay, let's start with the big one.",
+    question: "What's the most important deck you need to make right now?",
+    subtext: "Be honest — this is the one Nova will obsess over first.",
+    mood: 'idle',
     options: [
-      { value: 'last-minute', label: '🔥 Last-minute legend', desc: 'I work best under pressure. Or so I tell myself.' },
-      { value: 'data-nerd', label: '📊 Spreadsheet soul', desc: 'Data is my love language. Charts are my poetry.' },
-      { value: 'performer', label: '🎤 Natural performer', desc: 'I\'ve rehearsed this. Multiple times. In the shower.' },
-      { value: 'beginner', label: '🐣 Total beginner', desc: 'Send help. And maybe a template.' },
+      { value: 'fundraising', label: '💰 Raise money', desc: 'Investor pitch. I need this to be perfect.' },
+      { value: 'product_launch', label: '🚀 Launch something', desc: 'Product or service. The world needs to know.' },
+      { value: 'sales', label: '📣 Win clients', desc: 'Proposal or sales deck. Closing time.' },
+      { value: 'school', label: '🎓 Ace an assignment', desc: 'Class presentation. Due very soon.' },
+      { value: 'internal', label: '🧑‍💼 Convince my team', desc: 'Internal deck. Lots of stakeholders.' },
     ],
   },
   {
-    id: 'use_case',
-    emoji: '🎯',
-    question: 'What are you mostly making these for?',
-    subtext: 'Your honest answer helps Nova serve you better.',
+    id: 'presenter_type',
+    emoji: '🎭',
+    novaLine: "Got it — I'll keep that in mind. Now, who am I working with?",
+    question: 'What kind of presenter are you?',
+    subtext: "Be honest. We won't judge.",
+    mood: 'thinking',
     options: [
-      { value: 'fundraising', label: '💰 Convincing investors', desc: 'Please, just give me money.' },
-      { value: 'school', label: '🎓 School / university', desc: 'It\'s always due on Friday at 11:59 PM.' },
-      { value: 'marketing', label: '📣 Marketing & campaigns', desc: 'The world needs to know about this.' },
-      { value: 'internal', label: '🧑‍💼 Internal work stuff', desc: 'Decks that people skim for 30 seconds.' },
+      { value: 'last-minute', label: '🔥 Last-minute legend', desc: 'I work best under pressure. Or so I tell myself.' },
+      { value: 'data-nerd', label: '📊 Spreadsheet soul', desc: 'Data is my love language. Charts are my poetry.' },
+      { value: 'performer', label: '🎤 Natural performer', desc: "I've rehearsed this. Multiple times. In the shower." },
+      { value: 'beginner', label: '🐣 Total beginner', desc: 'Send help. And maybe a template.' },
     ],
   },
   {
     id: 'design_vibe',
     emoji: '✨',
+    novaLine: "Love it. Let's make sure your slides match your energy.",
     question: 'Your ideal design vibe is...',
     subtext: 'This shapes how Nova art-directs your slides.',
+    mood: 'idle',
     options: [
       { value: 'dark-editorial', label: '🖤 Dark & editorial', desc: 'Like a luxury fashion magazine. Moody. Precise.' },
       { value: 'clean-minimal', label: '🤍 Clean & minimal', desc: 'Less is everything. White space is the message.' },
       { value: 'bold-punchy', label: '💥 Bold & punchy', desc: 'I want reactions. Gasps accepted.' },
-      { value: 'colorful', label: '🌈 Colourful & playful', desc: 'Life\'s too short for boring slides.' },
-    ],
-  },
-  {
-    id: 'frequency',
-    emoji: '📅',
-    question: 'How often do you make presentations?',
-    subtext: 'Frequency helps us calibrate Nova\'s pace for you.',
-    options: [
-      { value: 'daily', label: '😰 Almost every day', desc: 'This is my whole personality now. Help.' },
-      { value: 'weekly', label: '😅 Once a week or so', desc: 'I\'m fine. Everything is fine.' },
-      { value: 'monthly', label: '😬 Every few months', desc: 'But when I do it, it\'s ALWAYS a crisis.' },
-      { value: 'first-time', label: '🙋 This is my first one', desc: 'Nervous laugh. But optimistic.' },
+      { value: 'colorful', label: '🌈 Colourful & playful', desc: "Life's too short for boring slides." },
     ],
   },
   {
     id: 'priority',
     emoji: '⚡',
+    novaLine: 'One more thing before I lock in your settings —',
     question: 'What matters most to you?',
-    subtext: 'Nova will optimise for this above everything else.',
+    subtext: "Nova will optimise for this above everything else.",
+    mood: 'thinking',
     options: [
       { value: 'speed', label: '⚡ Speed', desc: 'I needed this yesterday. Literally.' },
       { value: 'quality', label: '💎 Quality', desc: 'It has to be beautiful. No exceptions.' },
@@ -70,8 +71,10 @@ const QUESTIONS = [
   {
     id: 'role',
     emoji: '🏷️',
+    novaLine: 'Okay, almost there. Just a couple quick ones.',
     question: 'What best describes your role?',
     subtext: 'Helps us tailor the experience to how you actually work.',
+    mood: 'idle',
     options: [
       { value: 'founder', label: '🚀 Founder / CEO', desc: 'Building something from scratch.' },
       { value: 'marketing', label: '📣 Marketing / Growth', desc: 'Campaigns, content, and conversions.' },
@@ -80,10 +83,26 @@ const QUESTIONS = [
     ],
   },
   {
+    id: 'frequency',
+    emoji: '📅',
+    novaLine: 'Good to know.',
+    question: 'How often do you make presentations?',
+    subtext: "Frequency helps us calibrate Nova's pace for you.",
+    mood: 'thinking',
+    options: [
+      { value: 'daily', label: '😰 Almost every day', desc: 'This is my whole personality now. Help.' },
+      { value: 'weekly', label: '😅 Once a week or so', desc: "I'm fine. Everything is fine." },
+      { value: 'monthly', label: '😬 Every few months', desc: 'But when I do it, it\'s ALWAYS a crisis.' },
+      { value: 'first-time', label: '🙋 This is my first one', desc: 'Nervous laugh. But optimistic.' },
+    ],
+  },
+  {
     id: 'team_size',
     emoji: '👥',
+    novaLine: 'Makes sense.',
     question: 'How big is your team or organisation?',
     subtext: 'Just you, or a whole operation?',
+    mood: 'idle',
     options: [
       { value: 'solo', label: '🙋 Just me', desc: 'Solo operator. All decisions, all glory.' },
       { value: 'small', label: '🤝 2–10 people', desc: 'Small team, big ambitions.' },
@@ -94,8 +113,10 @@ const QUESTIONS = [
   {
     id: 'referral',
     emoji: '📡',
+    novaLine: "Last one, I promise.",
     question: 'How did you hear about HyperBeing?',
-    subtext: 'We\'re genuinely curious.',
+    subtext: "We're genuinely curious.",
+    mood: 'idle',
     options: [
       { value: 'social', label: '📱 Social media', desc: 'TikTok, Instagram, X, or LinkedIn.' },
       { value: 'search', label: '🔍 Google / search', desc: 'Found us while looking for something.' },
@@ -105,12 +126,14 @@ const QUESTIONS = [
   },
 ];
 
+const CALIBRATION_INDEX = 3; // after 'priority' (0-indexed), before 'role'
+
 const COMPLETION_MESSAGES = {
   presenter_type: {
-    'last-minute': 'Nova works fast. You\'ll love each other.',
-    'data-nerd': 'Nova speaks fluent data. You\'re going to get along.',
+    'last-minute': "Nova works fast. You'll love each other.",
+    'data-nerd': "Nova speaks fluent data. You're going to get along.",
     'performer': 'Nova will make sure your visuals match your energy.',
-    'beginner': 'Nova will hold your hand. Gently. The whole time.',
+    'beginner': "Nova will hold your hand. Gently. The whole time.",
   },
   design_vibe: {
     'dark-editorial': 'dark editorial masterpieces',
@@ -120,18 +143,87 @@ const COMPLETION_MESSAGES = {
   },
 };
 
+const USE_CASE_LABELS = {
+  fundraising: 'investor-ready pitch',
+  product_launch: 'launch deck',
+  sales: 'proposal',
+  school: 'presentation',
+  internal: 'internal deck',
+};
+
+function getUpgradeSeed(answers) {
+  if (answers.role === 'founder') {
+    return { text: 'Founders on Pro get 5,000 credits/month — enough for fundraise season.', trigger: 'role:founder' };
+  }
+  if (answers.frequency === 'daily') {
+    return { text: "Making decks daily? Pro members get priority generation — no waiting.", trigger: 'frequency:daily' };
+  }
+  if (answers.team_size === 'medium' || answers.team_size === 'large') {
+    return { text: 'Your team would love shared brand kits — coming to Ultra.', trigger: `team_size:${answers.team_size}` };
+  }
+  return { text: '10x the decks. Upgrade to Pro for 5,000 credits/month.', trigger: 'default' };
+}
+
+/* Speech bubble that sits next to/under Nova */
+function NovaSpeech({ children }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.4, ease: EASE, delay: 0.15 }}
+      className="relative"
+      style={{
+        background: 'rgba(255,255,255,0.06)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: 16,
+        padding: '10px 16px',
+        maxWidth: 320,
+        margin: '0 auto',
+      }}
+    >
+      <p className="text-white/70 text-sm text-center leading-snug">{children}</p>
+      <div
+        style={{
+          position: 'absolute',
+          top: -6,
+          left: '50%',
+          transform: 'translateX(-50%) rotate(45deg)',
+          width: 12,
+          height: 12,
+          background: 'rgba(255,255,255,0.06)',
+          borderLeft: '1px solid rgba(255,255,255,0.08)',
+          borderTop: '1px solid rgba(255,255,255,0.08)',
+        }}
+      />
+    </motion.div>
+  );
+}
+
 export default function Onboarding() {
+  const [phase, setPhase] = useState('welcome'); // welcome | question | calibration | done
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
   const [selected, setSelected] = useState(null);
   const [direction, setDirection] = useState(1);
-  const [done, setDone] = useState(false);
   const [saveError, setSaveError] = useState('');
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  const stepStartRef = useRef(Date.now());
+  const flowStartRef = useRef(Date.now());
+
+  useEffect(() => {
+    stepStartRef.current = Date.now();
+  }, [step, phase]);
+
   const q = QUESTIONS[step];
   const isLast = step === QUESTIONS.length - 1;
+  const firstName = user?.name?.split(' ')[0] || 'there';
+
+  function handleStart() {
+    track('onboarding_started');
+    setPhase('question');
+  }
 
   function handleSelect(value) {
     setSelected(value);
@@ -141,16 +233,37 @@ export default function Onboarding() {
     if (!selected) return;
     const newAnswers = { ...answers, [q.id]: selected };
     setAnswers(newAnswers);
+    track('onboarding_question_answered', {
+      step,
+      question_id: q.id,
+      answer: selected,
+      time_on_step_ms: Date.now() - stepStartRef.current,
+    });
 
     if (isLast) {
       localStorage.setItem('hb_prefs', JSON.stringify(newAnswers));
       setSaveError('');
       try {
         await api.post('/auth/onboarding', newAnswers);
-        setDone(true);
+        const seed = getUpgradeSeed(newAnswers);
+        track('onboarding_completed', {
+          answers_summary: newAnswers,
+          total_time_ms: Date.now() - flowStartRef.current,
+        });
+        track('onboarding_upgrade_seed_shown', { seed_variant: seed.trigger, trigger_answer: seed.trigger });
+        setPhase('done');
       } catch {
         setSaveError('Something went wrong saving your preferences. Try again.');
       }
+    } else if (step === CALIBRATION_INDEX) {
+      track('onboarding_calibration_seen');
+      setPhase('calibration');
+      setTimeout(() => {
+        setDirection(1);
+        setStep(s => s + 1);
+        setSelected(null);
+        setPhase('question');
+      }, 1800);
     } else {
       setDirection(1);
       setStep(s => s + 1);
@@ -169,9 +282,20 @@ export default function Onboarding() {
     navigate('/dashboard');
   }
 
-  const firstName = user?.name?.split(' ')[0] || 'there';
+  function handleSkip() {
+    track('onboarding_skipped', { step, phase });
+    navigate('/dashboard');
+  }
+
+  function handleUpgradeSeedClick(seed) {
+    track('onboarding_upgrade_seed_clicked', { seed_variant: seed.trigger });
+    navigate('/pricing');
+  }
+
   const vibeLabel = COMPLETION_MESSAGES.design_vibe[answers.design_vibe] || 'stunning slides';
   const presenterMsg = COMPLETION_MESSAGES.presenter_type[answers.presenter_type] || '';
+  const useCaseLabel = USE_CASE_LABELS[answers.use_case] || 'first deck';
+  const upgradeSeed = getUpgradeSeed(answers);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden"
@@ -189,9 +313,9 @@ export default function Onboarding() {
       </div>
 
       {/* Skip */}
-      {!done && (
+      {phase !== 'done' && (
         <button
-          onClick={handleFinish}
+          onClick={handleSkip}
           className="absolute top-6 right-6 text-white/30 hover:text-white/60 text-sm transition-colors"
         >
           Skip for now →
@@ -199,26 +323,81 @@ export default function Onboarding() {
       )}
 
       <AnimatePresence mode="wait">
-        {done ? (
+        {phase === 'welcome' ? (
+          /* ── Welcome screen ── */
+          <motion.div
+            key="welcome"
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            transition={{ duration: 0.5, ease: EASE }}
+            className="relative z-10 text-center max-w-md w-full flex flex-col items-center"
+          >
+            <div className="mb-6">
+              <NovaMascot mood="excited" size={110} />
+            </div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2, duration: 0.5 }}
+            >
+              <h1 className="font-display text-3xl font-bold text-white mb-3">
+                Hey {firstName}, I'm Nova 👋
+              </h1>
+              <p className="text-white/55 text-base leading-relaxed mb-1 max-w-sm mx-auto">
+                I turn ideas into stunning decks in seconds.
+              </p>
+              <p className="text-white/55 text-base leading-relaxed mb-10 max-w-sm mx-auto">
+                But first, let me actually get to know you — so I can be <span className="text-white font-semibold">your</span> Nova, not just anyone's.
+              </p>
+
+              <button onClick={handleStart} className="hb-btn text-base px-8 py-4 w-full">
+                <Sparkles size={18} />
+                Let's do it
+                <ArrowRight size={16} />
+              </button>
+            </motion.div>
+          </motion.div>
+
+        ) : phase === 'calibration' ? (
+          /* ── Calibration interstitial ── */
+          <motion.div
+            key="calibration"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.4, ease: EASE }}
+            className="relative z-10 text-center max-w-md w-full flex flex-col items-center"
+          >
+            <div className="mb-8">
+              <NovaMascot mood="calibrating" size={100} />
+            </div>
+            <motion.h2
+              key="cal-text"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+              className="font-display text-2xl font-bold text-white"
+              style={{ background: 'linear-gradient(90deg, #C4B5FD, #00F0FF)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
+            >
+              Absorbing your vibe...
+            </motion.h2>
+          </motion.div>
+
+        ) : phase === 'done' ? (
           /* ── Completion screen ── */
           <motion.div
             key="done"
             initial={{ opacity: 0, scale: 0.92 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.5, ease: EASE }}
             className="relative z-10 text-center max-w-md w-full"
           >
-            {/* Animated success icon */}
-            <motion.div
-              initial={{ scale: 0, rotate: -15 }}
-              animate={{ scale: 1, rotate: 0 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 18, delay: 0.1 }}
-              className="w-24 h-24 rounded-3xl mx-auto mb-8 flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 0 60px rgba(139,92,246,0.5)' }}
-            >
-              <CheckCircle2 size={42} className="text-white" />
-            </motion.div>
+            <div className="flex justify-center mb-6">
+              <NovaMascot mood="celebrating" size={100} />
+            </div>
 
             <motion.div
               initial={{ opacity: 0, y: 16 }}
@@ -229,16 +408,16 @@ export default function Onboarding() {
                 You're all set, {firstName}!
               </h2>
               <p className="text-white/50 text-base leading-relaxed mb-2">
-                Nova is calibrated and ready to create {vibeLabel} for you.
+                Nova's calibrated and ready to build your {useCaseLabel} — with {vibeLabel}.
               </p>
               {presenterMsg && (
-                <p className="text-white/35 text-sm mb-10 italic">"{presenterMsg}"</p>
+                <p className="text-white/35 text-sm mb-8 italic">"{presenterMsg}"</p>
               )}
 
               {/* Summary pills */}
-              <div className="flex flex-wrap gap-2 justify-center mb-10">
+              <div className="flex flex-wrap gap-2 justify-center mb-8">
                 {Object.entries(answers).map(([key, val]) => {
-                  const question = QUESTIONS.find(q => q.id === key);
+                  const question = QUESTIONS.find(qq => qq.id === key);
                   const option = question?.options.find(o => o.value === val);
                   if (!option) return null;
                   return (
@@ -253,12 +432,32 @@ export default function Onboarding() {
                 })}
               </div>
 
+              {/* Credits + upgrade seed */}
+              <div
+                className="mb-6 text-left"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 16 }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-white/70 text-sm font-semibold">Your starter credits</span>
+                  <span className="text-sm font-bold" style={{ color: '#C4B5FD' }}>5 decks free</span>
+                </div>
+                <div className="h-1.5 rounded-full overflow-hidden mb-3" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                  <div className="h-full rounded-full" style={{ width: '100%', background: 'linear-gradient(90deg, #8B5CF6, #00F0FF)' }} />
+                </div>
+                <button
+                  onClick={() => handleUpgradeSeedClick(upgradeSeed)}
+                  className="text-xs text-white/45 hover:text-white/75 transition-colors text-left w-full"
+                >
+                  💡 {upgradeSeed.text} <span style={{ color: '#8B80FF' }}>See plans →</span>
+                </button>
+              </div>
+
               <button
                 onClick={handleFinish}
                 className="hb-btn text-base px-8 py-4 w-full"
               >
                 <Sparkles size={18} />
-                Take me to my dashboard
+                Make my first deck
                 <ArrowRight size={16} />
               </button>
             </motion.div>
@@ -271,11 +470,11 @@ export default function Onboarding() {
             initial={{ opacity: 0, x: direction * 60 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: direction * -60 }}
-            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.35, ease: EASE }}
             className="relative z-10 w-full max-w-lg"
           >
             {/* Progress */}
-            <div className="flex items-center gap-2 mb-10">
+            <div className="flex items-center gap-2 mb-8">
               {QUESTIONS.map((_, i) => (
                 <div
                   key={i}
@@ -289,9 +488,17 @@ export default function Onboarding() {
               ))}
             </div>
 
+            {/* Nova + speech */}
+            <div className="flex flex-col items-center mb-6">
+              <div className="mb-3">
+                <NovaMascot mood={selected ? 'excited' : q.mood} size={64} />
+              </div>
+              <NovaSpeech>{q.novaLine}</NovaSpeech>
+            </div>
+
             {/* Question */}
             <div className="text-center mb-8">
-              <div className="text-5xl mb-4">{q.emoji}</div>
+              <div className="text-4xl mb-3">{q.emoji}</div>
               <h2 className="text-2xl font-bold text-white mb-2">{q.question}</h2>
               <p className="text-white/40 text-sm">{q.subtext}</p>
             </div>
