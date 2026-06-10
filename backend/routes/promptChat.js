@@ -3,7 +3,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { generatePromptResponse } from '../services/promptGenerator.js';
-import { checkTokenBudget } from '../services/stripeService.js';
+import { checkTokenBudget, deductCredits, refundCredits, getOrCreateSubscription, CREDIT_COSTS, novaInsufficientCredits } from '../services/stripeService.js';
 import { logger } from '../services/logger.js';
 
 const router = Router();
@@ -44,6 +44,21 @@ router.post('/:sessionId', authenticateToken, async (req, res) => {
   }
 
   try {
+    deductCredits(req.user.id, CREDIT_COSTS.PROMPT_CHAT_MESSAGE, 'prompt_chat', 'Prompt generator message');
+  } catch (err) {
+    if (err.message === 'INSUFFICIENT_CREDITS') {
+      const sub = getOrCreateSubscription(req.user.id);
+      return res.status(402).json(novaInsufficientCredits({
+        creditsRemaining: sub.credits_remaining,
+        creditsNeeded: CREDIT_COSTS.PROMPT_CHAT_MESSAGE,
+        actionType: 'prompt_chat',
+        currentPlan: sub.plan,
+      }));
+    }
+    throw err;
+  }
+
+  try {
     const result = await generatePromptResponse(history, message || '', images, req.user.id);
 
     db.prepare(
@@ -56,6 +71,7 @@ router.post('/:sessionId', authenticateToken, async (req, res) => {
       readyToGenerate: result.readyToGenerate,
     });
   } catch (err) {
+    refundCredits(req.user.id, CREDIT_COSTS.PROMPT_CHAT_MESSAGE, 'prompt_chat_refund', 'Prompt chat failed — refunded');
     if (err.message === 'TOKEN_LIMIT_EXCEEDED') {
       return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
     }

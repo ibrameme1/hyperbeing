@@ -12,6 +12,7 @@ import authRoutes from './routes/auth.js';
 import presentationRoutes from './routes/presentations.js';
 import promptChatRoutes from './routes/promptChat.js';
 import billingRoutes from './routes/billing.js';
+import userRoutes from './routes/user.js';
 import { apiLimiter } from './middleware/rateLimits.js';
 import analyticsRoutes from './routes/analytics.js';
 import adminRoutes from './routes/admin.js';
@@ -96,6 +97,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/presentations', presentationRoutes);
 app.use('/api/prompt-chat', promptChatRoutes);
 app.use('/api/billing', billingRoutes);
+app.use('/api/user', userRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
 
