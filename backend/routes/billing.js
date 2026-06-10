@@ -257,11 +257,14 @@ router.post('/webhook', async (req, res) => {
 
       // Only reset on renewal (not the initial payment — that's handled by checkout.session.completed)
       if (invoice.billing_reason === 'subscription_cycle') {
-        resetCreditsForPlan(sub.user_id, sub.plan);
+        const renewPlanKey = sub.pending_plan || sub.plan;
+        const periodEndUnix = invoice.lines?.data?.[0]?.period?.end;
+        const resetDate = periodEndUnix ? new Date(periodEndUnix * 1000).toISOString() : null;
+        resetCreditsForPlan(sub.user_id, renewPlanKey, resetDate);
         const _renewUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(sub.user_id);
         if (_renewUser?.email) {
-          const _renewPlan = PLANS[sub.plan];
-          sendRenewalReceipt(_renewUser.name, _renewUser.email, _renewPlan?.name || sub.plan, _renewPlan?.credits || 0);
+          const _renewPlan = PLANS[renewPlanKey];
+          sendRenewalReceipt(_renewUser.name, _renewUser.email, _renewPlan?.name || renewPlanKey, _renewPlan?.credits || 0);
         }
       }
       break;
@@ -304,9 +307,9 @@ router.post('/webhook', async (req, res) => {
       const sub = db.prepare('SELECT * FROM subscriptions WHERE stripe_subscription_id = ?').get(stripeSub.id);
       if (!sub) break;
 
-      db.prepare(
-        'UPDATE subscriptions SET plan = ?, status = ?, stripe_subscription_id = NULL, credits_remaining = 0, updated_at = CURRENT_TIMESTAMP WHERE stripe_subscription_id = ?'
-      ).run('free', 'cancelled', stripeSub.id);
+      // Don't zero credits immediately — let the user consume what's left
+      // until credits_reset_date, then the lazy reset applies the free plan.
+      scheduleCancellation(sub.user_id);
       const _cancelUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(sub.user_id);
       if (_cancelUser?.email) sendSubscriptionCancelled(_cancelUser.name, _cancelUser.email);
       break;

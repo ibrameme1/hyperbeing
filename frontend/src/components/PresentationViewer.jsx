@@ -3,9 +3,10 @@ import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Download, Loader2, ArrowLeft,
   Sparkles, Send, Images, FileDown, Paperclip, X, Plus,
-  AlertTriangle, RefreshCw, Check, Pencil, Trash2, ImageIcon,
+  AlertTriangle, RefreshCw, Check, Pencil, Trash2, ImageIcon, Lock,
 } from 'lucide-react';
 import SlideRenderer from './SlideRenderer';
+import OutOfCreditsModal from './OutOfCreditsModal';
 import { exportToPDF, exportImages } from '../utils/pdfExport';
 import api from '../api/client';
 import { capture } from '../utils/posthog';
@@ -54,7 +55,13 @@ function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDe
               </button>
             </div>
           )}
-          {slide.status !== 'generating' && slide.status !== 'error' &&
+          {slide.status === 'locked' && (
+            <div className="absolute inset-0 flex items-center justify-center rounded-lg"
+                 style={{ background: 'rgba(10,10,15,0.7)' }}>
+              <Lock size={12} style={{ color: '#8B80FF' }} />
+            </div>
+          )}
+          {slide.status !== 'generating' && slide.status !== 'error' && slide.status !== 'locked' &&
            (!slide.image_data || slide.image_data === '' || slide.image_data?.startsWith('data:image/svg+xml')) && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-lg"
                  style={{ background: 'rgba(91,80,255,0.15)' }}>
@@ -86,8 +93,10 @@ function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDe
   );
 }
 
-export default function PresentationViewer({ slides, presentationId, title, onBack, onSlidesUpdate, onTitleChange }) {
+export default function PresentationViewer({ slides, presentationId, title, onBack, onSlidesUpdate, onTitleChange, currentPlan = 'free' }) {
   const [current, setCurrent] = useState(0);
+  const [outOfCredits, setOutOfCredits] = useState(null);
+  const [unlockingSlides, setUnlockingSlides] = useState(new Set());
   const [editInstruction, setEditInstruction] = useState('');
   const [editLoading, setEditLoading] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
@@ -234,7 +243,11 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       console.error('Edit failed:', err);
       setLocalSlides(prev => prev.map((s, i) => i === current ? { ...s, status: 'error' } : s));
       setUpdatingSlides(prev => { const n = new Set(prev); n.delete(current); return n; });
-      setEditError('Edit failed — please try again.');
+      if (err.response?.status === 402) {
+        setOutOfCredits(err.response.data);
+      } else {
+        setEditError('Edit failed — please try again.');
+      }
     } finally {
       setEditLoading(false);
     }
@@ -268,6 +281,36 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       console.error('Retry failed:', err);
       setLocalSlides(prev => prev.map((s, i) => i === slideIdx ? { ...s, status: 'error' } : s));
       setUpdatingSlides(prev => { const n = new Set(prev); n.delete(slideIdx); return n; });
+      if (err.response?.status === 402) {
+        setOutOfCredits(err.response.data);
+      }
+    }
+  }
+
+  async function handleUnlockSlide(slideIdx) {
+    const slide = localSlides[slideIdx];
+    if (!slide || unlockingSlides.has(slideIdx)) return;
+    setUnlockingSlides(prev => new Set([...prev, slideIdx]));
+    try {
+      const { data } = await api.post(`/presentations/${presentationId}/unlock-slides`, {
+        slide_indexes: [slide.index],
+      });
+      const unlocked = data.slides || [];
+      setLocalSlides(prev => {
+        const next = prev.map(s => {
+          const match = unlocked.find(u => u.index === s.index);
+          return match ? { ...s, ...match } : s;
+        });
+        onSlidesUpdate(next);
+        return next;
+      });
+    } catch (err) {
+      console.error('Unlock failed:', err);
+      if (err.response?.status === 402) {
+        setOutOfCredits(err.response.data);
+      }
+    } finally {
+      setUnlockingSlides(prev => { const n = new Set(prev); n.delete(slideIdx); return n; });
     }
   }
 
@@ -344,16 +387,22 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       setAddAttachments([]);
     } catch (err) {
       console.error('Add slides failed:', err);
-      setAddError('Could not add slides — please try again.');
+      if (err.response?.status === 402) {
+        setShowAddSlides(false);
+        setOutOfCredits(err.response.data);
+      } else {
+        setAddError('Could not add slides — please try again.');
+      }
     } finally {
       setAddLoading(false);
     }
   }
 
   const activeSlide = localSlides[current];
+  const isLocked = activeSlide?.status === 'locked';
   const isUpdating = updatingSlides.has(current) || activeSlide?.status === 'generating';
   const isFailed = activeSlide?.status === 'error' && !updatingSlides.has(current);
-  const isMissingImage = !isUpdating && !isFailed && activeSlide &&
+  const isMissingImage = !isUpdating && !isFailed && !isLocked && activeSlide &&
     (!activeSlide.image_data || activeSlide.image_data === '' ||
      activeSlide.image_data?.startsWith('data:image/svg+xml'));
 
@@ -518,10 +567,15 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               className="relative w-full"
               style={{ maxWidth: 'min(896px, calc((100vh - 260px) * 16 / 9))' }}
             >
-              <SlideRenderer slide={activeSlide} className="rounded-xl shadow-2xl" />
+              <SlideRenderer
+                slide={activeSlide}
+                className="rounded-xl shadow-2xl"
+                onUnlock={isLocked ? () => handleUnlockSlide(current) : undefined}
+                unlocking={unlockingSlides.has(current)}
+              />
 
               {/* Canva-style hover-to-edit overlay */}
-              {!isUpdating && !isFailed && (
+              {!isUpdating && !isFailed && !isLocked && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   whileHover={{ opacity: 1 }}
@@ -872,6 +926,17 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               </div>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Out of credits modal ─────────────────────────────── */}
+      <AnimatePresence>
+        {outOfCredits && (
+          <OutOfCreditsModal
+            currentPlan={currentPlan}
+            details={outOfCredits}
+            onClose={() => setOutOfCredits(null)}
+          />
         )}
       </AnimatePresence>
     </div>

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import { ArrowLeft, Send, Sparkles, X, Loader2, Copy, Check, RotateCcw, Paperclip } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import OutOfCreditsModal from '../components/OutOfCreditsModal';
 import api from '../api/client';
 
 function DeliveryBlock({ text, onUsePrompt }) {
@@ -89,11 +90,19 @@ export default function PromptGeneratorPage() {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState(null);
+  const [outOfCredits, setOutOfCredits] = useState(null);
+  const [currentPlan, setCurrentPlan] = useState('free');
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
 
   const STORAGE_KEY = `hb_prompt_session_${user?.id}`;
   const MESSAGES_KEY = `hb_prompt_messages_${user?.id}`;
+
+  useEffect(() => {
+    api.get('/billing/subscription')
+      .then(r => setCurrentPlan(r.data.subscription.plan))
+      .catch(() => {});
+  }, []);
 
   // Init session
   useEffect(() => {
@@ -174,6 +183,13 @@ export default function PromptGeneratorPage() {
       }]);
     } catch (err) {
       const status = err.response?.status;
+      if (status === 402) {
+        setOutOfCredits(err.response.data);
+        setMessages(prev => prev.filter(m => m.id !== userMsg.id));
+        setInput(userMsg.content);
+        setImages(sentImages);
+        return;
+      }
       const errMsg = err.response?.data?.error ||
         (status === 429 ? 'Too many messages. Please wait a moment before continuing.' :
          status === 503 ? 'The AI is temporarily unavailable. Please try again shortly.' :
@@ -335,6 +351,15 @@ export default function PromptGeneratorPage() {
         </div>
         <p className="text-center text-[11px] mt-2" style={{ color: '#555555', fontFamily: 'Inter,sans-serif' }}>⌘ + Enter to send</p>
       </div>
+      <AnimatePresence>
+        {outOfCredits && (
+          <OutOfCreditsModal
+            currentPlan={currentPlan}
+            details={outOfCredits}
+            onClose={() => setOutOfCredits(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -5,17 +5,19 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
 
-const CM = 10;
-
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Education', 'Marketing', 'Design', 'Consulting', 'Real Estate', 'Media', 'Other'];
 const USE_CASES = ['Investor pitches', 'Sales decks', 'Internal reports', 'Client proposals', 'Educational content', 'Product demos', 'Conference talks', 'Other'];
 
 function PlanBadge({ plan }) {
   const styles = {
-    free:  { bg: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)', label: 'Free' },
-    basic: { bg: 'rgba(139,92,246,0.15)',  color: '#C4B5FD', label: 'Basic' },
-    pro:   { bg: 'rgba(0,240,255,0.12)',   color: '#00F0FF', label: 'Pro' },
-    ultra: { bg: 'rgba(251,191,36,0.15)',  color: '#FCD34D', label: 'Ultra' },
+    free:   { bg: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)', label: 'Free' },
+    basic:  { bg: 'rgba(139,92,246,0.15)',  color: '#C4B5FD', label: 'Basic' },
+    pro:    { bg: 'rgba(0,240,255,0.12)',   color: '#00F0FF', label: 'Pro' },
+    ultra:  { bg: 'rgba(251,191,36,0.15)',  color: '#FCD34D', label: 'Ultra' },
+    ultra1: { bg: 'rgba(251,191,36,0.15)',  color: '#FCD34D', label: 'Ultra 1' },
+    ultra2: { bg: 'rgba(251,191,36,0.15)',  color: '#FCD34D', label: 'Ultra 2' },
+    ultra3: { bg: 'rgba(251,191,36,0.15)',  color: '#FCD34D', label: 'Ultra 3' },
+    ultra4: { bg: 'rgba(251,191,36,0.15)',  color: '#FCD34D', label: 'Ultra 4' },
   };
   const s = styles[plan] || styles.free;
   return (
@@ -100,8 +102,8 @@ export default function Profile() {
     return new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   }
 
-  const creditsLeft   = sub ? sub.credits_remaining * CM : null;
-  const creditsTotal  = plan ? plan.credits * CM : null;
+  const creditsLeft   = sub ? sub.credits_remaining : null;
+  const creditsTotal  = plan ? plan.credits : null;
   const creditsPct    = creditsTotal > 0 ? Math.min(100, Math.round((creditsLeft / creditsTotal) * 100)) : 0;
   const periodEnd     = sub?.current_period_end ? formatDate(sub.current_period_end) : null;
   const nextPayment   = sub?.next_payment_date   ? formatDate(sub.next_payment_date)  : null;

@@ -1,9 +1,9 @@
 import Stripe from 'stripe';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
-import { CREDIT_COSTS, PLAN_CREDITS, EDIT_TIER_THRESHOLDS, PLAN_LADDER, getEditTierThreshold, suggestPlanForCost } from '../config/credits.js';
+import { CREDIT_COSTS, PLAN_CREDITS, EDIT_TIER_THRESHOLDS, PLAN_LADDER, getEditTierThreshold, suggestPlanForCost, novaInsufficientCredits } from '../config/credits.js';
 
-export { CREDIT_COSTS, EDIT_TIER_THRESHOLDS, PLAN_LADDER, getEditTierThreshold, suggestPlanForCost };
+export { CREDIT_COSTS, EDIT_TIER_THRESHOLDS, PLAN_LADDER, getEditTierThreshold, suggestPlanForCost, novaInsufficientCredits };
 
 let _stripe = null;
 export function getStripe() {
@@ -79,21 +79,37 @@ function writeLedgerEntry(db, {
   presentationId = null, slidesGenerated = 0, slidesLocked = 0,
   editTier = null, editsThisMonthBefore = null, metadata = {},
 }) {
+  const id = uuid();
   db.prepare(
     `INSERT INTO credit_transactions
        (id, user_id, amount, balance_after, credits_before, type, description, presentation_id,
         slides_generated, slides_locked, edit_tier_used, edits_this_month_before, metadata)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(uuid(), userId, amount, balanceAfter, creditsBefore, type, description, presentationId,
+  ).run(id, userId, amount, balanceAfter, creditsBefore, type, description, presentationId,
         slidesGenerated, slidesLocked, editTier, editsThisMonthBefore, JSON.stringify(metadata || {}));
+  return id;
+}
+
+// Merge additional fields into a ledger entry's metadata (e.g. attaching
+// locked-slide prompts once Phase 2 completes, after the initial deduction).
+export function updateLedgerMetadata(ledgerId, patch) {
+  if (!ledgerId) return;
+  const db = getDb();
+  const row = db.prepare('SELECT metadata FROM credit_transactions WHERE id = ?').get(ledgerId);
+  if (!row) return;
+  let metadata = {};
+  try { metadata = JSON.parse(row.metadata || '{}'); } catch {}
+  db.prepare('UPDATE credit_transactions SET metadata = ? WHERE id = ?')
+    .run(JSON.stringify({ ...metadata, ...patch }), ledgerId);
 }
 
 // ── Generic atomic deduction (used by generation, add-slides, prompt-chat, refunds) ──
 
-// Throws Error('INSUFFICIENT_CREDITS') if the user can't afford `amount`.
+// Returns { newBalance, ledgerId }. Throws Error('INSUFFICIENT_CREDITS') if
+// the user can't afford `amount`.
 export function deductCredits(userId, amount, type, description, opts = {}) {
-  if (isAdmin(userId)) return 999999;
-  if (amount <= 0) return getCredits(userId);
+  if (isAdmin(userId)) return { newBalance: 999999, ledgerId: null };
+  if (amount <= 0) return { newBalance: getCredits(userId), ledgerId: null };
 
   const db = getDb();
   const {
@@ -109,13 +125,13 @@ export function deductCredits(userId, amount, type, description, opts = {}) {
     db.prepare('UPDATE subscriptions SET credits_remaining = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?')
       .run(newBalance, userId);
 
-    writeLedgerEntry(db, {
+    const ledgerId = writeLedgerEntry(db, {
       userId, amount: -amount, balanceAfter: newBalance, creditsBefore: sub.credits_remaining,
       type, description, presentationId, slidesGenerated, slidesLocked, editTier,
       editsThisMonthBefore: sub.edits_this_month, metadata,
     });
 
-    return newBalance;
+    return { newBalance, ledgerId };
   });
 
   return txn();

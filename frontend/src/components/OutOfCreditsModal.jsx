@@ -5,26 +5,56 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { track } from '../utils/track';
 
-const UPGRADE_OPTIONS = {
-  free:  [{ key: 'basic', name: 'Basic', price: 25 }, { key: 'pro', name: 'Pro', price: 65 }],
-  basic: [{ key: 'pro', name: 'Pro', price: 65 }, { key: 'ultra', name: 'Ultra', price: 149 }],
-  pro:   [{ key: 'ultra', name: 'Ultra', price: 149 }],
-  ultra: [],
+// Plans the checkout endpoint will accept. Ultra tiers 1-4 all map to
+// planKey: 'ultra' + an ultraTier index (0-3).
+const PLAN_INFO = {
+  basic:  { name: 'Basic',   price: 25,  checkout: { planKey: 'basic' } },
+  pro:    { name: 'Pro',     price: 65,  checkout: { planKey: 'pro' } },
+  ultra1: { name: 'Ultra 1', price: 149, checkout: { planKey: 'ultra', ultraTier: 0 } },
+  ultra2: { name: 'Ultra 2', price: 209, checkout: { planKey: 'ultra', ultraTier: 1 } },
+  ultra3: { name: 'Ultra 3', price: 269, checkout: { planKey: 'ultra', ultraTier: 2 } },
+  ultra4: { name: 'Ultra 4', price: 299, checkout: { planKey: 'ultra', ultraTier: 3 } },
 };
 
-const PLAN_ICONS = { basic: Zap, pro: Crown, ultra: Rocket };
-const PLAN_COLORS = { basic: '#5B50FF', pro: '#8B80FF', ultra: '#22c55e' };
+const PLAN_LADDER = ['free', 'basic', 'pro', 'ultra1', 'ultra2', 'ultra3', 'ultra4'];
 
-export default function OutOfCreditsModal({ currentPlan = 'free', onClose }) {
+const PLAN_ICONS = { basic: Zap, pro: Crown, ultra1: Rocket, ultra2: Rocket, ultra3: Rocket, ultra4: Rocket };
+
+function getUpgradeOptions(currentPlan, suggestedPlan) {
+  // Legacy 'ultra' rows are equivalent to ultra1 for ladder purposes.
+  const normalized = currentPlan === 'ultra' ? 'ultra1' : currentPlan;
+  const idx = Math.max(PLAN_LADDER.indexOf(normalized), 0);
+  let options = PLAN_LADDER.slice(idx + 1).map(key => ({ key, ...PLAN_INFO[key] }));
+
+  // Put the suggested plan first if it's one of the available options
+  if (suggestedPlan && options.some(o => o.key === suggestedPlan)) {
+    options = [
+      options.find(o => o.key === suggestedPlan),
+      ...options.filter(o => o.key !== suggestedPlan),
+    ];
+  }
+  return options.slice(0, 2);
+}
+
+const ACTION_LABELS = {
+  create_presentation: 'generate this presentation',
+  add_slides: 'add these slides',
+  slide_edit: 'edit this slide',
+  unlock_slides: 'unlock these slides',
+  prompt_chat: 'send this message',
+};
+
+export default function OutOfCreditsModal({ currentPlan = 'free', details = null, onClose }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(null);
-  const upgrades = UPGRADE_OPTIONS[currentPlan] || [];
-  useEffect(() => { track('out_of_credits', { current_plan: currentPlan }); }, []);
+  const upgrades = getUpgradeOptions(currentPlan, details?.suggested_plan);
+  useEffect(() => { track('out_of_credits', { current_plan: currentPlan, action_type: details?.action_type }); }, []);
 
   async function handleUpgrade(planKey) {
     setLoading(planKey);
     try {
-      const { data } = await api.post('/billing/checkout', { planKey, billing: 'monthly' });
+      const checkout = PLAN_INFO[planKey]?.checkout || { planKey };
+      const { data } = await api.post('/billing/checkout', { ...checkout, billing: 'monthly' });
       window.location.href = data.url;
     } catch {
       setLoading(null);
@@ -67,9 +97,11 @@ export default function OutOfCreditsModal({ currentPlan = 'free', onClose }) {
                 You're out of credits
               </h2>
               <p style={{ fontFamily: 'Inter,system-ui,sans-serif', fontSize: 14, color: '#888888' }}>
-                {currentPlan === 'ultra'
-                  ? 'Your credits reset at the start of your next billing cycle.'
-                  : 'Top up by upgrading your plan or wait for your next billing cycle.'}
+                {details?.action_type && ACTION_LABELS[details.action_type]
+                  ? `You need ${details.credits_needed ?? 'more'} credits to ${ACTION_LABELS[details.action_type]}, but you only have ${details.credits_remaining ?? 0} left.`
+                  : currentPlan?.startsWith('ultra')
+                    ? 'Your credits reset at the start of your next billing cycle.'
+                    : 'Top up by upgrading your plan or wait for your next billing cycle.'}
               </p>
             </div>
             <button

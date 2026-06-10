@@ -53,3 +53,19 @@ export function suggestPlanForCost(currentPlan, creditsNeeded) {
   }
   return PLAN_LADDER[PLAN_LADDER.length - 1];
 }
+
+// Standard 402 payload for any action blocked by insufficient credits.
+// "Cute Nova" copy — shown by the frontend as an OutOfCreditsModal-style prompt.
+export function novaInsufficientCredits({ creditsRemaining, creditsNeeded, actionType, currentPlan }) {
+  return {
+    error: "omg i can't do that right now — you're out of credits! upgrade your plan and i'll get right back to it 🥺",
+    nova: true,
+    code: 'INSUFFICIENT_CREDITS',
+    credits_remaining: creditsRemaining,
+    credits_needed: creditsNeeded,
+    action_type: actionType,
+    current_plan: currentPlan,
+    suggested_plan: suggestPlanForCost(currentPlan, creditsNeeded),
+    upgrade_url: '/pricing',
+  };
+}

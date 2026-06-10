@@ -27,14 +27,11 @@ const sliderThumbStyle = `
   }
 `;
 
-// All credits displayed ×10 vs backend — same ratios, bigger numbers
-const CM = 10;
-
 const ULTRA_TIERS = [
-  { credits: 20000, price: 149, annualDiscount: 0.22 },
-  { credits: 35000, price: 209, annualDiscount: 0.25 },
-  { credits: 50000, price: 269, annualDiscount: 0.28 },
-  { credits: 60000, price: 299, annualDiscount: 0.30 },
+  { credits: 8000, price: 149, annualDiscount: 0.22 },
+  { credits: 11200, price: 209, annualDiscount: 0.25 },
+  { credits: 14400, price: 269, annualDiscount: 0.28 },
+  { credits: 16000, price: 299, annualDiscount: 0.30 },
 ];
 
 const PLANS = [
@@ -43,7 +40,7 @@ const PLANS = [
     name: 'Basic',
     tagline: 'For first-time AI presentation creators',
     monthlyPrice: 25,
-    backendCredits: 100,
+    credits: 1200,
     annualDiscount: 0.20,
     icon: Zap,
     color: '#9CA3AF',
@@ -67,7 +64,7 @@ const PLANS = [
     name: 'Pro',
     tagline: 'For consistent AI presentation creators',
     monthlyPrice: 65,
-    backendCredits: 500,
+    credits: 3200,
     annualDiscount: 0.20,
     icon: Crown,
     color: '#8B5CF6',
@@ -91,7 +88,7 @@ const PLANS = [
     name: 'Ultra',
     tagline: 'For power users and agencies',
     monthlyPrice: 149,
-    backendCredits: 2000,
+    credits: 8000,
     annualDiscount: 0.22,
     icon: Rocket,
     color: '#00F0FF',
@@ -115,9 +112,9 @@ const PLANS = [
 ];
 
 const CREDIT_TABLE = [
-  { action: 'Create full presentation (10 slides)', cost: 100 },
-  { action: 'Add slides (per batch)', cost: 30 },
-  { action: 'Regenerate a slide', cost: 10 },
+  { action: 'Generate a slide (per slide)', cost: 18 },
+  { action: 'Add a slide (per slide)', cost: 18 },
+  { action: 'Edit a slide', cost: '5–15' },
 ];
 
 export default function Pricing() {
@@ -240,7 +237,7 @@ export default function Pricing() {
 
   function getPlanCredits(plan) {
     if (plan.key === 'ultra') return ULTRA_TIERS[ultraTier].credits;
-    return plan.backendCredits * CM;
+    return plan.credits;
   }
 
   function getAnnualDiscount(plan) {
@@ -273,7 +270,7 @@ export default function Pricing() {
         <div className="flex items-center gap-3">
           {creditsLeft !== null && (
             <span className="text-sm px-3 py-1.5 rounded-xl" style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.3)' }}>
-              {(creditsLeft * CM).toLocaleString()} credits left
+              {creditsLeft.toLocaleString()} credits left
             </span>
           )}
           {user && currentPlan !== 'free' && (
@@ -368,7 +365,7 @@ export default function Pricing() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-14" style={{ paddingTop: '20px' }}>
           {PLANS.map((plan, i) => {
             const Icon = plan.icon;
-            const isCurrent = currentPlan === plan.key;
+            const isCurrent = plan.key === 'ultra' ? currentPlan?.startsWith('ultra') : currentPlan === plan.key;
             const isLoading = loading === plan.key;
             const price = getPlanPrice(plan);
             const credits = getPlanCredits(plan);
@@ -417,7 +414,7 @@ export default function Pricing() {
                       <span className="text-lg">✦</span>
                       <span className="text-xl font-bold text-white">{credits.toLocaleString()} credits/mo</span>
                     </div>
-                    <p className="text-xs text-white/35 ml-7">= {(credits / 100).toFixed(0)} full presentations</p>
+                    <p className="text-xs text-white/35 ml-7">≈ {Math.floor(credits / 180)} full 10-slide presentations</p>
                   </div>
 
                   {/* Price */}
@@ -458,7 +455,7 @@ export default function Pricing() {
                     const pendingPlan = subInfo?.pending_plan;
                     const isCurrentEnding = plan.key === currentPlan && !!pendingPlan;
                     const isPendingNext   = plan.key === pendingPlan;
-                    const RANK = { free: 0, basic: 1, pro: 2, ultra: 3 };
+                    const RANK = { free: 0, basic: 1, pro: 2, ultra: 3, ultra1: 3, ultra2: 4, ultra3: 5, ultra4: 6 };
                     const currentRank = RANK[currentPlan] ?? 0;
                     const planRank    = RANK[plan.key] ?? 0;
                     const periodEnd   = formatDate(subInfo?.current_period_end);

@@ -427,9 +427,10 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
   }, []);
 
   const initials = (user?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-  const planMax = currentPlan === 'basic' ? 100 : currentPlan === 'pro' ? 500 : currentPlan === 'ultra' ? 2000 : 5;
+  const PLAN_MAX = { free: 15, basic: 1200, pro: 3200, ultra: 8000, ultra1: 8000, ultra2: 11200, ultra3: 14400, ultra4: 16000 };
+  const planMax = PLAN_MAX[currentPlan] ?? 15;
   const pct = isAdmin ? 100 : planMax > 0 ? Math.min(100, Math.round((credits / planMax) * 100)) : 0;
-  const low = !isAdmin && credits !== null && credits < 10;
+  const low = !isAdmin && credits !== null && credits < 18;
 
   const ringColor = isAdmin ? '#8B5CF6'
     : pct <= 20 ? '#f87171'
@@ -498,7 +499,7 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Credits remaining</span>
                     <span className="text-xs font-bold" style={{ color: low ? '#f87171' : '#8B5CF6' }}>
-                      {isAdmin ? '∞' : (credits * 10).toLocaleString()} / {isAdmin ? '∞' : (planMax * 10).toLocaleString()}
+                      {isAdmin ? '∞' : credits.toLocaleString()} / {isAdmin ? '∞' : planMax.toLocaleString()}
                     </span>
                   </div>
                   <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
@@ -609,6 +610,7 @@ export default function Dashboard() {
   const [currentPlan, setCurrentPlan] = useState('free');
   const [isAdmin, setIsAdmin] = useState(false);
   const [showOutOfCredits, setShowOutOfCredits] = useState(false);
+  const [outOfCreditsDetails, setOutOfCreditsDetails] = useState(null);
   const [creatingPresentation, setCreatingPresentation] = useState(false);
   const [adminSlideCount, setAdminSlideCount] = useState(null); // null = let Nova decide
   const [showSlideCountInput, setShowSlideCountInput] = useState(false);
@@ -795,6 +797,7 @@ export default function Dashboard() {
     } catch (err) {
       setCreatingPresentation(false);
       if (err.response?.status === 402) {
+        setOutOfCreditsDetails(err.response.data || null);
         setShowOutOfCredits(true);
         track('out_of_credits', { page: 'dashboard' });
         return;
@@ -910,7 +913,8 @@ export default function Dashboard() {
       {showOutOfCredits && (
         <OutOfCreditsModal
           currentPlan={currentPlan}
-          onClose={() => setShowOutOfCredits(false)}
+          details={outOfCreditsDetails}
+          onClose={() => { setShowOutOfCredits(false); setOutOfCreditsDetails(null); }}
         />
       )}
     </AnimatePresence>

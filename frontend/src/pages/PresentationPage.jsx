@@ -462,6 +462,13 @@ export default function PresentationPage() {
   const [totalSlides, setTotalSlides] = useState(0);
   const [generationStage, setGenerationStage] = useState(0);
   const [slidePlan, setSlidePlan] = useState([]);
+  const [currentPlan, setCurrentPlan] = useState('free');
+
+  useEffect(() => {
+    api.get('/billing/subscription')
+      .then(r => setCurrentPlan(r.data.subscription.plan))
+      .catch(() => {});
+  }, []);
 
   const sseRef = useRef(null);
   const pollRef = useRef(null);
@@ -711,6 +718,33 @@ export default function PresentationPage() {
         setGeneratedSlides(prev => [...prev, ...(event.placeholders || [])].sort((a, b) => a.index - b.index));
       }
 
+      if (event.type === 'slide_locked') {
+        setGeneratedSlides(prev => {
+          const next = prev.map(s => s.index === event.slide.index ? event.slide : s);
+          if (!prev.some(s => s.index === event.slide.index)) next.push(event.slide);
+          return next.sort((a, b) => a.index - b.index);
+        });
+      }
+
+      if (event.type === 'slides_trimmed') {
+        const keep = new Set(event.keep_indices || []);
+        setGeneratedSlides(prev => prev.filter(s => s.status !== 'generating' || keep.has(s.index)));
+      }
+
+      if (event.type === 'partial_generation') {
+        setSseError(
+          `${event.slides_generated} slide${event.slides_generated === 1 ? '' : 's'} generated, ` +
+          `${event.slides_locked} locked — you need ${event.credits_needed} more credits to unlock ` +
+          `${event.slides_locked === 1 ? 'it' : 'them'}.`
+        );
+      }
+
+      if (event.type === 'slides_unlocked') {
+        setGeneratedSlides(prev =>
+          prev.map(s => event.slide_indexes.includes(s.index) ? { ...s, status: 'complete' } : s)
+        );
+      }
+
       if (event.type === 'slide_updated') {
         setGeneratedSlides(prev =>
           prev.map(s => s.index === event.slide.index ? event.slide : s)
@@ -888,6 +922,7 @@ export default function PresentationPage() {
           slides={generatedSlides}
           presentationId={id}
           title={presentation.title}
+          currentPlan={currentPlan}
           onBack={() => {
             sseRef.current?.close();
             navigate('/dashboard');
