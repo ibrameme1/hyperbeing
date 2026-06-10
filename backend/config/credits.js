@@ -7,9 +7,9 @@ export const CREDIT_COSTS = {
   SLIDES_ADD_PER_SLIDE: 18,        // add-slides: per slide added
   SLIDE_EDIT_TIER_1: 5,            // slide edit, under monthly threshold
   SLIDE_EDIT_TIER_2: 15,           // slide edit, at/over monthly threshold
-  REFERENCE_IMAGE_PER_SLIDE: 5,    // surcharge per slide with a reference image attached
+  REFERENCE_IMAGE_PER_SLIDE: 0,    // surcharge per slide with a reference image attached — disabled
   EXPORT: 0,                       // exporting a presentation is always free
-  PROMPT_CHAT_MESSAGE: 8,          // prompt-generator conversational turn
+  PROMPT_CHAT_MESSAGE: 0,          // prompt-generator conversational turn — disabled
 };
 
 // Number of edits a user can make this month at TIER_1 pricing before
