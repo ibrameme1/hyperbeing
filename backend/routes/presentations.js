@@ -381,6 +381,11 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
       };
       completedSlides.set(slide.index, lockedSlide);
       persistProgress();
+      // Persist locked_slides immediately so /unlock-slides works as soon as
+      // the frontend shows the unlock button, without waiting for the rest
+      // of the slides to finish generating.
+      db.prepare('UPDATE presentations SET locked_slides = ? WHERE id = ?')
+        .run(JSON.stringify(lockedSlidesStore), presentationId);
       broadcast(presentationId, { type: 'slide_locked', slide: lockedSlide });
       return;
     }

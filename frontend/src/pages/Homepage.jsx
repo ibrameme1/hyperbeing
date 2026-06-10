@@ -516,7 +516,7 @@ export default function Homepage() {
       </nav>
 
       {/* ── 2. HERO ── */}
-      <section style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '80px', paddingBottom: '160px', position: 'relative', background: '#f5f5f5' }}>
+      <section style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '80px', paddingBottom: '64px', position: 'relative', background: '#f5f5f5', overflow: 'hidden' }}>
         {/* Atmospheric glow top-right */}
         <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 65% 40%, rgba(91,80,255,0.08), transparent 60%)', pointerEvents: 'none' }} />
 
@@ -602,16 +602,15 @@ export default function Homepage() {
         </div>
 
         {/* Simple fade from hero into the dark demo section */}
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 160, background: 'linear-gradient(to bottom, transparent, #080808)', pointerEvents: 'none', zIndex: 2 }} />
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 64, background: 'linear-gradient(to bottom, transparent, #080808)', pointerEvents: 'none', zIndex: 2 }} />
       </section>
 
       {/* ── 4. PRODUCT DEMO ── */}
-      <section id="demo" style={{ background: '#080808', padding: '0 24px 120px', position: 'relative' }}>
+      <section id="demo" style={{ background: '#080808', padding: '64px 24px 120px', position: 'relative' }}>
         <div style={{ maxWidth: '900px', margin: '0 auto' }}>
           <Reveal>
             <div style={{
               position: 'relative',
-              marginTop: '-96px',
               background: '#0f0f0f',
               border: '0.5px solid #1e1e1e',
               borderRadius: '24px',

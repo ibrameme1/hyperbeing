@@ -13,16 +13,16 @@ const sliderThumbStyle = `
     width: 22px; height: 22px;
     border-radius: 50%;
     background: #fff;
-    border: 3px solid #00F0FF;
-    box-shadow: 0 0 10px rgba(0,240,255,0.5);
+    border: 3px solid #8B80FF;
+    box-shadow: 0 0 10px rgba(139,128,255,0.5);
     cursor: pointer;
   }
   input[type='range'].ultra-slider::-moz-range-thumb {
     width: 22px; height: 22px;
     border-radius: 50%;
     background: #fff;
-    border: 3px solid #00F0FF;
-    box-shadow: 0 0 10px rgba(0,240,255,0.5);
+    border: 3px solid #8B80FF;
+    box-shadow: 0 0 10px rgba(139,128,255,0.5);
     cursor: pointer;
   }
 `;
@@ -67,10 +67,10 @@ const PLANS = [
     credits: 3200,
     annualDiscount: 0.20,
     icon: Crown,
-    color: '#8B5CF6',
-    gradient: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
-    border: 'rgba(139,92,246,0.5)',
-    glow: 'rgba(139,92,246,0.3)',
+    color: '#5B50FF',
+    gradient: 'linear-gradient(135deg, #5B50FF 0%, #3B2FFF 100%)',
+    border: 'rgba(91,80,255,0.5)',
+    glow: 'rgba(91,80,255,0.3)',
     speed: { label: 'Fast Generation', emoji: '⚡', color: '#F59E0B' },
     parallel: { label: '6 slides in parallel', emoji: '🔀' },
     popular: true,
@@ -91,10 +91,10 @@ const PLANS = [
     credits: 8000,
     annualDiscount: 0.22,
     icon: Rocket,
-    color: '#00F0FF',
-    gradient: 'linear-gradient(135deg, #0891B2 0%, #06B6D4 100%)',
-    border: 'rgba(0,240,255,0.45)',
-    glow: 'rgba(0,240,255,0.25)',
+    color: '#8B80FF',
+    gradient: 'linear-gradient(135deg, #8B80FF 0%, #5B50FF 100%)',
+    border: 'rgba(139,128,255,0.45)',
+    glow: 'rgba(139,128,255,0.25)',
     speed: { label: 'Fastest Generation', emoji: '🚀', color: '#10B981' },
     parallel: { label: 'Unlimited parallel generation', emoji: '🔀' },
     bestValue: true,
@@ -246,11 +246,11 @@ export default function Pricing() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: '#07070A' }}>
+    <div className="min-h-screen" style={{ background: '#080808' }}>
       <div className="fixed top-0 left-1/4 w-[600px] h-[600px] rounded-full pointer-events-none"
-           style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.12) 0%, transparent 65%)', filter: 'blur(80px)' }} />
+           style={{ background: 'radial-gradient(circle, rgba(91,80,255,0.18) 0%, transparent 65%)', filter: 'blur(80px)' }} />
       <div className="fixed bottom-0 right-1/4 w-[500px] h-[500px] rounded-full pointer-events-none"
-           style={{ background: 'radial-gradient(circle, rgba(0,240,255,0.08) 0%, transparent 65%)', filter: 'blur(80px)' }} />
+           style={{ background: 'radial-gradient(circle, rgba(91,80,255,0.10) 0%, transparent 65%)', filter: 'blur(80px)' }} />
 
       <style>{sliderThumbStyle}</style>
       {/* Nav */}
@@ -269,7 +269,7 @@ export default function Pricing() {
         </div>
         <div className="flex items-center gap-3">
           {creditsLeft !== null && (
-            <span className="text-sm px-3 py-1.5 rounded-xl" style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.3)' }}>
+            <span className="text-sm px-3 py-1.5 rounded-xl" style={{ background: 'rgba(91,80,255,0.15)', color: '#8B80FF', border: '1px solid rgba(91,80,255,0.3)' }}>
               {creditsLeft.toLocaleString()} credits left
             </span>
           )}
@@ -287,7 +287,7 @@ export default function Pricing() {
             <button
               onClick={() => navigate('/profile')}
               className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white flex-shrink-0 transition-opacity hover:opacity-80"
-              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+              style={{ background: '#5B50FF' }}
               title="Profile"
             >
               {(user.name || user.email || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
@@ -297,7 +297,7 @@ export default function Pricing() {
             <button
               onClick={() => navigate('/login')}
               className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl transition-opacity hover:opacity-80"
-              style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.3)' }}
+              style={{ background: 'rgba(91,80,255,0.15)', color: '#8B80FF', border: '1px solid rgba(91,80,255,0.3)' }}
             >
               <User size={12} /> Sign in
             </button>
@@ -326,14 +326,14 @@ export default function Pricing() {
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="text-center mb-10">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold mb-5"
-               style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.25)' }}>
+               style={{ background: 'rgba(91,80,255,0.15)', color: '#8B80FF', border: '1px solid rgba(91,80,255,0.25)' }}>
             <Sparkles size={12} /> Simple, transparent pricing
           </div>
           <h1 className="font-display text-5xl font-bold text-white mb-4">
             Pick your plan,{' '}
-            <span style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <em style={{ color: '#8B80FF', fontStyle: 'italic' }}>
               start creating
-            </span>
+            </em>
           </h1>
           <p className="text-white/45 text-lg max-w-xl mx-auto mb-9">
             Every plan includes AI image generation, PDF export, and Nova's full art direction engine.
@@ -500,8 +500,8 @@ export default function Pricing() {
                             {loading === 'portal' ? <Loader2 size={16} className="animate-spin" /> : 'Manage subscription'}
                           </button>
                           <div className="text-xs text-center mb-4 px-2 py-2 rounded-xl"
-                               style={{ background: 'rgba(0,240,255,0.06)', border: '1px solid rgba(0,240,255,0.18)' }}>
-                            <span style={{ color: '#00F0FF' }}>
+                               style={{ background: 'rgba(91,80,255,0.06)', border: '1px solid rgba(91,80,255,0.18)' }}>
+                            <span style={{ color: '#8B80FF' }}>
                               Switching to {plan.name}{periodEnd
                                 ? <> on <span className="font-bold">{periodEnd}</span></>
                                 : ' at end of billing period'}
@@ -552,10 +552,10 @@ export default function Pricing() {
 
                   {/* Ultra credit slider — below CTA so prices/buttons align across cards */}
                   {plan.key === 'ultra' && (
-                    <div className="mb-5 rounded-2xl p-4" style={{ background: 'rgba(0,240,255,0.05)', border: '1px solid rgba(0,240,255,0.15)' }}>
+                    <div className="mb-5 rounded-2xl p-4" style={{ background: 'rgba(91,80,255,0.05)', border: '1px solid rgba(91,80,255,0.15)' }}>
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-xs font-semibold text-white/50">Customize credits / month</span>
-                        <span className="text-sm font-bold" style={{ color: '#00F0FF' }}>
+                        <span className="text-sm font-bold" style={{ color: '#8B80FF' }}>
                           {ULTRA_TIERS[ultraTier].credits.toLocaleString()}
                         </span>
                       </div>
@@ -566,7 +566,7 @@ export default function Pricing() {
                           onChange={e => setUltraTier(Number(e.target.value))}
                           className="ultra-slider w-full h-2 rounded-full appearance-none cursor-pointer"
                           style={{
-                            background: `linear-gradient(to right, #00F0FF ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%, rgba(255,255,255,0.1) ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%)`,
+                            background: `linear-gradient(to right, #8B80FF ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%, rgba(255,255,255,0.1) ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%)`,
                             WebkitAppearance: 'none',
                           }}
                         />
@@ -578,7 +578,7 @@ export default function Pricing() {
                             onClick={() => setUltraTier(idx)}
                             className="flex flex-col items-center gap-0.5 transition-all duration-150"
                           >
-                            <span className="text-xs font-semibold" style={{ color: ultraTier === idx ? '#00F0FF' : 'rgba(255,255,255,0.3)' }}>
+                            <span className="text-xs font-semibold" style={{ color: ultraTier === idx ? '#8B80FF' : 'rgba(255,255,255,0.3)' }}>
                               {(t.credits / 1000).toFixed(0)}k
                             </span>
                           </button>
@@ -627,11 +627,11 @@ export default function Pricing() {
         <motion.div
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.5 }}
           className="rounded-3xl p-10 flex flex-col md:flex-row items-center justify-between gap-8 mb-10"
-          style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.1) 0%, rgba(0,240,255,0.06) 100%)', border: '1px solid rgba(139,92,246,0.2)' }}
+          style={{ background: 'rgba(91,80,255,0.08)', border: '1px solid rgba(91,80,255,0.2)' }}
         >
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold mb-4"
-                 style={{ background: 'rgba(139,92,246,0.2)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.3)' }}>
+                 style={{ background: 'rgba(91,80,255,0.2)', color: '#8B80FF', border: '1px solid rgba(91,80,255,0.3)' }}>
               Enterprise
             </div>
             <h3 className="text-white font-bold text-2xl mb-2">Need a custom plan for your team?</h3>
@@ -643,7 +643,7 @@ export default function Pricing() {
           <a
             href="mailto:team@hyperbeing.co?subject=Enterprise Plan Enquiry"
             className="flex-shrink-0 px-8 py-4 rounded-2xl font-bold text-sm text-white transition-all duration-200 hover:opacity-90 active:scale-[0.97] whitespace-nowrap"
-            style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)', boxShadow: '0 4px 24px rgba(139,92,246,0.35)' }}
+            style={{ background: '#5B50FF', boxShadow: '0 4px 24px rgba(91,80,255,0.35)' }}
           >
             Contact us →
           </a>
@@ -660,7 +660,7 @@ export default function Pricing() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {CREDIT_TABLE.map(({ action, cost }) => (
               <div key={action} className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <p className="text-2xl font-bold mb-0.5" style={{ color: '#8B5CF6' }}>{cost}</p>
+                <p className="text-2xl font-bold mb-0.5" style={{ color: '#5B50FF' }}>{cost}</p>
                 <p className="text-xs font-semibold text-white/70 mb-0.5">credits</p>
                 <p className="text-xs text-white/35">{action}</p>
               </div>
@@ -684,10 +684,10 @@ export default function Pricing() {
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
               className="w-full max-w-md rounded-3xl p-7"
-              style={{ background: '#111113', border: '1px solid rgba(139,92,246,0.2)' }}
+              style={{ background: '#0f0f0f', border: '1px solid rgba(91,80,255,0.2)' }}
             >
               <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-5 text-2xl"
-                   style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.2)' }}>
+                   style={{ background: 'rgba(91,80,255,0.12)', border: '1px solid rgba(91,80,255,0.2)' }}>
                 📅
               </div>
               <h3 className="font-bold text-white text-xl mb-2">Downgrade confirmed</h3>
@@ -698,7 +698,7 @@ export default function Pricing() {
               </p>
               <p className="text-sm leading-relaxed mb-5" style={{ color: 'rgba(255,255,255,0.55)' }}>
                 On <span className="text-white font-bold">{formatDate(downgradeModal.periodEnd)}</span>, your subscription automatically switches to{' '}
-                <span className="font-semibold capitalize" style={{ color: '#C4B5FD' }}>{downgradeModal.pendingPlan}</span> and you'll be billed at the{' '}
+                <span className="font-semibold capitalize" style={{ color: '#8B80FF' }}>{downgradeModal.pendingPlan}</span> and you'll be billed at the{' '}
                 <span className="capitalize">{downgradeModal.pendingPlan}</span> plan rate going forward.
               </p>
               <div className="rounded-2xl px-4 py-3 mb-6 flex items-start gap-2.5"
@@ -712,7 +712,7 @@ export default function Pricing() {
               <button
                 onClick={() => setDowngradeModal(null)}
                 className="w-full py-3.5 rounded-2xl font-bold text-sm text-white transition-opacity hover:opacity-85"
-                style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+                style={{ background: '#5B50FF' }}
               >
                 Got it
               </button>

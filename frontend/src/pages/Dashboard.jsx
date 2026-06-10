@@ -60,7 +60,7 @@ function AnalyzingOverlay({ onCancel }) {
 
           {/* Nova mascot video */}
           <div className={`mb-4 ${shouldReduceMotion ? '' : 'nova-float'}`}>
-            <NovaMascotVideo size={80} />
+            <NovaMascotVideo size={140} />
           </div>
 
           {/* Speech bubble */}
