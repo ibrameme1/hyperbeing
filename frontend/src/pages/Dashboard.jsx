@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import api from '../api/client';
 import OutOfCreditsModal from '../components/OutOfCreditsModal';
+import NovaMascotVideo from '../components/NovaMascotVideo';
 import { useTheme } from '../contexts/ThemeContext';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
@@ -58,34 +59,9 @@ function AnalyzingOverlay({ onCancel }) {
         <div className="px-8 py-8 flex flex-col items-center text-center">
 
           {/* Nova mascot video */}
-          <motion.div
-            animate={shouldReduceMotion ? {} : { y: [0, -6, 0] }}
-            transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
-            className="relative mb-4"
-            style={{ width: 128, height: 128 }}
-          >
-            {/* Ambient glow */}
-            <div style={{
-              position: 'absolute', inset: '-16px',
-              background: 'radial-gradient(ellipse, rgba(139,92,246,0.45) 0%, rgba(91,80,255,0.15) 45%, transparent 70%)',
-              borderRadius: '50%',
-              filter: 'blur(8px)',
-            }} />
-            <video
-              autoPlay
-              loop
-              muted
-              playsInline
-              style={{
-                width: '100%', height: '100%', objectFit: 'contain', position: 'relative', zIndex: 1,
-                mixBlendMode: 'screen',
-                maskImage: 'radial-gradient(circle, black 55%, transparent 78%)',
-                WebkitMaskImage: 'radial-gradient(circle, black 55%, transparent 78%)',
-              }}
-            >
-              <source src="/nova-mascot.mp4" type="video/mp4" />
-            </video>
-          </motion.div>
+          <div className={`mb-4 ${shouldReduceMotion ? '' : 'nova-float'}`}>
+            <NovaMascotVideo size={80} />
+          </div>
 
           {/* Speech bubble */}
           <div className="relative w-full rounded-2xl px-5 py-4 mb-5"

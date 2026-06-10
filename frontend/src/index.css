@@ -141,6 +141,15 @@
   }
 }
 
+/* Nova mascot floating animation */
+@keyframes nova-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+.nova-float {
+  animation: nova-float 2s ease-in-out infinite;
+}
+
 /* Skeleton loading */
 .skeleton {
   background: linear-gradient(90deg, var(--skeleton-from) 25%, var(--skeleton-to) 50%, var(--skeleton-from) 75%);

@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import TextRotate from '../components/TextRotate';
+import NovaMascotVideo from '../components/NovaMascotVideo';
 
 
 const FEATURES = [
@@ -600,78 +601,38 @@ export default function Homepage() {
           </motion.p>
         </div>
 
-        {/* ── Creative hero→dark blend ── */}
-        {/* Multi-layer atmospheric darkening */}
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 320, pointerEvents: 'none', zIndex: 2 }}>
-          {/* Base dark fade */}
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 0%, rgba(20,10,45,0.55) 45%, rgba(8,8,8,0.92) 72%, #080808 100%)' }} />
-          {/* Purple corona bloom centered */}
-          <div style={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '700px', height: '260px', background: 'radial-gradient(ellipse at 50% 85%, rgba(139,92,246,0.28) 0%, rgba(91,80,255,0.10) 40%, transparent 70%)' }} />
-          {/* Subtle noise texture layer */}
-          <div style={{ position: 'absolute', inset: 0, opacity: 0.03, backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")', backgroundSize: '200px 200px' }} />
-        </div>
-
-        {/* Nova mascot — bridges hero into dark demo section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.7 }}
-          style={{ position: 'absolute', bottom: -52, left: '50%', transform: 'translateX(-50%)', zIndex: 10 }}
-        >
-          <motion.div
-            animate={{ y: [0, -7, 0] }}
-            transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
-            style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
-          >
-            {/* Outer glow ring */}
-            <div style={{
-              position: 'absolute', inset: '-20px',
-              background: 'radial-gradient(ellipse, rgba(139,92,246,0.35) 0%, rgba(91,80,255,0.12) 50%, transparent 72%)',
-              borderRadius: '50%',
-              filter: 'blur(12px)',
-            }} />
-            {/* Pulsing ring */}
-            <motion.div
-              animate={{ scale: [1, 1.18, 1], opacity: [0.4, 0.1, 0.4] }}
-              transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-              style={{
-                position: 'absolute', inset: '-8px',
-                border: '1.5px solid rgba(139,92,246,0.5)',
-                borderRadius: '50%',
-              }}
-            />
-            <video
-              autoPlay loop muted playsInline
-              style={{
-                width: 104, height: 104, objectFit: 'contain', position: 'relative', zIndex: 1,
-                mixBlendMode: 'screen',
-                maskImage: 'radial-gradient(circle, black 55%, transparent 78%)',
-                WebkitMaskImage: 'radial-gradient(circle, black 55%, transparent 78%)',
-              }}
-            >
-              <source src="/nova-mascot.mp4" type="video/mp4" />
-            </video>
-          </motion.div>
-        </motion.div>
+        {/* Simple fade from hero into the dark demo section */}
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 160, background: 'linear-gradient(to bottom, transparent, #080808)', pointerEvents: 'none', zIndex: 2 }} />
       </section>
 
       {/* ── 4. PRODUCT DEMO ── */}
-      <section id="demo" style={{ background: '#080808', padding: '72px 24px 120px' }}>
+      <section id="demo" style={{ background: '#080808', padding: '0 24px 120px', position: 'relative' }}>
         <div style={{ maxWidth: '900px', margin: '0 auto' }}>
           <Reveal>
-            {/* Nova label above section heading */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
-              <div style={{ height: '1px', width: '32px', background: 'linear-gradient(to right, transparent, rgba(139,92,246,0.6))' }} />
-              <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#8B5CF6', textTransform: 'uppercase' }}>NOVA · HYPERBEING IN ACTION</p>
-              <div style={{ height: '1px', width: '32px', background: 'linear-gradient(to left, transparent, rgba(139,92,246,0.6))' }} />
-            </div>
-            <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(36px, 5vw, 56px)', fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.03em', color: '#f0f0ee', textAlign: 'center', marginBottom: '56px' }}>
-              Watch the blank become{' '}
-              <em>brilliant.</em>
-            </h2>
-          </Reveal>
-          <Reveal delay={0.1}>
-            <div style={{ boxShadow: 'rgba(91,80,255,0.25) 0px 0px 48px 0px' }}>
+            <div style={{
+              position: 'relative',
+              marginTop: '-96px',
+              background: '#0f0f0f',
+              border: '0.5px solid #1e1e1e',
+              borderRadius: '24px',
+              padding: '48px 32px 40px',
+              boxShadow: 'rgba(8,8,8,0.6) 0px 24px 64px -16px, rgba(91,80,255,0.18) 0px 0px 64px -16px',
+            }}>
+              {/* Nova mascot, floating freely in the middle of the card */}
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
+                <NovaMascotVideo size={120} />
+              </div>
+
+              {/* Nova label above section heading */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
+                <div style={{ height: '1px', width: '32px', background: 'linear-gradient(to right, transparent, rgba(139,92,246,0.6))' }} />
+                <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#8B5CF6', textTransform: 'uppercase' }}>NOVA · HYPERBEING IN ACTION</p>
+                <div style={{ height: '1px', width: '32px', background: 'linear-gradient(to left, transparent, rgba(139,92,246,0.6))' }} />
+              </div>
+              <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(36px, 5vw, 56px)', fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.03em', color: '#f0f0ee', textAlign: 'center', marginBottom: '40px' }}>
+                Watch the blank become{' '}
+                <em>brilliant.</em>
+              </h2>
               <ProductMockup />
             </div>
           </Reveal>
