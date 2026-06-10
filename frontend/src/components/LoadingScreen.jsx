@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import NovaMascotVideo from './NovaMascotVideo';
 
 const PLANNING_MESSAGES = [
   'Nova is crafting your slide plan…',
@@ -79,16 +80,8 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
         animate={{ opacity: 1, scale: 1 }}
         className="relative z-10 flex flex-col items-center gap-6 px-6 text-center"
       >
-        {/* HB Icon */}
-        <div
-          className="w-12 h-12 flex items-center justify-center"
-          style={{
-            background: '#5B50FF',
-            borderRadius: 11,
-          }}
-        >
-          <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 900, color: '#fff', fontSize: '22px', letterSpacing: '-0.1em', paddingRight: '0.05em' }}>HB</span>
-        </div>
+        {/* Nova mascot */}
+        <NovaMascotVideo size={160} />
 
         {/* Status label */}
         <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#8B80FF', textTransform: 'uppercase' }}>
