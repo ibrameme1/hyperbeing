@@ -445,7 +445,7 @@ export default function Pricing() {
                       height: '100%',
                       background: '#ffffff',
                       border: highlighted ? '1px solid rgba(91,80,255,0.35)' : '0.5px solid #e8e8f0',
-                      borderRadius: '8px',
+                      borderRadius: highlighted ? '0 0 8px 8px' : '8px',
                       boxShadow: highlighted
                         ? 'rgba(91,80,255,0.20) 0px 0px 24px 0px, 0 1px 2px rgba(13,11,26,0.04), 0 8px 24px -8px rgba(13,11,26,0.06)'
                         : '0 1px 2px rgba(13,11,26,0.04), 0 8px 24px -8px rgba(13,11,26,0.06)',
@@ -454,18 +454,15 @@ export default function Pricing() {
                     }}
                   >
                     {highlighted && (
-                      <span style={{
-                        position: 'absolute', top: 0, left: '50%', transform: 'translate(-50%, -50%)',
-                        display: 'inline-flex', alignItems: 'center', gap: '6px',
-                        padding: '6px 14px', borderRadius: '999px',
-                        background: 'linear-gradient(135deg, #FF5B7A 0%, #FF8A3D 100%)',
+                      <div style={{
+                        position: 'absolute', top: 0, left: 0, right: 0, transform: 'translateY(-100%)',
+                        textAlign: 'center', padding: '10px 0', borderRadius: '8px 8px 0 0',
+                        background: plan.popular ? '#5B50FF' : '#8B5CF6',
                         color: '#fff',
-                        boxShadow: '0 4px 14px rgba(255,91,122,0.35)',
-                        fontFamily: 'Inter, sans-serif', fontSize: '10px', fontWeight: 700, letterSpacing: '0.10em', textTransform: 'uppercase',
-                        whiteSpace: 'nowrap', zIndex: 2,
+                        fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase',
                       }}>
                         {plan.popular ? 'Most popular' : 'Best value'}
-                      </span>
+                      </div>
                     )}
 
                     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', flex: 1 }}>
