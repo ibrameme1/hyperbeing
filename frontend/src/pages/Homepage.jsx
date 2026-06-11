@@ -919,7 +919,7 @@ export default function Homepage() {
         <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '120px' }}>
           {FEATURE_SPLITS.map((f, i) => (
             <Reveal key={i} delay={0.05}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '80px', alignItems: 'center' }}>
+              <div className="feature-split-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '80px', alignItems: 'center' }}>
                 {/* Text side */}
                 <div style={{ order: f.side === 'right' ? 0 : 1 }}>
                   <h3 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(32px, 4vw, 48px)', fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#0d0b1a', marginBottom: '20px' }}>
@@ -1096,10 +1096,10 @@ export default function Homepage() {
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
         @media (max-width: 768px) {
-          section > div > div[style*="grid-template-columns: 1fr 1fr"] {
+          .feature-split-grid {
             grid-template-columns: minmax(0, 1fr) !important;
           }
-          section > div > div[style*="grid-template-columns: 1fr 1fr"] > div {
+          .feature-split-grid > div {
             min-width: 0;
           }
           .features-grid {
@@ -1110,6 +1110,7 @@ export default function Homepage() {
           }
           nav > div[style*="max-width: 1200px"] {
             gap: 12px !important;
+            justify-content: space-between !important;
           }
           footer > div > div[style*="grid-template-columns: auto 1fr 1fr 1fr"] {
             grid-template-columns: 1fr !important;
@@ -1136,6 +1137,7 @@ export default function Homepage() {
           }
           nav > div[style*="max-width: 1200px"] {
             gap: 12px !important;
+            justify-content: space-between !important;
           }
         }
       `}</style>
