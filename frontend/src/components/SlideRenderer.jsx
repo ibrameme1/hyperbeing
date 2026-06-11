@@ -2,8 +2,10 @@ import { Lock, Loader2 } from 'lucide-react';
 
 const CREDIT_COST_PER_SLIDE = 18;
 
-export default function SlideRenderer({ slide, className = '', onUnlock, unlocking = false }) {
+export default function SlideRenderer({ slide, className = '', onUnlock, unlocking = false, showWatermark = false }) {
   if (!slide) return null;
+
+  const hasImage = slide.image_data && !slide.image_data.startsWith('data:image/svg');
 
   return (
     <div
@@ -20,6 +22,24 @@ export default function SlideRenderer({ slide, className = '', onUnlock, unlocki
           alt=""
           className="absolute inset-0 w-full h-full object-cover animate-fadeIn"
         />
+      )}
+
+      {showWatermark && hasImage && (
+        <span
+          className="absolute pointer-events-none select-none"
+          style={{
+            right: '2.5%',
+            bottom: '2.5%',
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 600,
+            fontSize: 'clamp(9px, 1.4vw, 14px)',
+            color: 'rgba(255,255,255,0.55)',
+            textShadow: '0 1px 4px rgba(0,0,0,0.35)',
+            letterSpacing: '0.01em',
+          }}
+        >
+          Made with HyperBeing
+        </span>
       )}
 
       {slide.status === 'locked' && (

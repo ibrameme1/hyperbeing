@@ -337,12 +337,12 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
 
   async function handleExportPDF() {
     setExportingPDF(true); setShowExportMenu(false);
-    try { await exportToPDF(localSlides, titleValue); } finally { setExportingPDF(false); }
+    try { await exportToPDF(localSlides, titleValue, currentPlan); } finally { setExportingPDF(false); }
   }
 
   async function handleExportImages() {
     setExportingImages(true); setShowExportMenu(false);
-    try { exportImages(localSlides, titleValue); } finally { setExportingImages(false); }
+    try { await exportImages(localSlides, titleValue, currentPlan); } finally { setExportingImages(false); }
   }
 
   async function handleTitleSave() {
@@ -604,6 +604,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 className="rounded-xl shadow-2xl"
                 onUnlock={isLocked ? () => handleUnlockSlide(current) : undefined}
                 unlocking={unlockingSlides.has(current)}
+                showWatermark={currentPlan === 'free'}
               />
 
               {/* Click-to-edit: clicking a ready slide asks "Make edits?" */}

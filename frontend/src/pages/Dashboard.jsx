@@ -404,8 +404,8 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
   }, []);
 
   const initials = (user?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-  const PLAN_MAX = { free: 15, basic: 1200, pro: 3200, ultra: 8000, ultra1: 8000, ultra2: 11200, ultra3: 14400, ultra4: 16000 };
-  const planMax = PLAN_MAX[currentPlan] ?? 15;
+  const PLAN_MAX = { free: 54, basic: 1200, pro: 3200, ultra: 8000, ultra1: 8000, ultra2: 11200, ultra3: 14400, ultra4: 16000 };
+  const planMax = PLAN_MAX[currentPlan] ?? 54;
   const pct = isAdmin ? 100 : planMax > 0 ? Math.min(100, Math.round((credits / planMax) * 100)) : 0;
   const low = !isAdmin && credits !== null && credits < 18;
 
