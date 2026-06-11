@@ -136,13 +136,23 @@ export default function Login() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4" style={{ position: 'relative', zIndex: 1 }}>
+        <div
+          className="flex items-center gap-4"
+          style={{
+            position: 'relative', zIndex: 1,
+            background: '#0f0f0f',
+            border: '0.5px solid #1e1e1e',
+            borderRadius: '14px',
+            padding: '20px 24px',
+            boxShadow: 'rgba(91,80,255,0.10) 0px 0px 48px -12px',
+          }}
+        >
           <NovaMascot size={64} />
           <div>
-            <p style={{ fontFamily: 'Playfair Display, Georgia, serif', fontStyle: 'italic', fontSize: '15px', color: '#0d0b1a', lineHeight: 1.4 }}>
+            <p style={{ fontFamily: 'Playfair Display, Georgia, serif', fontStyle: 'italic', fontSize: '15px', color: '#f0f0ee', lineHeight: 1.4 }}>
               "It's like Canva and a McKinsey consultant had a very talented baby."
             </p>
-            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490', marginTop: '4px' }}>
+            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#999', marginTop: '4px' }}>
               — Someone who used to dread presentations
             </p>
           </div>
