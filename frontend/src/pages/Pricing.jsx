@@ -494,7 +494,6 @@ export default function Pricing() {
                           <span style={{ fontSize: '18px', color: '#5B50FF' }}>✦</span>
                           <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '18px', fontWeight: 700, color: '#0d0b1a' }}>{credits.toLocaleString()} credits/mo</span>
                         </div>
-                        <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490', marginLeft: '26px' }}>≈ {Math.floor(credits / 180)} full 10-slide presentations</p>
                       </div>
 
                       {/* Price */}
@@ -510,7 +509,7 @@ export default function Pricing() {
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: 6 }}
                               transition={{ duration: 0.2 }}
-                              style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '40px', fontWeight: 400, letterSpacing: '-0.02em', color: '#0d0b1a', lineHeight: 1 }}
+                              style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '44px', fontWeight: 700, letterSpacing: '-0.02em', color: '#0d0b1a', lineHeight: 1 }}
                             >
                               ${price}
                             </motion.span>
@@ -711,6 +710,10 @@ export default function Pricing() {
                           </li>
                         ))}
                       </ul>
+
+                      <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', color: '#a8a2c4', marginTop: '16px', textAlign: 'center' }}>
+                        Roughly {Math.floor(credits / 90)} five-slide decks a month
+                      </p>
                     </div>
                   </div>
                 </Reveal>

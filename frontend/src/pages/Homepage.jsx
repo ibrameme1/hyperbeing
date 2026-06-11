@@ -626,19 +626,38 @@ export default function Homepage() {
   const [scrolled, setScrolled] = useState(false);
   const [selectedFeature, setSelectedFeature] = useState(0);
   const heroRef = useRef(null);
+  const travelWrapRef = useRef(null);
+  const novaLabelRef = useRef(null);
 
   // Viewport height + Nova size, kept in sync so the travel math below stays
   // correct across resizes and on mobile (where vh and Nova are smaller).
   const [vh, setVh] = useState(() => (typeof window !== 'undefined' ? window.innerHeight : 900));
   const [novaBaseSize, setNovaBaseSize] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 640 ? 160 : 240));
+  // Resting top offset (within travelWrapRef) that docks Nova directly above
+  // the "NOVA · HYPERBEING IN ACTION" label, measured so it stays accurate
+  // regardless of section padding/heading line-wraps.
+  const [novaDockTop, setNovaDockTop] = useState(null);
+
   useEffect(() => {
+    const measureDock = () => {
+      const wrap = travelWrapRef.current;
+      const label = novaLabelRef.current;
+      if (!wrap || !label) return;
+      const wrapRect = wrap.getBoundingClientRect();
+      const labelRect = label.getBoundingClientRect();
+      const finalNovaSize = novaBaseSize * 0.5;
+      setNovaDockTop(labelRect.top - wrapRect.top - finalNovaSize - 16);
+    };
+
     const onResize = () => {
       setVh(window.innerHeight);
       setNovaBaseSize(window.innerWidth < 640 ? 160 : 240);
+      measureDock();
     };
     window.addEventListener('resize', onResize);
+    measureDock();
     return () => window.removeEventListener('resize', onResize);
-  }, []);
+  }, [novaBaseSize]);
 
   // Scroll-driven Nova "welcome" travel between the Hero and the Demo
   // ("Nova · HyperBeing in action") sections. `heroExitProgress` runs 0 → 1
@@ -649,7 +668,7 @@ export default function Homepage() {
     target: heroRef,
     offset: ['start start', 'end start'],
   });
-  const novaTop = useTransform(heroExitProgress, [0, 1], [vh - novaBaseSize * 0.6, vh + 16]);
+  const novaTop = useTransform(heroExitProgress, [0, 1], [vh - novaBaseSize * 0.6, novaDockTop ?? (vh + 16)]);
   const novaScale = useTransform(heroExitProgress, [0, 1], [1, 0.5]);
   const chevronOpacity = useTransform(heroExitProgress, [0, 0.5, 1], [0.7, 0.2, 0]);
 
@@ -736,7 +755,7 @@ export default function Homepage() {
       </nav>
 
       {/* ── 2. HERO + 4. PRODUCT DEMO (wrapped together so Nova can travel between them) ── */}
-      <div style={{ position: 'relative' }}>
+      <div ref={travelWrapRef} style={{ position: 'relative' }}>
       <section ref={heroRef} style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '80px', paddingBottom: '64px', position: 'relative', background: '#f5f5f5', overflowX: 'hidden' }}>
         {/* Atmospheric glow top-right */}
         <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 65% 40%, rgba(91,80,255,0.08), transparent 60%)', pointerEvents: 'none' }} />
@@ -836,7 +855,7 @@ export default function Homepage() {
               boxShadow: 'rgba(8,8,8,0.6) 0px 24px 64px -16px, rgba(91,80,255,0.18) 0px 0px 64px -16px',
             }}>
               {/* Nova label above section heading */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
+              <div ref={novaLabelRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
                 <div style={{ height: '1px', width: '32px', background: 'linear-gradient(to right, transparent, rgba(139,92,246,0.6))' }} />
                 <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#8B5CF6', textTransform: 'uppercase' }}>NOVA · HYPERBEING IN ACTION</p>
                 <div style={{ height: '1px', width: '32px', background: 'linear-gradient(to left, transparent, rgba(139,92,246,0.6))' }} />
@@ -870,7 +889,24 @@ export default function Homepage() {
           zIndex: 5,
         }}
       >
-        <NovaMascotVideo size={novaBaseSize} />
+        {/* Canvas + dark "stage" behind it — the mascot video is authored to
+            glow against a near-black backdrop, so without this it loses its
+            silhouette (turns into a pale halo) over the light hero section. */}
+        <div style={{ position: 'relative', width: novaBaseSize, height: novaBaseSize }}>
+          <div
+            style={{
+              position: 'absolute',
+              top: '50%', left: '50%',
+              width: novaBaseSize * 1.15, height: novaBaseSize * 1.15,
+              transform: 'translate(-50%, -50%)',
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(8,8,10,0.94) 0%, rgba(8,8,10,0.7) 55%, transparent 75%)',
+              filter: 'blur(6px)',
+              zIndex: -1,
+            }}
+          />
+          <NovaMascotVideo size={novaBaseSize} />
+        </div>
         <motion.div
           style={{ opacity: chevronOpacity, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}
           animate={{ y: [0, 8, 0] }}
@@ -1067,7 +1103,10 @@ export default function Homepage() {
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
         @media (max-width: 768px) {
           section > div > div[style*="grid-template-columns: 1fr 1fr"] {
-            grid-template-columns: 1fr !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+          section > div > div[style*="grid-template-columns: 1fr 1fr"] > div {
+            min-width: 0;
           }
           .features-grid {
             grid-template-columns: 1fr !important;
