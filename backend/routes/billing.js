@@ -19,6 +19,36 @@ function frontendUrl() {
   return process.env.FRONTEND_URL || 'http://localhost:5173';
 }
 
+// Apply the effects of a completed Stripe Checkout session to our DB.
+// Idempotent — safe to call from both the webhook and the success-page
+// reconciliation endpoint, whichever fires first.
+function applyCheckoutSession(session) {
+  const { userId, planKey } = session.metadata || {};
+  if (!userId || !planKey) return null;
+
+  const db = getDb();
+  const sub = getOrCreateSubscription(userId);
+  const subscriptionId = session.subscription;
+
+  if (sub.stripe_subscription_id === subscriptionId && sub.plan === planKey) {
+    return sub; // already applied
+  }
+
+  db.prepare(
+    'UPDATE subscriptions SET stripe_subscription_id = ?, plan = ?, status = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
+  ).run(subscriptionId, planKey, 'active', null, userId);
+
+  resetCreditsForPlan(userId, planKey);
+
+  const user = db.prepare('SELECT name, email FROM users WHERE id = ?').get(userId);
+  if (user?.email) {
+    const plan = PLANS[planKey];
+    sendPurchaseConfirmation(user.name, user.email, plan?.name || planKey, plan?.credits || 0);
+  }
+
+  return getOrCreateSubscription(userId);
+}
+
 // ── GET /api/billing/subscription ─────────────────────────────────────────────
 router.get('/subscription', authMiddleware, async (req, res) => {
   try {
@@ -181,8 +211,8 @@ router.post('/checkout', authMiddleware, billingLimiter,
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${frontendUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontendUrl()}/pricing`,
-      metadata: { userId: req.userId, planKey },
-      subscription_data: { metadata: { userId: req.userId, planKey } },
+      metadata: { userId: req.userId, planKey: actualPlanKey },
+      subscription_data: { metadata: { userId: req.userId, planKey: actualPlanKey } },
     });
 
     res.json({ url: session.url });
@@ -213,6 +243,35 @@ router.post('/portal', authMiddleware, async (req, res) => {
   }
 });
 
+// ── GET /api/billing/confirm-session ──────────────────────────────────────────
+// Reconciles the local subscription/credits state right after a successful
+// Stripe Checkout redirect, in case the `checkout.session.completed` webhook
+// hasn't been delivered yet (e.g. local dev without `stripe listen`).
+router.get('/confirm-session', authMiddleware, async (req, res) => {
+  const { session_id } = req.query;
+  if (!session_id || typeof session_id !== 'string') {
+    return res.status(400).json({ error: 'Missing session_id.' });
+  }
+  if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not available right now. Please contact support.' });
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+    if (session.metadata?.userId !== req.userId) {
+      return res.status(403).json({ error: 'This checkout session does not belong to your account.' });
+    }
+
+    const isComplete = session.payment_status === 'paid' || session.status === 'complete';
+    if (isComplete) applyCheckoutSession(session);
+
+    const sub = getOrCreateSubscription(req.userId);
+    const plan = PLANS[sub.plan] || PLANS.free;
+    res.json({ subscription: sub, plan, pending: !isComplete });
+  } catch (err) {
+    logger.error('confirm checkout session failed', { errorMessage: err.message, userId: req.userId });
+    res.status(400).json({ error: 'Could not confirm checkout session.' });
+  }
+});
+
 // ── POST /api/billing/webhook ─────────────────────────────────────────────────
 router.post('/webhook', async (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -229,21 +288,7 @@ router.post('/webhook', async (req, res) => {
 
   switch (event.type) {
     case 'checkout.session.completed': {
-      const session = event.data.object;
-      const { userId, planKey } = session.metadata;
-      if (!userId || !planKey) break;
-
-      const subscriptionId = session.subscription;
-      db.prepare(
-        'UPDATE subscriptions SET stripe_subscription_id = ?, plan = ?, status = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
-      ).run(subscriptionId, planKey, 'active', null, userId);
-
-      resetCreditsForPlan(userId, planKey);
-      const _purchaseUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(userId);
-      if (_purchaseUser?.email) {
-        const _purchasePlan = PLANS[planKey];
-        sendPurchaseConfirmation(_purchaseUser.name, _purchaseUser.email, _purchasePlan?.name || planKey, _purchasePlan?.credits || 0);
-      }
+      applyCheckoutSession(event.data.object);
       break;
     }
 
