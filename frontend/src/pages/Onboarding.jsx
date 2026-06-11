@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
 import { track } from '../utils/track';
 import Logo from '../components/Logo';
-import NovaMascotVideo from '../components/NovaMascotVideo';
+import NovaMascot from '../components/NovaMascot';
 
 const EASE = [0.16, 1, 0.3, 1];
 
@@ -334,7 +334,7 @@ export default function Onboarding() {
             className="relative z-10 text-center max-w-md w-full flex flex-col items-center"
           >
             <div className="mb-6">
-              <NovaMascotVideo size={140} />
+              <NovaMascot size={140} />
             </div>
 
             <motion.div
@@ -371,7 +371,7 @@ export default function Onboarding() {
             className="relative z-10 text-center max-w-md w-full flex flex-col items-center"
           >
             <div className="mb-8">
-              <NovaMascotVideo size={130} />
+              <NovaMascot size={130} />
             </div>
             <motion.h2
               key="cal-text"
@@ -396,7 +396,7 @@ export default function Onboarding() {
             className="relative z-10 text-center max-w-md w-full"
           >
             <div className="flex justify-center mb-6">
-              <NovaMascotVideo size={130} />
+              <NovaMascot size={130} />
             </div>
 
             <motion.div
@@ -491,7 +491,7 @@ export default function Onboarding() {
             {/* Nova + speech */}
             <div className="flex flex-col items-center mb-6">
               <div className="mb-3">
-                <NovaMascotVideo size={84} />
+                <NovaMascot size={84} />
               </div>
               <NovaSpeech>{q.novaLine}</NovaSpeech>
             </div>

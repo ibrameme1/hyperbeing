@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import api from '../api/client';
 import OutOfCreditsModal from '../components/OutOfCreditsModal';
-import NovaMascotVideo from '../components/NovaMascotVideo';
+import NovaMascot from '../components/NovaMascot';
 import { useTheme } from '../contexts/ThemeContext';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
@@ -61,7 +61,7 @@ function AnalyzingOverlay({ onCancel }) {
 
           {/* Nova mascot video */}
           <div className={`mb-4 ${shouldReduceMotion ? '' : 'nova-float'}`}>
-            <NovaMascotVideo size={140} />
+            <NovaMascot size={140} />
           </div>
 
           {/* Speech bubble */}

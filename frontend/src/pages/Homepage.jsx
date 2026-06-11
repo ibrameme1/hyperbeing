@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, useInView, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import TextRotate from '../components/TextRotate';
-import NovaMascotVideo from '../components/NovaMascotVideo';
+import NovaMascot from '../components/NovaMascot';
 import Logo from '../components/Logo';
 
 
@@ -889,24 +889,7 @@ export default function Homepage() {
           zIndex: 5,
         }}
       >
-        {/* Canvas + dark "stage" behind it — the mascot video is authored to
-            glow against a near-black backdrop, so without this it loses its
-            silhouette (turns into a pale halo) over the light hero section. */}
-        <div style={{ position: 'relative', width: novaBaseSize, height: novaBaseSize }}>
-          <div
-            style={{
-              position: 'absolute',
-              top: '50%', left: '50%',
-              width: novaBaseSize * 1.15, height: novaBaseSize * 1.15,
-              transform: 'translate(-50%, -50%)',
-              borderRadius: '50%',
-              background: 'radial-gradient(circle, rgba(8,8,10,0.94) 0%, rgba(8,8,10,0.7) 55%, transparent 75%)',
-              filter: 'blur(6px)',
-              zIndex: -1,
-            }}
-          />
-          <NovaMascotVideo size={novaBaseSize} />
-        </div>
+        <NovaMascot size={novaBaseSize} />
         <motion.div
           style={{ opacity: chevronOpacity, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}
           animate={{ y: [0, 8, 0] }}
