@@ -645,8 +645,8 @@ export default function Homepage() {
       if (!wrap || !label) return;
       const wrapRect = wrap.getBoundingClientRect();
       const labelRect = label.getBoundingClientRect();
-      const finalNovaSize = novaBaseSize * 0.5;
-      setNovaDockTop(labelRect.top - wrapRect.top - finalNovaSize - 16);
+      const dockedSize = novaBaseSize * 0.5;
+      setNovaDockTop(labelRect.top - wrapRect.top - dockedSize - 16);
     };
 
     const onResize = () => {
@@ -664,13 +664,19 @@ export default function Homepage() {
   // over exactly one viewport-height of scroll: 0 while the hero is fully in
   // view, 1 once it has scrolled completely out. Nova's position is purely a
   // function of this value, so scrolling back up reverses the travel.
+  //
+  // The wrapper uses `transformOrigin: 'top center'`, so `top` always
+  // reflects Nova's actual rendered top edge regardless of `scale` — without
+  // this, the default center-origin scaling shifts the rendered box ~25% of
+  // its height downward as it shrinks, which is what caused Nova to overlap
+  // the "Nova · HyperBeing in action" label and heading below it.
   const { scrollYProgress: heroExitProgress } = useScroll({
     target: heroRef,
     offset: ['start start', 'end start'],
   });
   const novaTop = useTransform(heroExitProgress, [0, 1], [vh - novaBaseSize * 0.6, novaDockTop ?? (vh + 16)]);
   const novaScale = useTransform(heroExitProgress, [0, 1], [1, 0.5]);
-  const chevronOpacity = useTransform(heroExitProgress, [0, 0.5, 1], [0.7, 0.2, 0]);
+  const chevronOpacity = useTransform(heroExitProgress, [0, 1], [0.7, 0]);
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 10);
@@ -881,6 +887,7 @@ export default function Homepage() {
           x: '-50%',
           top: novaTop,
           scale: novaScale,
+          transformOrigin: 'top center',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
