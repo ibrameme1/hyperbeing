@@ -85,7 +85,9 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
 
         {/* Status label */}
         <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#8B80FF', textTransform: 'uppercase' }}>
-          {isGenerating ? 'Generating slides' : 'Planning deck'}
+          {isGenerating
+            ? `Generating slide ${Math.min(completedSlides.length + 1, totalSlides)} of ${totalSlides}`
+            : 'Planning deck'}
         </p>
 
         {/* Cycling message */}

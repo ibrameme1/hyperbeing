@@ -309,7 +309,7 @@ export default function Onboarding() {
 
       {/* Logo */}
       <div className="absolute top-6 left-6">
-        <Logo dark height={22} />
+        <Logo dark height={37} />
       </div>
 
       {/* Skip */}

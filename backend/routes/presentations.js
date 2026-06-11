@@ -489,17 +489,6 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
     if (_presUser?.email) sendPresentationReady(_presUser.name, _presUser.email, presentationId, _presTitle);
   }
 
-  // Auto-suggest title
-  try {
-    const titleCtx = { slides: allSlides.map(s => ({ title: s.title, type: s.type, key_points: s.key_points?.slice(0, 2) })) };
-    const autoTitle = await suggestTitle(titleCtx, userId);
-    if (autoTitle) {
-      db.prepare(`UPDATE presentations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(autoTitle, presentationId);
-      broadcast(presentationId, { type: 'title_updated', title: autoTitle });
-      broadcastDashboardUpdate(db, userId, presentationId);
-    }
-  } catch {}
-
   tracer.recordStep(traceId, 'full_flow', 'completed', Date.now() - _t);
   broadcast(presentationId, { type: 'complete', total_slides: allSlides.length });
 }

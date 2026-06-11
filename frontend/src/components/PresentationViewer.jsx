@@ -157,13 +157,13 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
     setEditError('');
   }, [current]);
 
-  // Show friendly message when the current slide has been generating for >12s
+  // Show friendly message when the current slide has been generating for >60s
   useEffect(() => {
     clearTimeout(slowTimerRef.current);
     setSlowSlideWarning(false);
     const slide = localSlides[current];
     if (slide?.status === 'generating' || updatingSlides.has(current)) {
-      slowTimerRef.current = setTimeout(() => setSlowSlideWarning(true), 12000);
+      slowTimerRef.current = setTimeout(() => setSlowSlideWarning(true), 60000);
     }
     return () => clearTimeout(slowTimerRef.current);
   }, [localSlides[current]?.status, current, updatingSlides.size]);
@@ -564,7 +564,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 style={{ borderRadius: 12 }}
               >
                 <button onClick={handleExportImages} className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-sm text-gray-800 dark:text-[#f0f0ee]">
-                  <Images size={15} className="text-blue-500" />
+                  <Images size={15} style={{ color: '#8B80FF' }} />
                   Download as Images
                 </button>
                 <button onClick={handleExportPDF} className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-sm text-gray-800 dark:text-[#f0f0ee]">
@@ -758,7 +758,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   <p className="text-white text-sm font-semibold">Generating slide…</p>
                   {slowSlideWarning ? (
                     <p className="text-white/70 text-xs max-w-xs leading-relaxed">
-                      Don't worry — your slide is still being processed. Google's image service is experiencing high demand right now, but we're on it.
+                      Don't worry, your slide is still being processed. Our image service is experiencing high demand right now, but we're on it.
                     </p>
                   ) : (
                     <p className="text-white/60 text-xs">This may take a moment</p>

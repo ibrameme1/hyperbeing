@@ -627,15 +627,31 @@ export default function Homepage() {
   const [selectedFeature, setSelectedFeature] = useState(0);
   const heroRef = useRef(null);
 
-  // Scroll-driven Nova "welcome" transition between Hero and Demo sections.
+  // Viewport height + Nova size, kept in sync so the travel math below stays
+  // correct across resizes and on mobile (where vh and Nova are smaller).
+  const [vh, setVh] = useState(() => (typeof window !== 'undefined' ? window.innerHeight : 900));
+  const [novaBaseSize, setNovaBaseSize] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 640 ? 160 : 240));
+  useEffect(() => {
+    const onResize = () => {
+      setVh(window.innerHeight);
+      setNovaBaseSize(window.innerWidth < 640 ? 160 : 240);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // Scroll-driven Nova "welcome" travel between the Hero and the Demo
+  // ("Nova · HyperBeing in action") sections. `heroExitProgress` runs 0 → 1
+  // over exactly one viewport-height of scroll: 0 while the hero is fully in
+  // view, 1 once it has scrolled completely out. Nova's position is purely a
+  // function of this value, so scrolling back up reverses the travel.
   const { scrollYProgress: heroExitProgress } = useScroll({
     target: heroRef,
-    offset: ['end end', 'end start'],
+    offset: ['start start', 'end start'],
   });
-  const novaScale = useTransform(heroExitProgress, [0, 1], [0.55, 1]);
-  const novaOpacity = useTransform(heroExitProgress, [0, 0.5, 1], [0, 0.85, 1]);
-  const novaY = useTransform(heroExitProgress, [0, 1], [60, -40]);
-  const chevronOpacity = useTransform(heroExitProgress, [0, 0.4, 0.7, 1], [0.6, 0.3, 0, 0]);
+  const novaTop = useTransform(heroExitProgress, [0, 1], [vh - novaBaseSize * 0.6, vh + 16]);
+  const novaScale = useTransform(heroExitProgress, [0, 1], [1, 0.5]);
+  const chevronOpacity = useTransform(heroExitProgress, [0, 0.5, 1], [0.7, 0.2, 0]);
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 10);
@@ -700,6 +716,7 @@ export default function Homepage() {
               <>
                 <button
                   onClick={() => navigate('/login')}
+                  className="nav-signin-btn"
                   style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 500, color: '#0d0b1a', background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px 12px' }}
                 >
                   Sign in
@@ -718,7 +735,8 @@ export default function Homepage() {
         </div>
       </nav>
 
-      {/* ── 2. HERO ── */}
+      {/* ── 2. HERO + 4. PRODUCT DEMO (wrapped together so Nova can travel between them) ── */}
+      <div style={{ position: 'relative' }}>
       <section ref={heroRef} style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '80px', paddingBottom: '64px', position: 'relative', background: '#f5f5f5', overflowX: 'hidden' }}>
         {/* Atmospheric glow top-right */}
         <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 65% 40%, rgba(91,80,255,0.08), transparent 60%)', pointerEvents: 'none' }} />
@@ -741,7 +759,7 @@ export default function Homepage() {
           >
             Presentations that make<br />
             {'people go '}
-            <span style={{ display: 'inline-flex', background: '#5B50FF', borderRadius: '6px', verticalAlign: 'bottom', overflow: 'hidden', paddingBottom: '6px' }}>
+            <span style={{ display: 'inline-flex', background: '#5B50FF', borderRadius: '6px', verticalAlign: 'bottom', overflow: 'hidden', lineHeight: 0.96 }}>
               <TextRotate
                 texts={['how?', 'wow.', 'really?', 'that fast?', 'just you?', 'with AI?']}
                 rotationInterval={2200}
@@ -751,8 +769,8 @@ export default function Homepage() {
                 animate={{ y: 0 }}
                 exit={{ y: '-120%' }}
                 transition={{ type: 'spring', damping: 30, stiffness: 400 }}
-                mainClassName="text-white px-3 py-1 overflow-hidden justify-center leading-[1.35]"
-                splitLevelClassName="overflow-hidden pb-0.5 leading-[1.35]"
+                mainClassName="text-white px-3 py-1 overflow-hidden justify-center"
+                splitLevelClassName="overflow-hidden pb-0.5"
               />
             </span>
           </motion.h1>
@@ -803,37 +821,6 @@ export default function Homepage() {
             Used by brand teams, investors, analysts &amp; agencies at top-tier companies
           </motion.p>
         </div>
-
-        {/* Scroll-driven Nova "welcome" — grows and fades in as the user scrolls toward the demo section */}
-        <motion.div
-          style={{
-            position: 'absolute',
-            bottom: '-90px',
-            left: 0,
-            right: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '14px',
-            scale: novaScale,
-            opacity: novaOpacity,
-            y: novaY,
-            pointerEvents: 'none',
-            zIndex: 2,
-          }}
-        >
-          <NovaMascotVideo size={240} />
-          <motion.div
-            style={{ opacity: chevronOpacity, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}
-            animate={{ y: [0, 8, 0] }}
-            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-          >
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase' }}>SCROLL</span>
-            <svg width="14" height="8" viewBox="0 0 14 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M1 1L7 7L13 1" stroke="#5B50FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </motion.div>
-        </motion.div>
       </section>
 
       {/* ── 4. PRODUCT DEMO ── */}
@@ -863,6 +850,39 @@ export default function Homepage() {
           </Reveal>
         </div>
       </section>
+
+      {/* Scroll-driven Nova "welcome" — travels from the hero into a docked
+          position at the top of the demo section as the user scrolls, and
+          reverses smoothly when scrolling back up. */}
+      <motion.div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: '50%',
+          x: '-50%',
+          top: novaTop,
+          scale: novaScale,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '14px',
+          pointerEvents: 'none',
+          zIndex: 5,
+        }}
+      >
+        <NovaMascotVideo size={novaBaseSize} />
+        <motion.div
+          style={{ opacity: chevronOpacity, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}
+          animate={{ y: [0, 8, 0] }}
+          transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase' }}>SCROLL</span>
+          <svg width="14" height="8" viewBox="0 0 14 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M1 1L7 7L13 1" stroke="#5B50FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </motion.div>
+      </motion.div>
+      </div>
 
       {/* ── 5. FEATURE SPLITS ── */}
       <section style={{ background: '#f5f5f5', padding: '120px 24px' }}>
@@ -1051,6 +1071,21 @@ export default function Homepage() {
           }
           .features-grid {
             grid-template-columns: 1fr !important;
+          }
+          nav > div[style*="max-width: 1200px"] > div[style*="justify-content: center"] {
+            display: none !important;
+          }
+          nav > div[style*="max-width: 1200px"] {
+            gap: 12px !important;
+          }
+          footer > div > div[style*="grid-template-columns: auto 1fr 1fr 1fr"] {
+            grid-template-columns: 1fr !important;
+            gap: 32px !important;
+          }
+        }
+        @media (max-width: 480px) {
+          .nav-signin-btn {
+            display: none !important;
           }
         }
         @media (min-width: 769px) and (max-width: 1024px) {

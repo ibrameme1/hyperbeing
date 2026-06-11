@@ -2,6 +2,34 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 
+// Same MeshGradient treatment as LoadingScreen — keeps the two
+// "Nova is working" screens visually consistent. Falls back to a
+// static gradient if the shader package hasn't loaded yet.
+function ShaderBackground() {
+  const [mods, setMods] = useState({});
+  useEffect(() => {
+    import('@paper-design/shaders-react').then(mod => setMods(mod)).catch(() => {});
+  }, []);
+  const { MeshGradient } = mods;
+
+  if (!MeshGradient) {
+    return (
+      <div className="absolute inset-0" style={{
+        background: 'linear-gradient(135deg, #080808 0%, #0f0f0f 33%, #1a1540 66%, #5B50FF 100%)'
+      }} />
+    );
+  }
+  return (
+    <MeshGradient
+      className="absolute inset-0 w-full h-full"
+      colors={['#080808', '#0f0f0f', '#1a1540', '#5B50FF']}
+      speed={0.4}
+      backgroundColor="#080808"
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+    />
+  );
+}
+
 const TYPE_LABELS = {
   cover: 'Cover',
   section: 'Section',
@@ -97,9 +125,11 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-y-auto py-12"
-      style={{ background: 'linear-gradient(135deg, #080808 0%, #0a0818 50%, #1a1540 100%)' }}
+      style={{ background: '#080808' }}
       onClick={handleSkip}
     >
+      <ShaderBackground />
+
       {/* Ambient glows */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-1/3 left-1/4 w-96 h-96 rounded-full opacity-20"
@@ -156,12 +186,17 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
                   {String(i + 1).padStart(2, '0')}
                 </span>
                 <span
-                  className="text-[10px] font-bold uppercase tracking-wider flex-shrink-0 px-1.5 py-0.5"
+                  className="uppercase flex-shrink-0"
                   style={{
+                    fontFamily: 'Inter, sans-serif',
+                    fontSize: 9,
+                    fontWeight: 600,
+                    letterSpacing: '0.10em',
                     background: 'rgba(91,80,255,0.12)',
                     color: '#8B80FF',
-                    border: '0.5px solid rgba(91,80,255,0.2)',
+                    border: '0.5px solid rgba(91,80,255,0.28)',
                     borderRadius: 4,
+                    padding: '4px 9px',
                   }}
                 >
                   {TYPE_LABELS[slide.type] || 'Slide'}
