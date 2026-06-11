@@ -204,6 +204,11 @@ export default function Pricing() {
     } else if (data.cancelledDowngrade) {
       setCurrentPlan(data.keptPlan);
       setSubInfo(prev => ({ ...(prev || {}), plan: data.keptPlan, pending_plan: null }));
+    } else if (data.pending) {
+      // Charge confirmed — the plan/credit grant lands via webhook, so don't
+      // flip the UI to the new plan yet. Give the webhook a moment, then refresh.
+      alert(data.message || 'Payment confirmed — your plan will update in just a moment.');
+      await new Promise((resolve) => setTimeout(resolve, 1500));
     } else {
       // Upgrade applied
       setCurrentPlan(planKey);

@@ -184,18 +184,28 @@ router.post('/checkout', authMiddleware, billingLimiter,
         if (_downgradeUser?.email) sendPlanDowngradeScheduled(_downgradeUser.name, _downgradeUser.email, PLANS[sub.plan]?.name || sub.plan, plan.name, periodEnd);
         return res.json({ upgraded: true, isDowngrade: true, pendingPlan: actualPlanKey, periodEnd, currentPlan: sub.plan });
       } else {
-        await stripe.subscriptions.update(sub.stripe_subscription_id, {
-          items: [{ id: currentItemId, price: priceId }],
-          proration_behavior: 'create_prorations',
-          billing_cycle_anchor: 'now',
-          cancel_at_period_end: false,
-          metadata: { userId: req.userId, planKey: actualPlanKey },
-        });
-        applyPlanUpgrade(req.userId, actualPlanKey);
-        const db = getDb();
-        const _upgradeUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.userId);
-        if (_upgradeUser?.email) sendPlanUpgraded(_upgradeUser.name, _upgradeUser.email, plan.name, plan.credits);
-        return res.json({ upgraded: true, message: 'Plan upgraded successfully.' });
+        // Charge the prorated difference immediately and require it to succeed.
+        // The plan/credit grant itself happens in the `invoice.paid` webhook —
+        // not here — so the user only gets the upgrade once Stripe confirms payment.
+        try {
+          await stripe.subscriptions.update(sub.stripe_subscription_id, {
+            items: [{ id: currentItemId, price: priceId }],
+            proration_behavior: 'always_invoice',
+            payment_behavior: 'error_if_incomplete',
+            billing_cycle_anchor: 'now',
+            cancel_at_period_end: false,
+            metadata: { userId: req.userId, planKey: actualPlanKey },
+          });
+        } catch (stripeErr) {
+          if (stripeErr?.type === 'StripeCardError' || stripeErr?.code === 'card_declined') {
+            return res.status(402).json({ error: 'Your card was declined for this upgrade. Please update your payment method and try again.' });
+          }
+          if (stripeErr?.code === 'subscription_payment_intent_requires_action') {
+            return res.status(402).json({ error: 'Your card requires additional verification. Please update your payment method via the billing portal and try again.' });
+          }
+          throw stripeErr;
+        }
+        return res.json({ upgraded: true, pending: true, message: 'Payment confirmed — your plan will update in just a moment.' });
       }
       } // if (stripeSub)
     } // if (sub.stripe_subscription_id && sub.status === 'active')
@@ -320,6 +330,18 @@ router.post('/webhook', async (req, res) => {
           const _renewPlan = PLANS[renewPlanKey];
           sendRenewalReceipt(_renewUser.name, _renewUser.email, _renewPlan?.name || renewPlanKey, _renewPlan?.credits || 0);
         }
+      } else if (invoice.billing_reason === 'subscription_update') {
+        // The prorated upgrade charge succeeded — now grant the new plan/credits.
+        const stripeSub = await stripe.subscriptions.retrieve(stripeSubId);
+        const newPlanKey = stripeSub.metadata?.planKey;
+        if (newPlanKey && PLANS[newPlanKey] && newPlanKey !== sub.plan) {
+          applyPlanUpgrade(sub.user_id, newPlanKey);
+          const periodEnd = stripeSub.current_period_end ? new Date(stripeSub.current_period_end * 1000).toISOString() : null;
+          db.prepare('UPDATE subscriptions SET current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?').run(periodEnd, sub.user_id);
+          const _upgradeUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(sub.user_id);
+          const _newPlan = PLANS[newPlanKey];
+          if (_upgradeUser?.email) sendPlanUpgraded(_upgradeUser.name, _upgradeUser.email, _newPlan.name, _newPlan.credits);
+        }
       }
       break;
     }
@@ -341,18 +363,11 @@ router.post('/webhook', async (req, res) => {
         break;
       }
 
-      const planFromStripe = stripeSub.metadata?.planKey;
-      if (planFromStripe && planFromStripe !== sub.plan) {
-        // Plan change applied — update plan and reset credits
-        db.prepare(
-          'UPDATE subscriptions SET plan = ?, status = ?, current_period_end = ?, pending_plan = NULL, updated_at = CURRENT_TIMESTAMP WHERE stripe_subscription_id = ?'
-        ).run(planFromStripe, stripeSub.status, periodEnd, stripeSub.id);
-        resetCreditsForPlan(sub.user_id, planFromStripe);
-      } else {
-        db.prepare(
-          'UPDATE subscriptions SET status = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE stripe_subscription_id = ?'
-        ).run(stripeSub.status, periodEnd, stripeSub.id);
-      }
+      // Plan changes (and their credit grants) are applied by the `invoice.paid`
+      // webhook once the prorated charge is confirmed — just sync status/period here.
+      db.prepare(
+        'UPDATE subscriptions SET status = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE stripe_subscription_id = ?'
+      ).run(stripeSub.status, periodEnd, stripeSub.id);
       break;
     }
 
