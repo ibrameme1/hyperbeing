@@ -916,23 +916,30 @@ export default function Homepage() {
 
       {/* ── 5. FEATURE SPLITS ── */}
       <section style={{ background: '#f5f5f5', padding: '120px 24px' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '120px' }}>
+        <div className="feature-split-list" style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '120px' }}>
           {FEATURE_SPLITS.map((f, i) => (
-            <Reveal key={i} delay={0.05}>
+            <div key={i} className="feature-split-item" style={{ position: 'relative' }}>
               <div className="feature-split-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '80px', alignItems: 'center' }}>
                 {/* Text side */}
-                <div style={{ order: f.side === 'right' ? 0 : 1 }}>
-                  <h3 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(32px, 4vw, 48px)', fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#0d0b1a', marginBottom: '20px' }}>
-                    <em>{f.headline}</em>
-                  </h3>
-                  <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', color: '#3d3660', lineHeight: 1.65 }}>{f.body}</p>
+                <div className="feature-split-text" style={{ order: f.side === 'right' ? 0 : 1 }}>
+                  <Reveal>
+                    <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', letterSpacing: '0.2em', color: '#5B50FF', marginBottom: '14px' }}>
+                      {String(i + 1).padStart(2, '0')} / {String(FEATURE_SPLITS.length).padStart(2, '0')}
+                    </p>
+                    <h3 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(32px, 4vw, 48px)', fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#0d0b1a', marginBottom: '20px' }}>
+                      <em>{f.headline}</em>
+                    </h3>
+                    <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', color: '#3d3660', lineHeight: 1.65 }}>{f.body}</p>
+                  </Reveal>
                 </div>
                 {/* Visual side */}
-                <div style={{ order: f.side === 'right' ? 1 : 0, borderRadius: '14px', boxShadow: '0 24px 80px rgba(13,11,26,0.14), 0 4px 24px rgba(91,80,255,0.08)' }}>
-                  <FeatureVisual type={f.visual} />
+                <div className="feature-split-visual" style={{ order: f.side === 'right' ? 1 : 0, borderRadius: '14px', boxShadow: '0 24px 80px rgba(13,11,26,0.14), 0 4px 24px rgba(91,80,255,0.08)' }}>
+                  <Reveal delay={0.15}>
+                    <FeatureVisual type={f.visual} />
+                  </Reveal>
                 </div>
               </div>
-            </Reveal>
+            </div>
           ))}
         </div>
       </section>
@@ -1098,9 +1105,30 @@ export default function Homepage() {
         @media (max-width: 768px) {
           .feature-split-grid {
             grid-template-columns: minmax(0, 1fr) !important;
+            gap: 28px !important;
           }
           .feature-split-grid > div {
             min-width: 0;
+          }
+          .feature-split-text {
+            order: -1 !important;
+          }
+          .feature-split-visual {
+            order: 2 !important;
+          }
+          .feature-split-list {
+            gap: 64px !important;
+          }
+          .feature-split-item:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            bottom: -64px;
+            width: 1px;
+            height: 64px;
+            background: linear-gradient(to bottom, rgba(91,80,255,0.35), transparent);
+            transform: translateX(-50%);
+            pointer-events: none;
           }
           .features-grid {
             grid-template-columns: 1fr !important;
