@@ -1,11 +1,38 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ArrowRight, Zap, Layers, TrendingUp } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSearchParams, Link } from 'react-router-dom';
 import Logo from '../components/Logo';
+import NovaMascot from '../components/NovaMascot';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
+
+const BRAND_FEATURES = [
+  { icon: Zap, title: 'Instant generation', desc: 'A full deck in under 3 minutes', color: '#5B50FF' },
+  { icon: Layers, title: 'AI art direction', desc: 'Every slide professionally designed', color: '#8B5CF6' },
+  { icon: TrendingUp, title: 'Strategy baked in', desc: 'Nova thinks like a McKinsey + Apple hybrid', color: '#22c55e' },
+];
+
+function BrandFeature({ icon: Icon, title, desc, color }) {
+  return (
+    <div
+      className="flex items-center gap-3"
+      style={{ background: '#ffffff', border: '0.5px solid #e8e8f0', borderRadius: '10px', padding: '12px 14px' }}
+    >
+      <div
+        className="flex items-center justify-center flex-shrink-0"
+        style={{ width: 36, height: 36, borderRadius: '8px', background: `${color}14`, border: `1px solid ${color}33` }}
+      >
+        <Icon size={16} style={{ color }} />
+      </div>
+      <div>
+        <p style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: 13, color: '#0d0b1a' }}>{title}</p>
+        <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#6b6490', marginTop: 2 }}>{desc}</p>
+      </div>
+    </div>
+  );
+}
 
 function GoogleIcon() {
   return (
@@ -82,7 +109,48 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-10" style={{ background: '#f5f5f5' }}>
+    <div className="min-h-screen flex" style={{ background: '#f5f5f5' }}>
+      {/* ── Left brand panel (desktop only) ── */}
+      <div className="hidden lg:flex lg:flex-1 lg:flex-col relative overflow-hidden" style={{ padding: '48px' }}>
+        {/* Atmospheric glow, matching the homepage hero */}
+        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 30% 20%, rgba(91,80,255,0.10), transparent 60%)', pointerEvents: 'none' }} />
+
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <Link to="/" style={{ display: 'inline-flex', textDecoration: 'none' }}>
+            <Logo height={36} />
+          </Link>
+        </div>
+
+        <div className="flex-1 flex flex-col justify-center" style={{ position: 'relative', zIndex: 1, maxWidth: '460px' }}>
+          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase', marginBottom: '16px' }}>
+            AI Presentation Maker
+          </p>
+          <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(32px, 3.4vw, 44px)', fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#0d0b1a', marginBottom: '16px' }}>
+            Presentations that make people go <em>"how?"</em>
+          </h2>
+          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', color: '#3d3660', lineHeight: 1.65, marginBottom: '32px' }}>
+            Nova designs every slide like a senior art director. You just describe what you need.
+          </p>
+          <div className="flex flex-col gap-2.5">
+            {BRAND_FEATURES.map(f => <BrandFeature key={f.title} {...f} />)}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4" style={{ position: 'relative', zIndex: 1 }}>
+          <NovaMascot size={64} />
+          <div>
+            <p style={{ fontFamily: 'Playfair Display, Georgia, serif', fontStyle: 'italic', fontSize: '15px', color: '#0d0b1a', lineHeight: 1.4 }}>
+              "It's like Canva and a McKinsey consultant had a very talented baby."
+            </p>
+            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490', marginTop: '4px' }}>
+              — Someone who used to dread presentations
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Right form panel ── */}
+      <div className="flex-1 lg:max-w-[480px] lg:flex-shrink-0 flex items-center justify-center px-4 py-10 lg:border-l lg:border-[#e8e8f0] lg:bg-white">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -97,7 +165,7 @@ export default function Login() {
         }}
       >
         {/* Logo */}
-        <div className="flex justify-center mb-6">
+        <div className="flex justify-center mb-6 lg:hidden">
           <Link to="/" style={{ display: 'inline-flex', textDecoration: 'none' }}>
             <Logo height={36} />
           </Link>
@@ -301,6 +369,7 @@ export default function Login() {
           </p>
         )}
       </motion.div>
+      </div>
     </div>
   );
 }
