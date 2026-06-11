@@ -13,6 +13,7 @@ import PresentationViewer from '../components/PresentationViewer';
 import { SkeletonPresentationViewer } from '../components/Skeleton';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
+import { fileToImageAttachment } from '../utils/imageAttachment';
 
 // ─── Generating messages ───────────────────────────────────────────────────
 const GENERATING_MESSAGES = [
@@ -110,18 +111,15 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate, generateE
   }, [messages, streamingContent]);
 
   const onDrop = useCallback(acceptedFiles => {
-    acceptedFiles.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = e => {
-        setAttachments(prev => [...prev, {
-          id: Math.random().toString(36).slice(2),
-          name: file.name,
-          type: file.type.startsWith('image/') ? 'image' : 'file',
-          mimeType: file.type,
-          data: e.target.result,
-        }]);
-      };
-      reader.readAsDataURL(file);
+    acceptedFiles.forEach(async file => {
+      const { data, mimeType } = await fileToImageAttachment(file);
+      setAttachments(prev => [...prev, {
+        id: Math.random().toString(36).slice(2),
+        name: file.name,
+        type: 'image',
+        mimeType,
+        data,
+      }]);
     });
   }, []);
 

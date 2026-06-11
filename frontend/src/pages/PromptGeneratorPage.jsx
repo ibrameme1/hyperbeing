@@ -6,6 +6,7 @@ import { ArrowLeft, Send, Sparkles, X, Loader2, Copy, Check, RotateCcw, Papercli
 import { useAuth } from '../contexts/AuthContext';
 import OutOfCreditsModal from '../components/OutOfCreditsModal';
 import api from '../api/client';
+import { fileToImageAttachment } from '../utils/imageAttachment';
 
 function DeliveryBlock({ text, onUsePrompt }) {
   const [copied, setCopied] = useState(false);
@@ -132,16 +133,15 @@ export default function PromptGeneratorPage() {
   }, [messages]);
 
   const onDrop = useCallback(accepted => {
-    accepted.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = e => setImages(prev => [...prev, {
+    accepted.forEach(async file => {
+      const { data, mimeType } = await fileToImageAttachment(file);
+      setImages(prev => [...prev, {
         id: Math.random().toString(36).slice(2),
         name: file.name,
-        mimeType: file.type,
-        data: e.target.result,
-        preview: e.target.result,
+        mimeType,
+        data,
+        preview: data,
       }]);
-      reader.readAsDataURL(file);
     });
   }, []);
 

@@ -170,6 +170,9 @@ router.post('/analyze', authenticateToken, analyzeLimiter, async (req, res) => {
   if (!Array.isArray(attachments) || attachments.length > 10) {
     return res.status(400).json({ error: 'Attachments must be an array of max 10 items' });
   }
+  if (attachments.some(a => typeof a?.data === 'string' && a.data.length > 10_000_000)) {
+    return res.status(400).json({ error: 'One of your images is too large (max ~7MB). Please use a smaller image.' });
+  }
   try { checkTokenBudget(req.user.id); } catch (err) {
     if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
     throw err;

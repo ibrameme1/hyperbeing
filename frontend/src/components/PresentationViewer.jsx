@@ -11,6 +11,7 @@ import FeedbackButton from './FeedbackButton';
 import { exportToPDF, exportImages } from '../utils/pdfExport';
 import api from '../api/client';
 import { capture } from '../utils/posthog';
+import { fileToImageAttachment } from '../utils/imageAttachment';
 
 // Separate component so each item has its own wasDragging ref
 function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDelete }) {
@@ -229,15 +230,14 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   }
 
   function handleEditAttach(files) {
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = e => setEditAttachments(prev => [...prev, {
+    Array.from(files).forEach(async file => {
+      const { data, mimeType } = await fileToImageAttachment(file);
+      setEditAttachments(prev => [...prev, {
         id: Math.random().toString(36).slice(2),
         name: file.name,
-        data: e.target.result,
-        mimeType: file.type,
+        data,
+        mimeType,
       }]);
-      reader.readAsDataURL(file);
     });
   }
 
@@ -369,14 +369,13 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   }
 
   function handleAddAttach(files) {
-    Array.from(files).forEach(file => {
+    Array.from(files).forEach(async file => {
       if (!file.type.startsWith('image/')) return;
-      const reader = new FileReader();
-      reader.onload = e => setAddAttachments(prev => [...prev, {
+      const { data, mimeType } = await fileToImageAttachment(file);
+      setAddAttachments(prev => [...prev, {
         id: Math.random().toString(36).slice(2),
-        name: file.name, data: e.target.result, mimeType: file.type,
+        name: file.name, data, mimeType,
       }]);
-      reader.readAsDataURL(file);
     });
   }
 

@@ -16,6 +16,7 @@ import { capture } from '../utils/posthog';
 import Logo from '../components/Logo';
 import { SkeletonDashboardPage } from '../components/Skeleton';
 import FeedbackButton from '../components/FeedbackButton';
+import { fileToImageAttachment } from '../utils/imageAttachment';
 
 const ANALYZING_MESSAGES = [
   { text: "ok let me read through this real quick…", emoji: "👀" },
@@ -156,17 +157,11 @@ const PLACEHOLDER_TEXT = PLACEHOLDER_EXAMPLES[new Date().getDay() % PLACEHOLDER_
 // ─── Attachment Drop Zone ──────────────────────────────────────────────────
 function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove, isDark }) {
   const onDrop = useCallback(accepted => {
-    accepted.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = e => onAdd({
-        id: Math.random().toString(36).slice(2),
-        name: file.name,
-        type: 'image',
-        mimeType: file.type,
-        data: e.target.result,
-      });
-      reader.onerror = () => {};
-      reader.readAsDataURL(file);
+    accepted.forEach(async file => {
+      try {
+        const { data, mimeType } = await fileToImageAttachment(file);
+        onAdd({ id: Math.random().toString(36).slice(2), name: file.name, type: 'image', mimeType, data });
+      } catch {}
     });
   }, [onAdd]);
 
@@ -808,14 +803,14 @@ export default function Dashboard() {
     const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
     if (!files.length) return;
     setShowZones(true);
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = ev => setBrandingFiles(prev => [...prev, {
-        id: Math.random().toString(36).slice(2),
-        name: file.name, type: 'image', mimeType: file.type, data: ev.target.result,
-      }]);
-      reader.onerror = () => {};
-      reader.readAsDataURL(file);
+    files.forEach(async file => {
+      try {
+        const { data, mimeType } = await fileToImageAttachment(file);
+        setBrandingFiles(prev => [...prev, {
+          id: Math.random().toString(36).slice(2),
+          name: file.name, type: 'image', mimeType, data,
+        }]);
+      } catch {}
     });
   }
 
