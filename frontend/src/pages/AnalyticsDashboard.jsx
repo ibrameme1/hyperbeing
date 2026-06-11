@@ -12,7 +12,7 @@ import {
   ChevronRight, ChevronDown, ChevronUp, Circle, BarChart2, RefreshCw,
   Terminal, Cpu, Search, AlertCircle, Info, AlertTriangle, Bug,
   Pencil, Check, X, ArrowLeft, Trash2, Database, Save, ExternalLink,
-  TableProperties, ChevronLeft,
+  TableProperties, ChevronLeft, HardDrive,
 } from 'lucide-react';
 import api from '../api/client';
 
@@ -40,6 +40,13 @@ function fmt(n) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}K`;
   return String(n ?? 0);
+}
+
+function fmtBytes(n) {
+  if (!n) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1);
+  return `${(n / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
 function relTime(iso) {
@@ -232,6 +239,12 @@ export default function AnalyticsDashboard() {
   const [editPresTitle, setEditPresTitle] = useState('');
   const [presDeleting, setPresDeleting] = useState(null);
 
+  // ── Storage / disk usage ────────────────────────────────────────────────────
+  const [storageData, setStorageData] = useState(null);
+  const [storageLoading, setStorageLoading] = useState(false);
+  const [storageError, setStorageError] = useState(false);
+  const [vacuumLoading, setVacuumLoading] = useState(false);
+
   // ── Database browser ───────────────────────────────────────────────────────
   const [dbTables, setDbTables] = useState(null);
   const [dbActiveTable, setDbActiveTable] = useState('users');
@@ -374,6 +387,26 @@ export default function AnalyticsDashboard() {
     } catch { setPresDetailError(true); } finally { setSelectedPresLoading(false); }
   };
 
+  const fetchStorage = useCallback(async () => {
+    setStorageLoading(true);
+    setStorageError(false);
+    try {
+      const { data } = await api.get('/admin/storage');
+      setStorageData(data);
+    } catch { setStorageError(true); } finally { setStorageLoading(false); }
+  }, []);
+
+  const handleVacuum = async () => {
+    if (!window.confirm('Run VACUUM to reclaim disk space? This may take a while on a large database.')) return;
+    setVacuumLoading(true);
+    try {
+      await api.post('/admin/storage/vacuum');
+      await fetchStorage();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Vacuum failed');
+    } finally { setVacuumLoading(false); }
+  };
+
   const fetchDbTables = async () => {
     try {
       const { data } = await api.get('/admin/db/tables');
@@ -428,6 +461,7 @@ export default function AnalyticsDashboard() {
       if (!dbTables) fetchDbTables();
       fetchDbData();
     }
+    if (activeTab === 'storage' && !storageData) fetchStorage();
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initial + auto-refresh
@@ -510,6 +544,7 @@ export default function AnalyticsDashboard() {
     { id: 'logs',          label: 'Logs',            icon: Terminal },
     { id: 'metrics',       label: 'Metrics',         icon: Cpu },
     { id: 'database',      label: 'Database',        icon: Database },
+    { id: 'storage',       label: 'Storage',         icon: HardDrive },
   ];
 
   return (
@@ -1354,6 +1389,11 @@ export default function AnalyticsDashboard() {
                                     title="View slides"
                                   ><Eye size={13} /></button>
                                   <button
+                                    onClick={() => navigate(`/presentations/${p.id}`)}
+                                    className="text-gray-600 hover:text-purple-400"
+                                    title="Open in presentation viewer"
+                                  ><ExternalLink size={13} /></button>
+                                  <button
                                     onClick={async () => {
                                       if (!window.confirm('Delete this presentation?')) return;
                                       setPresDeleting(p.id);
@@ -2059,6 +2099,130 @@ export default function AnalyticsDashboard() {
                 </div>
               )}
             </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'storage' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+            <div className="flex items-center justify-between">
+              <SectionTitle>Disk &amp; Storage</SectionTitle>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchStorage}
+                  disabled={storageLoading}
+                  className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 hover:bg-white/10 transition disabled:opacity-50"
+                >
+                  <RefreshCw size={12} className={storageLoading ? 'animate-spin' : ''} />
+                  {storageLoading ? 'Loading…' : 'Refresh'}
+                </button>
+                <button
+                  onClick={handleVacuum}
+                  disabled={vacuumLoading}
+                  className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 hover:bg-white/10 transition disabled:opacity-50"
+                  title="Reclaim disk space from deleted rows"
+                >
+                  <HardDrive size={12} className={vacuumLoading ? 'animate-pulse' : ''} />
+                  {vacuumLoading ? 'Vacuuming…' : 'Run VACUUM'}
+                </button>
+              </div>
+            </div>
+
+            {storageError && <SectionError onRetry={fetchStorage} />}
+
+            {storageData && (
+              <>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-2xl font-bold text-white">{fmtBytes(storageData.totalDiskBytes)}</p>
+                    <p className="mt-1 text-xs text-gray-500">Data directory size</p>
+                    <p className="mt-2 truncate font-mono text-[10px] text-gray-700" title={storageData.dataDir}>{storageData.dataDir}</p>
+                  </div>
+                  {storageData.volume && (
+                    <>
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                        <p className="text-2xl font-bold text-white">{fmtBytes(storageData.volume.totalBytes - storageData.volume.availableBytes)}</p>
+                        <p className="mt-1 text-xs text-gray-500">Volume used (of {fmtBytes(storageData.volume.totalBytes)})</p>
+                        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className="h-full rounded-full bg-purple-500"
+                            style={{
+                              width: `${Math.min(100, ((storageData.volume.totalBytes - storageData.volume.availableBytes) / storageData.volume.totalBytes) * 100)}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                        <p className="text-2xl font-bold text-white">{fmtBytes(storageData.volume.availableBytes)}</p>
+                        <p className="mt-1 text-xs text-gray-500">Volume free</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Files in data directory */}
+                <ChartCard title="Files on disk">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-white/10 text-gray-500 text-left">
+                          <th className="pb-2 pr-3">File</th>
+                          <th className="pb-2 pr-3">Size</th>
+                          <th className="pb-2">Modified</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {storageData.files.filter(f => f.isFile).map(f => (
+                          <tr key={f.name} className="border-b border-white/5">
+                            <td className="py-2 pr-3 font-mono text-gray-300">{f.name}</td>
+                            <td className="py-2 pr-3 font-mono text-gray-300">{fmtBytes(f.bytes)}</td>
+                            <td className="py-2 text-gray-500">{relTime(f.modified_at)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </ChartCard>
+
+                {/* Per-table breakdown */}
+                <ChartCard title="Table storage breakdown">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-white/10 text-gray-500 text-left">
+                          <th className="pb-2 pr-3">Table</th>
+                          <th className="pb-2 pr-3">Rows</th>
+                          <th className="pb-2 pr-3">Est. content size</th>
+                          <th className="pb-2">Share</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          const maxBytes = Math.max(1, ...storageData.tables.map(t => t.bytes));
+                          return storageData.tables
+                            .slice()
+                            .sort((a, b) => b.bytes - a.bytes)
+                            .map(t => (
+                              <tr key={t.name} className="border-b border-white/5">
+                                <td className="py-2 pr-3 font-mono text-gray-300">{t.name}</td>
+                                <td className="py-2 pr-3 font-mono text-gray-300">{fmt(t.count)}</td>
+                                <td className="py-2 pr-3 font-mono text-gray-300">{fmtBytes(t.bytes)}</td>
+                                <td className="py-2">
+                                  <div className="h-1.5 w-32 overflow-hidden rounded-full bg-white/10">
+                                    <div
+                                      className="h-full rounded-full bg-blue-500"
+                                      style={{ width: `${(t.bytes / maxBytes) * 100}%` }}
+                                    />
+                                  </div>
+                                </td>
+                              </tr>
+                            ));
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </ChartCard>
+              </>
+            )}
           </motion.div>
         )}
 

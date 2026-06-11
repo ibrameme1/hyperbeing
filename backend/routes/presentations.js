@@ -8,7 +8,7 @@ import { generateSlideImage } from '../services/imageGeneration.js';
 import {
   deductCredits, refundCredits, deductCreditsForEdit, computeAffordableSlides,
   updateLedgerMetadata, getOrCreateSubscription, CREDIT_COSTS, checkTokenBudget,
-  suggestPlanForCost, novaInsufficientCredits, getEditTierThreshold,
+  suggestPlanForCost, novaInsufficientCredits, getEditTierThreshold, isAdmin,
 } from '../services/stripeService.js';
 import { validate, isString, isOptionalString, isEnum, isArray, isIntBetween } from '../middleware/validate.js';
 import { createPresentationLimiter, addSlidesLimiter, analyzeLimiter } from '../middleware/rateLimits.js';
@@ -506,9 +506,9 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
 // ─── Get single presentation with messages ────────────────────────────────
 router.get('/:id', authenticateToken, (req, res) => {
   const db = getDb();
-  const pres = db
-    .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
-    .get(req.params.id, req.user.id);
+  const pres = isAdmin(req.user.id)
+    ? db.prepare('SELECT * FROM presentations WHERE id = ?').get(req.params.id)
+    : db.prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
 
   if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
 
@@ -617,7 +617,8 @@ router.get('/:id/events', (req, res) => {
   const ownedPres = getDb()
     .prepare('SELECT id FROM presentations WHERE id = ? AND user_id = ?')
     .get(id, userId);
-  if (!ownedPres) return res.status(404).end();
+  const accessiblePres = ownedPres || (isAdmin(userId) && getDb().prepare('SELECT id FROM presentations WHERE id = ?').get(id));
+  if (!accessiblePres) return res.status(404).end();
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
