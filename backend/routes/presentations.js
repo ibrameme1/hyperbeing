@@ -19,11 +19,23 @@ import { sendPresentationReady } from '../services/emailService.js';
 // Validates a single attachment object
 function validateAttachment(a) {
   if (typeof a !== 'object' || a === null) return 'Must be an object';
-  if (!['image', 'file'].includes(a.type)) return 'Invalid type';
+  if (a.type !== undefined && !['image', 'file'].includes(a.type)) return 'Invalid type';
   if (typeof a.name !== 'string' || a.name.length > 255) return 'Invalid name';
   if (typeof a.data !== 'string') return 'Missing data';
-  // Base64 data URIs can be large — cap at ~10MB per attachment
-  if (a.data.length > 14_000_000) return 'Attachment too large (max ~10MB)';
+  // Base64 data URIs can be large — cap at ~7MB per attachment
+  if (a.data.length > 10_000_000) return 'One of your images is too large (max ~7MB). Please use a smaller image.';
+  return null;
+}
+
+// Validates an attachments array: must be an array, within the count limit,
+// and every item must pass validateAttachment()
+function validateAttachments(attachments, maxCount = 10) {
+  if (!Array.isArray(attachments)) return 'Attachments must be an array';
+  if (attachments.length > maxCount) return `Too many attachments (max ${maxCount})`;
+  for (const a of attachments) {
+    const err = validateAttachment(a);
+    if (err) return err;
+  }
   return null;
 }
 
@@ -167,12 +179,8 @@ router.post('/analyze', authenticateToken, analyzeLimiter, async (req, res) => {
   if (message && message.length > 50_000) {
     return res.status(400).json({ error: 'Message too long (max 50,000 characters)' });
   }
-  if (!Array.isArray(attachments) || attachments.length > 10) {
-    return res.status(400).json({ error: 'Attachments must be an array of max 10 items' });
-  }
-  if (attachments.some(a => typeof a?.data === 'string' && a.data.length > 10_000_000)) {
-    return res.status(400).json({ error: 'One of your images is too large (max ~7MB). Please use a smaller image.' });
-  }
+  const attachmentsErr = validateAttachments(attachments);
+  if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
   try { checkTokenBudget(req.user.id); } catch (err) {
     if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
     throw err;
@@ -199,9 +207,8 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
   if (message && message.length > 50_000) {
     return res.status(400).json({ error: 'Message too long (max 50,000 characters)' });
   }
-  if (!Array.isArray(attachments) || attachments.length > 10) {
-    return res.status(400).json({ error: 'Too many attachments (max 10)' });
-  }
+  const attachmentsErr = validateAttachments(attachments);
+  if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
   if (!VALID_ASPECT_RATIOS.includes(aspectRatio)) {
     return res.status(400).json({ error: `Invalid aspect ratio. Must be one of: ${VALID_ASPECT_RATIOS.join(', ')}` });
   }
@@ -530,6 +537,8 @@ router.post('/:id/messages', authenticateToken, async (req, res) => {
   if (!message?.trim() && attachments.length === 0) {
     return res.status(400).json({ error: 'Message required' });
   }
+  const attachmentsErr = validateAttachments(attachments);
+  if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
 
   const db = getDb();
   const pres = db
@@ -764,8 +773,10 @@ async function runGeneration(presentationId, slidePlan, userId = null) {
 
 // ─── Regenerate a single slide (user-described edit → direct to Gemini) ──────
 router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res) => {
-  const { instruction, attachments: reqBodyAttachments } = req.body;
+  const { instruction, attachments: reqBodyAttachments = [] } = req.body;
   if (!instruction?.trim()) return res.status(400).json({ error: 'Please describe what you\'d like to change about this slide.' });
+  const attachmentsErr = validateAttachments(reqBodyAttachments);
+  if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
 
   const db = getDb();
   const pres = db
@@ -791,7 +802,7 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
 
   // pic1 = current rendered slide; pic2, pic3… = anything the user uploaded in the edit bar
   const hasCurrentImage = slideForPrompt.image_data && !slideForPrompt.image_data.startsWith('data:image/svg');
-  const userUploads = (reqBodyAttachments || []).filter(a => a.data);
+  const userUploads = reqBodyAttachments.filter(a => a.data);
   // Only user-uploaded references count toward the reference-image surcharge —
   // the auto-included current-slide image does not.
   const hasReferenceImage = userUploads.length > 0;
@@ -1037,9 +1048,8 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
   if (description.length > 10_000) {
     return res.status(400).json({ error: 'Description too long (max 10,000 characters)' });
   }
-  if (!Array.isArray(reqAttachments) || reqAttachments.length > 10) {
-    return res.status(400).json({ error: 'Too many attachments (max 10)' });
-  }
+  const attachmentsErr = validateAttachments(reqAttachments);
+  if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
   if (count !== 'auto' && (isNaN(parseInt(count)) || parseInt(count) < 1 || parseInt(count) > 10)) {
     return res.status(400).json({ error: 'Count must be 1–10 or "auto"' });
   }
