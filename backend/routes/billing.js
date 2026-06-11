@@ -57,6 +57,7 @@ router.get('/subscription', authMiddleware, async (req, res) => {
 
     let next_payment_date = null;
     let current_period_end = sub.current_period_end;
+    let cancel_at_period_end = false;
 
     if (sub.stripe_subscription_id && process.env.STRIPE_SECRET_KEY) {
       try {
@@ -65,6 +66,7 @@ router.get('/subscription', authMiddleware, async (req, res) => {
           stripe.invoices.retrieveUpcoming({ subscription: sub.stripe_subscription_id }).catch(() => null),
         ]);
         current_period_end = new Date(stripeSub.current_period_end * 1000).toISOString();
+        cancel_at_period_end = !!stripeSub.cancel_at_period_end;
         if (upcoming?.next_payment_attempt) {
           next_payment_date = new Date(upcoming.next_payment_attempt * 1000).toISOString();
         }
@@ -85,7 +87,7 @@ router.get('/subscription', authMiddleware, async (req, res) => {
     }
 
     const plan = PLANS[sub.plan] || PLANS.free;
-    res.json({ subscription: { ...sub, current_period_end, is_admin: admin, next_payment_date }, plan });
+    res.json({ subscription: { ...sub, current_period_end, is_admin: admin, next_payment_date, cancel_at_period_end }, plan });
   } catch (err) {
     logger.error('get subscription failed', { errorMessage: err.message, userId: req.userId });
     res.status(500).json({ error: 'Could not load subscription. Please try again.' });
@@ -143,11 +145,15 @@ router.post('/checkout', authMiddleware, billingLimiter,
       const PLAN_RANK = { free: 0, basic: 1, pro: 2, ultra: 3, ultra1: 3, ultra2: 4, ultra3: 5, ultra4: 6 };
       const isDowngrade = (PLAN_RANK[actualPlanKey] ?? 0) < (PLAN_RANK[sub.plan] ?? 0);
 
-      // Cancel a pending downgrade — user picks any plan other than the scheduled one
-      if (sub.pending_plan && actualPlanKey !== sub.pending_plan) {
+      // Cancel a pending downgrade — user re-picks the plan they're currently on.
+      // (Picking any other plan, including the pending one, falls through to the
+      // normal downgrade/upgrade logic below, which supersedes pending_plan and
+      // applies the correct credit adjustment.)
+      if (sub.pending_plan && actualPlanKey === sub.plan) {
         await stripe.subscriptions.update(sub.stripe_subscription_id, {
           items: [{ id: currentItemId, price: priceId }],
           proration_behavior: 'none',
+          cancel_at_period_end: false,
           metadata: { userId: req.userId, planKey: actualPlanKey },
         });
         const db = getDb();
@@ -167,6 +173,7 @@ router.post('/checkout', authMiddleware, billingLimiter,
           await stripe.subscriptions.update(sub.stripe_subscription_id, {
             items: [{ id: currentItemId, price: priceId }],
             proration_behavior: 'none',
+            cancel_at_period_end: false,
             metadata: { userId: req.userId, planKey: actualPlanKey },
           });
         } catch (stripeErr) {
@@ -181,9 +188,11 @@ router.post('/checkout', authMiddleware, billingLimiter,
           items: [{ id: currentItemId, price: priceId }],
           proration_behavior: 'create_prorations',
           billing_cycle_anchor: 'now',
+          cancel_at_period_end: false,
           metadata: { userId: req.userId, planKey: actualPlanKey },
         });
         applyPlanUpgrade(req.userId, actualPlanKey);
+        const db = getDb();
         const _upgradeUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.userId);
         if (_upgradeUser?.email) sendPlanUpgraded(_upgradeUser.name, _upgradeUser.email, plan.name, plan.credits);
         return res.json({ upgraded: true, message: 'Plan upgraded successfully.' });

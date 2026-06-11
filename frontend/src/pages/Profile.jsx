@@ -109,6 +109,9 @@ export default function Profile() {
   const nextPayment   = sub?.next_payment_date   ? formatDate(sub.next_payment_date)  : null;
   const pendingPlan   = sub?.pending_plan;
   const isPaid        = sub?.plan && sub.plan !== 'free';
+  const isCancelled   = sub?.status === 'cancelled' || sub?.status === 'canceled';
+  // Stripe keeps status 'active' until the period actually ends after a portal cancellation
+  const isCancelling  = isPaid && !isCancelled && !!sub?.cancel_at_period_end;
 
   return (
     <div className="min-h-screen" style={{ background: '#0A0A0B' }}>
@@ -166,13 +169,21 @@ export default function Profile() {
 
                 {/* Subscription timing */}
                 <div className="space-y-2 text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                  {isPaid && (sub.status === 'cancelled' || sub.status === 'canceled') && periodEnd && (
+                  {isPaid && isCancelled && periodEnd && (
                     <div className="flex items-start gap-2">
                       <Calendar size={12} className="mt-0.5 flex-shrink-0" style={{ color: '#f87171' }} />
                       <span style={{ color: '#f87171' }}>Cancelled — access ends <span className="font-semibold">{periodEnd}</span></span>
                     </div>
                   )}
-                  {isPaid && sub.status !== 'cancelled' && sub.status !== 'canceled' && periodEnd && (
+                  {isCancelling && periodEnd && (
+                    <div className="flex items-start gap-2">
+                      <Calendar size={12} className="mt-0.5 flex-shrink-0" style={{ color: '#f87171' }} />
+                      <span style={{ color: '#f87171' }}>
+                        Cancelled — enjoy <span className="font-semibold capitalize">{sub.plan}</span> benefits until <span className="font-semibold">{periodEnd}</span>
+                      </span>
+                    </div>
+                  )}
+                  {isPaid && !isCancelled && !isCancelling && periodEnd && (
                     <div className="flex items-start gap-2">
                       <Calendar size={12} className="mt-0.5 flex-shrink-0" style={{ color: '#8B5CF6' }} />
                       <span>
@@ -183,7 +194,7 @@ export default function Profile() {
                       </span>
                     </div>
                   )}
-                  {nextPayment && !pendingPlan && sub.status !== 'cancelled' && sub.status !== 'canceled' && (
+                  {nextPayment && !pendingPlan && !isCancelled && !isCancelling && (
                     <div className="flex items-start gap-2">
                       <CreditCard size={12} className="mt-0.5 flex-shrink-0" style={{ color: '#00F0FF' }} />
                       <span>Next payment on <span className="text-white/70">{nextPayment}</span></span>

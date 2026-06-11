@@ -605,10 +605,16 @@ export default function Pricing() {
                           : isDowngrade ? `Downgrade to ${plan.name}`
                           : `Get ${plan.name}`;
 
+                        const isCancelled  = subInfo?.status === 'cancelled' || subInfo?.status === 'canceled';
+                        // Stripe keeps status 'active' until the period actually ends after a portal cancellation
+                        const isCancelling = !isCancelled && !!subInfo?.cancel_at_period_end;
+
                         const statusNode = isCurrent && subInfo && subInfo.plan !== 'free' ? (
                           <div style={{ fontSize: '12px', textAlign: 'center', marginBottom: '16px', fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
-                            {(subInfo.status === 'cancelled' || subInfo.status === 'canceled') ? (
+                            {isCancelled ? (
                               <span style={{ color: '#ef4444' }}>Cancelled - access ends {periodEnd}</span>
+                            ) : isCancelling ? (
+                              <span style={{ color: '#ef4444' }}>Cancelled - enjoy {plan.name} until {periodEnd}</span>
                             ) : subInfo.next_payment_date ? (
                               <>Renews {formatDate(subInfo.next_payment_date)}</>
                             ) : periodEnd ? (
