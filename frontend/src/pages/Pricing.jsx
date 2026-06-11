@@ -444,35 +444,29 @@ export default function Pricing() {
                       display: 'flex', flexDirection: 'column',
                       height: '100%',
                       background: '#ffffff',
-                      border: highlighted ? '0.5px solid rgba(91,80,255,0.35)' : '0.5px solid #e8e8f0',
+                      border: highlighted ? '1px solid rgba(91,80,255,0.35)' : '0.5px solid #e8e8f0',
                       borderRadius: '8px',
                       boxShadow: highlighted
                         ? 'rgba(91,80,255,0.20) 0px 0px 24px 0px, 0 1px 2px rgba(13,11,26,0.04), 0 8px 24px -8px rgba(13,11,26,0.06)'
                         : '0 1px 2px rgba(13,11,26,0.04), 0 8px 24px -8px rgba(13,11,26,0.06)',
-                      transform: highlighted ? 'translateY(-12px) scale(1.02)' : 'none',
                       zIndex: highlighted ? 1 : 0,
-                      overflow: 'hidden',
+                      overflow: 'visible',
                     }}
                   >
-                    {/* Top badge — always rendered so plan names align across all 3 cards */}
-                    <div style={{
-                      padding: '11px 0', textAlign: 'center',
-                      borderBottom: highlighted ? '0.5px solid rgba(91,80,255,0.18)' : '0.5px solid transparent',
-                    }}>
-                      {highlighted ? (
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: '6px',
-                          padding: '4px 9px', borderRadius: '4px',
-                          background: '#ededff', color: '#5B50FF',
-                          border: '0.5px solid rgba(91,80,255,0.28)',
-                          fontFamily: 'Inter, sans-serif', fontSize: '9px', fontWeight: 600, letterSpacing: '0.10em', textTransform: 'uppercase',
-                        }}>
-                          {plan.popular ? 'Most popular' : 'Best value'}
-                        </span>
-                      ) : (
-                        <span style={{ display: 'inline-block', height: '21px' }} />
-                      )}
-                    </div>
+                    {highlighted && (
+                      <span style={{
+                        position: 'absolute', top: 0, left: '50%', transform: 'translate(-50%, -50%)',
+                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                        padding: '6px 14px', borderRadius: '999px',
+                        background: 'linear-gradient(135deg, #FF5B7A 0%, #FF8A3D 100%)',
+                        color: '#fff',
+                        boxShadow: '0 4px 14px rgba(255,91,122,0.35)',
+                        fontFamily: 'Inter, sans-serif', fontSize: '10px', fontWeight: 700, letterSpacing: '0.10em', textTransform: 'uppercase',
+                        whiteSpace: 'nowrap', zIndex: 2,
+                      }}>
+                        {plan.popular ? 'Most popular' : 'Best value'}
+                      </span>
+                    )}
 
                     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', flex: 1 }}>
                       {/* Plan name + speed */}
@@ -880,9 +874,6 @@ export default function Pricing() {
         @media (max-width: 900px) {
           .pricing-grid {
             grid-template-columns: 1fr !important;
-          }
-          .pricing-grid > div[style*="translateY(-12px)"] {
-            transform: none !important;
           }
           .pricing-enterprise {
             flex-direction: column !important;
