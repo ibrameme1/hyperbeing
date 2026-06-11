@@ -4,28 +4,19 @@ import { useEffect, useRef } from 'react';
 // beneath it. No wrapper container, background color, border radius, or
 // box shadow.
 //
-// `nova_mascot.webm` is encoded with a real alpha channel (VP9 / yuva420p,
-// chroma-keyed from the source's black background), so browsers that
-// support it (Chrome, Firefox, Edge — desktop & Android) get a plain
-// transparent <video> with no extra processing.
-//
-// Safari (desktop & iOS) doesn't support WebM at all, so it would fall back
-// to the opaque `nova-mascot.mp4`, leaving Nova's black backdrop visible.
-// For those browsers we render the mp4 to an offscreen <video>, then paint
-// it to a <canvas>, deriving per-pixel alpha the same way the WebM was
-// keyed: pixels close to black become transparent, with a soft blend band
-// (`colorkey=0x000000:0.10:0.25`) so edges stay smooth on any background.
+// The source video shows Nova on a solid black background with no alpha
+// channel. Browser support for transparent WebM/VP9 playback in <video> is
+// unreliable — particularly on mobile, where it silently falls back to an
+// opaque frame and leaves a black square behind Nova. To get consistent
+// transparency everywhere, we always play the (opaque) video off-screen and
+// render each frame to a <canvas>, deriving per-pixel alpha the same way
+// `colorkey=0x000000:0.10:0.25` would: pixels close to black become
+// transparent, with a soft blend band so edges stay smooth on any
+// background.
 const SIMILARITY = 0.10;
 const BLEND = 0.25;
 
-const supportsAlphaWebm = (() => {
-  if (typeof document === 'undefined') return true;
-  const v = document.createElement('video');
-  const type = v.canPlayType('video/webm; codecs="vp9"');
-  return type === 'probably' || type === 'maybe';
-})();
-
-function NovaMascotCanvas({ size, className }) {
+export default function NovaMascot({ size = 120, className = '' }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -41,6 +32,11 @@ function NovaMascotCanvas({ size, className }) {
     video.setAttribute('playsinline', '');
     video.setAttribute('webkit-playsinline', '');
     video.style.display = 'none';
+
+    const webm = document.createElement('source');
+    webm.src = '/nova-mascot.webm';
+    webm.type = 'video/webm';
+    video.appendChild(webm);
 
     const mp4 = document.createElement('source');
     mp4.src = '/nova-mascot.mp4';
@@ -158,31 +154,5 @@ function NovaMascotCanvas({ size, className }) {
         pointerEvents: 'none',
       }}
     />
-  );
-}
-
-export default function NovaMascot({ size = 120, className = '' }) {
-  if (!supportsAlphaWebm) {
-    return <NovaMascotCanvas size={size} className={className} />;
-  }
-
-  return (
-    <video
-      autoPlay
-      loop
-      muted
-      playsInline
-      className={className}
-      style={{
-        width: size,
-        height: size,
-        objectFit: 'contain',
-        background: 'transparent',
-        pointerEvents: 'none',
-      }}
-    >
-      <source src="/nova_mascot.webm" type="video/webm" />
-      <source src="/nova-mascot.mp4" type="video/mp4" />
-    </video>
   );
 }

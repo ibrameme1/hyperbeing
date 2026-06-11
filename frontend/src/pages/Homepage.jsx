@@ -619,6 +619,10 @@ function FeatureVisual({ type }) {
   return null;
 }
 
+// Scale Nova settles to once docked above the demo section's label —
+// large enough to stay a clear "presence" rather than shrinking away.
+const DOCK_SCALE = 0.75;
+
 /* ─── Main component ─── */
 export default function Homepage() {
   const { user } = useAuth();
@@ -645,7 +649,7 @@ export default function Homepage() {
       if (!wrap || !label) return;
       const wrapRect = wrap.getBoundingClientRect();
       const labelRect = label.getBoundingClientRect();
-      const dockedSize = novaBaseSize * 0.5;
+      const dockedSize = novaBaseSize * DOCK_SCALE;
       setNovaDockTop(labelRect.top - wrapRect.top - dockedSize - 16);
     };
 
@@ -675,7 +679,7 @@ export default function Homepage() {
     offset: ['start start', 'end start'],
   });
   const novaTop = useTransform(heroExitProgress, [0, 1], [vh - novaBaseSize * 0.6, novaDockTop ?? (vh + 16)]);
-  const novaScale = useTransform(heroExitProgress, [0, 1], [1, 0.5]);
+  const novaScale = useTransform(heroExitProgress, [0, 1], [1, DOCK_SCALE]);
   const chevronOpacity = useTransform(heroExitProgress, [0, 1], [0.7, 0]);
 
   useEffect(() => {
