@@ -51,7 +51,7 @@ export default function EditSlideModal({ slide, presentationId, onClose, onUpdat
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-50 flex items-end justify-center p-4"
-        style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)' }}
+        style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
         onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       >
         <motion.div
@@ -59,37 +59,46 @@ export default function EditSlideModal({ slide, presentationId, onClose, onUpdat
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: '100%', opacity: 0 }}
           transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-          className="bg-white rounded-t-3xl w-full max-w-2xl overflow-hidden shadow-ios-xl"
-          style={{ maxHeight: '85vh' }}
+          style={{
+            background: '#141414',
+            borderRadius: '12px 12px 0 0',
+            width: '100%',
+            maxWidth: 672,
+            overflow: 'hidden',
+            maxHeight: '85vh',
+          }}
         >
           {/* Drag handle */}
-          <div className="flex justify-center pt-3 pb-1">
-            <div className="w-10 h-1 rounded-full bg-ios-gray4" />
+          <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 12, paddingBottom: 4 }}>
+            <div style={{ width: 40, height: 4, borderRadius: 9999, background: '#2a2a2a' }} />
           </div>
 
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-ios-gray5">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: '0.5px solid #1e1e1e' }}>
             <div>
-              <h2 className="font-bold text-gray-900 text-lg">Edit Slide</h2>
-              <p className="text-ios-gray1 text-sm">Slide {slide.index + 1} · {slide.type}</p>
+              <h2 style={{ fontFamily: 'Inter,sans-serif', fontWeight: 700, color: '#f0f0ee', fontSize: 18, margin: 0 }}>Edit Slide</h2>
+              <p style={{ fontFamily: 'Inter,sans-serif', fontSize: 14, color: '#888888', margin: 0 }}>Slide {slide.index + 1} · {slide.type}</p>
             </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-2xl bg-ios-gray5 flex items-center justify-center hover:bg-ios-gray4 transition-colors">
+            <button
+              onClick={onClose}
+              style={{ width: 32, height: 32, borderRadius: 6, background: '#0f0f0f', border: '0.5px solid #1e1e1e', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#888888' }}
+            >
               <X size={16} />
             </button>
           </div>
 
-          <div className="overflow-y-auto" style={{ maxHeight: 'calc(85vh - 120px)' }}>
+          <div style={{ overflowY: 'auto', maxHeight: 'calc(85vh - 120px)' }}>
             {/* Slide preview */}
-            <div className="px-6 pt-4">
-              <div className="rounded-2xl overflow-hidden shadow-ios-md">
+            <div style={{ padding: '16px 24px 0' }}>
+              <div style={{ background: '#0f0f0f', border: '0.5px solid #1e1e1e', borderRadius: 8, overflow: 'hidden' }}>
                 <SlideRenderer slide={slide} />
               </div>
             </div>
 
             {/* Instruction form */}
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit} style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label style={{ display: 'block', fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600, color: '#b8b8b8', marginBottom: 8 }}>
                   What would you like to change?
                 </label>
                 <textarea
@@ -98,26 +107,65 @@ export default function EditSlideModal({ slide, presentationId, onClose, onUpdat
                   onChange={e => setInstruction(e.target.value)}
                   placeholder="e.g. Make it more energetic with bolder visuals, change the colour scheme to dark blue, add a more specific statistic about Q3 growth…"
                   rows={3}
-                  className="w-full px-4 py-3 rounded-2xl bg-ios-gray6 border border-transparent text-sm text-gray-800 placeholder:text-ios-gray2 focus:outline-none focus:border-ios-blue focus:bg-white resize-none transition-all duration-200 leading-relaxed"
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: '#0f0f0f',
+                    border: '0.5px solid #1e1e1e',
+                    borderRadius: 6,
+                    color: '#f0f0ee',
+                    fontFamily: 'Inter,sans-serif',
+                    fontSize: 14,
+                    resize: 'none',
+                    outline: 'none',
+                    lineHeight: 1.6,
+                    boxSizing: 'border-box',
+                  }}
                 />
               </div>
 
               {error && (
-                <p className="text-ios-red text-sm">{error}</p>
+                <p style={{ fontFamily: 'Inter,sans-serif', fontSize: 13, color: '#ef4444' }}>{error}</p>
               )}
 
-              <div className="flex gap-3">
+              <div style={{ display: 'flex', gap: 12 }}>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="ios-btn-secondary flex-1"
+                  style={{
+                    flex: 1,
+                    background: 'transparent',
+                    color: '#888888',
+                    border: '0.5px solid #1e1e1e',
+                    borderRadius: 6,
+                    fontFamily: 'Inter,sans-serif',
+                    fontSize: 13,
+                    padding: '9px 18px',
+                    cursor: 'pointer',
+                  }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading || !instruction.trim()}
-                  className="ios-btn flex-1"
+                  style={{
+                    flex: 1,
+                    background: '#5B50FF',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 6,
+                    fontFamily: 'Inter,sans-serif',
+                    fontWeight: 600,
+                    fontSize: 13,
+                    padding: '9px 18px',
+                    cursor: loading || !instruction.trim() ? 'not-allowed' : 'pointer',
+                    opacity: loading || !instruction.trim() ? 0.5 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                  }}
                 >
                   {loading ? (
                     <><Loader2 size={16} className="animate-spin" /> Updating…</>

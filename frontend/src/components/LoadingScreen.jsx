@@ -1,14 +1,6 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
-
-const SPEED_BADGE = {
-  free:  { emoji: '🐢', label: 'Standard Speed', color: '#9CA3AF', bg: 'rgba(156,163,175,0.12)' },
-  basic: { emoji: '🐢', label: 'Standard Speed', color: '#9CA3AF', bg: 'rgba(156,163,175,0.12)' },
-  pro:   { emoji: '⚡', label: 'Fast Generation', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
-  ultra: { emoji: '🚀', label: 'Priority Generation', color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
-};
+import { AnimatePresence, motion } from 'framer-motion';
+import NovaMascot from './NovaMascot';
 
 const PLANNING_MESSAGES = [
   'Nova is crafting your slide plan…',
@@ -27,10 +19,46 @@ const GENERATING_MESSAGES = [
   'Almost there…',
 ];
 
+function ShaderBackground() {
+  const [mods, setMods] = useState({});
+  useEffect(() => {
+    import('@paper-design/shaders-react').then(mod => setMods(mod)).catch(() => {});
+  }, []);
+  const { MeshGradient, DotOrbit } = mods;
+
+  if (!MeshGradient) {
+    return (
+      <div className="absolute inset-0" style={{
+        background: 'linear-gradient(135deg, #080808 0%, #0f0f0f 33%, #1a1540 66%, #5B50FF 100%)'
+      }} />
+    );
+  }
+  return (
+    <>
+      <MeshGradient
+        className="absolute inset-0 w-full h-full"
+        colors={['#080808', '#0f0f0f', '#1a1540', '#5B50FF']}
+        speed={0.4}
+        backgroundColor="#080808"
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+      />
+      {DotOrbit && (
+        <div className="absolute inset-0 opacity-20">
+          <DotOrbit
+            className="w-full h-full"
+            dotColor="#5B50FF"
+            orbitColor="#8B80FF"
+            speed={0.6}
+            intensity={0.8}
+            style={{ width: '100%', height: '100%' }}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 }) {
-  const { subscription } = useAuth();
-  const plan = subscription?.plan || 'free';
-  const speed = SPEED_BADGE[plan] || SPEED_BADGE.free;
   const [msgIndex, setMsgIndex] = useState(0);
   const isGenerating = totalSlides > 0;
   const messages = isGenerating ? GENERATING_MESSAGES : PLANNING_MESSAGES;
@@ -39,81 +67,47 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
 
   useEffect(() => {
     setMsgIndex(0);
-    const id = setInterval(() => {
-      setMsgIndex(i => (i + 1) % messages.length);
-    }, 3200);
+    const id = setInterval(() => setMsgIndex(i => (i + 1) % messages.length), 3200);
     return () => clearInterval(id);
-  }, [isGenerating]);
-
-  const currentMsg = messages[msgIndex];
+  }, [isGenerating, messages.length]);
 
   return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden"
-      style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
-    >
-      {/* Ambient glows */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div
-          className="absolute top-1/3 left-1/3 w-96 h-96 rounded-full opacity-20 animate-float"
-          style={{ background: 'radial-gradient(circle, #7b61ff 0%, transparent 70%)' }}
-        />
-        <div
-          className="absolute bottom-1/3 right-1/3 w-80 h-80 rounded-full opacity-15 animate-float"
-          style={{ background: 'radial-gradient(circle, #00b4ff 0%, transparent 70%)', animationDelay: '2s' }}
-        />
-      </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden">
+      <ShaderBackground />
 
       <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
+        initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="flex flex-col items-center gap-6 z-10 px-6 text-center"
+        className="relative z-10 flex flex-col items-center gap-6 px-6 text-center"
       >
-        {/* Pulsing logo */}
-        <div className="relative">
-          <motion.div
-            animate={{ scale: [1, 1.15, 1], opacity: [0.5, 1, 0.5] }}
-            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute inset-0 rounded-3xl blur-xl"
-            style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
-          />
-          <div
-            className="relative w-20 h-20 rounded-3xl flex items-center justify-center"
-            style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
-          >
-            <Sparkles size={36} className="text-white" />
-          </div>
-        </div>
+        {/* Nova mascot */}
+        <NovaMascot size={160} />
 
-        {/* Speed badge */}
-        <span className="text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"
-              style={{ background: speed.bg, color: speed.color, border: `1px solid ${speed.color}30` }}>
-          {speed.emoji} {speed.label}
-        </span>
-
-        {/* Headline */}
-        <p className="text-white/60 text-sm font-semibold uppercase tracking-widest">
-          Creating your presentation…
+        {/* Status label */}
+        <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#8B80FF', textTransform: 'uppercase' }}>
+          {isGenerating
+            ? `Generating slide ${Math.min(completedSlides.length + 1, totalSlides)} of ${totalSlides}`
+            : 'Planning deck'}
         </p>
 
-        {/* Cycling status message */}
+        {/* Cycling message */}
         <div className="h-8 flex items-center">
           <AnimatePresence mode="wait">
             <motion.p
-              key={currentMsg}
-              initial={{ opacity: 0, y: 10 }}
+              key={msgIndex}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.4 }}
-              className="text-white text-xl font-semibold"
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.35 }}
+              style={{ color: '#f0f0ee', fontSize: '18px', fontWeight: 500 }}
             >
-              {currentMsg}
+              {messages[msgIndex]}
             </motion.p>
           </AnimatePresence>
         </div>
 
         {/* Slide count */}
-        <p className="text-white/40 text-sm">
+        <p style={{ color: '#555555', fontSize: '13px' }}>
           {totalSlides > 0
             ? `${completedSlides.length} of ${totalSlides} slides ready`
             : 'Planning your presentation…'}
@@ -121,49 +115,27 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
 
         {/* Progress bar */}
         {totalSlides > 0 ? (
-          <div
-            className="w-72 h-1.5 rounded-full overflow-hidden"
-            style={{ background: 'rgba(255,255,255,0.12)' }}
-          >
+          <div className="w-64 h-px overflow-hidden" style={{ background: '#2a2a2a' }}>
             <motion.div
-              className="h-full rounded-full"
-              style={{ background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)' }}
-              animate={{ width: `${Math.max(progress * 100, 5)}%` }}
+              className="h-full"
+              style={{ background: 'linear-gradient(90deg, #5B50FF, #8B80FF)' }}
+              animate={{ width: `${Math.max(progress * 100, 4)}%` }}
               transition={{ duration: 0.6, ease: 'easeOut' }}
             />
           </div>
         ) : (
-          /* Indeterminate shimmer bar during planning phase */
-          <div
-            className="w-72 h-1.5 rounded-full overflow-hidden relative"
-            style={{ background: 'rgba(255,255,255,0.10)' }}
-          >
+          <div className="w-64 h-px overflow-hidden relative" style={{ background: '#1e1e1e' }}>
             <motion.div
-              className="absolute inset-y-0 w-1/3 rounded-full"
-              style={{ background: 'linear-gradient(90deg, transparent 0%, #764ba2 40%, #667eea 60%, transparent 100%)' }}
+              className="absolute inset-y-0 w-1/3"
+              style={{ background: 'linear-gradient(90deg, transparent, #5B50FF, #8B80FF, transparent)' }}
               animate={{ x: ['-33%', '300%'] }}
-              transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut', repeatDelay: 0.3 }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut', repeatDelay: 0.2 }}
             />
-          </div>
-        )}
-
-        {/* Animated thinking dots — only during planning */}
-        {!isGenerating && (
-          <div className="flex justify-center gap-1.5 mt-1">
-            {[0, 1, 2, 3, 4].map(i => (
-              <motion.div
-                key={i}
-                animate={{ scale: [1, 1.6, 1], opacity: [0.25, 1, 0.25] }}
-                transition={{ duration: 1.4, repeat: Infinity, delay: i * 0.22, ease: 'easeInOut' }}
-                className="w-1.5 h-1.5 rounded-full"
-                style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
-              />
-            ))}
           </div>
         )}
       </motion.div>
 
-      {/* Slide preview strip */}
+      {/* Completed slide strip */}
       <AnimatePresence>
         {completedSlides.length > 0 && (
           <motion.div
@@ -171,17 +143,18 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
             animate={{ opacity: 1, y: 0 }}
             className="absolute bottom-8 left-0 right-0 px-8"
           >
-            <p className="text-white/40 text-xs text-center mb-3 uppercase tracking-widest font-medium">
+            <p className="text-center mb-3" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#555555', textTransform: 'uppercase' }}>
               Slides ready
             </p>
             <div className="flex gap-3 overflow-x-auto pb-2 justify-center">
               {completedSlides.map(slide => (
                 <motion.div
                   key={slide.index}
-                  initial={{ opacity: 0, scale: 0.8, x: 20 }}
+                  initial={{ opacity: 0, scale: 0.85, x: 16 }}
                   animate={{ opacity: 1, scale: 1, x: 0 }}
                   transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                  className="flex-shrink-0 w-32 aspect-[16/9] rounded-xl overflow-hidden shadow-ios-lg border border-white/10"
+                  className="flex-shrink-0 w-28 overflow-hidden"
+                  style={{ aspectRatio: '16/9', borderRadius: '6px', border: '0.5px solid #1e1e1e' }}
                 >
                   {slide.image_data ? (
                     <img src={slide.image_data} alt={slide.title} className="w-full h-full object-cover" />

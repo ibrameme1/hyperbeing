@@ -10,8 +10,10 @@ import MessageBubble from '../components/MessageBubble';
 import LoadingScreen from '../components/LoadingScreen';
 import PlanRevealScreen from '../components/PlanRevealScreen';
 import PresentationViewer from '../components/PresentationViewer';
+import { SkeletonPresentationViewer } from '../components/Skeleton';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
+import { fileToImageAttachment } from '../utils/imageAttachment';
 
 // ─── Generating messages ───────────────────────────────────────────────────
 const GENERATING_MESSAGES = [
@@ -94,7 +96,7 @@ function GeneratingScreen() {
 }
 
 // ─── Chat Phase ────────────────────────────────────────────────────────────
-function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
+function ChatPhase({ presentation, messages, onNewMessage, onGenerate, generateError, sseError, onDismissSseError }) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [sending, setSending] = useState(false);
@@ -109,18 +111,15 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
   }, [messages, streamingContent]);
 
   const onDrop = useCallback(acceptedFiles => {
-    acceptedFiles.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = e => {
-        setAttachments(prev => [...prev, {
-          id: Math.random().toString(36).slice(2),
-          name: file.name,
-          type: file.type.startsWith('image/') ? 'image' : 'file',
-          mimeType: file.type,
-          data: e.target.result,
-        }]);
-      };
-      reader.readAsDataURL(file);
+    acceptedFiles.forEach(async file => {
+      const { data, mimeType } = await fileToImageAttachment(file);
+      setAttachments(prev => [...prev, {
+        id: Math.random().toString(36).slice(2),
+        name: file.name,
+        type: 'image',
+        mimeType,
+        data,
+      }]);
     });
   }, []);
 
@@ -238,6 +237,28 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
 
   return (
     <div className="h-screen flex flex-col" style={{ background: 'var(--bg-page)' }}>
+      {/* SSE error banner */}
+      {sseError && (
+        <div
+          className="flex items-center justify-between px-4 py-2.5 text-sm"
+          style={{
+            background: 'rgba(239,68,68,0.08)',
+            borderBottom: '1px solid rgba(239,68,68,0.2)',
+            color: '#ef4444',
+            fontFamily: 'Inter, sans-serif',
+            fontSize: 13,
+          }}
+        >
+          <span>{sseError}</span>
+          <button
+            onClick={onDismissSseError}
+            style={{ color: '#888', cursor: 'pointer', background: 'none', border: 'none', fontSize: 16, lineHeight: 1, padding: '0 2px', marginLeft: 8 }}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
       {/* Top bar */}
       <div className="flex items-center gap-4 px-5 py-4 border-b border-ios-gray5"
            style={{ background: 'var(--bg-nav)', backdropFilter: 'blur(20px)' }}>
@@ -297,7 +318,7 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex justify-center"
+            className="flex flex-col items-center gap-2"
           >
             <button
               onClick={() => onGenerate(presentation)}
@@ -307,6 +328,23 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate }) {
               <Wand2 size={18} />
               Generate Presentation
             </button>
+            {generateError && (
+              <p
+                style={{
+                  color: '#ef4444',
+                  fontSize: 12,
+                  fontFamily: 'Inter, sans-serif',
+                  textAlign: 'center',
+                  padding: '6px 12px',
+                  background: 'rgba(239,68,68,0.08)',
+                  border: '1px solid rgba(239,68,68,0.2)',
+                  borderRadius: 8,
+                  maxWidth: 320,
+                }}
+              >
+                {generateError}
+              </p>
+            )}
           </motion.div>
         )}
 
@@ -400,6 +438,10 @@ export default function PresentationPage() {
   const [presentation, setPresentation] = useState(initPres || null);
   const [messages, setMessages] = useState([]);
   const [phase, setPhase] = useState(initIsCompleted ? 'viewing' : 'loading');
+  const [loadError, setLoadError] = useState(false);
+  const [loadRetry, setLoadRetry] = useState(0);
+  const [generateError, setGenerateError] = useState('');
+  const [sseError, setSseError] = useState('');
 
   // For completed presentations opened from dashboard, show skeleton wireframes immediately.
   // Use status:'complete' with null image_data so SlideRenderer shows a pulse skeleton
@@ -411,13 +453,20 @@ export default function PresentationPage() {
       index: i,
       type: 'content',
       title: '',
-      status: 'complete',
+      status: 'loading',
       image_data: i === 0 ? (initPres?.thumbnail || null) : null,
     }));
   });
   const [totalSlides, setTotalSlides] = useState(0);
   const [generationStage, setGenerationStage] = useState(0);
   const [slidePlan, setSlidePlan] = useState([]);
+  const [currentPlan, setCurrentPlan] = useState('free');
+
+  useEffect(() => {
+    api.get('/billing/subscription')
+      .then(r => setCurrentPlan(r.data.subscription.plan))
+      .catch(() => {});
+  }, []);
 
   const sseRef = useRef(null);
   const pollRef = useRef(null);
@@ -523,8 +572,8 @@ export default function PresentationPage() {
       } else {
         setPhase('chat');
       }
-    }).catch(() => navigate('/dashboard'));
-  }, [id]);
+    }).catch(() => setLoadError(true));
+  }, [id, loadRetry]);
 
   const startSSE = useCallback((presId) => {
     if (sseRef.current) {
@@ -667,6 +716,33 @@ export default function PresentationPage() {
         setGeneratedSlides(prev => [...prev, ...(event.placeholders || [])].sort((a, b) => a.index - b.index));
       }
 
+      if (event.type === 'slide_locked') {
+        setGeneratedSlides(prev => {
+          const next = prev.map(s => s.index === event.slide.index ? event.slide : s);
+          if (!prev.some(s => s.index === event.slide.index)) next.push(event.slide);
+          return next.sort((a, b) => a.index - b.index);
+        });
+      }
+
+      if (event.type === 'slides_trimmed') {
+        const keep = new Set(event.keep_indices || []);
+        setGeneratedSlides(prev => prev.filter(s => s.status !== 'generating' || keep.has(s.index)));
+      }
+
+      if (event.type === 'partial_generation') {
+        setSseError(
+          `${event.slides_generated} slide${event.slides_generated === 1 ? '' : 's'} generated, ` +
+          `${event.slides_locked} locked — you need ${event.credits_needed} more credits to unlock ` +
+          `${event.slides_locked === 1 ? 'it' : 'them'}.`
+        );
+      }
+
+      if (event.type === 'slides_unlocked') {
+        setGeneratedSlides(prev =>
+          prev.map(s => event.slide_indexes.includes(s.index) ? { ...s, status: 'complete' } : s)
+        );
+      }
+
       if (event.type === 'slide_updated') {
         setGeneratedSlides(prev =>
           prev.map(s => s.index === event.slide.index ? event.slide : s)
@@ -706,6 +782,7 @@ export default function PresentationPage() {
     sse.onerror = () => {
       // Don't close — EventSource auto-reconnects, and the catch-up replay
       // on reconnect will re-send any completed slides we missed.
+      setSseError('Live updates disconnected. Refresh to reconnect.');
     };
 
     return () => {
@@ -724,6 +801,7 @@ export default function PresentationPage() {
     setGenerationStage(0);
     setGeneratedSlides([]);
     setSlidePlan([]);
+    setGenerateError('');
 
     try {
       await api.post(`/presentations/${id}/generate`);
@@ -731,6 +809,7 @@ export default function PresentationPage() {
     } catch (err) {
       console.error('Generate failed:', err);
       setPhase('chat');
+      setGenerateError('Something went wrong starting generation. Try again.');
     }
   }
 
@@ -741,18 +820,40 @@ export default function PresentationPage() {
     });
   }
 
-  if (phase === 'loading' || !presentation) {
+  if (loadError) {
     return (
-      <div className="h-screen flex items-center justify-center" style={{ background: 'var(--bg-page)' }}>
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center animate-pulse"
-               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
-            <Sparkles size={24} className="text-white" />
+      <div className="h-screen flex items-center justify-center" style={{ background: 'var(--bg-page)', fontFamily: 'Inter, sans-serif' }}>
+        <div
+          className="flex flex-col items-center gap-5 rounded-2xl p-8 text-center"
+          style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', maxWidth: 360 }}
+        >
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'rgba(239,68,68,0.12)' }}>
+            <AlertTriangle size={24} style={{ color: '#ef4444' }} />
           </div>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading…</p>
+          <p className="font-semibold text-base" style={{ color: 'var(--text-primary)' }}>Couldn't load this presentation.</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
+              style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}
+            >
+              Go to dashboard
+            </button>
+            <button
+              onClick={() => { setLoadError(false); setPhase('loading'); setLoadRetry(r => r + 1); }}
+              className="px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
+              style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid rgba(255,255,255,0.08)' }}
+            >
+              Try again
+            </button>
+          </div>
         </div>
       </div>
     );
+  }
+
+  if (phase === 'loading' || !presentation) {
+    return <SkeletonPresentationViewer />;
   }
 
   if (phase === 'generating') {
@@ -793,17 +894,41 @@ export default function PresentationPage() {
 
   if (phase === 'viewing') {
     return (
-      <PresentationViewer
-        slides={generatedSlides}
-        presentationId={id}
-        title={presentation.title}
-        onBack={() => {
-          sseRef.current?.close();
-          navigate('/dashboard');
-        }}
-        onSlidesUpdate={setGeneratedSlides}
-        onTitleChange={(t) => setPresentation(p => ({ ...p, title: t }))}
-      />
+      <>
+        {sseError && (
+          <div
+            className="flex items-center justify-between px-4 py-2.5 text-sm"
+            style={{
+              background: 'rgba(239,68,68,0.08)',
+              borderBottom: '1px solid rgba(239,68,68,0.2)',
+              color: '#ef4444',
+              fontFamily: 'Inter, sans-serif',
+              fontSize: 13,
+            }}
+          >
+            <span>{sseError}</span>
+            <button
+              onClick={() => setSseError('')}
+              style={{ color: '#888', cursor: 'pointer', background: 'none', border: 'none', fontSize: 16, lineHeight: 1, padding: '0 2px', marginLeft: 8 }}
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+        )}
+        <PresentationViewer
+          slides={generatedSlides}
+          presentationId={id}
+          title={presentation.title}
+          currentPlan={currentPlan}
+          onBack={() => {
+            sseRef.current?.close();
+            navigate('/dashboard');
+          }}
+          onSlidesUpdate={setGeneratedSlides}
+          onTitleChange={(t) => setPresentation(p => ({ ...p, title: t }))}
+        />
+      </>
     );
   }
 
@@ -839,6 +964,9 @@ export default function PresentationPage() {
       messages={messages}
       onNewMessage={handleNewMessage}
       onGenerate={handleGenerate}
+      generateError={generateError}
+      sseError={sseError}
+      onDismissSseError={() => setSseError('')}
     />
   );
 }

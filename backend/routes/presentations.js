@@ -5,7 +5,11 @@ import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { streamChat, analyzePresentation, generateCompactPlan, streamSlidePrompts, generateSingleSlidePrompt, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
 import { generateSlideImage } from '../services/imageGeneration.js';
-import { deductCredits, getOrCreateSubscription, CREDIT_COSTS, checkTokenBudget } from '../services/stripeService.js';
+import {
+  deductCredits, refundCredits, deductCreditsForEdit, computeAffordableSlides,
+  updateLedgerMetadata, getOrCreateSubscription, CREDIT_COSTS, checkTokenBudget,
+  suggestPlanForCost, novaInsufficientCredits, getEditTierThreshold,
+} from '../services/stripeService.js';
 import { validate, isString, isOptionalString, isEnum, isArray, isIntBetween } from '../middleware/validate.js';
 import { createPresentationLimiter, addSlidesLimiter, analyzeLimiter } from '../middleware/rateLimits.js';
 import { logger, requestContext } from '../services/logger.js';
@@ -15,15 +19,38 @@ import { sendPresentationReady } from '../services/emailService.js';
 // Validates a single attachment object
 function validateAttachment(a) {
   if (typeof a !== 'object' || a === null) return 'Must be an object';
-  if (!['image', 'file'].includes(a.type)) return 'Invalid type';
+  if (a.type !== undefined && !['image', 'file'].includes(a.type)) return 'Invalid type';
   if (typeof a.name !== 'string' || a.name.length > 255) return 'Invalid name';
   if (typeof a.data !== 'string') return 'Missing data';
-  // Base64 data URIs can be large — cap at ~10MB per attachment
-  if (a.data.length > 14_000_000) return 'Attachment too large (max ~10MB)';
+  // Base64 data URIs can be large — cap at ~7MB per attachment
+  if (a.data.length > 10_000_000) return 'One of your images is too large (max ~7MB). Please use a smaller image.';
+  return null;
+}
+
+// Validates an attachments array: must be an array, within the count limit,
+// and every item must pass validateAttachment()
+function validateAttachments(attachments, maxCount = 10) {
+  if (!Array.isArray(attachments)) return 'Attachments must be an array';
+  if (attachments.length > maxCount) return `Too many attachments (max ${maxCount})`;
+  for (const a of attachments) {
+    const err = validateAttachment(a);
+    if (err) return err;
+  }
   return null;
 }
 
 const VALID_ASPECT_RATIOS = ['16:9', '9:16', '1:1', '4:3'];
+
+// Mirrors the tier logic in deductCreditsForEdit — used to compute the
+// credits_needed figure for the cute-Nova 402 response when an edit is
+// rejected for insufficient credits.
+function previewEditCost(sub, hasReferenceImage) {
+  const threshold = getEditTierThreshold(sub.plan);
+  const tier = (sub.edits_this_month || 0) >= threshold ? 'TIER_2' : 'TIER_1';
+  let cost = tier === 'TIER_1' ? CREDIT_COSTS.SLIDE_EDIT_TIER_1 : CREDIT_COSTS.SLIDE_EDIT_TIER_2;
+  if (hasReferenceImage) cost += CREDIT_COSTS.REFERENCE_IMAGE_PER_SLIDE;
+  return cost;
+}
 
 const router = Router();
 
@@ -152,9 +179,8 @@ router.post('/analyze', authenticateToken, analyzeLimiter, async (req, res) => {
   if (message && message.length > 50_000) {
     return res.status(400).json({ error: 'Message too long (max 50,000 characters)' });
   }
-  if (!Array.isArray(attachments) || attachments.length > 10) {
-    return res.status(400).json({ error: 'Attachments must be an array of max 10 items' });
-  }
+  const attachmentsErr = validateAttachments(attachments);
+  if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
   try { checkTokenBudget(req.user.id); } catch (err) {
     if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
     throw err;
@@ -181,9 +207,8 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
   if (message && message.length > 50_000) {
     return res.status(400).json({ error: 'Message too long (max 50,000 characters)' });
   }
-  if (!Array.isArray(attachments) || attachments.length > 10) {
-    return res.status(400).json({ error: 'Too many attachments (max 10)' });
-  }
+  const attachmentsErr = validateAttachments(attachments);
+  if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
   if (!VALID_ASPECT_RATIOS.includes(aspectRatio)) {
     return res.status(400).json({ error: `Invalid aspect ratio. Must be one of: ${VALID_ASPECT_RATIOS.join(', ')}` });
   }
@@ -193,15 +218,9 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
     throw err;
   }
 
-  // Check + deduct credits before starting
-  try {
-    deductCredits(req.user.id, CREDIT_COSTS.create_presentation, 'create_presentation', 'Create presentation');
-  } catch (err) {
-    if (err.message === 'INSUFFICIENT_CREDITS') {
-      return res.status(402).json({ error: 'Insufficient credits', code: 'INSUFFICIENT_CREDITS' });
-    }
-    throw err;
-  }
+  // Credits are deducted in runFullFlow() once Claude returns the final
+  // slide count — at PER_SLIDE credits per slide, with any unaffordable
+  // slides returned as locked placeholders rather than blocking creation.
 
   const db = getDb();
   const id = uuid();
@@ -315,11 +334,72 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
   });
   broadcast(presentationId, { type: 'started', total_slides: slides.length });
 
+  // ── Credit deduction: PER_SLIDE × affordable slide count, deducted now
+  // that Claude has returned the final slide count, but BEFORE any NB2 call.
+  const { affordable, locked, plan: userPlan } = computeAffordableSlides(userId, slides.length);
+  const sortedByIndex = [...slides].sort((a, b) => a.index - b.index);
+  const affordableIndexSet = new Set(sortedByIndex.slice(0, affordable).map(s => s.index));
+  const lockedIndexSet = new Set(sortedByIndex.slice(affordable).map(s => s.index));
+
+  const creditsNeeded = locked * CREDIT_COSTS.PER_SLIDE;
+  const suggestedPlan = locked > 0 ? suggestPlanForCost(userPlan, creditsNeeded) : null;
+
+  const { ledgerId } = deductCredits(userId, affordable * CREDIT_COSTS.PER_SLIDE, 'create_presentation', 'Generate presentation', {
+    presentationId, slidesGenerated: affordable, slidesLocked: locked,
+    metadata: { total_slides: slides.length },
+  });
+
+  if (locked > 0) {
+    broadcast(presentationId, {
+      type: 'partial_generation',
+      slides_generated: affordable,
+      slides_locked: locked,
+      credits_needed: creditsNeeded,
+      suggested_plan: suggestedPlan,
+      upgrade_url: '/pricing',
+    });
+  }
+
+  const lockedSlidesStore = [];
+
   // ── Phase 2: stream image prompts, start generation per slide as each arrives ─
   const promptedIndices = new Set();
 
   function startSlideGeneration(slide) {
     promptedIndices.add(slide.index);
+
+    if (lockedIndexSet.has(slide.index)) {
+      // Store the prompt server-side only — never sent to the frontend —
+      // so the slide can be unlocked later without re-running Claude.
+      lockedSlidesStore.push({
+        slide_index: slide.index,
+        prompt: slide.nano_banana_prompt || slide.title,
+        type: slide.type,
+        title: slide.title,
+      });
+      const lockedSlide = {
+        index: slide.index,
+        type: slide.type,
+        title: slide.title,
+        key_points: (slide.key_points || []).slice(0, 2),
+        status: 'locked',
+        locked_reason: 'insufficient_credits',
+        credits_needed: CREDIT_COSTS.PER_SLIDE,
+        suggested_plan: suggestedPlan,
+        upgrade_url: '/pricing',
+        image_data: null,
+      };
+      completedSlides.set(slide.index, lockedSlide);
+      persistProgress();
+      // Persist locked_slides immediately so /unlock-slides works as soon as
+      // the frontend shows the unlock button, without waiting for the rest
+      // of the slides to finish generating.
+      db.prepare('UPDATE presentations SET locked_slides = ? WHERE id = ?')
+        .run(JSON.stringify(lockedSlidesStore), presentationId);
+      broadcast(presentationId, { type: 'slide_locked', slide: lockedSlide });
+      return;
+    }
+
     broadcast(presentationId, { type: 'slide_generating', index: slide.index });
 
     const attachedImages = allImages.slice(0, 3);
@@ -340,12 +420,18 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
         db.prepare(`UPDATE presentations SET thumbnail = ? WHERE id = ?`).run(imageData, presentationId);
         broadcastDashboardUpdate(db, userId, presentationId);
       }
+      // generateSlideImage falls back to an SVG placeholder rather than
+      // throwing on persistent NB2 failure — refund the credit in that case.
+      if (!imageData || imageData.startsWith('data:image/svg')) {
+        refundCredits(userId, CREDIT_COSTS.PER_SLIDE, 'generation_refund', 'Slide image generation failed — refunded', presentationId, { slide_index: slide.index });
+      }
       broadcast(presentationId, { type: 'slide_ready', slide: done });
     }).catch(err => {
       logger.error('slide image failed', { slideIndex: slide.index, errorMessage: err.message });
       const errSlide = { ...slide, image_data: null, status: 'error' };
       completedSlides.set(slide.index, errSlide);
       persistProgress();
+      refundCredits(userId, CREDIT_COSTS.PER_SLIDE, 'generation_refund', 'Slide image generation failed — refunded', presentationId, { slide_index: slide.index });
       broadcast(presentationId, { type: 'slide_error', index: slide.index, message: err.message });
     });
 
@@ -373,6 +459,14 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
 
   // Wait for all image generations to finish
   await Promise.all(slidePromises);
+
+  // Persist locked-slide prompts server-side (never sent to the frontend) so
+  // they can be unlocked later without re-running Claude.
+  db.prepare(`UPDATE presentations SET locked_slides = ? WHERE id = ?`)
+    .run(JSON.stringify(lockedSlidesStore), presentationId);
+  if (ledgerId) {
+    updateLedgerMetadata(ledgerId, { locked_slides: lockedSlidesStore });
+  }
 
   // Build final slides: merge DB state (preserving _edited slides) with completedSlides
   const finalRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(presentationId);
@@ -404,17 +498,6 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
     const _presTitle = db.prepare('SELECT title FROM presentations WHERE id = ?').get(presentationId)?.title;
     if (_presUser?.email) sendPresentationReady(_presUser.name, _presUser.email, presentationId, _presTitle);
   }
-
-  // Auto-suggest title
-  try {
-    const titleCtx = { slides: allSlides.map(s => ({ title: s.title, type: s.type, key_points: s.key_points?.slice(0, 2) })) };
-    const autoTitle = await suggestTitle(titleCtx, userId);
-    if (autoTitle) {
-      db.prepare(`UPDATE presentations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(autoTitle, presentationId);
-      broadcast(presentationId, { type: 'title_updated', title: autoTitle });
-      broadcastDashboardUpdate(db, userId, presentationId);
-    }
-  } catch {}
 
   tracer.recordStep(traceId, 'full_flow', 'completed', Date.now() - _t);
   broadcast(presentationId, { type: 'complete', total_slides: allSlides.length });
@@ -454,6 +537,8 @@ router.post('/:id/messages', authenticateToken, async (req, res) => {
   if (!message?.trim() && attachments.length === 0) {
     return res.status(400).json({ error: 'Message required' });
   }
+  const attachmentsErr = validateAttachments(attachments);
+  if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
 
   const db = getDb();
   const pres = db
@@ -688,8 +773,10 @@ async function runGeneration(presentationId, slidePlan, userId = null) {
 
 // ─── Regenerate a single slide (user-described edit → direct to Gemini) ──────
 router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res) => {
-  const { instruction, attachments: reqBodyAttachments } = req.body;
+  const { instruction, attachments: reqBodyAttachments = [] } = req.body;
   if (!instruction?.trim()) return res.status(400).json({ error: 'Please describe what you\'d like to change about this slide.' });
+  const attachmentsErr = validateAttachments(reqBodyAttachments);
+  if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
 
   const db = getDb();
   const pres = db
@@ -712,22 +799,44 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
   if (!slideForPrompt) return res.status(404).json({ error: 'Slide not found. It may have been removed or the index is out of range.' });
 
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
+
+  // pic1 = current rendered slide; pic2, pic3… = anything the user uploaded in the edit bar
+  const hasCurrentImage = slideForPrompt.image_data && !slideForPrompt.image_data.startsWith('data:image/svg');
+  const userUploads = reqBodyAttachments.filter(a => a.data);
+  // Only user-uploaded references count toward the reference-image surcharge —
+  // the auto-included current-slide image does not.
+  const hasReferenceImage = userUploads.length > 0;
+
+  let editResult;
+  try {
+    editResult = deductCreditsForEdit(req.user.id, req.params.id, hasReferenceImage, `Edit slide ${targetIndex}`);
+  } catch (err) {
+    if (err.message === 'INSUFFICIENT_CREDITS') {
+      const sub = getOrCreateSubscription(req.user.id);
+      const creditsNeeded = previewEditCost(sub, hasReferenceImage);
+      return res.status(402).json(novaInsufficientCredits({
+        creditsRemaining: sub.credits_remaining,
+        creditsNeeded,
+        actionType: 'slide_edit',
+        currentPlan: sub.plan,
+      }));
+    }
+    throw err;
+  }
+
   res.json({ message: 'Editing…', index: targetIndex });
 
   const regenAspectRatio = pres.aspect_ratio || '16:9';
 
   // Build the regeneration prompt — user instruction leads, slide context follows
-  const hasCurrentImage = slideForPrompt.image_data && !slideForPrompt.image_data.startsWith('data:image/svg');
   const baseContext = slideForPrompt.nano_banana_prompt || slideForPrompt.image_prompt || slideForPrompt.title;
   const editPrompt = `${instruction.trim()}\n\nSlide context: ${baseContext}`;
 
-  // pic1 = current rendered slide; pic2, pic3… = anything the user uploaded in the edit bar
   let attachedImages = [];
   if (hasCurrentImage) {
     const mimeType = slideForPrompt.image_data.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg';
     attachedImages.push({ data: slideForPrompt.image_data, mimeType });
   }
-  const userUploads = (reqBodyAttachments || []).filter(a => a.data);
   attachedImages.push(...userUploads);
   attachedImages = attachedImages.slice(0, 5);
 
@@ -772,9 +881,16 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
       }
       db.prepare(thumbSql).run(...thumbArgs);
 
+      // generateSlideImage falls back to an SVG placeholder rather than
+      // throwing on persistent NB2 failure — refund the credit in that case.
+      if (!imageData || imageData.startsWith('data:image/svg')) {
+        refundCredits(req.user.id, editResult.cost, 'slide_edit_refund', 'Slide edit failed — refunded', req.params.id, { slide_index: targetIndex });
+      }
+
       broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
     } catch (err) {
       logger.error('slide edit failed', { errorMessage: err.message });
+      refundCredits(req.user.id, editResult.cost, 'slide_edit_refund', 'Slide edit failed — refunded', req.params.id, { slide_index: targetIndex });
       broadcast(req.params.id, { type: 'slide_error', index: targetIndex, message: err.message });
     }
   })();
@@ -802,6 +918,24 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
   if (!slide) return res.status(404).json({ error: 'Slide not found.' });
 
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
+
+  let editResult;
+  try {
+    editResult = deductCreditsForEdit(req.user.id, req.params.id, false, `Retry slide ${targetIndex}`);
+  } catch (err) {
+    if (err.message === 'INSUFFICIENT_CREDITS') {
+      const sub = getOrCreateSubscription(req.user.id);
+      const creditsNeeded = previewEditCost(sub, false);
+      return res.status(402).json(novaInsufficientCredits({
+        creditsRemaining: sub.credits_remaining,
+        creditsNeeded,
+        actionType: 'slide_edit',
+        currentPlan: sub.plan,
+      }));
+    }
+    throw err;
+  }
+
   res.json({ message: 'Retrying…', index: targetIndex });
 
   const regenAspectRatio = pres.aspect_ratio || '16:9';
@@ -829,9 +963,14 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
       }
       db.prepare(thumbSql).run(...thumbArgs);
 
+      if (!imageData || imageData.startsWith('data:image/svg')) {
+        refundCredits(req.user.id, editResult.cost, 'slide_edit_refund', 'Slide retry failed — refunded', req.params.id, { slide_index: targetIndex });
+      }
+
       broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
     } catch (err) {
       logger.error('slide retry failed', { errorMessage: err.message });
+      refundCredits(req.user.id, editResult.cost, 'slide_edit_refund', 'Slide retry failed — refunded', req.params.id, { slide_index: targetIndex });
       broadcast(req.params.id, { type: 'slide_error', index: targetIndex, message: err.message });
     }
   })();
@@ -909,23 +1048,13 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
   if (description.length > 10_000) {
     return res.status(400).json({ error: 'Description too long (max 10,000 characters)' });
   }
-  if (!Array.isArray(reqAttachments) || reqAttachments.length > 10) {
-    return res.status(400).json({ error: 'Too many attachments (max 10)' });
-  }
+  const attachmentsErr = validateAttachments(reqAttachments);
+  if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
   if (count !== 'auto' && (isNaN(parseInt(count)) || parseInt(count) < 1 || parseInt(count) > 10)) {
     return res.status(400).json({ error: 'Count must be 1–10 or "auto"' });
   }
   const isAuto = count === 'auto';
   const slideCount = isAuto ? null : Math.min(Math.max(parseInt(count) || 1, 1), 10);
-
-  try {
-    deductCredits(req.user.id, CREDIT_COSTS.add_slides, 'add_slides', 'Add slides', req.params.id);
-  } catch (err) {
-    if (err.message === 'INSUFFICIENT_CREDITS') {
-      return res.status(402).json({ error: 'Insufficient credits', code: 'INSUFFICIENT_CREDITS' });
-    }
-    throw err;
-  }
 
   const db = getDb();
   const pres = db.prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
@@ -936,6 +1065,44 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
   const startIndex = slides.length;
   const aspectRatio = pres.aspect_ratio || '16:9';
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
+
+  // For fixed counts we know the cost up front — check affordability and
+  // deduct credits before doing any work, returning a cute-Nova 402 if
+  // nothing is affordable at all.
+  let affordable = null;
+  let locked = 0;
+  let suggestedPlan = null;
+  let ledgerId = null;
+  if (!isAuto) {
+    const computed = computeAffordableSlides(req.user.id, slideCount);
+    if (computed.affordable === 0) {
+      const creditsNeeded = slideCount * CREDIT_COSTS.SLIDES_ADD_PER_SLIDE;
+      return res.status(402).json(novaInsufficientCredits({
+        creditsRemaining: computed.creditsRemaining,
+        creditsNeeded,
+        actionType: 'add_slides',
+        currentPlan: computed.plan,
+      }));
+    }
+    affordable = computed.affordable;
+    locked = computed.locked;
+    const creditsNeeded = locked * CREDIT_COSTS.SLIDES_ADD_PER_SLIDE;
+    suggestedPlan = locked > 0 ? suggestPlanForCost(computed.plan, creditsNeeded) : null;
+    ({ ledgerId } = deductCredits(req.user.id, affordable * CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'add_slides', 'Add slides', {
+      presentationId: req.params.id, slidesGenerated: affordable, slidesLocked: locked,
+      metadata: { requested_slides: slideCount },
+    }));
+    if (locked > 0) {
+      broadcast(req.params.id, {
+        type: 'partial_generation',
+        slides_generated: affordable,
+        slides_locked: locked,
+        credits_needed: creditsNeeded,
+        suggested_plan: suggestedPlan,
+        upgrade_url: '/pricing',
+      });
+    }
+  }
 
   // Create placeholder slides immediately (for auto, use 3 as optimistic placeholder count)
   const placeholderCount = slideCount ?? 3;
@@ -991,18 +1158,81 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       });
       const promptedSlideDefs = newSlideDefs.map(s => promptedByIndex.get(s.index) || s);
 
-      // Remove excess optimistic placeholders if Nova generated fewer than 3
-      const presRow0 = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-      if (!presRow0?.slides_data) return;
-      const current0 = JSON.parse(presRow0.slides_data);
-      const trimmed = current0.filter(s => s.status !== 'generating' || promptedSlideDefs.some(d => d.index === s.index));
-      if (trimmed.length !== current0.length) {
-        db.prepare(`UPDATE presentations SET slides_data = ? WHERE id = ? AND user_id = ?`).run(JSON.stringify(trimmed), req.params.id, req.user.id);
-        broadcast(req.params.id, { type: 'slides_trimmed', keep_indices: promptedSlideDefs.map(d => d.index) });
+      // For 'auto' mode the slide count is only known now — check affordability
+      // and deduct credits before generating any images.
+      if (isAuto) {
+        const computed = computeAffordableSlides(req.user.id, promptedSlideDefs.length);
+        affordable = computed.affordable;
+        locked = computed.locked;
+        const creditsNeeded = locked * CREDIT_COSTS.SLIDES_ADD_PER_SLIDE;
+        suggestedPlan = locked > 0 ? suggestPlanForCost(computed.plan, creditsNeeded) : null;
+        ({ ledgerId } = deductCredits(req.user.id, affordable * CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'add_slides', 'Add slides', {
+          presentationId: req.params.id, slidesGenerated: affordable, slidesLocked: locked,
+          metadata: { requested_slides: promptedSlideDefs.length },
+        }));
+        if (locked > 0) {
+          broadcast(req.params.id, {
+            type: 'partial_generation',
+            slides_generated: affordable,
+            slides_locked: locked,
+            credits_needed: creditsNeeded,
+            suggested_plan: suggestedPlan,
+            upgrade_url: '/pricing',
+          });
+        }
       }
 
-      // Generate images for each new slide with stagger
-      const imagePromises = promptedSlideDefs.map((slideDef, i) =>
+      const sortedDefs = [...promptedSlideDefs].sort((a, b) => a.index - b.index);
+      const affordableDefs = sortedDefs.slice(0, affordable);
+      const lockedDefs = sortedDefs.slice(affordable);
+
+      // Remove excess optimistic placeholders, and replace placeholders for
+      // locked slides with locked placeholders (prompts stored server-side only).
+      const presRow0 = db.prepare('SELECT slides_data, locked_slides FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+      if (!presRow0?.slides_data) return;
+      const current0 = JSON.parse(presRow0.slides_data);
+      let existingLocked = [];
+      try { existingLocked = JSON.parse(presRow0.locked_slides || '[]'); } catch {}
+
+      const newLockedEntries = lockedDefs.map(d => ({
+        slide_index: d.index,
+        prompt: d.nano_banana_prompt || d.title,
+        type: d.type,
+        title: d.title,
+      }));
+      const lockedPlaceholders = lockedDefs.map(d => ({
+        index: d.index,
+        type: d.type,
+        title: d.title,
+        key_points: (d.key_points || []).slice(0, 2),
+        status: 'locked',
+        locked_reason: 'insufficient_credits',
+        credits_needed: CREDIT_COSTS.SLIDES_ADD_PER_SLIDE,
+        suggested_plan: suggestedPlan,
+        upgrade_url: '/pricing',
+        image_data: null,
+      }));
+
+      const keepIndices = new Set(promptedSlideDefs.map(d => d.index));
+      const trimmed = current0.filter(s => s.status !== 'generating' || keepIndices.has(s.index));
+      for (const lp of lockedPlaceholders) {
+        const idx = trimmed.findIndex(s => s.index === lp.index);
+        if (idx !== -1) trimmed[idx] = lp; else trimmed.push(lp);
+      }
+      trimmed.sort((a, b) => a.index - b.index);
+
+      db.prepare(`UPDATE presentations SET slides_data = ?, locked_slides = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`)
+        .run(JSON.stringify(trimmed), JSON.stringify([...existingLocked, ...newLockedEntries]), req.params.id, req.user.id);
+      broadcast(req.params.id, { type: 'slides_trimmed', keep_indices: promptedSlideDefs.map(d => d.index) });
+      for (const lp of lockedPlaceholders) {
+        broadcast(req.params.id, { type: 'slide_locked', slide: lp });
+      }
+      if (ledgerId && newLockedEntries.length > 0) {
+        updateLedgerMetadata(ledgerId, { locked_slides: newLockedEntries });
+      }
+
+      // Generate images only for affordable slides, with stagger
+      const imagePromises = affordableDefs.map((slideDef, i) =>
         new Promise(r => setTimeout(r, i * 800)).then(() => {
           const attachedImages = combinedImages;
 
@@ -1020,6 +1250,11 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
             if (idx !== -1) current[idx] = done; else current.push(done);
             db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
               .run(JSON.stringify(current), req.params.id);
+            // generateSlideImage falls back to an SVG placeholder rather than
+            // throwing on persistent NB2 failure — refund the credit in that case.
+            if (!imageData || imageData.startsWith('data:image/svg')) {
+              refundCredits(req.user.id, CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'generation_refund', 'Slide image generation failed — refunded', req.params.id, { slide_index: slideDef.index });
+            }
             broadcast(req.params.id, { type: 'slide_ready', slide: done });
           }).catch(err => {
             const errSlide = { ...slideDef, image_data: null, status: 'error' };
@@ -1030,19 +1265,128 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
             if (idx !== -1) current[idx] = errSlide;
             db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
               .run(JSON.stringify(current), req.params.id);
+            refundCredits(req.user.id, CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'generation_refund', 'Slide image generation failed — refunded', req.params.id, { slide_index: slideDef.index });
             broadcast(req.params.id, { type: 'slide_error', index: errSlide.index, message: err.message });
           });
         })
       );
 
       await Promise.all(imagePromises);
-      broadcast(req.params.id, { type: 'slides_added', count: slideCount });
+      broadcast(req.params.id, { type: 'slides_added', count: affordableDefs.length, locked: lockedDefs.length });
     } catch (err) {
       logger.error('add slides failed', { errorMessage: err.message });
       broadcast(req.params.id, { type: 'error', message: err.message });
     }
   })();
 });
+
+// ─── Unlock previously-locked slides (generate images from stored prompts) ──
+router.post('/:id/unlock-slides', authenticateToken,
+  validate({ slide_indexes: isArray(50, (v) => Number.isInteger(v) ? null : 'Must be an integer') }),
+  async (req, res) => {
+    const { slide_indexes } = req.body;
+    if (slide_indexes.length === 0) {
+      return res.status(400).json({ error: 'slide_indexes must be a non-empty array of integers.' });
+    }
+
+    const db = getDb();
+    const pres = db.prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+    if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
+
+    let lockedSlides = [];
+    try { lockedSlides = JSON.parse(pres.locked_slides || '[]'); } catch {}
+
+    const requestedSet = new Set(slide_indexes);
+    const toUnlock = lockedSlides.filter(s => requestedSet.has(s.slide_index));
+    if (toUnlock.length === 0) {
+      return res.status(404).json({ error: 'No matching locked slides found.' });
+    }
+
+    const cost = toUnlock.length * CREDIT_COSTS.PER_SLIDE;
+
+    let ledgerId;
+    try {
+      ({ ledgerId } = deductCredits(req.user.id, cost, 'unlock_slides', `Unlock ${toUnlock.length} slide(s)`, {
+        presentationId: req.params.id, slidesGenerated: toUnlock.length,
+        metadata: { slide_indexes: toUnlock.map(s => s.slide_index) },
+      }));
+    } catch (err) {
+      if (err.message === 'INSUFFICIENT_CREDITS') {
+        const sub = getOrCreateSubscription(req.user.id);
+        return res.status(402).json(novaInsufficientCredits({
+          creditsRemaining: sub.credits_remaining,
+          creditsNeeded: cost,
+          actionType: 'unlock_slides',
+          currentPlan: sub.plan,
+        }));
+      }
+      throw err;
+    }
+
+    const aspectRatio = pres.aspect_ratio || '16:9';
+    const slidePlanData = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
+
+    const generated = [];
+    for (const lockedSlide of toUnlock) {
+      try {
+        const imageData = await generateSlideImage(
+          lockedSlide.prompt,
+          lockedSlide.type,
+          slidePlanData.theme || 'modern-minimal',
+          slidePlanData.color_palette || {},
+          lockedSlide.slide_index,
+          [],
+          aspectRatio
+        );
+
+        const done = {
+          index: lockedSlide.slide_index,
+          type: lockedSlide.type,
+          title: lockedSlide.title,
+          nano_banana_prompt: lockedSlide.prompt,
+          image_data: imageData,
+          status: 'complete',
+        };
+
+        if (!imageData || imageData.startsWith('data:image/svg')) {
+          refundCredits(req.user.id, CREDIT_COSTS.PER_SLIDE, 'unlock_slides_refund', 'Slide unlock failed — refunded', req.params.id, { slide_index: lockedSlide.slide_index });
+        }
+
+        generated.push(done);
+        broadcast(req.params.id, { type: 'slide_ready', slide: done });
+      } catch (err) {
+        logger.error('slide unlock failed', { slideIndex: lockedSlide.slide_index, errorMessage: err.message });
+        refundCredits(req.user.id, CREDIT_COSTS.PER_SLIDE, 'unlock_slides_refund', 'Slide unlock failed — refunded', req.params.id, { slide_index: lockedSlide.slide_index });
+        broadcast(req.params.id, { type: 'slide_error', index: lockedSlide.slide_index, message: err.message });
+      }
+    }
+
+    // Merge generated slides into slides_data
+    const currentRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id);
+    const currentSlides = JSON.parse(currentRow?.slides_data || '[]');
+    for (const done of generated) {
+      const idx = currentSlides.findIndex(s => s.index === done.index);
+      if (idx !== -1) currentSlides[idx] = { ...currentSlides[idx], ...done };
+      else currentSlides.push(done);
+    }
+    currentSlides.sort((a, b) => a.index - b.index);
+
+    // Remove unlocked slides from locked_slides
+    const remainingLocked = lockedSlides.filter(s => !requestedSet.has(s.slide_index));
+
+    db.prepare(`UPDATE presentations SET slides_data = ?, locked_slides = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(JSON.stringify(currentSlides), JSON.stringify(remainingLocked), req.params.id);
+
+    if (ledgerId) {
+      updateLedgerMetadata(ledgerId, { unlocked_slides: generated.map(s => s.index) });
+    }
+
+    broadcastDashboardUpdate(db, req.user.id, req.params.id);
+    broadcast(req.params.id, { type: 'slides_unlocked', slide_indexes: generated.map(s => s.index) });
+
+    res.json({ message: 'Slides unlocked', slides: generated });
+  },
+);
 
 // ─── Delete a single slide ────────────────────────────────────────────────
 router.delete('/:id/slides/:index', authenticateToken, (req, res) => {

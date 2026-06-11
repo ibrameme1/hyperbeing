@@ -70,36 +70,42 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-         style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)' }}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)' }}
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 16 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 16 }}
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden"
+        className="w-full max-w-lg overflow-hidden"
+        style={{ background: '#141414', border: '0.5px solid #1e1e1e', borderRadius: 12 }}
       >
         {/* Header */}
-        <div className="px-6 pt-6 pb-4">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-xl flex items-center justify-center"
-                   style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                <Sparkles size={13} className="text-white" />
+        <div style={{ padding: '24px 24px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div
+                style={{
+                  width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: '#5B50FF',
+                }}
+              >
+                <Sparkles size={13} style={{ color: '#fff' }} />
               </div>
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
+              <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 11, fontWeight: 600, color: '#888888', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                 {detected_type || 'Your presentation'}
               </span>
             </div>
-            <span className="text-xs font-semibold text-gray-400">
+            <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 12, fontWeight: 600, color: '#555555' }}>
               {currentIndex + 1} of {total}
             </span>
           </div>
 
           {/* Progress bar */}
-          <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
+          <div style={{ width: '100%', height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 9999, overflow: 'hidden' }}>
             <motion.div
-              className="h-full rounded-full"
-              style={{ background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)' }}
+              style={{ height: '100%', background: '#5B50FF', borderRadius: 9999 }}
               animate={{ width: `${((currentIndex + 1) / total) * 100}%` }}
               transition={{ duration: 0.4, ease: 'easeOut' }}
             />
@@ -107,7 +113,7 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
         </div>
 
         {/* Question */}
-        <div className="px-6 pb-2 min-h-[80px] overflow-hidden">
+        <div style={{ padding: '0 24px 8px', minHeight: 80, overflow: 'hidden' }}>
           <AnimatePresence mode="wait" custom={direction}>
             <motion.h2
               key={currentIndex}
@@ -117,18 +123,18 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
               animate="center"
               exit="exit"
               transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-              className="text-gray-900 font-bold text-lg leading-snug"
+              style={{ fontFamily: 'Playfair Display,Georgia,serif', color: '#f0f0ee', fontSize: 18, fontWeight: 700, lineHeight: 1.3 }}
             >
               {question?.question}
             </motion.h2>
           </AnimatePresence>
           {question?.options?.length > 1 && (
-            <p className="text-xs text-gray-400 mt-1">Select one or more</p>
+            <p style={{ fontFamily: 'Inter,sans-serif', fontSize: 12, color: '#888888', marginTop: 4 }}>Select one or more</p>
           )}
         </div>
 
         {/* Options + custom input */}
-        <div className="px-6 pb-6">
+        <div style={{ padding: '0 24px 24px' }}>
           <AnimatePresence mode="wait" custom={direction}>
             <motion.div
               key={currentIndex}
@@ -138,10 +144,10 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
               animate="center"
               exit="exit"
               transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-              className="mt-3 space-y-3"
+              style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}
             >
               {/* Option chips — multi-select */}
-              <div className="flex flex-wrap gap-2">
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {question?.options?.map(option => {
                   const isSelected = selectedOptions.includes(option);
                   return (
@@ -149,14 +155,31 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
                       key={option}
                       whileTap={{ scale: 0.97 }}
                       onClick={() => toggleOption(option)}
-                      className={`px-4 py-2.5 rounded-2xl text-sm font-semibold border-2 transition-all duration-150 ${
-                        isSelected
-                          ? 'border-transparent text-white'
-                          : 'border-gray-200 text-gray-700 bg-gray-50 hover:border-gray-300 hover:bg-white'
-                      }`}
-                      style={isSelected ? { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderColor: 'transparent' } : {}}
+                      style={isSelected ? {
+                        padding: '10px 16px',
+                        borderRadius: 8,
+                        fontFamily: 'Inter,sans-serif',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        border: '0.5px solid rgba(91,80,255,0.4)',
+                        background: 'rgba(91,80,255,0.1)',
+                        color: '#f0f0ee',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      } : {
+                        padding: '10px 16px',
+                        borderRadius: 8,
+                        fontFamily: 'Inter,sans-serif',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        border: '0.5px solid #1e1e1e',
+                        background: 'rgba(255,255,255,0.03)',
+                        color: '#b8b8b8',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
                     >
-                      {isSelected && <span className="mr-1.5 text-xs">✓</span>}
+                      {isSelected && <span style={{ marginRight: 6, fontSize: 11 }}>✓</span>}
                       {option}
                     </motion.button>
                   );
@@ -164,22 +187,42 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
               </div>
 
               {/* Custom text input */}
-              <div className="flex items-center gap-2 rounded-2xl border-2 border-gray-200 bg-gray-50 px-3.5 py-2.5 transition-all focus-within:border-purple-400 focus-within:bg-white">
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: '#0f0f0f',
+                  border: '0.5px solid #1e1e1e',
+                  borderRadius: 6,
+                  padding: '10px 14px',
+                }}
+              >
                 <input
                   ref={customRef}
                   value={customText}
                   onChange={e => setCustomText(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleNext(); }}
                   placeholder="Or type your own answer…"
-                  className="flex-1 bg-transparent text-sm text-gray-800 placeholder:text-gray-400 outline-none"
+                  style={{
+                    flex: 1,
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    fontFamily: 'Inter,sans-serif',
+                    fontSize: 14,
+                    color: '#f0f0ee',
+                  }}
                 />
                 {customText.trim() && (
                   <button
                     onClick={handleNext}
-                    className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+                    style={{
+                      width: 24, height: 24, borderRadius: 6, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', flexShrink: 0, background: '#5B50FF', border: 'none', cursor: 'pointer',
+                    }}
                   >
-                    <Send size={11} className="text-white" />
+                    <Send size={11} style={{ color: '#fff' }} />
                   </button>
                 )}
               </div>
@@ -187,10 +230,19 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
           </AnimatePresence>
 
           {/* Next / Generate button */}
-          <div className="flex items-center justify-between mt-6">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 24 }}>
             <button
               onClick={onCancel}
-              className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+              style={{
+                fontFamily: 'Inter,sans-serif',
+                fontSize: 13,
+                color: '#555555',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = '#888888'}
+              onMouseLeave={e => e.currentTarget.style.color = '#555555'}
             >
               Cancel
             </button>
@@ -198,8 +250,22 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
               whileTap={{ scale: 0.97 }}
               onClick={handleNext}
               disabled={!canProceed}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold text-white transition-all disabled:opacity-30"
-              style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 20px',
+                borderRadius: 6,
+                fontFamily: 'Inter,sans-serif',
+                fontSize: 13,
+                fontWeight: 600,
+                color: '#fff',
+                background: '#5B50FF',
+                border: 'none',
+                cursor: canProceed ? 'pointer' : 'not-allowed',
+                opacity: canProceed ? 1 : 0.3,
+                transition: 'opacity 0.2s',
+              }}
             >
               {isLast ? 'Generate presentation' : 'Next'}
               <ArrowRight size={14} />

@@ -5,17 +5,19 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
 
-const CM = 10;
-
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Education', 'Marketing', 'Design', 'Consulting', 'Real Estate', 'Media', 'Other'];
 const USE_CASES = ['Investor pitches', 'Sales decks', 'Internal reports', 'Client proposals', 'Educational content', 'Product demos', 'Conference talks', 'Other'];
 
 function PlanBadge({ plan }) {
   const styles = {
-    free:  { bg: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)', label: 'Free' },
-    basic: { bg: 'rgba(139,92,246,0.15)',  color: '#C4B5FD', label: 'Basic' },
-    pro:   { bg: 'rgba(0,240,255,0.12)',   color: '#00F0FF', label: 'Pro' },
-    ultra: { bg: 'rgba(251,191,36,0.15)',  color: '#FCD34D', label: 'Ultra' },
+    free:   { bg: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)', label: 'Free' },
+    basic:  { bg: 'rgba(139,92,246,0.15)',  color: '#C4B5FD', label: 'Basic' },
+    pro:    { bg: 'rgba(0,240,255,0.12)',   color: '#00F0FF', label: 'Pro' },
+    ultra:  { bg: 'rgba(251,191,36,0.15)',  color: '#FCD34D', label: 'Ultra' },
+    ultra1: { bg: 'rgba(251,191,36,0.15)',  color: '#FCD34D', label: 'Ultra 1' },
+    ultra2: { bg: 'rgba(251,191,36,0.15)',  color: '#FCD34D', label: 'Ultra 2' },
+    ultra3: { bg: 'rgba(251,191,36,0.15)',  color: '#FCD34D', label: 'Ultra 3' },
+    ultra4: { bg: 'rgba(251,191,36,0.15)',  color: '#FCD34D', label: 'Ultra 4' },
   };
   const s = styles[plan] || styles.free;
   return (
@@ -36,6 +38,12 @@ export default function Profile() {
   const [useCase, setUseCase]   = useState('');
   const [industry, setIndustry] = useState('');
 
+  const [email, setEmail] = useState('');
+  const [nameError,  setNameError]  = useState('');
+  const [emailError, setEmailError] = useState('');
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
   const [sub, setSub]     = useState(null);
   const [plan, setPlan]   = useState(null);
   const [saving, setSaving]   = useState(false);
@@ -52,6 +60,7 @@ export default function Profile() {
     ]).then(([profileRes, billingRes]) => {
       const p = profileRes.data;
       setName(p.name || '');
+      setEmail(p.email || '');
       setBio(p.profile_data?.bio || '');
       setCompany(p.profile_data?.company || '');
       setJobTitle(p.profile_data?.jobTitle || '');
@@ -78,7 +87,7 @@ export default function Profile() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.put('/auth/profile', { name, bio, company, jobTitle, useCase, industry });
+      await api.put('/auth/profile', { name, email, bio, company, jobTitle, useCase, industry });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {
@@ -93,13 +102,16 @@ export default function Profile() {
     return new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   }
 
-  const creditsLeft   = sub ? sub.credits_remaining * CM : null;
-  const creditsTotal  = plan ? plan.credits * CM : null;
+  const creditsLeft   = sub ? sub.credits_remaining : null;
+  const creditsTotal  = plan ? plan.credits : null;
   const creditsPct    = creditsTotal > 0 ? Math.min(100, Math.round((creditsLeft / creditsTotal) * 100)) : 0;
   const periodEnd     = sub?.current_period_end ? formatDate(sub.current_period_end) : null;
   const nextPayment   = sub?.next_payment_date   ? formatDate(sub.next_payment_date)  : null;
   const pendingPlan   = sub?.pending_plan;
   const isPaid        = sub?.plan && sub.plan !== 'free';
+  const isCancelled   = sub?.status === 'cancelled' || sub?.status === 'canceled';
+  // Stripe keeps status 'active' until the period actually ends after a portal cancellation
+  const isCancelling  = isPaid && !isCancelled && !!sub?.cancel_at_period_end;
 
   return (
     <div className="min-h-screen" style={{ background: '#0A0A0B' }}>
@@ -157,13 +169,21 @@ export default function Profile() {
 
                 {/* Subscription timing */}
                 <div className="space-y-2 text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                  {isPaid && (sub.status === 'cancelled' || sub.status === 'canceled') && periodEnd && (
+                  {isPaid && isCancelled && periodEnd && (
                     <div className="flex items-start gap-2">
                       <Calendar size={12} className="mt-0.5 flex-shrink-0" style={{ color: '#f87171' }} />
                       <span style={{ color: '#f87171' }}>Cancelled — access ends <span className="font-semibold">{periodEnd}</span></span>
                     </div>
                   )}
-                  {isPaid && sub.status !== 'cancelled' && sub.status !== 'canceled' && periodEnd && (
+                  {isCancelling && periodEnd && (
+                    <div className="flex items-start gap-2">
+                      <Calendar size={12} className="mt-0.5 flex-shrink-0" style={{ color: '#f87171' }} />
+                      <span style={{ color: '#f87171' }}>
+                        Cancelled — enjoy <span className="font-semibold capitalize">{sub.plan}</span> benefits until <span className="font-semibold">{periodEnd}</span>
+                      </span>
+                    </div>
+                  )}
+                  {isPaid && !isCancelled && !isCancelling && periodEnd && (
                     <div className="flex items-start gap-2">
                       <Calendar size={12} className="mt-0.5 flex-shrink-0" style={{ color: '#8B5CF6' }} />
                       <span>
@@ -174,7 +194,7 @@ export default function Profile() {
                       </span>
                     </div>
                   )}
-                  {nextPayment && !pendingPlan && sub.status !== 'cancelled' && sub.status !== 'canceled' && (
+                  {nextPayment && !pendingPlan && !isCancelled && !isCancelling && (
                     <div className="flex items-start gap-2">
                       <CreditCard size={12} className="mt-0.5 flex-shrink-0" style={{ color: '#00F0FF' }} />
                       <span>Next payment on <span className="text-white/70">{nextPayment}</span></span>
@@ -245,7 +265,28 @@ export default function Profile() {
                       className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none transition-all"
                       style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
                       placeholder="Your name"
+                      onFocus={() => setNameError('')}
+                      onBlur={() => { if (!name.trim()) setNameError("Name can't be empty."); }}
                     />
+                    {nameError && (
+                      <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#ef4444', marginTop: 4 }}>{nameError}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Email</label>
+                    <input
+                      type="email"
+                      value={email} onChange={e => setEmail(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none transition-all"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                      placeholder="your@email.com"
+                      onFocus={() => setEmailError('')}
+                      onBlur={() => { if (email && !EMAIL_RE.test(email)) setEmailError('Enter a valid email address.'); }}
+                    />
+                    {emailError && (
+                      <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#ef4444', marginTop: 4 }}>{emailError}</p>
+                    )}
                   </div>
 
                   <div>
@@ -308,7 +349,7 @@ export default function Profile() {
                   <div className="flex items-center gap-3 pt-2">
                     <button
                       type="submit"
-                      disabled={saving}
+                      disabled={saving || !!(nameError || emailError)}
                       className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-80 disabled:opacity-50 flex items-center gap-2"
                       style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
                     >

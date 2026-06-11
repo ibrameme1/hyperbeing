@@ -2,6 +2,34 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 
+// Same MeshGradient treatment as LoadingScreen — keeps the two
+// "Nova is working" screens visually consistent. Falls back to a
+// static gradient if the shader package hasn't loaded yet.
+function ShaderBackground() {
+  const [mods, setMods] = useState({});
+  useEffect(() => {
+    import('@paper-design/shaders-react').then(mod => setMods(mod)).catch(() => {});
+  }, []);
+  const { MeshGradient } = mods;
+
+  if (!MeshGradient) {
+    return (
+      <div className="absolute inset-0" style={{
+        background: 'linear-gradient(135deg, #080808 0%, #0f0f0f 33%, #1a1540 66%, #5B50FF 100%)'
+      }} />
+    );
+  }
+  return (
+    <MeshGradient
+      className="absolute inset-0 w-full h-full"
+      colors={['#080808', '#0f0f0f', '#1a1540', '#5B50FF']}
+      speed={0.4}
+      backgroundColor="#080808"
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+    />
+  );
+}
+
 const TYPE_LABELS = {
   cover: 'Cover',
   section: 'Section',
@@ -97,15 +125,17 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-y-auto py-12"
-      style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
+      style={{ background: '#080808' }}
       onClick={handleSkip}
     >
+      <ShaderBackground />
+
       {/* Ambient glows */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-1/3 left-1/4 w-96 h-96 rounded-full opacity-20"
-             style={{ background: 'radial-gradient(circle, #7b61ff 0%, transparent 70%)' }} />
+             style={{ background: 'radial-gradient(circle, rgba(91,80,255,0.12) 0%, transparent 70%)' }} />
         <div className="absolute bottom-1/3 right-1/4 w-72 h-72 rounded-full opacity-10"
-             style={{ background: 'radial-gradient(circle, #00b4ff 0%, transparent 70%)' }} />
+             style={{ background: 'radial-gradient(circle, rgba(91,80,255,0.08) 0%, transparent 70%)' }} />
       </div>
 
       <div className="relative z-10 flex flex-col items-center gap-7 px-6 w-full max-w-xl">
@@ -114,8 +144,11 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
           initial={{ opacity: 0, scale: 0.7 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-          className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
-          style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+          className="w-11 h-11 flex items-center justify-center flex-shrink-0"
+          style={{
+            background: '#5B50FF',
+            borderRadius: 12,
+          }}
         >
           <Sparkles size={20} className="text-white" />
         </motion.div>
@@ -125,7 +158,7 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
-          className="text-white text-xl font-bold text-center"
+          style={{ fontFamily: 'Playfair Display,Georgia,serif', color: '#f0f0ee', fontSize: 20, fontWeight: 700, textAlign: 'center' }}
         >
           Nova crafted {effectiveTotal} slide{effectiveTotal !== 1 ? 's' : ''} for you
         </motion.h1>
@@ -139,29 +172,40 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
                 initial={{ opacity: 0, x: -18, scale: 0.98 }}
                 animate={{ opacity: 1, x: 0, scale: 1 }}
                 transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
-                className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+                className="flex items-center gap-3 px-4 py-3"
                 style={{
-                  background: 'rgba(255,255,255,0.055)',
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '0.5px solid #1e1e1e',
+                  borderRadius: 8,
                 }}
               >
                 <span
                   className="text-xs font-black w-6 text-center flex-shrink-0 tabular-nums"
-                  style={{ color: '#a78bfa' }}
+                  style={{ color: '#8B80FF' }}
                 >
                   {String(i + 1).padStart(2, '0')}
                 </span>
                 <span
-                  className="text-[10px] font-bold uppercase tracking-wider flex-shrink-0 px-1.5 py-0.5 rounded-lg"
-                  style={{ background: 'rgba(167,139,250,0.14)', color: '#c4b5fd' }}
+                  className="uppercase flex-shrink-0"
+                  style={{
+                    fontFamily: 'Inter, sans-serif',
+                    fontSize: 9,
+                    fontWeight: 600,
+                    letterSpacing: '0.10em',
+                    background: 'rgba(91,80,255,0.12)',
+                    color: '#8B80FF',
+                    border: '0.5px solid rgba(91,80,255,0.28)',
+                    borderRadius: 4,
+                    padding: '4px 9px',
+                  }}
                 >
                   {TYPE_LABELS[slide.type] || 'Slide'}
                 </span>
-                <span className="text-white text-sm font-semibold flex-1 truncate">
+                <span style={{ color: '#f0f0ee', fontSize: 14, fontWeight: 600, fontFamily: 'Inter,sans-serif', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {slide.title}
                 </span>
                 {slide.key_points?.[0] && (
-                  <span className="text-white/30 text-xs truncate max-w-[160px] hidden sm:block">
+                  <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }} className="hidden sm:block">
                     {slide.key_points[0]}
                   </span>
                 )}
@@ -173,15 +217,16 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
           {Array.from({ length: pendingCount }, (_, i) => (
             <div
               key={`pending-${i}`}
-              className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+              className="flex items-center gap-3 px-4 py-3"
               style={{
                 background: 'rgba(255,255,255,0.025)',
-                border: '1px solid rgba(255,255,255,0.04)',
+                border: '0.5px solid rgba(255,255,255,0.04)',
+                borderRadius: 8,
               }}
             >
               <div className="w-6 h-3 rounded-full bg-white/10 animate-pulse flex-shrink-0" />
-              <div className="w-14 h-4 rounded-lg bg-white/10 animate-pulse flex-shrink-0" />
-              <div className="flex-1 h-4 rounded-lg bg-white/10 animate-pulse max-w-[200px]" />
+              <div className="w-14 h-4 rounded bg-white/10 animate-pulse flex-shrink-0" />
+              <div className="flex-1 h-4 rounded bg-white/10 animate-pulse max-w-[200px]" />
             </div>
           ))}
         </div>
@@ -194,7 +239,7 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="text-white/35 text-sm"
+              style={{ color: 'rgba(255,255,255,0.35)', fontSize: 14, fontFamily: 'Inter,sans-serif' }}
             >
               Planning slide {visibleSlides.length + 1} of {effectiveTotal}…
             </motion.p>
@@ -203,7 +248,7 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
               key="opening"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="text-white/35 text-sm"
+              style={{ color: 'rgba(255,255,255,0.35)', fontSize: 14, fontFamily: 'Inter,sans-serif' }}
             >
               Opening your presentation…
             </motion.p>
@@ -215,7 +260,16 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
-          className="text-white/50 text-xs font-medium tracking-wide border border-white/20 rounded-full px-4 py-1.5"
+          style={{
+            color: 'rgba(255,255,255,0.5)',
+            fontSize: 12,
+            fontWeight: 500,
+            letterSpacing: '0.05em',
+            border: '0.5px solid rgba(255,255,255,0.2)',
+            borderRadius: 9999,
+            padding: '6px 16px',
+            fontFamily: 'Inter,sans-serif',
+          }}
         >
           Tap anywhere to skip
         </motion.p>

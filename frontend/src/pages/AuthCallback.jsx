@@ -38,11 +38,10 @@ export default function AuthCallback() {
   }, []);
 
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: '#0A0A0B' }}>
-      <div className="text-center">
-        <Loader2 size={32} className="animate-spin mx-auto mb-4" style={{ color: '#8B5CF6' }} />
-        <p className="text-white/50 text-sm">Signing you in…</p>
-      </div>
+    <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+      <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid #1e1e1e', borderTopColor: '#5B50FF', animation: 'spin 0.8s linear infinite' }} />
+      <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#555555', letterSpacing: '0.15em', textTransform: 'uppercase' }}>Signing you in…</p>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

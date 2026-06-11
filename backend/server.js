@@ -12,10 +12,12 @@ import authRoutes from './routes/auth.js';
 import presentationRoutes from './routes/presentations.js';
 import promptChatRoutes from './routes/promptChat.js';
 import billingRoutes from './routes/billing.js';
+import userRoutes from './routes/user.js';
 import { apiLimiter } from './middleware/rateLimits.js';
 import analyticsRoutes from './routes/analytics.js';
 import adminRoutes from './routes/admin.js';
 import adminDashboardRouter from './routes/adminDashboard.js';
+import feedbackRoutes from './routes/feedback.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { logger } from './services/logger.js';
 import { getPostHog } from './services/posthogClient.js';
@@ -96,8 +98,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/presentations', presentationRoutes);
 app.use('/api/prompt-chat', promptChatRoutes);
 app.use('/api/billing', billingRoutes);
+app.use('/api/user', userRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 // Admin monitoring dashboard — permissive CSP so vis.js CDN and inline scripts load
 app.use('/admin', (req, res, next) => {

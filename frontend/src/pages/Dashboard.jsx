@@ -9,10 +9,14 @@ import {
 } from 'lucide-react';
 import api from '../api/client';
 import OutOfCreditsModal from '../components/OutOfCreditsModal';
+import NovaMascot from '../components/NovaMascot';
 import { useTheme } from '../contexts/ThemeContext';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
 import Logo from '../components/Logo';
+import { SkeletonDashboardPage } from '../components/Skeleton';
+import FeedbackButton from '../components/FeedbackButton';
+import { fileToImageAttachment } from '../utils/imageAttachment';
 
 const ANALYZING_MESSAGES = [
   { text: "ok let me read through this real quick…", emoji: "👀" },
@@ -26,25 +30,11 @@ const ANALYZING_MESSAGES = [
 
 function AnalyzingOverlay({ onCancel }) {
   const [msgIdx, setMsgIdx] = useState(0);
-  const [blink, setBlink] = useState(false);
   const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     const t = setInterval(() => setMsgIdx(i => (i + 1) % ANALYZING_MESSAGES.length), 2400);
     return () => clearInterval(t);
-  }, []);
-
-  // Random eye blink
-  useEffect(() => {
-    function scheduleBlink() {
-      const delay = 2000 + Math.random() * 3000;
-      return setTimeout(() => {
-        setBlink(true);
-        setTimeout(() => { setBlink(false); scheduleBlink(); }, 120);
-      }, delay);
-    }
-    const t = scheduleBlink();
-    return () => clearTimeout(t);
   }, []);
 
   const msg = ANALYZING_MESSAGES[msgIdx];
@@ -70,52 +60,10 @@ function AnalyzingOverlay({ onCancel }) {
       >
         <div className="px-8 py-8 flex flex-col items-center text-center">
 
-          {/* Robot avatar */}
-          <motion.div
-            animate={shouldReduceMotion ? {} : { y: [0, -5, 0] }}
-            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-            className="relative mb-6"
-          >
-            {/* Glow */}
-            <div className="absolute inset-0 rounded-2xl blur-xl opacity-20"
-                 style={{ background: 'linear-gradient(135deg, #8B5CF6, #00F0FF)' }} />
-
-            {/* Robot face */}
-            <div className="relative w-20 h-20 rounded-2xl flex flex-col items-center justify-center gap-1.5"
-                 style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #06b6d4 100%)' }}>
-              {/* Eyes */}
-              <div className="flex gap-3">
-                {[0, 1].map(i => (
-                  <motion.div
-                    key={i}
-                    className="rounded-full bg-white"
-                    style={{
-                      width: 10, height: 10,
-                      transform: blink ? 'scaleY(0.2)' : 'scaleY(1)',
-                      transition: 'transform 0.08s ease',
-                      boxShadow: '0 0 8px rgba(255,255,255,0.8)',
-                    }}
-                  />
-                ))}
-              </div>
-              {/* Mouth — wiggles while thinking */}
-              <motion.div
-                animate={{ scaleX: [1, 1.15, 0.9, 1] }}
-                transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-                className="rounded-full bg-white/80"
-                style={{ width: 22, height: 4, borderRadius: 99 }}
-              />
-              {/* Antenna */}
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 flex flex-col items-center">
-                <motion.div
-                  animate={{ backgroundColor: ['#a78bfa', '#00F0FF', '#a78bfa'] }}
-                  transition={{ duration: 1.2, repeat: Infinity }}
-                  className="w-2.5 h-2.5 rounded-full"
-                />
-                <div className="w-0.5 h-3 bg-white/40" />
-              </div>
-            </div>
-          </motion.div>
+          {/* Nova mascot video */}
+          <div className={`mb-4 ${shouldReduceMotion ? '' : 'nova-float'}`}>
+            <NovaMascot size={140} />
+          </div>
 
           {/* Speech bubble */}
           <div className="relative w-full rounded-2xl px-5 py-4 mb-5"
@@ -169,37 +117,51 @@ import QuestionFlow from '../components/QuestionFlow';
 
 function greeting(name) {
   const h = new Date().getHours();
-  const time = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
-  return `Good ${time}, ${name.split(' ')[0]}`;
+  const first = name.split(' ')[0];
+  const day = new Date().getDay(); // 0=Sun, 6=Sat
+  if (h < 5)  return `Still up, ${first}? Let's make something.`;
+  if (h < 12) {
+    const morning = ['Morning, ', 'Good morning, ', 'Hey ', 'Rise and create, '];
+    return morning[day % morning.length] + first;
+  }
+  if (h < 17) {
+    const afternoon = ['Afternoon, ', 'Good afternoon, ', 'Hey ', 'Mid-day grind, '];
+    return afternoon[day % afternoon.length] + first;
+  }
+  const evening = ['Evening, ', 'Good evening, ', 'Late session, ', 'Hey '];
+  return evening[day % evening.length] + first;
 }
 
 const VIBE_SUBTITLES = {
   'dark-editorial': 'Ready to make something that looks like a magazine cover?',
   'clean-minimal': 'Clean, sharp, minimal — just how you like it.',
   'bold-punchy': 'Time to make something that gets a reaction.',
-  'colorful': 'Let\'s make something that brings the energy.',
+  'colorful': "Let's make something that brings the energy.",
 };
 const PRIORITY_SUBTITLES = {
-  speed: 'Nova\'s warmed up and ready to move fast.',
-  quality: 'Nova\'s in full art-director mode today.',
-  storytelling: 'Let\'s build a narrative that lands.',
+  speed: "Nova's warmed up and ready to move fast.",
+  quality: "Nova's in full art-director mode today.",
+  storytelling: "Let's build a narrative that lands.",
   automation: 'Describe it. Nova handles the rest.',
 };
 
+const PLACEHOLDER_EXAMPLES = [
+  'e.g. 10-slide investor pitch for a fintech startup — Series A, US market, bold and confident tone',
+  'e.g. Brand strategy deck for a luxury skincare launch — aspirational, editorial feel, 12 slides',
+  'e.g. Quarterly business review for a SaaS company — data-heavy, clean minimal, 8 slides',
+  'e.g. Go-to-market plan for a B2B analytics tool — storytelling-first, 15 slides',
+  'e.g. Marketing campaign proposal for a CPG brand — colorful, punchy, built for a CMO audience',
+];
+const PLACEHOLDER_TEXT = PLACEHOLDER_EXAMPLES[new Date().getDay() % PLACEHOLDER_EXAMPLES.length];
+
 // ─── Attachment Drop Zone ──────────────────────────────────────────────────
-function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove }) {
+function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove, isDark }) {
   const onDrop = useCallback(accepted => {
-    accepted.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = e => onAdd({
-        id: Math.random().toString(36).slice(2),
-        name: file.name,
-        type: 'image',
-        mimeType: file.type,
-        data: e.target.result,
-      });
-      reader.onerror = () => {};
-      reader.readAsDataURL(file);
+    accepted.forEach(async file => {
+      try {
+        const { data, mimeType } = await fileToImageAttachment(file);
+        onAdd({ id: Math.random().toString(36).slice(2), name: file.name, type: 'image', mimeType, data });
+      } catch {}
     });
   }, [onAdd]);
 
@@ -210,45 +172,82 @@ function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove }) 
   });
 
   return (
-    <div className="bg-white dark:bg-hb-surface rounded-2xl overflow-hidden shadow-ios">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-ios-gray5 dark:border-hb-border">
-        <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0"
-             style={{ background: accentColor + '22' }}>
+    <div style={{
+      background: isDark ? '#141414' : '#fff',
+      borderRadius: 8,
+      overflow: 'hidden',
+      border: '0.5px solid',
+      borderColor: isDark ? '#2a2a2a' : '#e8e8e8',
+      boxShadow: isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.06)',
+    }}>
+      <div style={{
+        padding: '12px 16px',
+        borderBottom: '0.5px solid',
+        borderColor: isDark ? '#2a2a2a' : '#e8e8e8',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+      }}>
+        <div style={{
+          width: 28, height: 28, borderRadius: 8, display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          background: accentColor + '18', flexShrink: 0,
+        }}>
           <Icon size={14} style={{ color: accentColor }} />
         </div>
-        <span className="font-semibold text-gray-900 dark:text-white text-sm">{label}</span>
-        <span className="text-xs text-ios-gray2 dark:text-zinc-500 ml-auto">{files.length} image{files.length !== 1 ? 's' : ''}</span>
+        <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600, color: isDark ? '#f0f0ee' : '#0d0b1a' }}>{label}</span>
+        <span style={{ fontSize: 11, color: isDark ? '#555555' : '#888888', marginLeft: 'auto' }}>{files.length} image{files.length !== 1 ? 's' : ''}</span>
       </div>
 
       <div
         {...getRootProps()}
-        className={`min-h-[90px] p-3 cursor-pointer transition-all duration-200 ${
-          isDragActive ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-inset ring-ios-blue' : 'hover:bg-ios-gray6 dark:hover:bg-hb-surface-2'
-        }`}
+        style={{
+          minHeight: 90,
+          padding: 12,
+          cursor: 'pointer',
+          background: isDragActive
+            ? (isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.06)')
+            : 'transparent',
+          outline: isDragActive ? '2px solid rgba(59,130,246,0.5)' : 'none',
+          outlineOffset: -2,
+          transition: 'background 0.2s',
+        }}
       >
         <input {...getInputProps()} />
 
         {files.length === 0 ? (
-          <div className="h-[66px] flex flex-col items-center justify-center text-ios-gray2 dark:text-zinc-500">
-            <p className="text-xs font-medium">{isDragActive ? 'Drop here' : 'Drop images or click to browse'}</p>
+          <div style={{ height: 66, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <p style={{ fontSize: 12, color: isDark ? '#555555' : '#888888', margin: 0 }}>{isDragActive ? 'Drop here' : 'Drop images or click to browse'}</p>
           </div>
         ) : (
-          <div className="flex flex-wrap gap-2">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {files.map(f => (
-              <div key={f.id} className="relative group">
+              <div key={f.id} style={{ position: 'relative' }} className="group">
                 <img src={f.data} alt={f.name}
-                     className="h-14 w-14 rounded-xl object-cover border border-ios-gray5 dark:border-hb-border" />
+                     style={{ height: 56, width: 56, borderRadius: 8, objectFit: 'cover', border: '0.5px solid', borderColor: isDark ? '#2a2a2a' : '#e8e8e8', display: 'block' }} />
                 <button
                   onClick={e => { e.stopPropagation(); onRemove(f.id); }}
                   aria-label={`Remove ${f.name}`}
-                  className="absolute -top-2 -right-2 w-6 h-6 bg-gray-800 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{
+                    position: 'absolute', top: -8, right: -8, width: 20, height: 20,
+                    background: '#080808', color: '#fff', borderRadius: '50%',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: '1px solid #2a2a2a', cursor: 'pointer', opacity: 0,
+                  }}
+                  className="group-hover:opacity-100 transition-opacity"
                 >
                   <X size={10} />
                 </button>
               </div>
             ))}
-            <div className="h-14 w-14 rounded-xl border-2 border-dashed border-ios-gray4 dark:border-hb-border flex items-center justify-center hover:border-ios-blue transition-colors">
-              <Plus size={16} className="text-ios-gray2 dark:text-zinc-500" />
+            <div style={{
+              height: 56, width: 56, borderRadius: 8,
+              border: '1.5px dashed',
+              borderColor: isDark ? '#2a2a2a' : '#d0d0d0',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: isDark ? '#555555' : '#999999',
+            }}>
+              <Plus size={16} />
             </div>
           </div>
         )}
@@ -291,11 +290,11 @@ function PresentationCard({ pres, onDelete }) {
     setConfirmDelete(false);
   }
 
-  const statusColors = {
-    chat: 'bg-blue-100 text-blue-600',
-    ready: 'bg-purple-100 text-purple-600',
-    generating: 'bg-orange-100 text-orange-600',
-    completed: 'bg-green-100 text-green-600',
+  const statusStyles = {
+    chat:       { background: 'rgba(59,130,246,0.15)',  color: '#60a5fa' },
+    ready:      { background: 'rgba(139,92,246,0.15)',  color: '#a78bfa' },
+    generating: { background: 'rgba(245,158,11,0.15)',  color: '#fbbf24' },
+    completed:  { background: 'rgba(34,197,94,0.15)',   color: '#4ade80' },
   };
   const statusLabels = { chat: 'Draft', ready: 'Ready', generating: 'Generating…', completed: 'Complete' };
 
@@ -312,15 +311,16 @@ function PresentationCard({ pres, onDelete }) {
       onClick={() => navigate(`/presentations/${pres.id}`, { state: { presentation: pres } })}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/presentations/${pres.id}`, { state: { presentation: pres } }); } }}
       aria-label={pres.title}
-      className="bg-white dark:bg-hb-surface rounded-2xl overflow-hidden shadow-ios cursor-pointer group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-hb-primary"
+      className="rounded-lg overflow-hidden cursor-pointer group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-uv"
+      style={{ background: 'var(--bg-card)', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', border: '0.5px solid var(--border)' }}
     >
       <div className="aspect-[16/9] overflow-hidden"
-           style={{ background: 'linear-gradient(135deg, #8B5CF622 0%, #00F0FF22 100%)' }}>
+           style={{ background: 'linear-gradient(135deg, rgba(91,80,255,0.1) 0%, rgba(139,128,255,0.1) 100%)' }}>
         {pres.thumbnail ? (
           <img src={pres.thumbnail} alt="" loading="lazy" className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Sparkles className="w-7 h-7 text-ios-indigo opacity-40" />
+            <Sparkles className="w-7 h-7 opacity-40" style={{ color: '#5B50FF' }} />
           </div>
         )}
       </div>
@@ -328,20 +328,23 @@ function PresentationCard({ pres, onDelete }) {
       <div className="p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h3 className="font-semibold text-gray-900 dark:text-white text-sm truncate">{pres.title}</h3>
-            <p className="text-xs text-ios-gray1 dark:text-zinc-400 mt-0.5 flex items-center gap-1">
+            <h3 className="truncate" style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600 }}>{pres.title}</h3>
+            <p className="mt-0.5 flex items-center gap-1" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
               <Clock size={11} />
               {new Date(pres.updated_at).toLocaleDateString()}
             </p>
           </div>
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg flex-shrink-0 ${statusColors[pres.status] || 'bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-zinc-400'}`}>
+          <span
+            className="text-xs font-semibold px-2 py-0.5 rounded-lg flex-shrink-0"
+            style={statusStyles[pres.status] || { background: 'rgba(120,120,120,0.15)', color: '#888' }}
+          >
             {statusLabels[pres.status] ?? '—'}
           </span>
         </div>
       </div>
 
       {deleteError && (
-        <div className="absolute bottom-0 inset-x-0 px-3 py-1.5 rounded-b-2xl text-xs text-center text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20">
+        <div className="absolute bottom-0 inset-x-0 px-3 py-1.5 rounded-b-lg text-xs text-center" style={{ color: '#f87171', background: 'rgba(239,68,68,0.1)' }}>
           Couldn't delete — try again.
         </div>
       )}
@@ -349,7 +352,8 @@ function PresentationCard({ pres, onDelete }) {
       {confirmDelete ? (
         <div
           onClick={e => e.stopPropagation()}
-          className="absolute top-2 right-2 flex items-center gap-1 bg-white dark:bg-hb-surface rounded-xl p-1.5 shadow-ios-md z-10"
+          className="absolute top-2 right-2 flex items-center gap-1 z-10"
+          style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '6px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}
         >
           <button
             onClick={handleDelete}
@@ -360,7 +364,8 @@ function PresentationCard({ pres, onDelete }) {
           <button
             ref={cancelBtnRef}
             onClick={handleCancelDelete}
-            className="px-3 py-2 rounded-lg text-xs font-semibold text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-hb-primary"
+            className="px-3 py-2 rounded-lg text-xs font-semibold hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors focus:outline-none"
+            style={{ color: 'var(--text-secondary)' }}
           >
             Cancel
           </button>
@@ -370,7 +375,8 @@ function PresentationCard({ pres, onDelete }) {
           onClick={handleDelete}
           disabled={deleting}
           aria-label={`Delete ${pres.title}`}
-          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity w-9 h-9 rounded-xl bg-white/90 dark:bg-hb-surface shadow-ios flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/30 text-[color:var(--text-muted)] hover:text-red-600 dark:hover:text-red-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity w-9 h-9 rounded-xl flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+          style={{ background: 'var(--bg-card)', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', color: 'var(--text-muted)' }}
         >
           {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
         </button>
@@ -393,9 +399,10 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
   }, []);
 
   const initials = (user?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-  const planMax = currentPlan === 'basic' ? 100 : currentPlan === 'pro' ? 500 : currentPlan === 'ultra' ? 2000 : 5;
+  const PLAN_MAX = { free: 54, basic: 1200, pro: 3200, ultra: 8000, ultra1: 8000, ultra2: 11200, ultra3: 14400, ultra4: 16000 };
+  const planMax = PLAN_MAX[currentPlan] ?? 54;
   const pct = isAdmin ? 100 : planMax > 0 ? Math.min(100, Math.round((credits / planMax) * 100)) : 0;
-  const low = !isAdmin && credits !== null && credits < 10;
+  const low = !isAdmin && credits !== null && credits < 18;
 
   const ringColor = isAdmin ? '#8B5CF6'
     : pct <= 20 ? '#f87171'
@@ -464,7 +471,7 @@ function AccountMenu({ user, credits, currentPlan, isAdmin, onLogout, onUpgrade 
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Credits remaining</span>
                     <span className="text-xs font-bold" style={{ color: low ? '#f87171' : '#8B5CF6' }}>
-                      {isAdmin ? '∞' : (credits * 10).toLocaleString()} / {isAdmin ? '∞' : (planMax * 10).toLocaleString()}
+                      {isAdmin ? '∞' : credits.toLocaleString()} / {isAdmin ? '∞' : planMax.toLocaleString()}
                     </span>
                   </div>
                   <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
@@ -575,6 +582,7 @@ export default function Dashboard() {
   const [currentPlan, setCurrentPlan] = useState('free');
   const [isAdmin, setIsAdmin] = useState(false);
   const [showOutOfCredits, setShowOutOfCredits] = useState(false);
+  const [outOfCreditsDetails, setOutOfCreditsDetails] = useState(null);
   const [creatingPresentation, setCreatingPresentation] = useState(false);
   const [adminSlideCount, setAdminSlideCount] = useState(null); // null = let Nova decide
   const [showSlideCountInput, setShowSlideCountInput] = useState(false);
@@ -761,6 +769,7 @@ export default function Dashboard() {
     } catch (err) {
       setCreatingPresentation(false);
       if (err.response?.status === 402) {
+        setOutOfCreditsDetails(err.response.data || null);
         setShowOutOfCredits(true);
         track('out_of_credits', { page: 'dashboard' });
         return;
@@ -794,14 +803,14 @@ export default function Dashboard() {
     const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
     if (!files.length) return;
     setShowZones(true);
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = ev => setBrandingFiles(prev => [...prev, {
-        id: Math.random().toString(36).slice(2),
-        name: file.name, type: 'image', mimeType: file.type, data: ev.target.result,
-      }]);
-      reader.onerror = () => {};
-      reader.readAsDataURL(file);
+    files.forEach(async file => {
+      try {
+        const { data, mimeType } = await fileToImageAttachment(file);
+        setBrandingFiles(prev => [...prev, {
+          id: Math.random().toString(36).slice(2),
+          name: file.name, type: 'image', mimeType, data,
+        }]);
+      } catch {}
     });
   }
 
@@ -823,16 +832,17 @@ export default function Dashboard() {
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            className="rounded-3xl px-10 py-10 max-w-xs w-full mx-4 text-center shadow-2xl bg-white dark:bg-hb-surface"
+            className="rounded-3xl px-10 py-10 max-w-xs w-full mx-4 text-center shadow-2xl"
+            style={{ background: 'var(--bg-card)', border: '0.5px solid var(--border)' }}
           >
             <div className="w-14 h-14 rounded-2xl mx-auto mb-5 flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
+                 style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}>
               <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
                 <Sparkles size={24} className="text-white" />
               </motion.div>
             </div>
-            <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-1">Reading your link</h3>
-            <p className="text-sm text-gray-500 dark:text-zinc-400">{fetchingUrls.map(u => { try { return new URL(u).hostname; } catch { return u; } }).join(', ')}</p>
+            <h3 className="font-bold text-lg mb-1" style={{ color: 'var(--text-primary)' }}>Reading your link</h3>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{fetchingUrls.map(u => { try { return new URL(u).hostname; } catch { return u; } }).join(', ')}</p>
           </motion.div>
         </motion.div>
       )}
@@ -851,11 +861,12 @@ export default function Dashboard() {
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            className="rounded-3xl px-10 py-10 max-w-xs w-full mx-4 text-center shadow-2xl bg-white dark:bg-hb-surface"
+            className="rounded-3xl px-10 py-10 max-w-xs w-full mx-4 text-center shadow-2xl"
+            style={{ background: 'var(--bg-card)', border: '0.5px solid var(--border)' }}
           >
             <div
               className="w-16 h-16 rounded-2xl mx-auto mb-5 flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+              style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}
             >
               <motion.div
                 animate={{ rotate: 360 }}
@@ -864,8 +875,8 @@ export default function Dashboard() {
                 <Sparkles size={26} className="text-white" />
               </motion.div>
             </div>
-            <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">ok, building it now…</h3>
-            <p className="text-sm text-gray-500 dark:text-zinc-400">this usually takes about a minute.</p>
+            <h3 className="font-bold text-xl mb-2" style={{ color: 'var(--text-primary)' }}>ok, building it now…</h3>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>this usually takes about a minute.</p>
           </motion.div>
         </motion.div>
       )}
@@ -874,7 +885,8 @@ export default function Dashboard() {
       {showOutOfCredits && (
         <OutOfCreditsModal
           currentPlan={currentPlan}
-          onClose={() => setShowOutOfCredits(false)}
+          details={outOfCreditsDetails}
+          onClose={() => { setShowOutOfCredits(false); setOutOfCreditsDetails(null); }}
         />
       )}
     </AnimatePresence>
@@ -890,8 +902,15 @@ export default function Dashboard() {
     <div className="min-h-screen" style={{ background: 'var(--bg-page)' }}>
       {/* Nav */}
       <div className="sticky top-0 z-50 px-4 pt-3 pb-1">
-        <nav className="flex items-center justify-between px-5 py-2.5 rounded-2xl"
-             style={{ background: 'var(--bg-nav)', backdropFilter: 'blur(20px)', border: '1px solid var(--border)', boxShadow: '0 2px 20px rgba(0,0,0,0.07)' }}>
+        <nav style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '8px 20px', borderRadius: 12,
+          background: isDark ? 'rgba(10,10,16,0.55)' : 'rgba(255,255,255,0.72)',
+          backdropFilter: 'blur(28px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+          border: isDark ? '0.5px solid rgba(255,255,255,0.08)' : '0.5px solid rgba(0,0,0,0.08)',
+          boxShadow: isDark ? '0 2px 24px rgba(0,0,0,0.5)' : '0 2px 16px rgba(0,0,0,0.07)',
+        }}>
           <div className="flex items-center">
             <Logo dark={isDark} height={40} />
           </div>
@@ -899,13 +918,12 @@ export default function Dashboard() {
             {/* Theme toggle */}
             <button
               onClick={toggleTheme}
-              className="w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 hover:opacity-70"
-              style={{ background: 'var(--bg-input)' }}
+              style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isDark ? '#1e1e1e' : '#f0f0f0', border: 'none', cursor: 'pointer' }}
               aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
             >
               {isDark
-                ? <Sun size={15} className="text-yellow-400" />
-                : <Moon size={15} className="text-hb-primary" />}
+                ? <Sun size={15} style={{ color: '#facc15' }} />
+                : <Moon size={15} style={{ color: '#5B50FF' }} />}
             </button>
             <AccountMenu
               user={user}
@@ -920,7 +938,7 @@ export default function Dashboard() {
       </div>
 
       {/* Hero gradient section */}
-      <div style={{ background: 'var(--bg-hero)' }}>
+      <div style={{ background: isDark ? '#0f0f0f' : '#f5f5f5' }}>
         <div className="max-w-3xl mx-auto px-4 pt-12 pb-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -940,8 +958,9 @@ export default function Dashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div className="bg-white dark:bg-hb-surface rounded-3xl shadow-ios-xl overflow-hidden">
+            <div style={{ background: isDark ? '#141414' : '#fff', borderRadius: 16, boxShadow: isDark ? '0 4px 24px rgba(0,0,0,0.4)' : '0 4px 24px rgba(0,0,0,0.1)', overflow: 'hidden', border: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8' }}>
               <div className="p-5">
+                <style>{`.hb-ta::placeholder{color:${isDark ? '#555555' : '#aaaaaa'}}`}</style>
                 <textarea
                   ref={textareaRef}
                   value={input}
@@ -949,22 +968,28 @@ export default function Dashboard() {
                   onKeyDown={handleKeyDown}
                   onDragOver={e => e.preventDefault()}
                   onDrop={handleTextareaDrop}
-                  placeholder="Describe your presentation — topic, audience, tone…"
+                  onFocus={e => e.target.style.outline = 'none'}
+                  placeholder={PLACEHOLDER_TEXT}
                   aria-label="Presentation brief"
                   rows={4}
-                  className="w-full resize-none border-none outline-none text-gray-800 dark:text-zinc-100 placeholder:text-ios-gray2 dark:placeholder:text-zinc-500 text-base bg-transparent leading-relaxed"
+                  className="hb-ta w-full resize-none bg-transparent"
+                  style={{
+                    border: 'none', outline: 'none', fontSize: 15, lineHeight: 1.7,
+                    color: isDark ? '#f0f0ee' : '#0d0b1a',
+                    fontFamily: 'Inter, sans-serif',
+                  }}
                 />
               </div>
 
-              <div className="px-5 pb-5 pt-1 border-t border-ios-gray5 dark:border-hb-border">
+              <div style={{ padding: '4px 20px 20px', borderTop: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8' }}>
                 {/* Controls row */}
                 <div className="flex items-center gap-2 py-2 flex-wrap">
                   {/* Format selector */}
-                  <div className="flex items-center gap-1 bg-ios-gray5 dark:bg-hb-surface-2 rounded-xl p-1 flex-shrink-0">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: isDark ? '#0f0f0f' : '#f0f0f0', borderRadius: 10, padding: 4, flexShrink: 0 }}>
                     {[
-                      { ratio: '16:9', label: 'Horizontal', w: 20, h: 12 },
-                      { ratio: '1:1',  label: 'Square',     w: 14, h: 14 },
-                      { ratio: '9:16', label: 'Portrait',   w: 10, h: 16 },
+                      { ratio: '16:9', label: 'Landscape', w: 20, h: 12 },
+                      { ratio: '1:1',  label: 'Square',    w: 14, h: 14 },
+                      { ratio: '9:16', label: 'Portrait',  w: 10, h: 16 },
                     ].map(({ ratio, label, w, h }) => {
                       const active = selectedAspectRatio === ratio;
                       return (
@@ -973,25 +998,24 @@ export default function Dashboard() {
                           onClick={() => setSelectedAspectRatio(ratio)}
                           aria-label={label}
                           aria-pressed={active}
-                          className={`flex flex-col items-center gap-1 px-2.5 py-1.5 rounded-lg transition-all duration-150 cursor-pointer ${
-                            active
-                              ? 'bg-white dark:bg-hb-dark shadow-sm'
-                              : 'hover:bg-white/50 dark:hover:bg-white/5'
-                          }`}
+                          style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                            padding: '6px 10px', borderRadius: 7, cursor: 'pointer', border: 'none',
+                            background: active ? (isDark ? '#1e1e1e' : '#fff') : 'transparent',
+                            boxShadow: active ? (isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.1)') : 'none',
+                            transition: 'background 0.15s',
+                          }}
                         >
                           <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
                             <rect
                               x="0.5" y="0.5" width={w - 1} height={h - 1}
                               rx="1.5"
-                              fill={active ? 'rgba(139,92,246,0.15)' : 'transparent'}
-                              stroke={active ? '#8B5CF6' : 'currentColor'}
+                              fill={active ? 'rgba(91,80,255,0.12)' : 'transparent'}
+                              stroke={active ? '#5B50FF' : (isDark ? '#555555' : '#999999')}
                               strokeWidth="1.5"
-                              className={active ? '' : 'text-ios-gray2 dark:text-zinc-500'}
                             />
                           </svg>
-                          <span className={`text-[10px] font-semibold leading-none ${
-                            active ? 'text-hb-primary' : 'text-ios-gray1 dark:text-zinc-400'
-                          }`}>{label}</span>
+                          <span style={{ fontSize: 10, fontWeight: 600, fontFamily: 'Inter,sans-serif', color: active ? '#5B50FF' : (isDark ? '#555' : '#888') }}>{label}</span>
                         </button>
                       );
                     })}
@@ -1048,29 +1072,33 @@ export default function Dashboard() {
                   {/* Toggle attach zones — icon-only on mobile */}
                   <button
                     onClick={() => setShowZones(v => !v)}
-                    className={`flex items-center gap-1.5 font-medium px-2.5 sm:px-3 py-1.5 rounded-xl transition-colors text-sm ${
-                      showZones || totalAttachments > 0
-                        ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
-                        : 'text-ios-gray1 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white hover:bg-ios-gray5 dark:hover:bg-hb-surface-2'
-                    }`}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'Inter,sans-serif',
+                      fontWeight: 500, fontSize: 13, padding: '6px 12px', borderRadius: 8,
+                      border: '0.5px solid', cursor: 'pointer', transition: 'all 0.15s',
+                      borderColor: (showZones || totalAttachments > 0) ? 'rgba(91,80,255,0.4)' : (isDark ? '#2a2a2a' : '#e0e0e0'),
+                      background: (showZones || totalAttachments > 0) ? 'rgba(91,80,255,0.1)' : 'transparent',
+                      color: (showZones || totalAttachments > 0) ? '#8B80FF' : (isDark ? '#888' : '#555'),
+                    }}
                   >
-                    <ImageIcon size={15} />
-                    <span className="hidden sm:inline">Add references</span>
+                    <ImageIcon size={14} />
+                    <span style={{ display: 'none' }} className="sm:inline-block">Add references</span>
                     {totalAttachments > 0 && (
-                      <span className="bg-purple-600 text-white rounded-full text-xs w-5 h-5 flex items-center justify-center font-bold">
+                      <span style={{ background: '#5B50FF', color: '#fff', borderRadius: 9999, fontSize: 11, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
                         {totalAttachments}
                       </span>
                     )}
-                    {showZones ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    {showZones ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                   </button>
 
                   {/* Desktop-only: shortcut hint + Create button */}
                   <div className="hidden sm:flex items-center gap-2 ml-auto">
-                    <p className="text-xs text-ios-gray2 dark:text-zinc-500">⌘ + Enter</p>
+                    <p className="text-xs" style={{ color: isDark ? '#555' : '#aaa' }}>⌘ + Enter</p>
                     <button
                       onClick={handleSubmit}
                       disabled={analyzing || (!input.trim() && allAttachments.length === 0)}
-                      className="ios-btn py-2 px-5 text-sm"
+                      className="py-2 px-5 text-sm font-semibold text-white rounded-btn flex items-center gap-2 disabled:opacity-40"
+                      style={{ background: '#5B50FF', border: 'none', cursor: 'pointer' }}
                     >
                       <Send size={15} /> Create
                     </button>
@@ -1109,14 +1137,16 @@ export default function Dashboard() {
                     files={brandingFiles}
                     onAdd={f => setBrandingFiles(prev => [...prev, f])}
                     onRemove={id => setBrandingFiles(prev => prev.filter(f => f.id !== id))}
+                    isDark={isDark}
                   />
                   <AttachZone
                     label="Moodboard"
                     icon={Palette}
-                    accentColor="#8B5CF6"
+                    accentColor="#5B50FF"
                     files={moodboardFiles}
                     onAdd={f => setMoodboardFiles(prev => [...prev, f])}
                     onRemove={id => setMoodboardFiles(prev => prev.filter(f => f.id !== id))}
+                    isDark={isDark}
                   />
                 </motion.div>
               )}
@@ -1135,7 +1165,7 @@ export default function Dashboard() {
             transition={{ duration: 0.5, delay: 0.2 }}
           >
             <div className="flex items-center justify-between mb-5">
-              <h2 className="font-sans font-bold text-gray-900 dark:text-white text-xl">Recents</h2>
+              <h2 style={{ fontFamily: 'Inter,sans-serif', fontWeight: 700, color: isDark ? '#f0f0ee' : '#0d0b1a', fontSize: 18 }}>Recents</h2>
             </div>
 
             {presError && presentations.length === 0 && !presLoading && (
@@ -1154,7 +1184,7 @@ export default function Dashboard() {
             {presLoading ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 {[0, 1, 2, 3, 4, 5].map(i => (
-                  <div key={i} className="bg-white dark:bg-hb-surface rounded-2xl overflow-hidden shadow-ios">
+                  <div key={i} className="rounded-lg overflow-hidden" style={{ background: 'var(--bg-card)', border: '0.5px solid var(--border)', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
                     <div className="aspect-[16/9] skeleton" />
                     <div className="p-4 space-y-2">
                       <div className="h-4 rounded-lg skeleton w-3/4" />
@@ -1182,13 +1212,12 @@ export default function Dashboard() {
             transition={{ duration: 0.5, delay: 0.3 }}
             className="text-center py-8"
           >
-            <div className="inline-flex w-16 h-16 rounded-3xl mb-5 items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(0,240,255,0.1) 100%)', border: '1px solid rgba(139,92,246,0.2)' }}>
+            <div style={{ background: 'rgba(91,80,255,0.1)', border: '0.5px solid rgba(91,80,255,0.2)', borderRadius: 12, width: 64, height: 64, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
               <motion.div
                 animate={{ rotate: [0, 10, -10, 0] }}
                 transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
               >
-                <Bot size={26} style={{ color: '#8B5CF6' }} />
+                <Bot size={26} style={{ color: '#5B50FF' }} />
               </motion.div>
             </div>
             <p className="font-bold text-lg mb-2" style={{ color: 'var(--text-primary)' }}>Your first deck is one brief away</p>
@@ -1204,7 +1233,7 @@ export default function Dashboard() {
                 <button
                   key={example}
                   onClick={() => { setInput(example); textareaRef.current?.focus(); }}
-                  className="text-xs font-medium px-4 py-2.5 rounded-xl border transition-all duration-200 text-left cursor-pointer hover:scale-[1.02] hover:border-purple-300 dark:hover:border-purple-700"
+                  className="text-xs font-medium px-4 py-2.5 rounded-xl border transition-all duration-200 text-left cursor-pointer hover:scale-[1.02] hover:border-uv"
                   style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)', borderColor: 'var(--border-input)' }}
                 >
                   {example}
@@ -1215,6 +1244,7 @@ export default function Dashboard() {
         )}
       </main>
     </div>
+    <FeedbackButton />
 </>
   );
 }

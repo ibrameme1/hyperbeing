@@ -91,6 +91,15 @@ export function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS feedback (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      page TEXT,
+      message TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 
   // Migrate: OAuth columns
@@ -127,6 +136,31 @@ export function initDatabase() {
   try {
     db.exec('ALTER TABLE subscriptions ADD COLUMN pending_plan TEXT DEFAULT NULL');
   } catch { /* already exists */ }
+
+  // Migrate: credit economy — edit-tier tracking and reset scheduling
+  try {
+    db.exec('ALTER TABLE subscriptions ADD COLUMN edits_this_month INTEGER DEFAULT 0');
+  } catch { /* already exists */ }
+  try {
+    db.exec('ALTER TABLE subscriptions ADD COLUMN credits_reset_date DATETIME');
+  } catch { /* already exists */ }
+
+  // Migrate: locked-slide prompts (server-side only) for partial generation
+  try {
+    db.exec("ALTER TABLE presentations ADD COLUMN locked_slides TEXT DEFAULT '[]'");
+  } catch { /* already exists */ }
+
+  // Migrate: extend credit_transactions into a full ledger
+  for (const col of [
+    "ALTER TABLE credit_transactions ADD COLUMN credits_before INTEGER",
+    "ALTER TABLE credit_transactions ADD COLUMN slides_generated INTEGER DEFAULT 0",
+    "ALTER TABLE credit_transactions ADD COLUMN slides_locked INTEGER DEFAULT 0",
+    "ALTER TABLE credit_transactions ADD COLUMN edit_tier_used TEXT",
+    "ALTER TABLE credit_transactions ADD COLUMN edits_this_month_before INTEGER",
+    "ALTER TABLE credit_transactions ADD COLUMN metadata TEXT DEFAULT '{}'",
+  ]) {
+    try { db.exec(col); } catch { /* already exists */ }
+  }
 
   // Structured application logs (rolling — capped at 10 K rows by logger.js)
   db.exec(`

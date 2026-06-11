@@ -27,9 +27,10 @@ export default function CookieConsent() {
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 9999,
-        background: 'rgba(18,18,20,0.97)',
-        border: '1px solid rgba(255,255,255,0.10)',
-        borderRadius: '1rem',
+        background: 'rgba(15,15,15,0.97)',
+        border: '0.5px solid #1e1e1e',
+        backdropFilter: 'blur(12px)',
+        borderRadius: 8,
         padding: '1rem 1.5rem',
         display: 'flex',
         alignItems: 'center',
@@ -39,14 +40,14 @@ export default function CookieConsent() {
         boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
       }}
     >
-      <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.85rem', lineHeight: '1.5', flex: 1, margin: 0 }}>
+      <p style={{ color: '#888888', fontFamily: 'Inter, sans-serif', fontSize: 13, lineHeight: '1.5', flex: 1, margin: 0 }}>
         We use a session cookie for authentication and{' '}
         <a href="https://vercel.com/docs/analytics/privacy-policy" target="_blank" rel="noopener noreferrer"
-           style={{ color: '#8B5CF6', textDecoration: 'underline' }}>
+           style={{ color: '#8B80FF', textDecoration: 'underline' }}>
           cookieless analytics
         </a>{' '}
         to improve the product. No tracking cookies.{' '}
-        <Link to="/privacy" style={{ color: '#8B5CF6', textDecoration: 'underline' }}>
+        <Link to="/privacy" style={{ color: '#8B80FF', textDecoration: 'underline' }}>
           Privacy policy
         </Link>
       </p>
@@ -54,15 +55,17 @@ export default function CookieConsent() {
         onClick={accept}
         style={{
           flexShrink: 0,
-          background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)',
+          background: '#5B50FF',
           border: 'none',
-          borderRadius: '0.5rem',
+          borderRadius: 6,
           color: '#fff',
+          fontFamily: 'Inter, sans-serif',
           fontWeight: 600,
-          fontSize: '0.85rem',
-          padding: '0.5rem 1.1rem',
+          fontSize: 13,
+          padding: '7px 16px',
           cursor: 'pointer',
           whiteSpace: 'nowrap',
+          transition: 'background 0.15s',
         }}
       >
         Got it

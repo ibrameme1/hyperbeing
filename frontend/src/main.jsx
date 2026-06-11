@@ -6,12 +6,13 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './index.css';
 import { initPostHog } from './utils/posthog';
+import { ErrorFallback } from './components/ErrorBoundary';
 
 initPostHog();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <Sentry.ErrorBoundary fallback={<p>An error has occurred</p>}>
+    <Sentry.ErrorBoundary fallback={({ error, resetError }) => <ErrorFallback error={error} resetError={resetError} />}>
       <BrowserRouter>
         <App />
       </BrowserRouter>

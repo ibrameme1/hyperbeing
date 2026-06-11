@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import {
   stripe, PLANS, ULTRA_TIERS, getOrCreateSubscription, resetCreditsForPlan, grantCredits, isAdmin,
+  applyPlanUpgrade, scheduleDowngrade, scheduleCancellation,
 } from '../services/stripeService.js';
 import { logger } from '../services/logger.js';
 import { getDb } from '../database.js';
@@ -18,6 +19,36 @@ function frontendUrl() {
   return process.env.FRONTEND_URL || 'http://localhost:5173';
 }
 
+// Apply the effects of a completed Stripe Checkout session to our DB.
+// Idempotent — safe to call from both the webhook and the success-page
+// reconciliation endpoint, whichever fires first.
+function applyCheckoutSession(session) {
+  const { userId, planKey } = session.metadata || {};
+  if (!userId || !planKey) return null;
+
+  const db = getDb();
+  const sub = getOrCreateSubscription(userId);
+  const subscriptionId = session.subscription;
+
+  if (sub.stripe_subscription_id === subscriptionId && sub.plan === planKey) {
+    return sub; // already applied
+  }
+
+  db.prepare(
+    'UPDATE subscriptions SET stripe_subscription_id = ?, plan = ?, status = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
+  ).run(subscriptionId, planKey, 'active', null, userId);
+
+  resetCreditsForPlan(userId, planKey);
+
+  const user = db.prepare('SELECT name, email FROM users WHERE id = ?').get(userId);
+  if (user?.email) {
+    const plan = PLANS[planKey];
+    sendPurchaseConfirmation(user.name, user.email, plan?.name || planKey, plan?.credits || 0);
+  }
+
+  return getOrCreateSubscription(userId);
+}
+
 // ── GET /api/billing/subscription ─────────────────────────────────────────────
 router.get('/subscription', authMiddleware, async (req, res) => {
   try {
@@ -26,6 +57,7 @@ router.get('/subscription', authMiddleware, async (req, res) => {
 
     let next_payment_date = null;
     let current_period_end = sub.current_period_end;
+    let cancel_at_period_end = false;
 
     if (sub.stripe_subscription_id && process.env.STRIPE_SECRET_KEY) {
       try {
@@ -34,6 +66,7 @@ router.get('/subscription', authMiddleware, async (req, res) => {
           stripe.invoices.retrieveUpcoming({ subscription: sub.stripe_subscription_id }).catch(() => null),
         ]);
         current_period_end = new Date(stripeSub.current_period_end * 1000).toISOString();
+        cancel_at_period_end = !!stripeSub.cancel_at_period_end;
         if (upcoming?.next_payment_attempt) {
           next_payment_date = new Date(upcoming.next_payment_attempt * 1000).toISOString();
         }
@@ -54,7 +87,7 @@ router.get('/subscription', authMiddleware, async (req, res) => {
     }
 
     const plan = PLANS[sub.plan] || PLANS.free;
-    res.json({ subscription: { ...sub, current_period_end, is_admin: admin, next_payment_date }, plan });
+    res.json({ subscription: { ...sub, current_period_end, is_admin: admin, next_payment_date, cancel_at_period_end }, plan });
   } catch (err) {
     logger.error('get subscription failed', { errorMessage: err.message, userId: req.userId });
     res.status(500).json({ error: 'Could not load subscription. Please try again.' });
@@ -70,16 +103,18 @@ router.post('/checkout', authMiddleware, billingLimiter,
   }),
   async (req, res) => {
   const { planKey, billing = 'monthly', ultraTier } = req.body;
-  const plan = PLANS[planKey];
   const isAnnual = billing === 'annual';
   let priceId;
+  let actualPlanKey = planKey;
   if (planKey === 'ultra') {
     const tier = ULTRA_TIERS[ultraTier];
     if (!tier) return res.status(400).json({ error: 'Invalid Ultra tier selected.' });
+    actualPlanKey = tier.planKey;
     priceId = isAnnual ? tier.annualPriceId : tier.priceId;
   } else {
-    priceId = isAnnual ? plan?.annualPriceId : plan?.priceId;
+    priceId = isAnnual ? PLANS[planKey]?.annualPriceId : PLANS[planKey]?.priceId;
   }
+  const plan = PLANS[actualPlanKey];
   if (!plan || !priceId) return res.status(400).json({ error: 'This plan isn\'t available for purchase. Please choose a different plan or contact support.' });
   if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not available right now. Please contact support.' });
 
@@ -107,19 +142,23 @@ router.post('/checkout', authMiddleware, billingLimiter,
       if (stripeSub) {
       const currentItemId = stripeSub.items.data[0]?.id;
 
-      const PLAN_RANK = { free: 0, basic: 1, pro: 2, ultra: 3 };
-      const isDowngrade = (PLAN_RANK[planKey] || 0) < (PLAN_RANK[sub.plan] || 0);
+      const PLAN_RANK = { free: 0, basic: 1, pro: 2, ultra: 3, ultra1: 3, ultra2: 4, ultra3: 5, ultra4: 6 };
+      const isDowngrade = (PLAN_RANK[actualPlanKey] ?? 0) < (PLAN_RANK[sub.plan] ?? 0);
 
-      // Cancel a pending downgrade — user picks any plan other than the scheduled one
-      if (sub.pending_plan && planKey !== sub.pending_plan) {
+      // Cancel a pending downgrade — user re-picks the plan they're currently on.
+      // (Picking any other plan, including the pending one, falls through to the
+      // normal downgrade/upgrade logic below, which supersedes pending_plan and
+      // applies the correct credit adjustment.)
+      if (sub.pending_plan && actualPlanKey === sub.plan) {
         await stripe.subscriptions.update(sub.stripe_subscription_id, {
           items: [{ id: currentItemId, price: priceId }],
           proration_behavior: 'none',
-          metadata: { userId: req.userId, planKey },
+          cancel_at_period_end: false,
+          metadata: { userId: req.userId, planKey: actualPlanKey },
         });
         const db = getDb();
-        db.prepare('UPDATE subscriptions SET plan = ?, pending_plan = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?').run(planKey, req.userId);
-        return res.json({ upgraded: true, cancelledDowngrade: true, keptPlan: planKey });
+        db.prepare('UPDATE subscriptions SET plan = ?, pending_plan = NULL, credits_total = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?').run(actualPlanKey, plan.credits, req.userId);
+        return res.json({ upgraded: true, cancelledDowngrade: true, keptPlan: actualPlanKey });
       }
 
       if (isDowngrade) {
@@ -128,35 +167,45 @@ router.post('/checkout', authMiddleware, billingLimiter,
         const periodEnd = stripeSub.current_period_end
           ? new Date(stripeSub.current_period_end * 1000).toISOString()
           : null;
-        db.prepare(
-          'UPDATE subscriptions SET pending_plan = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
-        ).run(planKey, periodEnd, req.userId);
+        scheduleDowngrade(req.userId, actualPlanKey);
+        db.prepare('UPDATE subscriptions SET current_period_end = ? WHERE user_id = ?').run(periodEnd, req.userId);
         try {
           await stripe.subscriptions.update(sub.stripe_subscription_id, {
             items: [{ id: currentItemId, price: priceId }],
             proration_behavior: 'none',
-            metadata: { userId: req.userId, planKey },
+            cancel_at_period_end: false,
+            metadata: { userId: req.userId, planKey: actualPlanKey },
           });
         } catch (stripeErr) {
-          db.prepare('UPDATE subscriptions SET pending_plan = NULL WHERE user_id = ?').run(req.userId);
+          db.prepare('UPDATE subscriptions SET pending_plan = NULL, credits_total = ? WHERE user_id = ?').run(PLANS[sub.plan]?.credits ?? sub.credits_total, req.userId);
           throw stripeErr;
         }
         const _downgradeUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.userId);
         if (_downgradeUser?.email) sendPlanDowngradeScheduled(_downgradeUser.name, _downgradeUser.email, PLANS[sub.plan]?.name || sub.plan, plan.name, periodEnd);
-        return res.json({ upgraded: true, isDowngrade: true, pendingPlan: planKey, periodEnd, currentPlan: sub.plan });
+        return res.json({ upgraded: true, isDowngrade: true, pendingPlan: actualPlanKey, periodEnd, currentPlan: sub.plan });
       } else {
-        await stripe.subscriptions.update(sub.stripe_subscription_id, {
-          items: [{ id: currentItemId, price: priceId }],
-          proration_behavior: 'create_prorations',
-          billing_cycle_anchor: 'now',
-          metadata: { userId: req.userId, planKey },
-        });
-        const db = getDb();
-        db.prepare('UPDATE subscriptions SET pending_plan = NULL WHERE user_id = ?').run(req.userId);
-        resetCreditsForPlan(req.userId, planKey);
-        const _upgradeUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.userId);
-        if (_upgradeUser?.email) sendPlanUpgraded(_upgradeUser.name, _upgradeUser.email, plan.name, plan.credits);
-        return res.json({ upgraded: true, message: 'Plan upgraded successfully.' });
+        // Charge the prorated difference immediately and require it to succeed.
+        // The plan/credit grant itself happens in the `invoice.paid` webhook —
+        // not here — so the user only gets the upgrade once Stripe confirms payment.
+        try {
+          await stripe.subscriptions.update(sub.stripe_subscription_id, {
+            items: [{ id: currentItemId, price: priceId }],
+            proration_behavior: 'always_invoice',
+            payment_behavior: 'error_if_incomplete',
+            billing_cycle_anchor: 'now',
+            cancel_at_period_end: false,
+            metadata: { userId: req.userId, planKey: actualPlanKey },
+          });
+        } catch (stripeErr) {
+          if (stripeErr?.type === 'StripeCardError' || stripeErr?.code === 'card_declined') {
+            return res.status(402).json({ error: 'Your card was declined for this upgrade. Please update your payment method and try again.' });
+          }
+          if (stripeErr?.code === 'subscription_payment_intent_requires_action') {
+            return res.status(402).json({ error: 'Your card requires additional verification. Please update your payment method via the billing portal and try again.' });
+          }
+          throw stripeErr;
+        }
+        return res.json({ upgraded: true, pending: true, message: 'Payment confirmed — your plan will update in just a moment.' });
       }
       } // if (stripeSub)
     } // if (sub.stripe_subscription_id && sub.status === 'active')
@@ -181,8 +230,8 @@ router.post('/checkout', authMiddleware, billingLimiter,
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${frontendUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontendUrl()}/pricing`,
-      metadata: { userId: req.userId, planKey },
-      subscription_data: { metadata: { userId: req.userId, planKey } },
+      metadata: { userId: req.userId, planKey: actualPlanKey },
+      subscription_data: { metadata: { userId: req.userId, planKey: actualPlanKey } },
     });
 
     res.json({ url: session.url });
@@ -213,6 +262,35 @@ router.post('/portal', authMiddleware, async (req, res) => {
   }
 });
 
+// ── GET /api/billing/confirm-session ──────────────────────────────────────────
+// Reconciles the local subscription/credits state right after a successful
+// Stripe Checkout redirect, in case the `checkout.session.completed` webhook
+// hasn't been delivered yet (e.g. local dev without `stripe listen`).
+router.get('/confirm-session', authMiddleware, async (req, res) => {
+  const { session_id } = req.query;
+  if (!session_id || typeof session_id !== 'string') {
+    return res.status(400).json({ error: 'Missing session_id.' });
+  }
+  if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'Payments are not available right now. Please contact support.' });
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+    if (session.metadata?.userId !== req.userId) {
+      return res.status(403).json({ error: 'This checkout session does not belong to your account.' });
+    }
+
+    const isComplete = session.payment_status === 'paid' || session.status === 'complete';
+    if (isComplete) applyCheckoutSession(session);
+
+    const sub = getOrCreateSubscription(req.userId);
+    const plan = PLANS[sub.plan] || PLANS.free;
+    res.json({ subscription: sub, plan, pending: !isComplete });
+  } catch (err) {
+    logger.error('confirm checkout session failed', { errorMessage: err.message, userId: req.userId });
+    res.status(400).json({ error: 'Could not confirm checkout session.' });
+  }
+});
+
 // ── POST /api/billing/webhook ─────────────────────────────────────────────────
 router.post('/webhook', async (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -229,21 +307,7 @@ router.post('/webhook', async (req, res) => {
 
   switch (event.type) {
     case 'checkout.session.completed': {
-      const session = event.data.object;
-      const { userId, planKey } = session.metadata;
-      if (!userId || !planKey) break;
-
-      const subscriptionId = session.subscription;
-      db.prepare(
-        'UPDATE subscriptions SET stripe_subscription_id = ?, plan = ?, status = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
-      ).run(subscriptionId, planKey, 'active', null, userId);
-
-      resetCreditsForPlan(userId, planKey);
-      const _purchaseUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(userId);
-      if (_purchaseUser?.email) {
-        const _purchasePlan = PLANS[planKey];
-        sendPurchaseConfirmation(_purchaseUser.name, _purchaseUser.email, _purchasePlan?.name || planKey, _purchasePlan?.credits || 0);
-      }
+      applyCheckoutSession(event.data.object);
       break;
     }
 
@@ -257,11 +321,26 @@ router.post('/webhook', async (req, res) => {
 
       // Only reset on renewal (not the initial payment — that's handled by checkout.session.completed)
       if (invoice.billing_reason === 'subscription_cycle') {
-        resetCreditsForPlan(sub.user_id, sub.plan);
+        const renewPlanKey = sub.pending_plan || sub.plan;
+        const periodEndUnix = invoice.lines?.data?.[0]?.period?.end;
+        const resetDate = periodEndUnix ? new Date(periodEndUnix * 1000).toISOString() : null;
+        resetCreditsForPlan(sub.user_id, renewPlanKey, resetDate);
         const _renewUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(sub.user_id);
         if (_renewUser?.email) {
-          const _renewPlan = PLANS[sub.plan];
-          sendRenewalReceipt(_renewUser.name, _renewUser.email, _renewPlan?.name || sub.plan, _renewPlan?.credits || 0);
+          const _renewPlan = PLANS[renewPlanKey];
+          sendRenewalReceipt(_renewUser.name, _renewUser.email, _renewPlan?.name || renewPlanKey, _renewPlan?.credits || 0);
+        }
+      } else if (invoice.billing_reason === 'subscription_update') {
+        // The prorated upgrade charge succeeded — now grant the new plan/credits.
+        const stripeSub = await stripe.subscriptions.retrieve(stripeSubId);
+        const newPlanKey = stripeSub.metadata?.planKey;
+        if (newPlanKey && PLANS[newPlanKey] && newPlanKey !== sub.plan) {
+          applyPlanUpgrade(sub.user_id, newPlanKey);
+          const periodEnd = stripeSub.current_period_end ? new Date(stripeSub.current_period_end * 1000).toISOString() : null;
+          db.prepare('UPDATE subscriptions SET current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?').run(periodEnd, sub.user_id);
+          const _upgradeUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(sub.user_id);
+          const _newPlan = PLANS[newPlanKey];
+          if (_upgradeUser?.email) sendPlanUpgraded(_upgradeUser.name, _upgradeUser.email, _newPlan.name, _newPlan.credits);
         }
       }
       break;
@@ -284,18 +363,11 @@ router.post('/webhook', async (req, res) => {
         break;
       }
 
-      const planFromStripe = stripeSub.metadata?.planKey;
-      if (planFromStripe && planFromStripe !== sub.plan) {
-        // Plan change applied — update plan and reset credits
-        db.prepare(
-          'UPDATE subscriptions SET plan = ?, status = ?, current_period_end = ?, pending_plan = NULL, updated_at = CURRENT_TIMESTAMP WHERE stripe_subscription_id = ?'
-        ).run(planFromStripe, stripeSub.status, periodEnd, stripeSub.id);
-        resetCreditsForPlan(sub.user_id, planFromStripe);
-      } else {
-        db.prepare(
-          'UPDATE subscriptions SET status = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE stripe_subscription_id = ?'
-        ).run(stripeSub.status, periodEnd, stripeSub.id);
-      }
+      // Plan changes (and their credit grants) are applied by the `invoice.paid`
+      // webhook once the prorated charge is confirmed — just sync status/period here.
+      db.prepare(
+        'UPDATE subscriptions SET status = ?, current_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE stripe_subscription_id = ?'
+      ).run(stripeSub.status, periodEnd, stripeSub.id);
       break;
     }
 
@@ -304,9 +376,9 @@ router.post('/webhook', async (req, res) => {
       const sub = db.prepare('SELECT * FROM subscriptions WHERE stripe_subscription_id = ?').get(stripeSub.id);
       if (!sub) break;
 
-      db.prepare(
-        'UPDATE subscriptions SET plan = ?, status = ?, stripe_subscription_id = NULL, credits_remaining = 0, updated_at = CURRENT_TIMESTAMP WHERE stripe_subscription_id = ?'
-      ).run('free', 'cancelled', stripeSub.id);
+      // Don't zero credits immediately — let the user consume what's left
+      // until credits_reset_date, then the lazy reset applies the free plan.
+      scheduleCancellation(sub.user_id);
       const _cancelUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(sub.user_id);
       if (_cancelUser?.email) sendSubscriptionCancelled(_cancelUser.name, _cancelUser.email);
       break;
