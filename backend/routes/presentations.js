@@ -4,7 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { streamChat, analyzePresentation, generateCompactPlan, streamSlidePrompts, generateSingleSlidePrompt, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
-import { generateSlideImage, generateEditFailedImage } from '../services/imageGeneration.js';
+import { generateSlideImage, editSlideImage, generateEditFailedImage } from '../services/imageGeneration.js';
 import {
   deductCredits, refundCredits, deductCreditsForEdit, computeAffordableSlides,
   updateLedgerMetadata, getOrCreateSubscription, CREDIT_COSTS, checkTokenBudget,
@@ -811,8 +811,6 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
   const slideForPrompt = slidesAtRequest.find(s => s.index === targetIndex);
   if (!slideForPrompt) return res.status(404).json({ error: 'Slide not found. It may have been removed or the index is out of range.' });
 
-  const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
-
   // pic1 = current rendered slide; pic2, pic3… = anything the user uploaded in the edit bar
   const hasCurrentImage = slideForPrompt.image_data && !slideForPrompt.image_data.startsWith('data:image/svg');
   const userUploads = reqBodyAttachments.filter(a => a.data);
@@ -856,14 +854,11 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
 
   (async () => {
     try {
-      const imageData = await generateSlideImage(
+      const imageData = await editSlideImage(
         editPrompt,
-        slideForPrompt.type,
-        slidePlan.theme,
-        slidePlan.color_palette,
-        slideForPrompt.index,
         attachedImages,
-        regenAspectRatio
+        regenAspectRatio,
+        slideForPrompt.index
       );
 
       // Re-read slides_data fresh to avoid overwriting concurrent changes
@@ -872,8 +867,8 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
       const freshArrayPos = freshSlides.findIndex(s => s.index === targetIndex);
       const baseSlide = freshArrayPos >= 0 ? freshSlides[freshArrayPos] : slideForPrompt;
 
-      // generateSlideImage falls back to an SVG placeholder rather than
-      // throwing on persistent NB2 failure.
+      // editSlideImage returns null (or an SVG placeholder in mock mode)
+      // rather than throwing on persistent NB2 failure.
       const editFailed = !imageData || imageData.startsWith('data:image/svg');
 
       const updatedSlide = editFailed
