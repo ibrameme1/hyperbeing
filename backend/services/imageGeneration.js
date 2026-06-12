@@ -111,6 +111,32 @@ function buildFullPrompt(basePrompt, slideType, theme, colorPalette) {
   return parts.filter(Boolean).join('. ');
 }
 
+// ─── Edit-failure overlay (keeps original slide image, stamps a retry banner) ──
+
+const ASPECT_DIMENSIONS = {
+  '16:9': [1600, 900],
+  '9:16': [900, 1600],
+  '4:3': [1600, 1200],
+  '3:4': [1200, 1600],
+  '1:1': [1200, 1200],
+};
+
+export function generateEditFailedImage(originalImageData, aspectRatio = '16:9') {
+  const [w, h] = ASPECT_DIMENSIONS[aspectRatio] || ASPECT_DIMENSIONS['16:9'];
+  const bannerH = Math.round(h * 0.16);
+  const bannerY = Math.round((h - bannerH) / 2);
+  const imageLayer = originalImageData
+    ? `<image href="${originalImageData}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice"/>`
+    : '';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    ${imageLayer}
+    <rect x="0" y="${bannerY}" width="${w}" height="${bannerH}" fill="#000000" fill-opacity="0.65"/>
+    <text x="${w / 2}" y="${bannerY + bannerH * 0.42}" font-size="${bannerH * 0.32}" font-family="Arial, sans-serif" fill="#ffffff" text-anchor="middle" font-weight="bold">Edit failed</text>
+    <text x="${w / 2}" y="${bannerY + bannerH * 0.78}" font-size="${bannerH * 0.22}" font-family="Arial, sans-serif" fill="#ffffff" text-anchor="middle">Retry the changes</text>
+  </svg>`;
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
 // ─── Rich placeholder gradients (mock / fallback) ─────────────────────────
 
 const GRADIENT_SETS = [
