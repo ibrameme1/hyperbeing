@@ -16,6 +16,18 @@ import { logger, requestContext } from '../services/logger.js';
 import { tracer } from '../services/tracer.js';
 import { sendPresentationReady } from '../services/emailService.js';
 
+// Max number of prior versions kept per slide for the version history panel
+const MAX_SLIDE_VERSIONS = 10;
+
+// Prepends the slide's outgoing image to its version history (most recent first),
+// capped at MAX_SLIDE_VERSIONS. Placeholder/SVG images aren't worth keeping.
+function pushSlideVersion(existingVersions, outgoingImageData, instruction) {
+  const versions = existingVersions || [];
+  if (!outgoingImageData || outgoingImageData.startsWith('data:image/svg')) return versions;
+  const entry = { id: uuid(), image_data: outgoingImageData, instruction, created_at: new Date().toISOString() };
+  return [entry, ...versions].slice(0, MAX_SLIDE_VERSIONS);
+}
+
 // Validates a single attachment object
 function validateAttachment(a) {
   if (typeof a !== 'object' || a === null) return 'Must be an object';
@@ -875,6 +887,7 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
             image_data: imageData,
             status: 'complete',
             _edited: true,
+            versions: pushSlideVersion(baseSlide.versions, baseSlide.image_data, instruction.trim()),
           };
 
       if (freshArrayPos >= 0) {
@@ -905,6 +918,69 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
       broadcast(req.params.id, { type: 'slide_error', index: targetIndex, message: err.message });
     }
   })();
+});
+
+// ─── List saved versions for a slide ──────────────────────────────────────────
+router.get('/:id/slides/:index/versions', authenticateToken, (req, res) => {
+  const db = getDb();
+  const pres = db
+    .prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
+  if (!pres.slides_data) return res.status(400).json({ error: 'No slides have been generated yet.' });
+
+  const targetIndex = parseInt(req.params.index, 10);
+  const slides = JSON.parse(pres.slides_data);
+  const slide = slides.find(s => s.index === targetIndex);
+  if (!slide) return res.status(404).json({ error: 'Slide not found. It may have been removed or the index is out of range.' });
+
+  res.json({ versions: slide.versions || [] });
+});
+
+// ─── Restore a previous version of a slide ────────────────────────────────────
+router.post('/:id/slides/:index/versions/:versionId/restore', authenticateToken, (req, res) => {
+  const db = getDb();
+  const pres = db
+    .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
+  if (!pres.slides_data) return res.status(400).json({ error: 'No slides have been generated yet.' });
+
+  const targetIndex = parseInt(req.params.index, 10);
+  const slides = JSON.parse(pres.slides_data);
+  const arrayPos = slides.findIndex(s => s.index === targetIndex);
+  const slide = slides[arrayPos];
+  if (!slide) return res.status(404).json({ error: 'Slide not found. It may have been removed or the index is out of range.' });
+
+  const versions = slide.versions || [];
+  const versionPos = versions.findIndex(v => v.id === req.params.versionId);
+  if (versionPos === -1) return res.status(404).json({ error: 'Version not found.' });
+
+  const restoredVersion = versions[versionPos];
+  const remainingVersions = versions.filter((_, i) => i !== versionPos);
+
+  const updatedSlide = {
+    ...slide,
+    image_data: restoredVersion.image_data,
+    status: 'complete',
+    _edited: true,
+    versions: pushSlideVersion(remainingVersions, slide.image_data, 'Reverted to an earlier version'),
+  };
+
+  slides[arrayPos] = updatedSlide;
+
+  let thumbSql = `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+  const thumbArgs = [JSON.stringify(slides), req.params.id];
+  if (slides[0]?.index === targetIndex) {
+    thumbSql = `UPDATE presentations SET slides_data = ?, thumbnail = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+    thumbArgs.splice(1, 0, restoredVersion.image_data);
+  }
+  db.prepare(thumbSql).run(...thumbArgs);
+
+  broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
+  res.json({ slide: updatedSlide });
 });
 
 // ─── Retry a failed slide (re-run original prompt, no changes) ───────────────
