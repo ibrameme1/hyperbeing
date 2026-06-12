@@ -4,7 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { streamChat, analyzePresentation, generateCompactPlan, streamSlidePrompts, generateSingleSlidePrompt, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
-import { generateSlideImage } from '../services/imageGeneration.js';
+import { generateSlideImage, generateEditFailedImage } from '../services/imageGeneration.js';
 import {
   deductCredits, refundCredits, deductCreditsForEdit, computeAffordableSlides,
   updateLedgerMetadata, getOrCreateSubscription, CREDIT_COSTS, checkTokenBudget,
@@ -15,6 +15,18 @@ import { createPresentationLimiter, addSlidesLimiter, analyzeLimiter } from '../
 import { logger, requestContext } from '../services/logger.js';
 import { tracer } from '../services/tracer.js';
 import { sendPresentationReady } from '../services/emailService.js';
+
+// Max number of prior versions kept per slide for the version history panel
+const MAX_SLIDE_VERSIONS = 10;
+
+// Prepends the slide's outgoing image to its version history (most recent first),
+// capped at MAX_SLIDE_VERSIONS. Placeholder/SVG images aren't worth keeping.
+function pushSlideVersion(existingVersions, outgoingImageData, instruction) {
+  const versions = existingVersions || [];
+  if (!outgoingImageData || outgoingImageData.startsWith('data:image/svg')) return versions;
+  const entry = { id: uuid(), image_data: outgoingImageData, instruction, created_at: new Date().toISOString() };
+  return [entry, ...versions].slice(0, MAX_SLIDE_VERSIONS);
+}
 
 // Validates a single attachment object
 function validateAttachment(a) {
@@ -829,9 +841,10 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
 
   const regenAspectRatio = pres.aspect_ratio || '16:9';
 
-  // Build the regeneration prompt — user instruction leads, slide context follows
-  const baseContext = slideForPrompt.nano_banana_prompt || slideForPrompt.image_prompt || slideForPrompt.title;
-  const editPrompt = `${instruction.trim()}\n\nSlide context: ${baseContext}`;
+  // The user's instruction is the whole prompt — the current slide image (attached
+  // below as a reference) carries the context, so the original generation prompt
+  // is not resent.
+  const editPrompt = instruction.trim();
 
   let attachedImages = [];
   if (hasCurrentImage) {
@@ -857,13 +870,25 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
       const freshPres = db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id);
       const freshSlides = JSON.parse(freshPres?.slides_data || '[]');
       const freshArrayPos = freshSlides.findIndex(s => s.index === targetIndex);
+      const baseSlide = freshArrayPos >= 0 ? freshSlides[freshArrayPos] : slideForPrompt;
 
-      const updatedSlide = {
-        ...(freshArrayPos >= 0 ? freshSlides[freshArrayPos] : slideForPrompt),
-        image_data: imageData,
-        status: 'complete',
-        _edited: true,
-      };
+      // generateSlideImage falls back to an SVG placeholder rather than
+      // throwing on persistent NB2 failure.
+      const editFailed = !imageData || imageData.startsWith('data:image/svg');
+
+      const updatedSlide = editFailed
+        ? {
+            ...baseSlide,
+            // Keep the original slide image, with a "retry" banner stamped on it
+            image_data: generateEditFailedImage(baseSlide.image_data, regenAspectRatio),
+          }
+        : {
+            ...baseSlide,
+            image_data: imageData,
+            status: 'complete',
+            _edited: true,
+            versions: pushSlideVersion(baseSlide.versions, baseSlide.image_data, instruction.trim()),
+          };
 
       if (freshArrayPos >= 0) {
         freshSlides[freshArrayPos] = updatedSlide;
@@ -876,15 +901,13 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
       let thumbSql = `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
       const thumbArgs = [JSON.stringify(freshSlides), req.params.id];
       const isFirstSlide = freshSlides[0]?.index === targetIndex;
-      if (isFirstSlide && imageData && !imageData.startsWith('data:image/svg')) {
+      if (isFirstSlide && !editFailed) {
         thumbSql = `UPDATE presentations SET slides_data = ?, thumbnail = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
         thumbArgs.splice(1, 0, imageData);
       }
       db.prepare(thumbSql).run(...thumbArgs);
 
-      // generateSlideImage falls back to an SVG placeholder rather than
-      // throwing on persistent NB2 failure — refund the credit in that case.
-      if (!imageData || imageData.startsWith('data:image/svg')) {
+      if (editFailed) {
         refundCredits(req.user.id, editResult.cost, 'slide_edit_refund', 'Slide edit failed — refunded', req.params.id, { slide_index: targetIndex });
       }
 
@@ -895,6 +918,69 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
       broadcast(req.params.id, { type: 'slide_error', index: targetIndex, message: err.message });
     }
   })();
+});
+
+// ─── List saved versions for a slide ──────────────────────────────────────────
+router.get('/:id/slides/:index/versions', authenticateToken, (req, res) => {
+  const db = getDb();
+  const pres = db
+    .prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
+  if (!pres.slides_data) return res.status(400).json({ error: 'No slides have been generated yet.' });
+
+  const targetIndex = parseInt(req.params.index, 10);
+  const slides = JSON.parse(pres.slides_data);
+  const slide = slides.find(s => s.index === targetIndex);
+  if (!slide) return res.status(404).json({ error: 'Slide not found. It may have been removed or the index is out of range.' });
+
+  res.json({ versions: slide.versions || [] });
+});
+
+// ─── Restore a previous version of a slide ────────────────────────────────────
+router.post('/:id/slides/:index/versions/:versionId/restore', authenticateToken, (req, res) => {
+  const db = getDb();
+  const pres = db
+    .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
+  if (!pres.slides_data) return res.status(400).json({ error: 'No slides have been generated yet.' });
+
+  const targetIndex = parseInt(req.params.index, 10);
+  const slides = JSON.parse(pres.slides_data);
+  const arrayPos = slides.findIndex(s => s.index === targetIndex);
+  const slide = slides[arrayPos];
+  if (!slide) return res.status(404).json({ error: 'Slide not found. It may have been removed or the index is out of range.' });
+
+  const versions = slide.versions || [];
+  const versionPos = versions.findIndex(v => v.id === req.params.versionId);
+  if (versionPos === -1) return res.status(404).json({ error: 'Version not found.' });
+
+  const restoredVersion = versions[versionPos];
+  const remainingVersions = versions.filter((_, i) => i !== versionPos);
+
+  const updatedSlide = {
+    ...slide,
+    image_data: restoredVersion.image_data,
+    status: 'complete',
+    _edited: true,
+    versions: pushSlideVersion(remainingVersions, slide.image_data, 'Reverted to an earlier version'),
+  };
+
+  slides[arrayPos] = updatedSlide;
+
+  let thumbSql = `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+  const thumbArgs = [JSON.stringify(slides), req.params.id];
+  if (slides[0]?.index === targetIndex) {
+    thumbSql = `UPDATE presentations SET slides_data = ?, thumbnail = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+    thumbArgs.splice(1, 0, restoredVersion.image_data);
+  }
+  db.prepare(thumbSql).run(...thumbArgs);
+
+  broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
+  res.json({ slide: updatedSlide });
 });
 
 // ─── Retry a failed slide (re-run original prompt, no changes) ───────────────
