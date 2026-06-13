@@ -245,6 +245,7 @@ export default function AnalyticsDashboard() {
   const [storageLoading, setStorageLoading] = useState(false);
   const [storageError, setStorageError] = useState(false);
   const [vacuumLoading, setVacuumLoading] = useState(false);
+  const [checkpointLoading, setCheckpointLoading] = useState(false);
 
   // ── File explorer (data directory) ─────────────────────────────────────────
   const [fsDir, setFsDir] = useState('');
@@ -415,6 +416,16 @@ export default function AnalyticsDashboard() {
     } catch (err) {
       alert(err.response?.data?.error || 'Vacuum failed');
     } finally { setVacuumLoading(false); }
+  };
+
+  const handleCheckpoint = async () => {
+    setCheckpointLoading(true);
+    try {
+      await api.post('/admin/storage/checkpoint');
+      await fetchStorage();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Checkpoint failed');
+    } finally { setCheckpointLoading(false); }
   };
 
   const fetchFsBrowse = useCallback(async (dir = '') => {
@@ -2186,6 +2197,15 @@ export default function AnalyticsDashboard() {
                 >
                   <RefreshCw size={12} className={storageLoading ? 'animate-spin' : ''} />
                   {storageLoading ? 'Loading…' : 'Refresh'}
+                </button>
+                <button
+                  onClick={handleCheckpoint}
+                  disabled={checkpointLoading}
+                  className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 hover:bg-white/10 transition disabled:opacity-50"
+                  title="Fold the -wal file back into the database and shrink it to 0 bytes"
+                >
+                  <Database size={12} className={checkpointLoading ? 'animate-pulse' : ''} />
+                  {checkpointLoading ? 'Checkpointing…' : 'Checkpoint WAL'}
                 </button>
                 <button
                   onClick={handleVacuum}
