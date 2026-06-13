@@ -434,6 +434,22 @@ router.post('/storage/vacuum', authenticateToken, requireAdmin, (_req, res) => {
   }
 });
 
+// ─── POST /api/admin/storage/checkpoint ──────────────────────────────────────
+// Folds the WAL file back into the main SQLite file and truncates it to 0
+// bytes. Safe to run any time; does not require extra free disk space.
+router.post('/storage/checkpoint', authenticateToken, requireAdmin, (_req, res) => {
+  const db = getDb();
+  try {
+    const result = db.pragma('wal_checkpoint(TRUNCATE)');
+    const sizeBytes = fs.statSync(DB_PATH).size;
+    let walBytes = 0;
+    try { walBytes = fs.statSync(`${DB_PATH}-wal`).size; } catch {}
+    res.json({ ok: true, result, sizeBytes, walBytes });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Checkpoint failed' });
+  }
+});
+
 // ─── GET /api/admin/storage/browse ───────────────────────────────────────────
 // Lists the contents of a directory inside DATA_DIR (defaults to its root).
 router.get('/storage/browse', authenticateToken, requireAdmin, (req, res) => {
