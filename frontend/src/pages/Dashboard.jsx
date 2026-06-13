@@ -320,7 +320,7 @@ function PresentationCard({ pres, onDelete }) {
         {pres.thumbnail ? (
           <img src={pres.thumbnail} alt="" loading="lazy" className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
+          <div className="w-full h-full skeleton flex items-center justify-center">
             <Sparkles className="w-7 h-7 opacity-40" style={{ color: '#5B50FF' }} />
           </div>
         )}

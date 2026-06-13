@@ -1211,7 +1211,16 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
   if (!pres.slides_data) return res.status(400).json({ error: 'No slides have been generated yet. Generate your presentation before adding more slides.' });
 
   const slides = JSON.parse(pres.slides_data);
-  const startIndex = slides.length;
+  // Use the highest existing slide index + 1, not slides.length — if a slide
+  // was ever deleted (DELETE /:id/slides/:index removes it without
+  // reindexing the rest), slides.length can be less than max(index) + 1.
+  // Using slides.length here would assign a new slide the same `index` as an
+  // existing one, producing a duplicate-index entry in slides_data. Any later
+  // `current.findIndex(s => s.index === ...)` lookup then matches the OLD
+  // (already-complete) slide first, discards the new slide's result as
+  // "stale", and leaves the new placeholder stuck on 'generating' forever —
+  // while the old slide's data gets silently overwritten by that placeholder.
+  const startIndex = slides.length ? Math.max(...slides.map(s => s.index)) + 1 : 0;
   const aspectRatio = pres.aspect_ratio || '16:9';
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
 
