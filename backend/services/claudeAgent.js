@@ -1420,7 +1420,7 @@ Rules:
 - index values start from the provided startIndex and increment by 1
 - The new slides must continue the story naturally from the existing slides
 - Maintain the same visual style, theme, and tone as the existing deck
-- The "recent_slide_visuals" field in the context contains the actual nano_banana_prompt used for the most recently generated slides — read these carefully to understand the established color usage, typography, and visual motifs, and continue that same language in your new prompts
+- The "recent_slide_visuals" field in the context contains the actual nano_banana_prompt used for every existing slide in this deck — read these carefully to understand the established color usage, typography, and visual motifs, and continue that same language in your new prompts
 - Every slide except type "cover" must have a KEY TAKEAWAY headline as its title
 - nano_banana_prompt must be 250–600 words following the MANDATORY 5-LAYER STRUCTURE below — same standard as the rest of the deck
 
