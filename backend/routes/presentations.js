@@ -1126,7 +1126,18 @@ router.post('/:id/reorder', authenticateToken, (req, res) => {
 
   const slides = JSON.parse(pres.slides_data);
   const byIndex = new Map(slides.map(s => [s.index, s]));
+  const orderedIndices = new Set(order);
   const reordered = order.map(idx => byIndex.get(idx)).filter(Boolean);
+
+  // The client's `order` array reflects the slide list it had when the drag
+  // started. If new slides were added/generated since (e.g. add-slides is
+  // still running in the background), this fresh read of slides_data will
+  // contain indices the client doesn't know about yet. Append those at the
+  // end instead of dropping them, so an in-progress reorder can never delete
+  // a slide that's currently being generated.
+  for (const slide of slides) {
+    if (!orderedIndices.has(slide.index)) reordered.push(slide);
+  }
 
   // Sync thumbnail to whichever slide is now first
   const newFirstImage = reordered[0]?.image_data;
