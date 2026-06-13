@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles } from 'lucide-react';
+import NovaMascot from './NovaMascot';
 
 // Same MeshGradient treatment as LoadingScreen — keeps the two
 // "Nova is working" screens visually consistent. Falls back to a
@@ -139,18 +139,14 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
       </div>
 
       <div className="relative z-10 flex flex-col items-center gap-7 px-6 w-full max-w-xl">
-        {/* Logo */}
+        {/* Nova mascot */}
         <motion.div
           initial={{ opacity: 0, scale: 0.7 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-          className="w-11 h-11 flex items-center justify-center flex-shrink-0"
-          style={{
-            background: '#5B50FF',
-            borderRadius: 12,
-          }}
+          className="flex items-center justify-center flex-shrink-0"
         >
-          <Sparkles size={20} className="text-white" />
+          <NovaMascot size={120} />
         </motion.div>
 
         {/* Headline */}
