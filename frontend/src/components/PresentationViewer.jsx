@@ -4,6 +4,7 @@ import {
   ChevronLeft, ChevronRight, Download, Loader2, ArrowLeft,
   Sparkles, Send, Images, FileDown, Paperclip, X, Plus,
   AlertTriangle, RefreshCw, Check, Pencil, Trash2, ImageIcon, Lock,
+  History, RotateCcw,
 } from 'lucide-react';
 import SlideRenderer from './SlideRenderer';
 import OutOfCreditsModal from './OutOfCreditsModal';
@@ -118,6 +119,13 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [showEditPrompt, setShowEditPrompt] = useState(false);
 
+  // Version history panel
+  const [showVersionsPanel, setShowVersionsPanel] = useState(false);
+  const [slideVersions, setSlideVersions] = useState([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versionsError, setVersionsError] = useState('');
+  const [restoringVersionId, setRestoringVersionId] = useState(null);
+
   // Title editing
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleValue, setTitleValue] = useState(title);
@@ -156,6 +164,9 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
     setEditInstruction('');
     setEditAttachments([]);
     setEditError('');
+    setShowVersionsPanel(false);
+    setSlideVersions([]);
+    setVersionsError('');
   }, [current]);
 
   // Show friendly message when the current slide has been generating for >60s
@@ -271,6 +282,42 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       }
     } finally {
       setEditLoading(false);
+    }
+  }
+
+  async function handleOpenVersions() {
+    const slideIndex = localSlides[current]?.index;
+    setShowVersionsPanel(true);
+    setVersionsLoading(true);
+    setVersionsError('');
+    try {
+      const { data } = await api.get(`/presentations/${presentationId}/slides/${slideIndex}/versions`);
+      setSlideVersions(data.versions || []);
+    } catch (err) {
+      console.error('Failed to load versions:', err);
+      setVersionsError("Couldn't load version history.");
+    } finally {
+      setVersionsLoading(false);
+    }
+  }
+
+  async function handleRestoreVersion(versionId) {
+    const slideIndex = localSlides[current]?.index;
+    setRestoringVersionId(versionId);
+    setVersionsError('');
+    try {
+      const { data } = await api.post(`/presentations/${presentationId}/slides/${slideIndex}/versions/${versionId}/restore`);
+      setLocalSlides(prev => {
+        const next = prev.map(s => s.index === data.slide.index ? data.slide : s);
+        onSlidesUpdate(next);
+        return next;
+      });
+      setSlideVersions(data.slide.versions || []);
+    } catch (err) {
+      console.error('Failed to restore version:', err);
+      setVersionsError("Couldn't restore this version — please try again.");
+    } finally {
+      setRestoringVersionId(null);
     }
   }
 
@@ -605,6 +652,19 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 unlocking={unlockingSlides.has(current)}
                 showWatermark={currentPlan === 'free'}
               />
+
+              {/* Version history button — shown once this slide has prior versions */}
+              {!isUpdating && !isLocked && activeSlide?.versions?.length > 0 && (
+                <button
+                  onClick={e => { e.stopPropagation(); handleOpenVersions(); }}
+                  className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold text-white transition-colors hover:bg-black/80"
+                  style={{ background: 'rgba(20,20,28,0.65)', backdropFilter: 'blur(6px)' }}
+                  title="View previous versions of this slide"
+                >
+                  <History size={13} />
+                  History
+                </button>
+              )}
 
               {/* Click-to-edit: clicking a ready slide asks "Make edits?" */}
               {!isUpdating && !isFailed && !isLocked && !showEditPrompt && (
@@ -993,6 +1053,94 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
             details={outOfCredits}
             onClose={() => setOutOfCredits(null)}
           />
+        )}
+      </AnimatePresence>
+
+      {/* ── Version history side panel ───────────────────────── */}
+      <AnimatePresence>
+        {showVersionsPanel && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 bg-black/40 z-40"
+              onClick={() => setShowVersionsPanel(false)}
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              className="fixed top-0 right-0 h-full w-full sm:w-96 bg-white dark:bg-[#141414] border-l border-gray-200 dark:border-[#1e1e1e] z-50 flex flex-col"
+            >
+              <div className="flex items-center justify-between px-4 h-14 border-b border-gray-200 dark:border-[#1e1e1e] flex-shrink-0">
+                <h3 className="font-semibold text-sm text-gray-900 dark:text-zinc-100 flex items-center gap-2">
+                  <History size={15} style={{ color: '#8B80FF' }} />
+                  Version history
+                </h3>
+                <button
+                  onClick={() => setShowVersionsPanel(false)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+                {versionsLoading && (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 size={20} className="animate-spin text-gray-400" />
+                  </div>
+                )}
+
+                {!versionsLoading && slideVersions.length === 0 && !versionsError && (
+                  <p className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">
+                    No earlier versions yet. When you edit this slide, the previous version will be saved here.
+                  </p>
+                )}
+
+                {!versionsLoading && slideVersions.map(v => (
+                  <div key={v.id} className="flex gap-3 p-2.5 rounded-xl border border-gray-200 dark:border-zinc-800">
+                    <img
+                      src={v.image_data}
+                      alt="Previous slide version"
+                      className="w-24 flex-shrink-0 rounded-lg object-cover"
+                      style={{ aspectRatio: '16/9' }}
+                    />
+                    <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                      <p className="text-[11px] text-gray-400 dark:text-zinc-500">
+                        {new Date(v.created_at).toLocaleString()}
+                      </p>
+                      {v.instruction && (
+                        <p className="text-xs text-gray-700 dark:text-zinc-300 leading-snug line-clamp-3">
+                          {v.instruction}
+                        </p>
+                      )}
+                      <button
+                        onClick={() => handleRestoreVersion(v.id)}
+                        disabled={restoringVersionId === v.id}
+                        className="self-start flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-50"
+                        style={{ background: 'var(--uv-dim)', color: 'var(--uv-soft)' }}
+                      >
+                        {restoringVersionId === v.id
+                          ? <Loader2 size={11} className="animate-spin" />
+                          : <RotateCcw size={11} />}
+                        Restore this version
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {versionsError && (
+                  <p style={{ color: '#ef4444', fontSize: 12, fontFamily: 'Inter, sans-serif', textAlign: 'center' }}>
+                    {versionsError}
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 

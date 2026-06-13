@@ -9,6 +9,8 @@ const DATA_DIR = process.env.DB_PATH
   : path.join(__dirname, 'data');
 const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'hyperbeing.db');
 
+export { DATA_DIR, DB_PATH };
+
 let db;
 
 export function initDatabase() {

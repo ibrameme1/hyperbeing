@@ -1,5 +1,7 @@
 import { Router } from 'express';
-import { getDb } from '../database.js';
+import fs from 'fs';
+import path from 'path';
+import { getDb, DATA_DIR, DB_PATH } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { isAdmin } from '../services/stripeService.js';
 import { metrics } from '../services/metrics.js';
@@ -348,6 +350,76 @@ router.delete('/db/:table/:id', authenticateToken, requireAdmin, (req, res) => {
 
   db.prepare(`DELETE FROM ${table} WHERE ${pkCol} = ?`).run(id);
   res.json({ ok: true });
+});
+
+// ─── GET /api/admin/storage ──────────────────────────────────────────────────
+// Reports disk usage for the data volume: raw files on disk, the SQLite
+// volume's free/total space, and a per-table breakdown of row counts and
+// estimated content size (sum of TEXT/BLOB column lengths).
+router.get('/storage', authenticateToken, requireAdmin, (_req, res) => {
+  const db = getDb();
+
+  // Files living in the data directory (db file + WAL/SHM siblings + anything else)
+  let files = [];
+  try {
+    files = fs.readdirSync(DATA_DIR).map(name => {
+      const full = path.join(DATA_DIR, name);
+      const stat = fs.statSync(full);
+      return { name, bytes: stat.size, isFile: stat.isFile(), modified_at: stat.mtime };
+    });
+  } catch {}
+
+  const totalDiskBytes = files.reduce((sum, f) => sum + (f.isFile ? f.bytes : 0), 0);
+
+  // Underlying volume capacity, if statfs is available on this platform
+  let volume = null;
+  try {
+    const s = fs.statfsSync(DATA_DIR);
+    volume = {
+      totalBytes: s.blocks * s.bsize,
+      freeBytes: s.bfree * s.bsize,
+      availableBytes: s.bavail * s.bsize,
+    };
+  } catch {}
+
+  // Per-table row counts + estimated content size (TEXT/BLOB columns only)
+  const tables = ALLOWED_TABLES.map(name => {
+    const columns = db.prepare(`PRAGMA table_info(${name})`).all();
+    const bigCols = columns.filter(c => /TEXT|BLOB|CLOB/i.test(c.type) || c.type === '');
+
+    let count = 0;
+    try { count = db.prepare(`SELECT COUNT(*) as n FROM ${name}`).get().n; } catch {}
+
+    let bytes = 0;
+    if (bigCols.length > 0) {
+      const sumExpr = bigCols.map(c => `COALESCE(LENGTH(${c.name}),0)`).join(' + ');
+      try { bytes = db.prepare(`SELECT COALESCE(SUM(${sumExpr}),0) as bytes FROM ${name}`).get().bytes; } catch {}
+    }
+
+    return { name, count, bytes };
+  });
+
+  res.json({
+    dataDir: DATA_DIR,
+    dbPath: DB_PATH,
+    totalDiskBytes,
+    files,
+    volume,
+    tables,
+  });
+});
+
+// ─── POST /api/admin/storage/vacuum ──────────────────────────────────────────
+// Reclaims disk space left behind by deleted rows by rebuilding the SQLite file.
+router.post('/storage/vacuum', authenticateToken, requireAdmin, (_req, res) => {
+  const db = getDb();
+  try {
+    db.exec('VACUUM');
+    const sizeBytes = fs.statSync(DB_PATH).size;
+    res.json({ ok: true, sizeBytes });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Vacuum failed' });
+  }
 });
 
 export default router;

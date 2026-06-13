@@ -13,35 +13,11 @@ function getClient() {
   return ai;
 }
 
-export async function generateSlideImage(nanaBananaPrompt, slideType, theme, colorPalette, slideIndex = 0, attachedImages = [], aspectRatio = '16:9') {
-  if (MOCK_MODE) {
-    const delay = 700 + Math.random() * 900;
-    await new Promise(r => setTimeout(r, delay));
-    return generateRichPlaceholder(slideType, theme, slideIndex);
-  }
-
+// Shared "call Gemini with retry" loop. Returns the image data URL, or null on failure.
+async function callNanoBanana(parts, aspectRatio, slideIndex, stepName) {
   const _tid = requestContext.getStore()?.requestId;
-  const _step = `nanobanana_slide_${slideIndex}`;
   const _t = Date.now();
-  tracer.recordStep(_tid, _step, 'started', 0);
-
-  const fullPrompt = buildFullPrompt(nanaBananaPrompt, slideType, theme, colorPalette);
-
-  // All slides use Nano Banana (Gemini Flash Image) — supports both text-only and reference image input
-  const parts = [{ text: fullPrompt }];
-  for (const img of attachedImages) {
-    if (img?.data) {
-      parts.push({ inlineData: {
-        mimeType: img.mimeType || 'image/png',
-        data: img.data.replace(/^data:[^;]+;base64,/, ''),
-      }});
-    }
-  }
-  if (attachedImages.length > 0) {
-    parts.push({ text: 'Use the reference images above to match the visual style, layout energy, brand colours, and design language. Generate a premium presentation-ready slide image.' });
-  }
-
-  logger.debug('nano banana image gen start', { slideIndex, slideType, attachedImages: attachedImages.length });
+  tracer.recordStep(_tid, stepName, 'started', 0);
 
   const maxAttempts = 4;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -55,7 +31,7 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
         .find(p => p.inlineData?.mimeType?.startsWith('image/'));
       if (imagePart) {
         logger.debug('nano banana image gen success', { slideIndex });
-        tracer.recordStep(_tid, _step, 'completed', Date.now() - _t);
+        tracer.recordStep(_tid, stepName, 'completed', Date.now() - _t);
         return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
       }
       logger.warn('nano banana returned no image', { slideIndex, attempt });
@@ -68,13 +44,64 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
         await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000)); // 2s, 4s, 8s
         continue;
       }
-      tracer.recordStep(_tid, _step, 'failed', Date.now() - _t, msg);
+      tracer.recordStep(_tid, stepName, 'failed', Date.now() - _t, msg);
     }
     break;
   }
 
-  tracer.recordStep(_tid, _step, 'completed', Date.now() - _t);
-  return generateRichPlaceholder(slideType, theme, slideIndex);
+  tracer.recordStep(_tid, stepName, 'completed', Date.now() - _t);
+  return null;
+}
+
+function imagesToParts(attachedImages) {
+  const parts = [];
+  for (const img of attachedImages) {
+    if (img?.data) {
+      parts.push({ inlineData: {
+        mimeType: img.mimeType || 'image/png',
+        data: img.data.replace(/^data:[^;]+;base64,/, ''),
+      }});
+    }
+  }
+  return parts;
+}
+
+export async function generateSlideImage(nanaBananaPrompt, slideType, theme, colorPalette, slideIndex = 0, attachedImages = [], aspectRatio = '16:9') {
+  if (MOCK_MODE) {
+    const delay = 700 + Math.random() * 900;
+    await new Promise(r => setTimeout(r, delay));
+    return generateRichPlaceholder(slideType, theme, slideIndex);
+  }
+
+  const fullPrompt = buildFullPrompt(nanaBananaPrompt, slideType, theme, colorPalette);
+
+  // All slides use Nano Banana (Gemini Flash Image) — supports both text-only and reference image input
+  const parts = [{ text: fullPrompt }, ...imagesToParts(attachedImages)];
+  if (attachedImages.length > 0) {
+    parts.push({ text: 'Use the reference images above to match the visual style, layout energy, brand colours, and design language. Generate a premium presentation-ready slide image.' });
+  }
+
+  logger.debug('nano banana image gen start', { slideIndex, slideType, attachedImages: attachedImages.length });
+
+  const imageData = await callNanoBanana(parts, aspectRatio, slideIndex, `nanobanana_slide_${slideIndex}`);
+  return imageData || generateRichPlaceholder(slideType, theme, slideIndex);
+}
+
+// Edit an existing slide image: sends only the user's instruction + reference
+// image(s) — no generation directives — so the model makes a targeted edit
+// instead of redesigning the slide. Returns null on failure.
+export async function editSlideImage(instruction, attachedImages = [], aspectRatio = '16:9', slideIndex = 0) {
+  if (MOCK_MODE) {
+    const delay = 700 + Math.random() * 900;
+    await new Promise(r => setTimeout(r, delay));
+    return generateRichPlaceholder('content', 'modern-minimal', slideIndex);
+  }
+
+  const parts = [{ text: instruction.trim() }, ...imagesToParts(attachedImages)];
+
+  logger.debug('nano banana edit start', { slideIndex, attachedImages: attachedImages.length });
+
+  return callNanoBanana(parts, aspectRatio, slideIndex, `nanobanana_edit_${slideIndex}`);
 }
 
 function buildFullPrompt(basePrompt, slideType, theme, colorPalette) {
@@ -109,6 +136,32 @@ function buildFullPrompt(basePrompt, slideType, theme, colorPalette) {
   ];
 
   return parts.filter(Boolean).join('. ');
+}
+
+// ─── Edit-failure overlay (keeps original slide image, stamps a retry banner) ──
+
+const ASPECT_DIMENSIONS = {
+  '16:9': [1600, 900],
+  '9:16': [900, 1600],
+  '4:3': [1600, 1200],
+  '3:4': [1200, 1600],
+  '1:1': [1200, 1200],
+};
+
+export function generateEditFailedImage(originalImageData, aspectRatio = '16:9') {
+  const [w, h] = ASPECT_DIMENSIONS[aspectRatio] || ASPECT_DIMENSIONS['16:9'];
+  const bannerH = Math.round(h * 0.16);
+  const bannerY = Math.round((h - bannerH) / 2);
+  const imageLayer = originalImageData
+    ? `<image href="${originalImageData}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice"/>`
+    : '';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    ${imageLayer}
+    <rect x="0" y="${bannerY}" width="${w}" height="${bannerH}" fill="#000000" fill-opacity="0.65"/>
+    <text x="${w / 2}" y="${bannerY + bannerH * 0.42}" font-size="${bannerH * 0.32}" font-family="Arial, sans-serif" fill="#ffffff" text-anchor="middle" font-weight="bold">Edit failed</text>
+    <text x="${w / 2}" y="${bannerY + bannerH * 0.78}" font-size="${bannerH * 0.22}" font-family="Arial, sans-serif" fill="#ffffff" text-anchor="middle">Retry the changes</text>
+  </svg>`;
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
 
 // ─── Rich placeholder gradients (mock / fallback) ─────────────────────────
