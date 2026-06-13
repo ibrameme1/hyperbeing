@@ -1128,22 +1128,29 @@ Original brief: ${message}`;
   }
 
   if (buffer.trim()) {
-    const { objects } = extractPrefixedObjects(buffer + '\n');
+    const { objects, remaining } = extractPrefixedObjects(buffer + '\n');
     for (const { prefix, jsonStr } of objects) {
       if (prefix === 'SLIDE:') {
-        try { handleParsedPrompt(parseJSON(jsonStr)); } catch {}
+        try { handleParsedPrompt(parseJSON(jsonStr)); } catch (e) {
+          logger.warn('failed to parse slide prompt (final buffer)', { errorMessage: e.message, jsonStrPreview: jsonStr.slice(0, 200) });
+        }
       }
+    }
+    if (remaining.trim()) {
+      logger.warn('streamSlidePrompts: incomplete SLIDE object left in buffer at stream end', { remainingPreview: remaining.slice(0, 300) });
     }
   }
 
-  if (userId) {
-    try {
-      const finalMsg = await stream.finalMessage();
-      recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
-      metrics.recordAICall({ fn: 'streamSlidePrompts', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - t0 });
-    } catch {}
+  let finalMsg = null;
+  try { finalMsg = await stream.finalMessage(); } catch {}
+  if (finalMsg?.stop_reason === 'max_tokens') {
+    logger.warn('streamSlidePrompts: response truncated by max_tokens', { promptsGenerated: promptPosition, expected: sortedSlides.length });
   }
-  logger.info('claude prompt generation complete', { durationMs: Date.now() - t0 });
+  if (userId && finalMsg) {
+    recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
+    metrics.recordAICall({ fn: 'streamSlidePrompts', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - t0 });
+  }
+  logger.info('claude prompt generation complete', { durationMs: Date.now() - t0, promptsGenerated: promptPosition, expected: sortedSlides.length });
   tracer.recordStep(_tid, 'claude_prompt_gen', 'completed', Date.now() - _t);
 }
 
@@ -1585,21 +1592,28 @@ ${countInstruction} Start index at ${startIndex}.`;
   }
 
   if (buffer.trim()) {
-    const { objects } = extractPrefixedObjects(buffer + '\n');
+    const { objects, remaining } = extractPrefixedObjects(buffer + '\n');
     for (const { prefix, jsonStr } of objects) {
       if (prefix === 'SLIDE:') {
-        try { emitSlide(parseJSON(jsonStr)); } catch {}
+        try { emitSlide(parseJSON(jsonStr)); } catch (e) {
+          logger.warn('failed to parse new slide (final buffer)', { errorMessage: e.message, jsonStrPreview: jsonStr.slice(0, 200) });
+        }
       }
+    }
+    if (remaining.trim()) {
+      logger.warn('streamNewSlides: incomplete SLIDE object left in buffer at stream end', { remainingPreview: remaining.slice(0, 300) });
     }
   }
 
-  if (userId) {
-    try {
-      const finalMsg = await stream.finalMessage();
-      recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
-      metrics.recordAICall({ fn: 'streamNewSlides', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - tSlides });
-    } catch {}
+  let finalMsg = null;
+  try { finalMsg = await stream.finalMessage(); } catch {}
+  if (finalMsg?.stop_reason === 'max_tokens') {
+    logger.warn('streamNewSlides: response truncated by max_tokens', { emittedCount, count, startIndex });
   }
-  logger.info('claude add-slides stream complete', { durationMs: Date.now() - tSlides });
+  if (userId && finalMsg) {
+    recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
+    metrics.recordAICall({ fn: 'streamNewSlides', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - tSlides });
+  }
+  logger.info('claude add-slides stream complete', { durationMs: Date.now() - tSlides, emittedCount, requested: count });
   tracer.recordStep(_tid, 'claude_new_slides', 'completed', Date.now() - _t);
 }
