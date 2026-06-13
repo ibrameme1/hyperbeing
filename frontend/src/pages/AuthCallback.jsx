@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { capture, identifyUser } from '../utils/posthog';
 
 export default function AuthCallback() {
   const [params] = useSearchParams();
@@ -31,6 +32,8 @@ export default function AuthCallback() {
         if (user) {
           localStorage.setItem('hb_user', JSON.stringify(user));
           setAuthUser(user);
+          identifyUser(user);
+          capture(isNew ? 'user_signed_up' : 'user_logged_in', { method: 'google' });
         }
         navigate(isNew ? '/onboarding' : '/dashboard', { replace: true });
       })

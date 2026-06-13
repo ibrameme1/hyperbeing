@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import Logo from '../components/Logo';
 import api from '../api/client';
 import { track } from '../utils/track';
+import { capture } from '../utils/posthog';
 
 const sliderThumbStyle = `
   input[type='range'].ultra-slider::-webkit-slider-thumb {
@@ -139,7 +140,7 @@ export default function Pricing() {
   const [fetchError, setFetchError] = useState(false);
   const [manageError, setManageError] = useState('');
 
-  useEffect(() => { track('pricing_viewed'); }, []);
+  useEffect(() => { track('pricing_viewed'); capture('pricing_viewed'); }, []);
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 10);
@@ -169,6 +170,7 @@ export default function Pricing() {
     // Allow re-subscribing to current plan only when cancelling a pending downgrade
     if (planKey === currentPlan && !subInfo?.pending_plan) return;
     setLoading(planKey);
+    capture('checkout_started', { plan: planKey, billing, current_plan: currentPlan });
 
     let data;
     try {
