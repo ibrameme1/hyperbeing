@@ -1420,6 +1420,7 @@ Rules:
 - index values start from the provided startIndex and increment by 1
 - The new slides must continue the story naturally from the existing slides
 - Maintain the same visual style, theme, and tone as the existing deck
+- The "recent_slide_visuals" field in the context contains the actual nano_banana_prompt used for the most recently generated slides — read these carefully to understand the established color usage, typography, and visual motifs, and continue that same language in your new prompts
 - Every slide except type "cover" must have a KEY TAKEAWAY headline as its title
 - nano_banana_prompt must be 250–600 words following the MANDATORY 5-LAYER STRUCTURE below — same standard as the rest of the deck
 
@@ -1623,6 +1624,23 @@ ${countInstruction} Start index at ${startIndex}.`;
   });
 
   let buffer = '';
+  // Position-based index assignment: never trust the index Claude puts in the
+  // JSON — if it drifts (e.g. restarts at 0/1) it can collide with an existing
+  // slide's index and overwrite it during the merge step downstream. Each new
+  // slide is forced to startIndex + (emission order), guaranteeing the new
+  // slides always land in the fresh placeholder range. For fixed counts, drop
+  // any extra slides beyond what was requested/placeholdered.
+  let emittedCount = 0;
+  const emitSlide = (raw) => {
+    if (!isAuto && emittedCount >= count) {
+      logger.warn('streamNewSlides: dropping extra slide beyond requested count', { emittedCount, count, title: raw.title });
+      return;
+    }
+    raw.index = startIndex + emittedCount;
+    emittedCount++;
+    logger.debug('new slide parsed', { index: raw.index, title: raw.title });
+    onSlide(raw);
+  };
 
   for await (const event of stream) {
     if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
@@ -1633,9 +1651,7 @@ ${countInstruction} Start index at ${startIndex}.`;
       for (const { prefix, jsonStr } of objects) {
         if (prefix === 'SLIDE:') {
           try {
-            const slide = parseJSON(jsonStr);
-            logger.debug('new slide parsed', { index: slide.index, title: slide.title });
-            onSlide(slide);
+            emitSlide(parseJSON(jsonStr));
           } catch (e) {
             logger.warn('failed to parse new slide', { errorMessage: e.message });
           }
@@ -1648,7 +1664,7 @@ ${countInstruction} Start index at ${startIndex}.`;
     const { objects } = extractPrefixedObjects(buffer + '\n');
     for (const { prefix, jsonStr } of objects) {
       if (prefix === 'SLIDE:') {
-        try { onSlide(parseJSON(jsonStr)); } catch {}
+        try { emitSlide(parseJSON(jsonStr)); } catch {}
       }
     }
   }

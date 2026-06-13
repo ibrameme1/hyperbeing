@@ -1215,11 +1215,22 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       const extraImages = (reqAttachments || []).filter(a => a.data);
       const combinedImages = [...extraImages, ...allUserImages].slice(0, 3);
 
+      // Give Claude the actual visual prompts used for the most recent existing
+      // slides so new slides continue the same visual language — not just the
+      // title/key_points, which lose all the art-direction detail.
+      const recentSlideVisuals = slides.slice(-3).map(s => ({
+        index: s.index,
+        type: s.type,
+        title: s.title,
+        nano_banana_prompt: s.nano_banana_prompt || null,
+      }));
+
       const presentationContext = {
         presentation_title: slidePlan.presentation_title || pres.title,
         theme: slidePlan.theme,
         color_palette: slidePlan.color_palette,
         existing_slides: slides.map(s => ({ index: s.index, type: s.type, title: s.title, key_points: s.key_points })),
+        recent_slide_visuals: recentSlideVisuals,
       };
 
       const newSlideDefs = [];
@@ -1234,8 +1245,17 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
         theme: slidePlan.theme || 'modern-minimal',
         color_palette: slidePlan.color_palette || {},
       };
+      // Append visual continuity context so the prompt-generation pass matches
+      // the established look of the deck — same as the main generation flow,
+      // which sees the full deck's visual language while writing each prompt.
+      const continuityContext = recentSlideVisuals.some(s => s.nano_banana_prompt)
+        ? `\n\nEXISTING DECK CONTEXT — for visual continuity, here are the most recent slides already in this deck and the prompts used to generate them. Match their established color usage, typography, and design language:\n${recentSlideVisuals
+            .filter(s => s.nano_banana_prompt)
+            .map(s => `Slide ${s.index} (${s.type}) "${s.title}":\n${s.nano_banana_prompt}`)
+            .join('\n\n')}`
+        : '';
       const promptedByIndex = new Map(newSlideDefs.map(s => [s.index, s]));
-      await streamSlidePrompts(newSlideDefs, promptHeader, description, combinedImages, {
+      await streamSlidePrompts(newSlideDefs, promptHeader, description + continuityContext, combinedImages, {
         onPrompt(slide) { promptedByIndex.set(slide.index, slide); },
       });
       const promptedSlideDefs = newSlideDefs.map(s => promptedByIndex.get(s.index) || s);
@@ -1357,6 +1377,28 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       broadcast(req.params.id, { type: 'slides_added', count: affordableDefs.length, locked: lockedDefs.length });
     } catch (err) {
       logger.error('add slides failed', { errorMessage: err.message });
+      // Don't leave placeholders from this request stuck in 'generating'
+      // forever — mark them as errored so they're visible and retryable,
+      // and refund any credits already deducted since no images were made.
+      const errRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+      if (errRow?.slides_data) {
+        const current = JSON.parse(errRow.slides_data);
+        let changed = false;
+        for (const s of current) {
+          if (s.index >= startIndex && s.status === 'generating') {
+            s.status = 'error';
+            changed = true;
+            broadcast(req.params.id, { type: 'slide_error', index: s.index, message: err.message });
+          }
+        }
+        if (changed) {
+          db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+            .run(JSON.stringify(current), req.params.id);
+        }
+      }
+      if (affordable) {
+        refundCredits(req.user.id, affordable * CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'generation_refund', 'Add slides failed — refunded', req.params.id, {});
+      }
       broadcast(req.params.id, { type: 'error', message: err.message });
     }
   })();
