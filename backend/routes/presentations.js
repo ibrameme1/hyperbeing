@@ -1474,6 +1474,16 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
             if (!currentRow?.slides_data) return;
             const current = JSON.parse(currentRow.slides_data);
             const idx = current.findIndex(s => s.index === done.index);
+
+            // If the user already retried/edited this slide directly while this
+            // generation was still in flight, its status will no longer be
+            // 'generating' — don't clobber their result with this stale attempt.
+            if (idx !== -1 && current[idx].status !== 'generating') {
+              logger.info('add-slides: discarding stale image result — slide already updated', { presentationId: req.params.id, slideIndex: done.index, currentStatus: current[idx].status });
+              refundCredits(req.user.id, CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'generation_refund', 'Slide updated before generation finished — refunded', req.params.id, { slide_index: slideDef.index });
+              return;
+            }
+
             if (idx !== -1) current[idx] = done; else current.push(done);
             db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
               .run(JSON.stringify(current), req.params.id);
@@ -1490,6 +1500,13 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
             if (!errRow?.slides_data) return;
             const current = JSON.parse(errRow.slides_data);
             const idx = current.findIndex(s => s.index === errSlide.index);
+
+            if (idx !== -1 && current[idx].status !== 'generating') {
+              logger.info('add-slides: discarding stale image error — slide already updated', { presentationId: req.params.id, slideIndex: errSlide.index, currentStatus: current[idx].status });
+              refundCredits(req.user.id, CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'generation_refund', 'Slide updated before generation finished — refunded', req.params.id, { slide_index: slideDef.index });
+              return;
+            }
+
             if (idx !== -1) current[idx] = errSlide;
             db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
               .run(JSON.stringify(current), req.params.id);
