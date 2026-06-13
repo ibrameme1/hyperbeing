@@ -1024,8 +1024,36 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
 
   (async () => {
     try {
+      let prompt = slide.nano_banana_prompt || slide.image_prompt;
+      if (!prompt) {
+        // This slide never got a real visual prompt — e.g. a placeholder from
+        // add-slides that errored before prompt generation finished. Falling
+        // back to slide.title (e.g. "New Slide 3") gives NB2 nothing to work
+        // with and it comes back near-instantly with a blank gradient
+        // placeholder. Generate a proper prompt first instead.
+        const header = {
+          presentation_title: slidePlan.presentation_title || pres.title,
+          theme: slidePlan.theme || 'modern-minimal',
+          color_palette: slidePlan.color_palette || {},
+        };
+        const firstUserMsg = db
+          .prepare(`SELECT content, attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
+          .get(req.params.id);
+        let briefAttachments = [];
+        try { briefAttachments = JSON.parse(firstUserMsg?.attachments || '[]').filter(a => a.data); } catch {}
+        try {
+          const generated = await generateSingleSlidePrompt(
+            slide, header, firstUserMsg?.content || header.presentation_title, briefAttachments, req.user.id,
+          );
+          prompt = generated.nano_banana_prompt;
+        } catch (err) {
+          logger.error('targeted prompt fallback failed during retry', { slideIndex: targetIndex, errorMessage: err.message });
+          prompt = slide.title;
+        }
+      }
+
       const imageData = await generateSlideImage(
-        slide.nano_banana_prompt || slide.image_prompt || slide.title,
+        prompt,
         slide.type,
         slidePlan.theme,
         slidePlan.color_palette,
@@ -1034,7 +1062,7 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
         regenAspectRatio
       );
 
-      const updatedSlide = { ...slide, image_data: imageData, status: 'complete' };
+      const updatedSlide = { ...slide, nano_banana_prompt: prompt, image_data: imageData, status: 'complete' };
       slides[arrayPos] = updatedSlide;
 
       let thumbSql = `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
