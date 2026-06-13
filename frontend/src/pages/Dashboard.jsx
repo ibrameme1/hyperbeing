@@ -13,7 +13,6 @@ import NovaMascot from '../components/NovaMascot';
 import { useTheme } from '../contexts/ThemeContext';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
-import { capture } from '../utils/posthog';
 import Logo from '../components/Logo';
 import { SkeletonDashboardPage } from '../components/Skeleton';
 import FeedbackButton from '../components/FeedbackButton';

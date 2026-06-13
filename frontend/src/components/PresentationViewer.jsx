@@ -12,7 +12,6 @@ import FeedbackButton from './FeedbackButton';
 import { exportToPDF, exportImages } from '../utils/pdfExport';
 import api from '../api/client';
 import { capture } from '../utils/posthog';
-import { capture } from '../utils/posthog';
 import { fileToImageAttachment } from '../utils/imageAttachment';
 
 // Separate component so each item has its own wasDragging ref
