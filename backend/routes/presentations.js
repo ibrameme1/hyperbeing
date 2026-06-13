@@ -1345,6 +1345,28 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       });
       const promptedSlideDefs = newSlideDefs.map(s => promptedByIndex.get(s.index) || s);
 
+      // Phase 2 maps prompts to slides by position — if Claude ever outputs
+      // fewer SLIDE: lines than newSlideDefs.length (or a gap-filled slide
+      // from above didn't get picked up), that slide is left with no
+      // nano_banana_prompt and would fall back to using its bare title as the
+      // image prompt, producing a generic/off-brand image instead of a real
+      // one. Generate a proper prompt via the same targeted single-slide call
+      // used elsewhere (plain-text output, not JSON, so it can't fail to parse).
+      const stillMissingPrompt = promptedSlideDefs.filter(s => !s.nano_banana_prompt);
+      if (stillMissingPrompt.length > 0) {
+        logger.warn('add-slides: slides missing nano_banana_prompt after Phase 2 — generating targeted fallback', { missing: stillMissingPrompt.map(s => s.index) });
+        await Promise.all(stillMissingPrompt.map(async (slide) => {
+          try {
+            const singlePrompt = await generateSingleSlidePrompt(slide, promptHeader, description + continuityContext, combinedImages, req.user.id);
+            const idx = promptedSlideDefs.findIndex(s => s.index === slide.index);
+            promptedSlideDefs[idx] = { ...slide, ...singlePrompt };
+          } catch (err) {
+            logger.error('add-slides: targeted prompt fallback failed', { slideIndex: slide.index, errorMessage: err.message });
+          }
+        }));
+      }
+
+
       // For 'auto' mode the slide count is only known now — check affordability
       // and deduct credits before generating any images.
       if (isAuto) {
