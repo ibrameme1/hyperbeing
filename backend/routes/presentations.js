@@ -4,7 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { streamChat, analyzePresentation, generateCompactPlan, streamSlidePrompts, generateSingleSlidePrompt, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
-import { generateSlideImage, editSlideImage, generateEditFailedImage } from '../services/imageGeneration.js';
+import { generateSlideImage, editSlideImage, generateEditFailedImage, isPlaceholderImage } from '../services/imageGeneration.js';
 import {
   deductCredits, refundCredits, deductCreditsForEdit, computeAffordableSlides,
   updateLedgerMetadata, getOrCreateSubscription, CREDIT_COSTS, checkTokenBudget,
@@ -425,17 +425,25 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
       attachedImages,
       aspectRatio
     ).then(imageData => {
+      // generateSlideImage falls back to a generic gradient placeholder rather
+      // than throwing on persistent NB2 failure — treat that the same as an
+      // error so the user sees a regenerate option instead of a blank slide,
+      // and refund the credit.
+      if (isPlaceholderImage(imageData)) {
+        const errSlide = { ...slide, image_data: null, status: 'error' };
+        completedSlides.set(slide.index, errSlide);
+        persistProgress();
+        refundCredits(userId, CREDIT_COSTS.PER_SLIDE, 'generation_refund', 'Slide image generation failed — refunded', presentationId, { slide_index: slide.index });
+        logger.error('slide image generation returned placeholder', { presentationId, slideIndex: slide.index });
+        broadcast(presentationId, { type: 'slide_error', index: slide.index, message: 'Image generation failed' });
+        return;
+      }
       const done = { ...slide, image_data: imageData, status: 'complete' };
       completedSlides.set(slide.index, done);
       persistProgress();
-      if (slide.index === 0 && imageData && !imageData.startsWith('data:image/svg')) {
+      if (slide.index === 0) {
         db.prepare(`UPDATE presentations SET thumbnail = ? WHERE id = ?`).run(imageData, presentationId);
         broadcastDashboardUpdate(db, userId, presentationId);
-      }
-      // generateSlideImage falls back to an SVG placeholder rather than
-      // throwing on persistent NB2 failure — refund the credit in that case.
-      if (!imageData || imageData.startsWith('data:image/svg')) {
-        refundCredits(userId, CREDIT_COSTS.PER_SLIDE, 'generation_refund', 'Slide image generation failed — refunded', presentationId, { slide_index: slide.index });
       }
       broadcast(presentationId, { type: 'slide_ready', slide: done });
     }).catch(err => {
@@ -755,6 +763,18 @@ async function runGeneration(presentationId, slidePlan, userId = null) {
         aspectRatio
       );
 
+      if (isPlaceholderImage(imageData)) {
+        const errSlide = { ...slide, image_data: null, status: 'error' };
+        slides.push(errSlide);
+        db.prepare(
+          `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+        ).run(JSON.stringify(slides), presentationId);
+        refundCredits(userId, CREDIT_COSTS.PER_SLIDE, 'generation_refund', 'Slide image generation failed — refunded', presentationId, { slide_index: slide.index });
+        logger.error('slide image generation returned placeholder', { presentationId, slideIndex: slide.index });
+        broadcast(presentationId, { type: 'slide_error', index: slide.index, message: 'Image generation failed' });
+        continue;
+      }
+
       const completedSlide = { ...slide, image_data: imageData, status: 'complete' };
       slides.push(completedSlide);
 
@@ -764,7 +784,7 @@ async function runGeneration(presentationId, slidePlan, userId = null) {
       ).run(JSON.stringify(slides), presentationId);
 
       // Save thumbnail from first slide
-      if (slide.index === 0 && imageData && !imageData.startsWith('data:image/svg')) {
+      if (slide.index === 0) {
         db.prepare(`UPDATE presentations SET thumbnail = ? WHERE id = ?`).run(imageData, presentationId);
       }
 
@@ -1024,8 +1044,36 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
 
   (async () => {
     try {
+      let prompt = slide.nano_banana_prompt || slide.image_prompt;
+      if (!prompt) {
+        // This slide never got a real visual prompt — e.g. a placeholder from
+        // add-slides that errored before prompt generation finished. Falling
+        // back to slide.title (e.g. "New Slide 3") gives NB2 nothing to work
+        // with and it comes back near-instantly with a blank gradient
+        // placeholder. Generate a proper prompt first instead.
+        const header = {
+          presentation_title: slidePlan.presentation_title || pres.title,
+          theme: slidePlan.theme || 'modern-minimal',
+          color_palette: slidePlan.color_palette || {},
+        };
+        const firstUserMsg = db
+          .prepare(`SELECT content, attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
+          .get(req.params.id);
+        let briefAttachments = [];
+        try { briefAttachments = JSON.parse(firstUserMsg?.attachments || '[]').filter(a => a.data); } catch {}
+        try {
+          const generated = await generateSingleSlidePrompt(
+            slide, header, firstUserMsg?.content || header.presentation_title, briefAttachments, req.user.id,
+          );
+          prompt = generated.nano_banana_prompt;
+        } catch (err) {
+          logger.error('targeted prompt fallback failed during retry', { slideIndex: targetIndex, errorMessage: err.message });
+          prompt = slide.title;
+        }
+      }
+
       const imageData = await generateSlideImage(
-        slide.nano_banana_prompt || slide.image_prompt || slide.title,
+        prompt,
         slide.type,
         slidePlan.theme,
         slidePlan.color_palette,
@@ -1034,22 +1082,30 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
         regenAspectRatio
       );
 
-      const updatedSlide = { ...slide, image_data: imageData, status: 'complete' };
+      // generateSlideImage falls back to a generic gradient placeholder rather
+      // than throwing on persistent NB2 failure — treat that as an error so
+      // the slide keeps showing the regenerate option instead of a blank image.
+      const failed = isPlaceholderImage(imageData);
+      const updatedSlide = failed
+        ? { ...slide, nano_banana_prompt: prompt, image_data: null, status: 'error' }
+        : { ...slide, nano_banana_prompt: prompt, image_data: imageData, status: 'complete' };
       slides[arrayPos] = updatedSlide;
 
       let thumbSql = `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
       const thumbArgs = [JSON.stringify(slides), req.params.id];
-      if (arrayPos === 0 && imageData && !imageData.startsWith('data:image/svg')) {
+      if (arrayPos === 0 && !failed) {
         thumbSql = `UPDATE presentations SET slides_data = ?, thumbnail = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
         thumbArgs.splice(1, 0, imageData);
       }
       db.prepare(thumbSql).run(...thumbArgs);
 
-      if (!imageData || imageData.startsWith('data:image/svg')) {
+      if (failed) {
         refundCredits(req.user.id, editResult.cost, 'slide_edit_refund', 'Slide retry failed — refunded', req.params.id, { slide_index: targetIndex });
+        logger.error('slide retry returned placeholder', { presentationId: req.params.id, slideIndex: targetIndex });
+        broadcast(req.params.id, { type: 'slide_error', index: targetIndex, message: 'Image generation failed' });
+      } else {
+        broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
       }
-
-      broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
     } catch (err) {
       logger.error('slide retry failed', { errorMessage: err.message });
       refundCredits(req.user.id, editResult.cost, 'slide_edit_refund', 'Slide retry failed — refunded', req.params.id, { slide_index: targetIndex });
@@ -1215,10 +1271,11 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       const extraImages = (reqAttachments || []).filter(a => a.data);
       const combinedImages = [...extraImages, ...allUserImages].slice(0, 3);
 
-      // Give Claude the actual visual prompts used for the most recent existing
-      // slides so new slides continue the same visual language — not just the
-      // title/key_points, which lose all the art-direction detail.
-      const recentSlideVisuals = slides.slice(-3).map(s => ({
+      // Give Claude the actual visual prompts used for ALL existing slides so
+      // new slides continue the same visual language and understand the full
+      // context of the deck — not just the title/key_points, which lose all
+      // the art-direction detail.
+      const allSlideVisuals = slides.map(s => ({
         index: s.index,
         type: s.type,
         title: s.title,
@@ -1230,7 +1287,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
         theme: slidePlan.theme,
         color_palette: slidePlan.color_palette,
         existing_slides: slides.map(s => ({ index: s.index, type: s.type, title: s.title, key_points: s.key_points })),
-        recent_slide_visuals: recentSlideVisuals,
+        recent_slide_visuals: allSlideVisuals,
       };
 
       const newSlideDefs = [];
@@ -1248,8 +1305,8 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       // Append visual continuity context so the prompt-generation pass matches
       // the established look of the deck — same as the main generation flow,
       // which sees the full deck's visual language while writing each prompt.
-      const continuityContext = recentSlideVisuals.some(s => s.nano_banana_prompt)
-        ? `\n\nEXISTING DECK CONTEXT — for visual continuity, here are the most recent slides already in this deck and the prompts used to generate them. Match their established color usage, typography, and design language:\n${recentSlideVisuals
+      const continuityContext = allSlideVisuals.some(s => s.nano_banana_prompt)
+        ? `\n\nEXISTING DECK CONTEXT — for visual continuity, here are all the slides already in this deck and the prompts used to generate them. Match their established color usage, typography, and design language:\n${allSlideVisuals
             .filter(s => s.nano_banana_prompt)
             .map(s => `Slide ${s.index} (${s.type}) "${s.title}":\n${s.nano_banana_prompt}`)
             .join('\n\n')}`
@@ -1343,7 +1400,14 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
             slideDef.type, slidePlan.theme, slidePlan.color_palette,
             slideDef.index, combinedImages, aspectRatio
           ).then(imageData => {
-            const done = { ...slideDef, image_data: imageData, status: 'complete' };
+            // generateSlideImage falls back to a generic gradient placeholder
+            // rather than throwing on persistent NB2 failure — treat that the
+            // same as an error so the slide shows a regenerate option instead
+            // of a blank/generic image, and refund the credit.
+            const failed = isPlaceholderImage(imageData);
+            const done = failed
+              ? { ...slideDef, image_data: null, status: 'error' }
+              : { ...slideDef, image_data: imageData, status: 'complete' };
             // Persist: replace placeholder with done slide
             const currentRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
             if (!currentRow?.slides_data) return;
@@ -1352,12 +1416,13 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
             if (idx !== -1) current[idx] = done; else current.push(done);
             db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
               .run(JSON.stringify(current), req.params.id);
-            // generateSlideImage falls back to an SVG placeholder rather than
-            // throwing on persistent NB2 failure — refund the credit in that case.
-            if (!imageData || imageData.startsWith('data:image/svg')) {
+            if (failed) {
               refundCredits(req.user.id, CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'generation_refund', 'Slide image generation failed — refunded', req.params.id, { slide_index: slideDef.index });
+              logger.error('add-slides image generation returned placeholder', { presentationId: req.params.id, slideIndex: slideDef.index });
+              broadcast(req.params.id, { type: 'slide_error', index: done.index, message: 'Image generation failed' });
+            } else {
+              broadcast(req.params.id, { type: 'slide_ready', slide: done });
             }
-            broadcast(req.params.id, { type: 'slide_ready', slide: done });
           }).catch(err => {
             const errSlide = { ...slideDef, image_data: null, status: 'error' };
             const errRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
@@ -1463,21 +1528,24 @@ router.post('/:id/unlock-slides', authenticateToken,
           aspectRatio
         );
 
+        const failed = isPlaceholderImage(imageData);
         const done = {
           index: lockedSlide.slide_index,
           type: lockedSlide.type,
           title: lockedSlide.title,
           nano_banana_prompt: lockedSlide.prompt,
-          image_data: imageData,
-          status: 'complete',
+          image_data: failed ? null : imageData,
+          status: failed ? 'error' : 'complete',
         };
 
-        if (!imageData || imageData.startsWith('data:image/svg')) {
-          refundCredits(req.user.id, CREDIT_COSTS.PER_SLIDE, 'unlock_slides_refund', 'Slide unlock failed — refunded', req.params.id, { slide_index: lockedSlide.slide_index });
-        }
-
         generated.push(done);
-        broadcast(req.params.id, { type: 'slide_ready', slide: done });
+        if (failed) {
+          refundCredits(req.user.id, CREDIT_COSTS.PER_SLIDE, 'unlock_slides_refund', 'Slide unlock failed — refunded', req.params.id, { slide_index: lockedSlide.slide_index });
+          logger.error('slide unlock returned placeholder', { presentationId: req.params.id, slideIndex: lockedSlide.slide_index });
+          broadcast(req.params.id, { type: 'slide_error', index: done.index, message: 'Image generation failed' });
+        } else {
+          broadcast(req.params.id, { type: 'slide_ready', slide: done });
+        }
       } catch (err) {
         logger.error('slide unlock failed', { slideIndex: lockedSlide.slide_index, errorMessage: err.message });
         refundCredits(req.user.id, CREDIT_COSTS.PER_SLIDE, 'unlock_slides_refund', 'Slide unlock failed — refunded', req.params.id, { slide_index: lockedSlide.slide_index });
