@@ -135,6 +135,7 @@ function ChatPhase({ presentation, messages, onNewMessage, onGenerate, generateE
     setSendError('');
     setSendingLabel('Thinking…');
     track('chat_message_sent', { presentation_id: presentation.id, has_attachments: attachments.length > 0 });
+    capture('chat_message_sent', { presentation_id: presentation.id, has_attachments: attachments.length > 0 });
     const userMsg = {
       id: Date.now().toString(),
       role: 'user',

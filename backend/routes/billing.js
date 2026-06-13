@@ -12,6 +12,7 @@ import {
 } from '../services/emailService.js';
 import { validate, isEnum, isOptionalString, isIntBetween } from '../middleware/validate.js';
 import { billingLimiter } from '../middleware/rateLimits.js';
+import { getPostHog } from '../services/posthogClient.js';
 
 const router = Router();
 
@@ -45,6 +46,12 @@ function applyCheckoutSession(session) {
     const plan = PLANS[planKey];
     sendPurchaseConfirmation(user.name, user.email, plan?.name || planKey, plan?.credits || 0);
   }
+
+  getPostHog()?.capture({
+    distinctId: String(userId),
+    event: 'subscription_started',
+    properties: { plan: planKey },
+  });
 
   return getOrCreateSubscription(userId);
 }
@@ -341,6 +348,11 @@ router.post('/webhook', async (req, res) => {
           const _upgradeUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(sub.user_id);
           const _newPlan = PLANS[newPlanKey];
           if (_upgradeUser?.email) sendPlanUpgraded(_upgradeUser.name, _upgradeUser.email, _newPlan.name, _newPlan.credits);
+          getPostHog()?.capture({
+            distinctId: String(sub.user_id),
+            event: 'subscription_upgraded',
+            properties: { from_plan: sub.plan, to_plan: newPlanKey },
+          });
         }
       }
       break;
@@ -381,6 +393,11 @@ router.post('/webhook', async (req, res) => {
       scheduleCancellation(sub.user_id);
       const _cancelUser = db.prepare('SELECT name, email FROM users WHERE id = ?').get(sub.user_id);
       if (_cancelUser?.email) sendSubscriptionCancelled(_cancelUser.name, _cancelUser.email);
+      getPostHog()?.capture({
+        distinctId: String(sub.user_id),
+        event: 'subscription_cancelled',
+        properties: { plan: sub.plan },
+      });
       break;
     }
 

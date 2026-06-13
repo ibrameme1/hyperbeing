@@ -12,6 +12,7 @@ import FeedbackButton from './FeedbackButton';
 import { exportToPDF, exportImages } from '../utils/pdfExport';
 import api from '../api/client';
 import { capture } from '../utils/posthog';
+import { capture } from '../utils/posthog';
 import { fileToImageAttachment } from '../utils/imageAttachment';
 
 // Separate component so each item has its own wasDragging ref
@@ -332,6 +333,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
     if (current >= updated.length) setCurrent(Math.max(0, updated.length - 1));
     try {
       await api.delete(`/presentations/${presentationId}/slides/${slide.index}`);
+      capture('slide_deleted', { presentation_id: presentationId, slide_index: slide.index });
     } catch {
       setLocalSlides(prev);
       onSlidesUpdate(prev);
@@ -384,12 +386,18 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
 
   async function handleExportPDF() {
     setExportingPDF(true); setShowExportMenu(false);
-    try { await exportToPDF(localSlides, titleValue, currentPlan); } finally { setExportingPDF(false); }
+    try {
+      await exportToPDF(localSlides, titleValue, currentPlan);
+      capture('presentation_exported', { presentation_id: presentationId, format: 'pdf', slide_count: localSlides.length });
+    } finally { setExportingPDF(false); }
   }
 
   async function handleExportImages() {
     setExportingImages(true); setShowExportMenu(false);
-    try { await exportImages(localSlides, titleValue, currentPlan); } finally { setExportingImages(false); }
+    try {
+      await exportImages(localSlides, titleValue, currentPlan);
+      capture('presentation_exported', { presentation_id: presentationId, format: 'images', slide_count: localSlides.length });
+    } finally { setExportingImages(false); }
   }
 
   async function handleTitleSave() {

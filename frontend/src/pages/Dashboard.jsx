@@ -13,6 +13,7 @@ import NovaMascot from '../components/NovaMascot';
 import { useTheme } from '../contexts/ThemeContext';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
+import { capture } from '../utils/posthog';
 import Logo from '../components/Logo';
 import { SkeletonDashboardPage } from '../components/Skeleton';
 import FeedbackButton from '../components/FeedbackButton';
@@ -277,6 +278,7 @@ function PresentationCard({ pres, onDelete }) {
     setDeleteError(false);
     try {
       await api.delete(`/presentations/${pres.id}`);
+      capture('presentation_deleted', { presentation_id: pres.id });
       onDelete(pres.id);
     } catch {
       setDeleting(false);
@@ -765,6 +767,7 @@ export default function Dashboard() {
         aspectRatio: selectedAspectRatio,
       });
       track('presentation_created', { presentation_id: data.presentation.id, aspect_ratio: selectedAspectRatio });
+      capture('presentation_created', { presentation_id: data.presentation.id, aspect_ratio: selectedAspectRatio });
       navigate(`/presentations/${data.presentation.id}`);
     } catch (err) {
       setCreatingPresentation(false);
@@ -772,6 +775,7 @@ export default function Dashboard() {
         setOutOfCreditsDetails(err.response.data || null);
         setShowOutOfCredits(true);
         track('out_of_credits', { page: 'dashboard' });
+        capture('out_of_credits', { page: 'dashboard', action_type: 'create_presentation' });
         return;
       }
       const status = err.response?.status;

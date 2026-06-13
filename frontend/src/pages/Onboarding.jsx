@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
 import { track } from '../utils/track';
+import { capture } from '../utils/posthog';
 import Logo from '../components/Logo';
 import NovaMascot from '../components/NovaMascot';
 
@@ -222,6 +223,7 @@ export default function Onboarding() {
 
   function handleStart() {
     track('onboarding_started');
+    capture('onboarding_started');
     setPhase('question');
   }
 
@@ -247,6 +249,10 @@ export default function Onboarding() {
         await api.post('/auth/onboarding', newAnswers);
         const seed = getUpgradeSeed(newAnswers);
         track('onboarding_completed', {
+          answers_summary: newAnswers,
+          total_time_ms: Date.now() - flowStartRef.current,
+        });
+        capture('onboarding_completed', {
           answers_summary: newAnswers,
           total_time_ms: Date.now() - flowStartRef.current,
         });
@@ -284,11 +290,13 @@ export default function Onboarding() {
 
   function handleSkip() {
     track('onboarding_skipped', { step, phase });
+    capture('onboarding_skipped', { step, phase });
     navigate('/dashboard');
   }
 
   function handleUpgradeSeedClick(seed) {
     track('onboarding_upgrade_seed_clicked', { seed_variant: seed.trigger });
+    capture('onboarding_upgrade_seed_clicked', { seed_variant: seed.trigger });
     navigate('/pricing');
   }
 
