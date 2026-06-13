@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { track } from '../utils/track';
+import { capture } from '../utils/posthog';
 
 // Plans the checkout endpoint will accept. Ultra tiers 1-4 all map to
 // planKey: 'ultra' + an ultraTier index (0-3).
@@ -48,10 +49,14 @@ export default function OutOfCreditsModal({ currentPlan = 'free', details = null
   const navigate = useNavigate();
   const [loading, setLoading] = useState(null);
   const upgrades = getUpgradeOptions(currentPlan, details?.suggested_plan);
-  useEffect(() => { track('out_of_credits', { current_plan: currentPlan, action_type: details?.action_type }); }, []);
+  useEffect(() => {
+    track('out_of_credits', { current_plan: currentPlan, action_type: details?.action_type });
+    capture('out_of_credits', { current_plan: currentPlan, action_type: details?.action_type });
+  }, []);
 
   async function handleUpgrade(planKey) {
     setLoading(planKey);
+    capture('upgrade_clicked', { current_plan: currentPlan, target_plan: planKey, source: 'out_of_credits_modal' });
     try {
       const checkout = PLAN_INFO[planKey]?.checkout || { planKey };
       const { data } = await api.post('/billing/checkout', { ...checkout, billing: 'monthly' });

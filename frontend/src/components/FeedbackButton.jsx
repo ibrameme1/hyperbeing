@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { MessageCircle, X, Send, Loader2, Check } from 'lucide-react';
 import api from '../api/client';
+import { capture } from '../utils/posthog';
 
 // Floating circular feedback button + popup composer.
 export default function FeedbackButton() {
@@ -15,6 +16,7 @@ export default function FeedbackButton() {
     setStatus('sending');
     try {
       await api.post('/feedback', { message: message.trim(), page: window.location.pathname });
+      capture('feedback_submitted', { page: window.location.pathname });
       setStatus('sent');
       setMessage('');
       setTimeout(() => { setOpen(false); setStatus('idle'); }, 1500);

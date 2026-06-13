@@ -5,6 +5,7 @@ export function initPostHog() {
   if (!key) return;
   posthog.init(key, {
     api_host: import.meta.env.VITE_POSTHOG_HOST || 'https://us.i.posthog.com',
+    ui_host: 'https://us.posthog.com',
     capture_pageview: false,
     capture_pageleave: false,
     session_recording: {

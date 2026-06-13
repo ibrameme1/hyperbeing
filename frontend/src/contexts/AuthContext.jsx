@@ -41,6 +41,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('hb_user', JSON.stringify(data.user));
     setUser(data.user);
     identifyUser(data.user);
+    capture('user_logged_in', { method: 'email' });
     return data.user;
   }, []);
 
@@ -56,6 +57,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
+    capture('user_logged_out');
     localStorage.removeItem('hb_token');
     localStorage.removeItem('hb_refresh_token');
     localStorage.removeItem('hb_user');
@@ -70,6 +72,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const deleteAccount = useCallback(async () => {
+    capture('account_deleted');
     await api.delete('/auth/account');
     logout();
   }, [logout]);
