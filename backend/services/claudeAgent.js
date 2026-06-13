@@ -1078,7 +1078,9 @@ Color palette: ${JSON.stringify(header.color_palette)}
 Slide outline:
 ${outlineText}
 
-Original brief: ${message}`;
+Original brief: ${message}
+
+FINAL CHECK before you respond: you must output exactly ${sortedSlides.length} SLIDE: line(s) — one for each of these indices, in order: ${sortedSlides.map(s => s.index).join(', ')}. Do not stop after fewer lines.`;
 
   const userContent = buildUserContent(promptMessage, attachments);
 
@@ -1529,16 +1531,24 @@ export async function streamNewSlides(description, count, startIndex, presentati
     return;
   }
 
+  const indices = isAuto ? null : Array.from({ length: count }, (_, i) => startIndex + i);
+
   const countInstruction = isAuto
     ? `Generate however many slides (1–6) are genuinely needed to do this topic justice. Do NOT add padding slides. Quality over quantity.`
-    : `Generate exactly ${count} new slide(s).`;
+    : `Generate exactly ${count} new slide(s), with index values ${indices.join(', ')} (one SLIDE: line per index, listed in that order).`;
 
   const message = `EXISTING PRESENTATION CONTEXT:
 ${JSON.stringify(presentationContext, null, 2)}
 
 USER REQUEST: ${description}
 
-${countInstruction} Start index at ${startIndex}.`;
+${countInstruction} Start index at ${startIndex}.
+
+FINAL CHECK before you respond: ${
+    isAuto
+      ? `output one SLIDE: line per slide you decided to add — do not stop after the first one if more are needed.`
+      : `you must output exactly ${count} SLIDE: line(s) — one for each of these indices, in order: ${indices.join(', ')}. Do not stop after fewer lines.`
+  }`;
 
   const _tid = requestContext.getStore()?.requestId;
   const _t = Date.now();
