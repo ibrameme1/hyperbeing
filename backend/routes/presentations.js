@@ -1295,6 +1295,34 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
         newSlideDefs.push(slideDef);
       });
 
+      // streamNewSlides can occasionally emit fewer slides than requested (e.g.
+      // a SLIDE: line failed to parse). If we leave a gap, the placeholder for
+      // that index has no matching entry in newSlideDefs, so it falls outside
+      // keep_indices below and slides_trimmed silently removes it — the slide
+      // just vanishes with no error and is never retried. Fill any missing
+      // indices with a generic slide def so it still goes through Phase 2 and
+      // image generation like the others.
+      if (!isAuto && newSlideDefs.length < slideCount) {
+        const presentIndices = new Set(newSlideDefs.map(d => d.index));
+        for (let i = 0; i < slideCount; i++) {
+          const idx = startIndex + i;
+          if (!presentIndices.has(idx)) {
+            logger.warn('streamNewSlides returned fewer slides than requested — filling gap', { index: idx, requested: slideCount, received: newSlideDefs.length });
+            newSlideDefs.push({
+              index: idx,
+              type: 'content',
+              title: `New Slide ${idx + 1}`,
+              subtitle: null,
+              key_points: [],
+              speaker_note: '',
+              nano_banana_prompt: null,
+              attach_image_categories: [],
+            });
+          }
+        }
+        newSlideDefs.sort((a, b) => a.index - b.index);
+      }
+
       // Phase 2: upgrade image prompts via streamSlidePrompts (same as main generation flow)
       // streamNewSlides gives basic prompts; PROMPT_GEN_SYSTEM produces the full 5-layer structured ones.
       const promptHeader = {
