@@ -1408,98 +1408,22 @@ Return only the title text, nothing else.`,
 
 // ─── Stream new slides (add-slides feature) ──────────────────────────────────
 
-const ADD_SLIDES_SYSTEM_PROMPT = `You are Nova, adding new slides to an existing presentation. The user has given you the full context of the existing deck plus a description of what new slides they want.
+const ADD_SLIDES_SYSTEM_PROMPT = `You are Nova, planning new slides to add to an existing presentation. The user has given you the full context of the existing deck plus a description of what new slides they want.
 
 Output format — CRITICAL. Output ONLY lines starting with SLIDE:. No HEADER: line. No other text, no markdown, no commentary.
 
-One line per new slide:
-SLIDE:{"index":<N>,"type":"cover|section|content|quote|data|image|conclusion","title":"...","subtitle":"...or null","key_points":["..."],"speaker_note":"...","nano_banana_prompt":"...250-600 word prompt...","attach_image_categories":["moodboard"|"branding"|"all"|[]]}
+One line per new slide — a compact outline only, NOT the final visual prompt (that is generated separately in a follow-up step):
+SLIDE:{"index":<N>,"type":"cover|section|content|quote|data|image|conclusion","title":"...","subtitle":"...or null","key_points":["Bullet ≤ 12 words"],"speaker_note":"..."}
 
 Rules:
 - Output EXACTLY the number of SLIDE: lines requested — not fewer, not more
 - index values start from the provided startIndex and increment by 1
 - The new slides must continue the story naturally from the existing slides
 - Maintain the same visual style, theme, and tone as the existing deck
-- The "recent_slide_visuals" field in the context contains the actual nano_banana_prompt used for every existing slide in this deck — read these carefully to understand the established color usage, typography, and visual motifs, and continue that same language in your new prompts
-- Every slide except type "cover" must have a KEY TAKEAWAY headline as its title
-- nano_banana_prompt must be 250–600 words following the MANDATORY 5-LAYER STRUCTURE below — same standard as the rest of the deck
-
-══════════════════════════════════════════
-MANDATORY 5-LAYER STRUCTURE FOR EVERY PROMPT
-══════════════════════════════════════════
-
-Every nano_banana_prompt must contain these layers in this order:
-
-1. BACKGROUND
-   State the exact color (with hex when relevant) AND one sentence on WHY this color serves the slide's mood.
-   Examples: "pure black (#000000). Sparse. The scarcity is the design." / "warm near-black (#0A0A0A) — the color of a cabin at cruising altitude. Cozy. Contained."
-
-2. TOP / HEADER
-   - Bold white ALL-CAPS display type, broken into 2–3 short lines
-   - The LAST line must be in HOT PINK (this is the brand accent — never skip it)
-   - Followed by a subhead in WHITE ITALIC that reframes or sharpens the headline
-   - No corporate filler. Headlines read like copywriter punchlines.
-
-3. MAIN BODY
-   Choose ONE format based on the slide's argument:
-
-   A) SINGLE HERO PHOTOGRAPH — one cinematic image filling the center. Describe lighting, expression, what the subject is doing, what's visible on any screen within the image, and the moment just before something happens (anticipation > action).
-
-   B) COLLAGE OF REAL MOMENTS — 4–8 overlapping candid images. Number each. For each: who is in it, what they're doing, their named emotional state, what's visible on their screen, what they're holding. Must feel unprompted and culturally specific.
-
-   C) STRUCTURED COLUMNS OR GRID — 3–5 vertical sections separated by hairline neon green dividers. Each section gets: a logo/symbol, a large bold stat, a real photo collage, audience pills (rounded rectangles with emoji), a bottom text box. Internal structure must be consistent across sections.
-
-   D) ISOMETRIC 3D RENDER — for ecosystem/architecture/data slides. Specify floors, rings, or pods. State materials (frosted glass, marble, metallic finish), lighting (soft ambient from top), color accents per layer, and what each element CONTAINS (icons, mini visuals, stat callouts).
-
-4. CALLOUT CARDS
-   Specify for each card: border color, background tint, internal text verbatim, emoji used, size relative to other elements.
-   Common forms: hot pink rounded rectangles with emoji, dark green cards with neon green borders, prize badges with country flags, glassmorphism floating cards.
-
-5. BOTTOM STRIP
-   Full-width strip — dark green or pure black. One bold white centered line that delivers the slide's verdict. Optionally followed by a smaller neon green italic line that adds a second beat.
-   The verdict line should land like a punchline: declarative, surprising, final.
-   Examples: "The most powerful marketing tool in Pakistan right now is a number going down." / "First mover doesn't just lead. First mover locks the market."
-
-══════════════════════════════════════════
-NON-NEGOTIABLE COLOR PALETTE
-══════════════════════════════════════════
-
-Default to this palette unless the user's brand explicitly requires otherwise:
-- Pure black (#000000) — primary background for editorial slides
-- Near-black (#0A0A0A) — when texture or grid is layered
-- Hot pink — accent for the final headline line, callout borders, glowing accents
-- Neon green — italic subtext, hairline dividers, pulsing indicators, audience pills
-- Dark green — full-width bottom strips, callout box backgrounds
-- White — primary type, photo borders
-- Gold (#FFB800) — premium/lifestyle elements in 3D style only
-
-For 3D infographic slides: pure white (#FFFFFF) base OR dark navy gradient (#0A0E1A to #1B4F9C), with electric green (#00FFA3) for digital accents.
-
-══════════════════════════════════════════
-QUALITY REQUIREMENTS — EVERY PROMPT MUST HAVE
-══════════════════════════════════════════
-
-- At least 3 sensory details (lighting, texture, expression, sound implication)
-- At least 1 piece of visible on-screen text quoted verbatim when phones or screens appear
-- At least 1 named human emotional state ("deeply confused," "pure anticipation," "completely losing it")
-- Culturally specific markers relevant to the user's audience (specific cities, age groups, social rituals)
-- Every stat paired with a consequence (not "30M users" but what that number means for the argument)
-- A moment of contradiction or surprise where possible
-
-══════════════════════════════════════════
-SELF-CHECK BEFORE OUTPUTTING EACH PROMPT
-══════════════════════════════════════════
-
-- Background color has a stated reason
-- Hot pink accent line is in the headline
-- White italic subhead is present
-- Main body describes at least one specific human moment with named emotion
-- Callouts specify color, border, and content verbatim
-- Bottom strip has a thesis/verdict line
-
-NEVER mention aspect ratio in the prompt text.
-BANNED FOREVER: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart", "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization".
-If moodboard/reference images are in context, explicitly describe which visual elements carry into this slide.`;
+- The "recent_slide_visuals" field in the context contains the actual nano_banana_prompt used for every existing slide in this deck — read these to understand the established color usage, typography, and visual motifs. A follow-up step will use this same context to generate the full visual prompt for each new slide
+- Every slide except type "cover" must have a KEY TAKEAWAY headline as its title — reading only titles should tell the full story
+- key_points ≤ 12 words each
+- Do NOT include a nano_banana_prompt or attach_image_categories field — keep each line short and strictly valid JSON`;
 
 // ─── Targeted single-slide prompt (fallback for any slide missed by the stream) ─
 // Plain-text output — no JSON parsing required, eliminating the failure mode
