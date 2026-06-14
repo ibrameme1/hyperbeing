@@ -152,6 +152,14 @@ export function initDatabase() {
     db.exec("ALTER TABLE presentations ADD COLUMN locked_slides TEXT DEFAULT '[]'");
   } catch { /* already exists */ }
 
+  // Migrate: flag set while an add-slides run is generating new slides. The
+  // presentation row stays 'completed' during the run, so the dashboard needs
+  // this to show "Generating…" instead of "Complete" while slides are still
+  // being made.
+  try {
+    db.exec('ALTER TABLE presentations ADD COLUMN adding_slides INTEGER DEFAULT 0');
+  } catch { /* already exists */ }
+
   // Migrate: extend credit_transactions into a full ledger
   for (const col of [
     "ALTER TABLE credit_transactions ADD COLUMN credits_before INTEGER",
