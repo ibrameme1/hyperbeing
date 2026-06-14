@@ -4,6 +4,7 @@ import { recordTokenUsage } from './stripeService.js';
 import { logger, requestContext } from './logger.js';
 import { metrics } from './metrics.js';
 import { tracer } from './tracer.js';
+import { ART_DIRECTION_FRAMEWORK, ART_DIRECTION_COMPACT } from '../prompts/artDirectionFramework.js';
 
 // Strip em/en dashes and horizontal bars from AI output — they're replaced
 // with a plain hyphen so generated copy never shows "—" / "–" characters.
@@ -310,125 +311,18 @@ Where slide_plan contains:
 }
 
 NANO BANANA PROMPT FORMAT — write this for every slide:
-Each nano_banana_prompt must be 250–600 words of continuous prose following the mandatory 5-layer structure below. Vague prompts are not acceptable. A designer must be able to build the slide from the prompt alone.
+Each nano_banana_prompt must be 250–600 words of continuous prose following the ART DIRECTION FRAMEWORK and PROMPT STRUCTURE below. Vague prompts are not acceptable. A designer must be able to build the slide from the prompt alone.
 
 SLIDE STRUCTURE RULES (title format only — these do NOT affect nano_banana_prompt format):
 - Every slide (EXCEPT cover/title slides at index 0) must have a KEY TAKEAWAY headline as its title. This headline must communicate the main point of that slide on its own — someone reading only the headlines should be able to follow the full story of the presentation.
 - Below the headline in key_points, include supporting detail: data points, explanation, or context that expands on the headline.
 - Cover and title slides (type "cover") keep their original format — do not force a key takeaway structure on them.
 
-NOTE: The SLIDE STRUCTURE RULES above ONLY govern the slide title format. For nano_banana_prompt, the cover slide (index 0) follows the EXACT SAME 5-layer structure and design language as every other slide — same black/near-black background, same hot pink accent, same neon green details. No exceptions.
+NOTE: The SLIDE STRUCTURE RULES above ONLY govern the slide title format. For nano_banana_prompt, the cover slide (index 0) follows the EXACT SAME art direction framework and design language as every other slide — same background choice, same accent colors, same typography treatment. No exceptions.
 
-══════════════════════════════════════════
-MANDATORY 5-LAYER STRUCTURE FOR EVERY PROMPT
-══════════════════════════════════════════
+${ART_DIRECTION_FRAMEWORK}
 
-APPLIES TO ALL SLIDES INCLUDING THE COVER (index 0). Every nano_banana_prompt must contain these layers in this order:
-
-1. BACKGROUND
-   State the exact color (with hex when relevant) AND one sentence on WHY this color serves the slide's mood.
-   Examples: "pure black (#000000). Sparse. The scarcity is the design." / "warm near-black (#0A0A0A) — the color of a cabin at cruising altitude. Cozy. Contained."
-
-2. TOP / HEADER
-   - Bold white ALL-CAPS display type, broken into 2–3 short lines
-   - The LAST line must be in HOT PINK (this is the brand accent — never skip it)
-   - Followed by a subhead in WHITE ITALIC that reframes or sharpens the headline
-   - No corporate filler. Headlines read like copywriter punchlines.
-
-3. MAIN BODY
-   Choose ONE format based on the slide's argument:
-
-   A) SINGLE HERO PHOTOGRAPH — one cinematic image filling the center. Describe lighting, expression, what the subject is doing, what's visible on any screen within the image, and the moment just before something happens (anticipation > action).
-
-   B) COLLAGE OF REAL MOMENTS — 4–8 overlapping candid images. Number each. For each: who is in it, what they're doing, their named emotional state, what's visible on their screen, what they're holding. Must feel unprompted and culturally specific.
-
-   C) STRUCTURED COLUMNS OR GRID — 3–5 vertical sections separated by hairline neon green dividers. Each section gets: a logo/symbol, a large bold stat, a real photo collage, audience pills (rounded rectangles with emoji), a bottom text box. Internal structure must be consistent across sections.
-
-   D) ISOMETRIC 3D RENDER — for ecosystem/architecture/data slides. Specify floors, rings, or pods. State materials (frosted glass, marble, metallic finish), lighting (soft ambient from top), color accents per layer, and what each element CONTAINS (icons, mini visuals, stat callouts).
-
-   FOR THE COVER SLIDE (index 0): Use SINGLE HERO PHOTOGRAPH (a specific person, product, or moment that embodies the core concept of the full presentation brief) or ISOMETRIC 3D RENDER (for tech/platform decks). The cover has no key_points — derive its visual entirely from the full user brief and presentation theme. It must establish the SAME design language as all other slides in the deck.
-
-4. CALLOUT CARDS
-   Specify for each card: border color, background tint, internal text verbatim, emoji used, size relative to other elements.
-   Common forms: hot pink rounded rectangles with emoji, dark green cards with neon green borders, prize badges with country flags, glassmorphism floating cards.
-
-5. BOTTOM STRIP
-   Full-width strip — dark green or pure black. One bold white centered line that delivers the slide's verdict. Optionally followed by a smaller neon green italic line that adds a second beat.
-   The verdict line should land like a punchline: declarative, surprising, final.
-   For cover slides: the verdict captures the CORE THESIS of the entire presentation.
-   Examples of the register to aim for: "The most powerful marketing tool in Pakistan right now is a number going down." / "First mover doesn't just lead. First mover locks the market."
-
-══════════════════════════════════════════
-NON-NEGOTIABLE COLOR PALETTE
-══════════════════════════════════════════
-
-Default to this palette unless the user's brand explicitly requires otherwise:
-- Pure black (#000000) — primary background for editorial slides
-- Near-black (#0A0A0A) — when texture or grid is layered
-- Hot pink — accent for the final headline line, callout borders, glowing accents
-- Neon green — italic subtext, hairline dividers, pulsing indicators, audience pills
-- Dark green — full-width bottom strips, callout box backgrounds
-- White — primary type, photo borders
-- Gold (#FFB800) — premium/lifestyle elements in 3D style only
-- Frosted glass tints at 5–10% opacity — subtle warm purple, red-pink, red, yellow over near-black
-
-For 3D infographic slides: pure white (#FFFFFF) base OR dark navy gradient (#0A0E1A to #1B4F9C), with electric green (#00FFA3) for digital accents.
-
-This palette applies to ALL slides including the cover. Never deviate to "soft pastels", "warm atmospheric gradients", or "cinematic haze" on the cover — those are not in this palette.
-
-══════════════════════════════════════════
-QUALITY REQUIREMENTS — EVERY PROMPT MUST HAVE
-══════════════════════════════════════════
-
-- At least 3 sensory details (lighting, texture, expression, sound implication)
-- At least 1 piece of visible on-screen text quoted verbatim when phones or screens appear (WhatsApp message, TikTok caption, view count, timestamp)
-- At least 1 named human emotional state ("deeply confused," "pure anticipation," "completely losing it," "abandoned all pretense of working")
-- Culturally specific markers relevant to the user's audience (specific cities, age groups, social rituals, slang)
-- Every stat paired with a consequence (not "30M users" but what that number means for the argument)
-- A moment of contradiction or surprise where possible ("He is very confident. He should not be this confident.")
-
-══════════════════════════════════════════
-TYPOGRAPHY RULES
-══════════════════════════════════════════
-
-Always specify weight, case, color, and placement. Never write "use a nice font."
-- Headlines: bold ALL-CAPS display type, condensed or extended
-- Subheads: white italic, sentence case
-- Callout titles: bold white
-- Stats: large bold, white or gold
-- Body inside cards: ~12pt, white or light grey
-
-══════════════════════════════════════════
-STYLE SELECTION
-══════════════════════════════════════════
-
-Default to EDITORIAL/CAMPAIGN style (pure black, ALL-CAPS, hot pink accent, photo collages) for:
-- Marketing slides, insight slides, campaign concepts, audience slides, content strategy
-- Cover slides for marketing/brand/campaign decks
-
-Default to 3D INFOGRAPHIC style (clean white or navy, isometric renders, glassmorphism, floating cards) for:
-- Ecosystem slides, architecture slides, defensibility/moat slides, platform overviews, data dashboards
-- Cover slides for tech/product/platform decks
-
-══════════════════════════════════════════
-SELF-CHECK BEFORE OUTPUTTING EACH PROMPT
-══════════════════════════════════════════
-
-Verify all are present:
-- Background color has a stated reason
-- Hot pink accent line is in the headline
-- White italic subhead is present
-- Main body describes at least one specific human moment with named emotion
-- At least one piece of on-screen text quoted verbatim (when applicable)
-- Stats paired with consequences
-- Callouts specify color, border, and content
-- Bottom strip has a thesis/verdict line
-
-FOR COVER SLIDE SPECIFICALLY: Does this prompt look and feel like it belongs to the SAME DECK as the other slides? If it uses abstract gradients, atmospheric haze, or generic cinematic backgrounds — rewrite it. The cover must be as specific, editorial, and design-directed as any other slide.
-
-NEVER mention aspect ratio in the prompt text — aspect ratio is handled separately as an API parameter.
-BANNED FOREVER — never use: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart", "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization". Always find a specific, real, directed visual concept.
-If the user uploaded moodboard or reference images, explicitly describe which visual elements, colors, and mood from those references should carry into this specific slide.
+COVER SLIDE (index 0): Pick the Dominant Center pattern (a specific hero photograph or isometric 3D render — never abstract gradients, atmospheric haze, or generic cinematic backgrounds) or another pattern from the framework that fits a tech/platform deck. The cover has no key_points — derive its visual entirely from the full user brief and presentation theme. It must use the SAME background choice, accent colors, and typography treatment as every other slide in the deck, and its bottom-strip thesis must capture the CORE THESIS of the entire presentation.
 
 ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 - "moodboard" — attach moodboard references to slides where visual style guidance is needed
@@ -713,7 +607,10 @@ User's change instruction:
 
 Return an updated slide object as valid JSON with the same structure.
 Only modify fields relevant to the instruction.
-The nano_banana_prompt must follow the mandatory 5-layer structure: (1) BACKGROUND — exact color + why it serves the mood, (2) TOP/HEADER — bold ALL-CAPS white display type broken into 2–3 lines, last line in HOT PINK, followed by white italic subhead, (3) MAIN BODY — choose one: single hero photograph / collage of real moments / structured columns or grid / isometric 3D render, (4) CALLOUT CARDS — specify border color, background tint, text verbatim, emoji, size, (5) BOTTOM STRIP — full-width dark green or black strip, one bold white verdict line that lands like a punchline. Use the palette: black/near-black backgrounds, hot pink accents, neon green for data, dark green for strips, white for type. Include at least 3 sensory details, named human emotions, culturally specific markers, and stats paired with consequences. 250–400 words.
+The nano_banana_prompt must follow this structure: [BACKGROUND], [TYPOGRAPHY — TOP], [MAIN VISUAL], [SECONDARY ELEMENTS], [CALLOUT BOX(ES)], [BOTTOM STRIP], [MOOD/RENDER STYLE]. 250-400 words.
+
+${ART_DIRECTION_COMPACT}
+
 Return ONLY the JSON object, nothing else.`,
   });
 
@@ -818,111 +715,11 @@ You MUST output exactly one SLIDE: line for every index listed in the outline �
 - After generating all prompts, mentally count them — if you have fewer than N, add the missing ones before stopping
 
 Rules:
-- nano_banana_prompt must be 250–600 words following the MANDATORY 5-LAYER STRUCTURE below
-- EVERY slide including the cover (index 0) follows the EXACT SAME 5-layer structure and NON-NEGOTIABLE COLOR PALETTE — no exceptions, no special cases
-- COVER SLIDE (index 0, type "cover"): The cover has no key_points. Derive its visual concept entirely from the Original Brief and the presentation theme — those are provided in the user message. The cover MUST open the deck with the same black/near-black background, hot pink accent, and neon green design language as all other slides. For MAIN BODY use SINGLE HERO PHOTOGRAPH (a specific person, product, or moment that embodies the core concept) or ISOMETRIC 3D RENDER (for tech/platform decks). NEVER use abstract gradients, atmospheric haze, floating geometric shapes, or generic "cinematic atmosphere" — those violate the BANNED FOREVER list. The BOTTOM STRIP verdict must capture the core thesis of the entire presentation.
+- nano_banana_prompt must be 250–600 words following the ART DIRECTION FRAMEWORK and PROMPT STRUCTURE below
+- EVERY slide including the cover (index 0) follows the EXACT SAME art direction framework — no exceptions, no special cases
+- COVER SLIDE (index 0, type "cover"): The cover has no key_points. Derive its visual concept entirely from the Original Brief and the presentation theme — those are provided in the user message. The cover MUST open the deck with the same background choice, accent colors, and typography treatment as all other slides. Pick the Dominant Center pattern (a specific hero photograph or isometric 3D render) or another pattern from the framework that fits a tech/platform deck. NEVER use abstract gradients, atmospheric haze, floating geometric shapes, or generic "cinematic atmosphere" — those violate the anti-patterns list. The BOTTOM STRIP verdict must capture the core thesis of the entire presentation.
 
-══════════════════════════════════════════
-MANDATORY 5-LAYER STRUCTURE FOR EVERY PROMPT
-══════════════════════════════════════════
-
-Every nano_banana_prompt must contain these layers in this order:
-
-1. BACKGROUND
-   State the exact color (with hex when relevant) AND one sentence on WHY this color serves the slide's mood.
-   Examples: "pure black (#000000). Sparse. The scarcity is the design." / "warm near-black (#0A0A0A) — the color of a cabin at cruising altitude. Cozy. Contained."
-
-2. TOP / HEADER
-   - Bold white ALL-CAPS display type, broken into 2–3 short lines
-   - The LAST line must be in HOT PINK (this is the brand accent — never skip it)
-   - Followed by a subhead in WHITE ITALIC that reframes or sharpens the headline
-   - No corporate filler. Headlines read like copywriter punchlines.
-
-3. MAIN BODY
-   Choose ONE format based on the slide's argument:
-
-   A) SINGLE HERO PHOTOGRAPH — one cinematic image filling the center. Describe lighting, expression, what the subject is doing, what's visible on any screen within the image, and the moment just before something happens (anticipation > action).
-
-   B) COLLAGE OF REAL MOMENTS — 4–8 overlapping candid images. Number each. For each: who is in it, what they're doing, their named emotional state, what's visible on their screen, what they're holding. Must feel unprompted and culturally specific.
-
-   C) STRUCTURED COLUMNS OR GRID — 3–5 vertical sections separated by hairline neon green dividers. Each section gets: a logo/symbol, a large bold stat, a real photo collage, audience pills (rounded rectangles with emoji), a bottom text box. Internal structure must be consistent across sections.
-
-   D) ISOMETRIC 3D RENDER — for ecosystem/architecture/data slides. Specify floors, rings, or pods. State materials (frosted glass, marble, metallic finish), lighting (soft ambient from top), color accents per layer, and what each element CONTAINS (icons, mini visuals, stat callouts).
-
-4. CALLOUT CARDS
-   Specify for each card: border color, background tint, internal text verbatim, emoji used, size relative to other elements.
-   Common forms: hot pink rounded rectangles with emoji, dark green cards with neon green borders, prize badges with country flags, glassmorphism floating cards.
-
-5. BOTTOM STRIP
-   Full-width strip — dark green or pure black. One bold white centered line that delivers the slide's verdict. Optionally followed by a smaller neon green italic line that adds a second beat.
-   The verdict line should land like a punchline: declarative, surprising, final.
-   Examples of the register to aim for: "The most powerful marketing tool in Pakistan right now is a number going down." / "First mover doesn't just lead. First mover locks the market."
-
-══════════════════════════════════════════
-NON-NEGOTIABLE COLOR PALETTE
-══════════════════════════════════════════
-
-Default to this palette unless the user's brand explicitly requires otherwise:
-- Pure black (#000000) — primary background for editorial slides
-- Near-black (#0A0A0A) — when texture or grid is layered
-- Hot pink — accent for the final headline line, callout borders, glowing accents
-- Neon green — italic subtext, hairline dividers, pulsing indicators, audience pills
-- Dark green — full-width bottom strips, callout box backgrounds
-- White — primary type, photo borders
-- Gold (#FFB800) — premium/lifestyle elements in 3D style only
-- Frosted glass tints at 5–10% opacity — subtle warm purple, red-pink, red, yellow over near-black
-
-For 3D infographic slides: pure white (#FFFFFF) base OR dark navy gradient (#0A0E1A to #1B4F9C), with electric green (#00FFA3) for digital accents.
-
-══════════════════════════════════════════
-QUALITY REQUIREMENTS — EVERY PROMPT MUST HAVE
-══════════════════════════════════════════
-
-- At least 3 sensory details (lighting, texture, expression, sound implication)
-- At least 1 piece of visible on-screen text quoted verbatim when phones or screens appear (WhatsApp message, TikTok caption, view count, timestamp)
-- At least 1 named human emotional state ("deeply confused," "pure anticipation," "completely losing it," "abandoned all pretense of working")
-- Culturally specific markers relevant to the user's audience (specific cities, age groups, social rituals, slang)
-- Every stat paired with a consequence (not "30M users" but what that number means for the argument)
-- A moment of contradiction or surprise where possible
-
-══════════════════════════════════════════
-TYPOGRAPHY RULES
-══════════════════════════════════════════
-
-Always specify weight, case, color, and placement. Never write "use a nice font."
-- Headlines: bold ALL-CAPS display type, condensed or extended
-- Subheads: white italic, sentence case
-- Callout titles: bold white
-- Stats: large bold, white or gold
-- Body inside cards: ~12pt, white or light grey
-
-══════════════════════════════════════════
-STYLE SELECTION
-══════════════════════════════════════════
-
-Default to EDITORIAL/CAMPAIGN style (pure black, ALL-CAPS, hot pink accent, photo collages) for:
-- Marketing slides, insight slides, campaign concepts, audience slides, content strategy
-
-Default to 3D INFOGRAPHIC style (clean white or navy, isometric renders, glassmorphism, floating cards) for:
-- Ecosystem slides, architecture slides, defensibility/moat slides, platform overviews, data dashboards
-
-══════════════════════════════════════════
-SELF-CHECK BEFORE OUTPUTTING EACH PROMPT
-══════════════════════════════════════════
-
-Verify all are present:
-- Background color has a stated reason
-- Hot pink accent line is in the headline
-- White italic subhead is present
-- Main body describes at least one specific human moment with named emotion
-- At least one piece of on-screen text quoted verbatim (when applicable)
-- Stats paired with consequences
-- Callouts specify color, border, and content
-- Bottom strip has a thesis/verdict line
-
-NEVER mention aspect ratio in the prompt text — aspect ratio is handled separately as an API parameter.
-BANNED FOREVER — never use: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart", "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization". Always find a specific, real, directed visual concept.
-If the user uploaded moodboard or reference images, explicitly describe which visual elements, colors, and mood from those references should carry into this specific slide.
+${ART_DIRECTION_FRAMEWORK}
 
 ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 - "moodboard" — attach moodboard references to slides where visual style guidance is needed
@@ -1067,7 +864,7 @@ export async function streamSlidePrompts(slides, header, message, attachments, c
 
 OUTPUT REQUIREMENT: You MUST output exactly ${sortedSlides.length} SLIDE: lines — one per index from ${firstIdx} to ${lastIdx}, in order. The FIRST line must be SLIDE:{"index":${firstIdx},...}. Never skip any index.${
     isCoverIncluded
-      ? `\n\nCOVER SLIDE (index 0): It has no key_points. Derive its entire visual concept from the Original Brief and presentation theme below. Same design language (black background, hot pink accent, neon green) as all other slides — no exceptions.`
+      ? `\n\nCOVER SLIDE (index 0): It has no key_points. Derive its entire visual concept from the Original Brief and presentation theme below. Same background choice, accent colors, and typography treatment as all other slides — no exceptions.`
       : ''
   }
 
@@ -1173,125 +970,18 @@ Rules:
 - Each SLIDE: must be on its own line, complete parseable JSON
 - total_slides in HEADER must equal the number of SLIDE: lines
 - Choose total_slides based on what best serves the brief — typically 5–15 slides. Never pad, never truncate.
-- nano_banana_prompt must be 250–600 words following the MANDATORY 5-LAYER STRUCTURE below
+- nano_banana_prompt must be 250–600 words following the ART DIRECTION FRAMEWORK and PROMPT STRUCTURE below
 
 SLIDE STRUCTURE RULES (title format only — these do NOT affect nano_banana_prompt format):
 - Every slide (EXCEPT cover/title slides at index 0) must have a KEY TAKEAWAY headline as its title. This headline must communicate the main point of that slide on its own — someone reading only the headlines should be able to follow the full story of the presentation.
 - Below the headline in key_points, include supporting detail: data points, explanation, or context that expands on the headline.
 - Cover and title slides (type "cover") keep their original format — do not force a key takeaway structure on them.
 
-NOTE: The SLIDE STRUCTURE RULES above ONLY govern the slide title format. For nano_banana_prompt, the cover slide (index 0) follows the EXACT SAME 5-layer structure and design language as every other slide — same black/near-black background, same hot pink accent, same neon green details. No exceptions.
+NOTE: The SLIDE STRUCTURE RULES above ONLY govern the slide title format. For nano_banana_prompt, the cover slide (index 0) follows the EXACT SAME art direction framework and design language as every other slide — same background choice, same accent colors, same typography treatment. No exceptions.
 
-══════════════════════════════════════════
-MANDATORY 5-LAYER STRUCTURE FOR EVERY PROMPT
-══════════════════════════════════════════
+${ART_DIRECTION_FRAMEWORK}
 
-APPLIES TO ALL SLIDES INCLUDING THE COVER (index 0). Every nano_banana_prompt must contain these layers in this order:
-
-1. BACKGROUND
-   State the exact color (with hex when relevant) AND one sentence on WHY this color serves the slide's mood.
-   Examples: "pure black (#000000). Sparse. The scarcity is the design." / "warm near-black (#0A0A0A) — the color of a cabin at cruising altitude. Cozy. Contained."
-
-2. TOP / HEADER
-   - Bold white ALL-CAPS display type, broken into 2–3 short lines
-   - The LAST line must be in HOT PINK (this is the brand accent — never skip it)
-   - Followed by a subhead in WHITE ITALIC that reframes or sharpens the headline
-   - No corporate filler. Headlines read like copywriter punchlines.
-
-3. MAIN BODY
-   Choose ONE format based on the slide's argument:
-
-   A) SINGLE HERO PHOTOGRAPH — one cinematic image filling the center. Describe lighting, expression, what the subject is doing, what's visible on any screen within the image, and the moment just before something happens (anticipation > action).
-
-   B) COLLAGE OF REAL MOMENTS — 4–8 overlapping candid images. Number each. For each: who is in it, what they're doing, their named emotional state, what's visible on their screen, what they're holding. Must feel unprompted and culturally specific.
-
-   C) STRUCTURED COLUMNS OR GRID — 3–5 vertical sections separated by hairline neon green dividers. Each section gets: a logo/symbol, a large bold stat, a real photo collage, audience pills (rounded rectangles with emoji), a bottom text box. Internal structure must be consistent across sections.
-
-   D) ISOMETRIC 3D RENDER — for ecosystem/architecture/data slides. Specify floors, rings, or pods. State materials (frosted glass, marble, metallic finish), lighting (soft ambient from top), color accents per layer, and what each element CONTAINS (icons, mini visuals, stat callouts).
-
-   FOR THE COVER SLIDE (index 0): Use SINGLE HERO PHOTOGRAPH (a specific person, product, or moment that embodies the core concept of the full presentation brief) or ISOMETRIC 3D RENDER (for tech/platform decks). Derive the visual entirely from the full user brief — the cover must establish the SAME design language as all other slides in the deck.
-
-4. CALLOUT CARDS
-   Specify for each card: border color, background tint, internal text verbatim, emoji used, size relative to other elements.
-   Common forms: hot pink rounded rectangles with emoji, dark green cards with neon green borders, prize badges with country flags, glassmorphism floating cards.
-
-5. BOTTOM STRIP
-   Full-width strip — dark green or pure black. One bold white centered line that delivers the slide's verdict. Optionally followed by a smaller neon green italic line that adds a second beat.
-   The verdict line should land like a punchline: declarative, surprising, final.
-   For cover slides: the verdict captures the CORE THESIS of the entire presentation.
-   Examples of the register to aim for: "The most powerful marketing tool in Pakistan right now is a number going down." / "First mover doesn't just lead. First mover locks the market."
-
-══════════════════════════════════════════
-NON-NEGOTIABLE COLOR PALETTE
-══════════════════════════════════════════
-
-Default to this palette unless the user's brand explicitly requires otherwise:
-- Pure black (#000000) — primary background for editorial slides
-- Near-black (#0A0A0A) — when texture or grid is layered
-- Hot pink — accent for the final headline line, callout borders, glowing accents
-- Neon green — italic subtext, hairline dividers, pulsing indicators, audience pills
-- Dark green — full-width bottom strips, callout box backgrounds
-- White — primary type, photo borders
-- Gold (#FFB800) — premium/lifestyle elements in 3D style only
-- Frosted glass tints at 5–10% opacity — subtle warm purple, red-pink, red, yellow over near-black
-
-For 3D infographic slides: pure white (#FFFFFF) base OR dark navy gradient (#0A0E1A to #1B4F9C), with electric green (#00FFA3) for digital accents.
-
-This palette applies to ALL slides including the cover. Never deviate to "soft pastels", "warm atmospheric gradients", or "cinematic haze" on the cover — those are not in this palette.
-
-══════════════════════════════════════════
-QUALITY REQUIREMENTS — EVERY PROMPT MUST HAVE
-══════════════════════════════════════════
-
-- At least 3 sensory details (lighting, texture, expression, sound implication)
-- At least 1 piece of visible on-screen text quoted verbatim when phones or screens appear (WhatsApp message, TikTok caption, view count, timestamp)
-- At least 1 named human emotional state ("deeply confused," "pure anticipation," "completely losing it," "abandoned all pretense of working")
-- Culturally specific markers relevant to the user's audience (specific cities, age groups, social rituals, slang)
-- Every stat paired with a consequence (not "30M users" but what that number means for the argument)
-- A moment of contradiction or surprise where possible
-
-══════════════════════════════════════════
-TYPOGRAPHY RULES
-══════════════════════════════════════════
-
-Always specify weight, case, color, and placement. Never write "use a nice font."
-- Headlines: bold ALL-CAPS display type, condensed or extended
-- Subheads: white italic, sentence case
-- Callout titles: bold white
-- Stats: large bold, white or gold
-- Body inside cards: ~12pt, white or light grey
-
-══════════════════════════════════════════
-STYLE SELECTION
-══════════════════════════════════════════
-
-Default to EDITORIAL/CAMPAIGN style (pure black, ALL-CAPS, hot pink accent, photo collages) for:
-- Marketing slides, insight slides, campaign concepts, audience slides, content strategy
-- Cover slides for marketing/brand/campaign decks
-
-Default to 3D INFOGRAPHIC style (clean white or navy, isometric renders, glassmorphism, floating cards) for:
-- Ecosystem slides, architecture slides, defensibility/moat slides, platform overviews, data dashboards
-- Cover slides for tech/product/platform decks
-
-══════════════════════════════════════════
-SELF-CHECK BEFORE OUTPUTTING EACH PROMPT
-══════════════════════════════════════════
-
-Verify all are present:
-- Background color has a stated reason
-- Hot pink accent line is in the headline
-- White italic subhead is present
-- Main body describes at least one specific human moment with named emotion
-- At least one piece of on-screen text quoted verbatim (when applicable)
-- Stats paired with consequences
-- Callouts specify color, border, and content
-- Bottom strip has a thesis/verdict line
-
-FOR COVER SLIDE SPECIFICALLY: Does this prompt look and feel like it belongs to the SAME DECK as the other slides? If it uses abstract gradients, atmospheric haze, or generic cinematic backgrounds — rewrite it. The cover must be as specific, editorial, and design-directed as any other slide.
-
-NEVER mention aspect ratio in the prompt text — aspect ratio is handled separately as an API parameter.
-BANNED FOREVER — never use: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart", "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization". Always find a specific, real, directed visual concept.
-If the user uploaded moodboard or reference images, explicitly describe which visual elements, colors, and mood from those references should carry into this specific slide.
+COVER SLIDE (index 0): Pick the Dominant Center pattern (a specific hero photograph or isometric 3D render — never abstract gradients, atmospheric haze, or generic cinematic backgrounds) or another pattern from the framework that fits a tech/platform deck. Derive the visual entirely from the full user brief — the cover must establish the SAME background, accent colors, and typography treatment as every other slide in the deck, and its bottom-strip thesis must capture the CORE THESIS of the entire presentation.
 
 ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 - "moodboard" — attach moodboard references to slides where visual style guidance is needed
@@ -1442,19 +1132,9 @@ const SINGLE_SLIDE_PROMPT_SYSTEM = `You are Nova. Generate a nano_banana_prompt 
 
 Output ONLY the visual prompt as plain prose — 250 to 600 words. No JSON, no markdown, no labels, no "SLIDE:", no bullet points — just the prompt text itself.
 
-The prompt MUST follow the MANDATORY 5-LAYER STRUCTURE in this order:
+The prompt MUST follow the PROMPT STRUCTURE in this order: [BACKGROUND], [TYPOGRAPHY — TOP], [MAIN VISUAL], [SECONDARY ELEMENTS], [CALLOUT BOX(ES)], [BOTTOM STRIP], [MOOD/RENDER STYLE].
 
-1. BACKGROUND — state exact color (hex when relevant) and one sentence on WHY it serves the mood.
-2. TOP / HEADER — bold white ALL-CAPS display type, 2–3 short lines, LAST line in HOT PINK, followed by a WHITE ITALIC subhead.
-3. MAIN BODY — choose ONE: A) SINGLE HERO PHOTOGRAPH, B) COLLAGE OF REAL MOMENTS, C) STRUCTURED COLUMNS/GRID, D) ISOMETRIC 3D RENDER. Describe every detail.
-4. CALLOUT CARDS — for each: border color, background tint, verbatim text, emoji, size.
-5. BOTTOM STRIP — full-width dark green or black strip with a bold white verdict line, optionally a neon green italic second beat.
-
-NON-NEGOTIABLE PALETTE: pure black (#000000) backgrounds, hot pink accents, neon green dividers/subtext, white type.
-
-QUALITY: include at least 3 sensory details, 1 verbatim on-screen text (when phones/screens appear), 1 named human emotional state, culturally specific markers, stats paired with consequences.
-
-BANNED FOREVER: "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization", "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart".`;
+${ART_DIRECTION_COMPACT}`;
 
 export async function generateSingleSlidePrompt(slide, header, originalBrief, attachments = [], userId = null) {
   if (MOCK_MODE) {
@@ -1462,7 +1142,7 @@ export async function generateSingleSlidePrompt(slide, header, originalBrief, at
   }
 
   const coverNote = (slide.index === 0 || slide.type === 'cover')
-    ? '\nCOVER SLIDE: No key_points exist — derive the entire visual concept from the Original Brief and presentation theme. Must use black/near-black background, hot pink accent, neon green design language. Use SINGLE HERO PHOTOGRAPH or ISOMETRIC 3D RENDER for the main body. Absolutely no abstract gradients or atmospheric haze.'
+    ? '\nCOVER SLIDE: No key_points exist — derive the entire visual concept from the Original Brief and presentation theme. Must use the SAME background choice, accent colors, and typography treatment as the rest of the deck. Pick the Dominant Center pattern (a specific hero photograph or isometric 3D render) or another pattern that fits a tech/platform deck. Absolutely no abstract gradients or atmospheric haze.'
     : '';
 
   const slideContext = [

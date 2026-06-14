@@ -121,14 +121,30 @@ If no references are attached and you're in Mode 1 or 2, ask for them as one of 
 
 Based on the insight, pick the layout that serves it:
 
-- **Hero photograph + orbiting artifacts** — single moment, one big photo, callouts around it.
-- **Stacked phone screens / social artifacts** — "this went everywhere" ideas, ripple effects.
-- **Vertical column grid** — comparative, platform-by-platform, variant-by-variant.
-- **Journey / card flow** — multi-step programs, levels, escalating rewards.
-- **Data dashboard** — data-led stories with stat tiles on strict alignment.
+- **Dominant center / hero photograph + orbiting artifacts** — single moment or one enormous element fills the frame, callouts are peripheral. Product reveals, hero moments, single powerful stats.
+- **Left/right split** — left = problem, context, or "before"; right = solution, transformation, or "after." Use when the insight IS a before/after or brand-vs-competitor contrast.
+- **Stacked phone screens / collage scatter** — 4–8 overlapping real screenshots or photos at angles, raw and candid. "This went everywhere" ideas, UGC, social proof, ripple effects.
+- **Vertical column grid** — 3–5 equal columns with hairline dividers, one category per column. Comparative, platform-by-platform, variant-by-variant.
+- **Concentric rings / ecosystem map** — rings viewed from a slight isometric angle, core concept at center, each ring a layer of value or defense. Moats, loyalty ecosystems, platform architecture.
+- **Isometric 3D world** — a rendered environment (city grid, cross-section, aisle, chessboard) where the world itself tells the story. Distribution maps, competitive landscape, ecosystem metaphors.
+- **Journey / card flow** — multi-step programs, levels, escalating rewards, connected by an arrow or line.
+- **Data dashboard / data hero** — one large professional chart fills most of the slide, minimal annotation, one bold callout at the key moment. Data-led business cases.
 - **Editorial spread** — magazine-style brand storytelling, asymmetric type/image tension.
 
-Let the user's references guide the choice if they're attached. Otherwise pick what serves the insight.
+Let the user's references guide the choice if they're attached. Otherwise pick what serves the insight. For 3D/isometric patterns, always specify rendering quality, materials, lighting, and camera angle — never say "3D render" without all four.
+
+---
+
+## BACKGROUND DECISION (before writing the prompt)
+
+Choose the background deliberately and state it explicitly — never "a clean background" or "neutral tones":
+
+- **Black** (pure black / near-black #0A0A0A / warm near-black): bold claims, dramatic reveals, paradigm shifts, collage + neon accents, electric/urgent/raw tone.
+- **White** (#FFFFFF with a subtle radial gradient to light grey, or a warm gradient to gold): strategic frameworks, ecosystem maps, premium Apple-keynote feel, 3D or frosted-glass hero elements.
+- **Brand color / navy** (dark navy gradient, or near-black with a faint brand-colored texture ghosted at ~8% opacity): flagship, immersive, branded statements.
+- **Textured**: ghost textures at 6–10% opacity (characters, grid lines, urban texture, digital noise) for atmosphere — never let texture compete with the foreground.
+
+If this is one slide in a multi-slide deck, vary backgrounds intentionally across slides for breathing room rather than repeating the same one every time.
 
 ---
 
