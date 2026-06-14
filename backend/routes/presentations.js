@@ -675,7 +675,18 @@ router.get('/:id/events', (req, res) => {
       for (const s of doneSlides) {
         res.write(`data: ${JSON.stringify({ type: 'slide_ready', slide: s })}\n\n`);
       }
-      res.write(`data: ${JSON.stringify({ type: 'complete', total_slides: doneSlides.length })}\n\n`);
+      // Only emit `complete` when every slide is actually finished. An
+      // add-slides run leaves freshly-added placeholders in 'generating' while
+      // the presentation row is already 'completed'. Emitting `complete` here
+      // (e.g. on an EventSource auto-reconnect during the slow add-slides
+      // window) makes the client flip those still-generating placeholders to
+      // 'error' (see the `complete` handler in PresentationPage) — showing a
+      // false failure + regenerate button while the backend is still
+      // generating them. Hold the `complete` until they're truly done.
+      const stillGenerating = doneSlides.some(s => s.status === 'generating');
+      if (!stillGenerating) {
+        res.write(`data: ${JSON.stringify({ type: 'complete', total_slides: doneSlides.length })}\n\n`);
+      }
     }
   }
 
@@ -1019,6 +1030,18 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
   const slide = slides[arrayPos];
   if (!slide) return res.status(404).json({ error: 'Slide not found.' });
 
+  // Guard against double-generation. A slide still in 'generating' is being
+  // produced right now by an in-flight add-slides run (or an earlier retry
+  // that hasn't finished). Kicking off a competing generation here would race
+  // with it, and the slower of the two writes silently overwrites the good
+  // result — the exact "original slide shows, then gets overwritten by the
+  // regenerate" bug. The original generation will still deliver its result via
+  // SSE, so we no-op (without charging credits) and let it finish.
+  if (slide.status === 'generating') {
+    logger.info('retry ignored — slide still generating in background', { presentationId: req.params.id, slideIndex: targetIndex });
+    return res.json({ message: 'Slide is still generating', index: targetIndex, alreadyGenerating: true });
+  }
+
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
 
   let editResult;
@@ -1089,11 +1112,20 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
       const updatedSlide = failed
         ? { ...slide, nano_banana_prompt: prompt, image_data: null, status: 'error' }
         : { ...slide, nano_banana_prompt: prompt, image_data: imageData, status: 'complete' };
-      slides[arrayPos] = updatedSlide;
+      // Re-read fresh right before writing — other slides in this deck may
+      // have been added or updated concurrently (e.g. an add-slides run still
+      // finishing its other slides). Writing back the `slides` array captured
+      // at the start of the request would clobber those concurrent changes.
+      const freshRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+      if (!freshRow?.slides_data) return;
+      const freshSlides = JSON.parse(freshRow.slides_data);
+      const freshPos = freshSlides.findIndex(s => s.index === targetIndex);
+      if (freshPos === -1) return;
+      freshSlides[freshPos] = updatedSlide;
 
       let thumbSql = `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
-      const thumbArgs = [JSON.stringify(slides), req.params.id];
-      if (arrayPos === 0 && !failed) {
+      const thumbArgs = [JSON.stringify(freshSlides), req.params.id];
+      if (freshPos === 0 && !failed) {
         thumbSql = `UPDATE presentations SET slides_data = ?, thumbnail = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
         thumbArgs.splice(1, 0, imageData);
       }
@@ -1435,18 +1467,30 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
 
       // Generate images only for affordable slides, with stagger
       const imagePromises = affordableDefs.map((slideDef, i) =>
-        new Promise(r => setTimeout(r, i * 800)).then(() => {
-          const attachedImages = combinedImages;
+        (async () => {
+          await new Promise(r => setTimeout(r, i * 800));
+          try {
+            const prompt = slideDef.nano_banana_prompt || slideDef.title;
+            let imageData = await generateSlideImage(
+              prompt, slideDef.type, slidePlan.theme, slidePlan.color_palette,
+              slideDef.index, combinedImages, aspectRatio
+            );
 
-          return generateSlideImage(
-            slideDef.nano_banana_prompt || slideDef.title,
-            slideDef.type, slidePlan.theme, slidePlan.color_palette,
-            slideDef.index, combinedImages, aspectRatio
-          ).then(imageData => {
-            // generateSlideImage falls back to a generic gradient placeholder
-            // rather than throwing on persistent NB2 failure — treat that the
-            // same as an error so the slide shows a regenerate option instead
-            // of a blank/generic image, and refund the credit.
+            // generateSlideImage retries NB2 internally but falls back to a
+            // generic gradient placeholder rather than throwing on persistent
+            // failure. Before surfacing a failure to the user, automatically
+            // resubmit the same prompt once — most placeholder results are
+            // transient NB2 hiccups that succeed on a fresh attempt, so the
+            // user never has to click regenerate. Only if this second attempt
+            // also fails do we mark the slide 'error' and show that button.
+            if (isPlaceholderImage(imageData)) {
+              logger.warn('add-slides image returned placeholder — auto-retrying once with same prompt', { presentationId: req.params.id, slideIndex: slideDef.index });
+              imageData = await generateSlideImage(
+                prompt, slideDef.type, slidePlan.theme, slidePlan.color_palette,
+                slideDef.index, combinedImages, aspectRatio
+              );
+            }
+
             const failed = isPlaceholderImage(imageData);
             const done = failed
               ? { ...slideDef, image_data: null, status: 'error' }
@@ -1471,12 +1515,12 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
               .run(JSON.stringify(current), req.params.id);
             if (failed) {
               refundCredits(req.user.id, CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'generation_refund', 'Slide image generation failed — refunded', req.params.id, { slide_index: slideDef.index });
-              logger.error('add-slides image generation returned placeholder', { presentationId: req.params.id, slideIndex: slideDef.index });
+              logger.error('add-slides image generation returned placeholder after auto-retry', { presentationId: req.params.id, slideIndex: slideDef.index });
               broadcast(req.params.id, { type: 'slide_error', index: done.index, message: 'Image generation failed' });
             } else {
               broadcast(req.params.id, { type: 'slide_ready', slide: done });
             }
-          }).catch(err => {
+          } catch (err) {
             const errSlide = { ...slideDef, image_data: null, status: 'error' };
             const errRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
             if (!errRow?.slides_data) return;
@@ -1494,8 +1538,8 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
               .run(JSON.stringify(current), req.params.id);
             refundCredits(req.user.id, CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'generation_refund', 'Slide image generation failed — refunded', req.params.id, { slide_index: slideDef.index });
             broadcast(req.params.id, { type: 'slide_error', index: errSlide.index, message: err.message });
-          });
-        })
+          }
+        })()
       );
 
       await Promise.all(imagePromises);
