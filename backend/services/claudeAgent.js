@@ -1510,6 +1510,79 @@ export async function generateSingleSlidePrompt(slide, header, originalBrief, at
   };
 }
 
+// ─── Targeted single-slide outline (fallback for any slide missed by streamNewSlides) ─
+
+const SINGLE_NEW_SLIDE_SYSTEM = `You are Nova, planning ONE new slide to add to an existing presentation. The user has given you the full context of the existing deck plus a description of what new slide(s) they want.
+
+Output ONLY a single JSON object — no markdown, no commentary, no code fences, no "SLIDE:" prefix:
+{"type":"cover|section|content|quote|data|image|conclusion","title":"...","subtitle":"...or null","key_points":["Bullet ≤ 12 words"],"speaker_note":"..."}
+
+Rules:
+- This is a compact outline only, NOT the final visual prompt (that is generated separately in a follow-up step)
+- The slide must continue the story naturally from the existing slides
+- Maintain the same visual style, theme, and tone as the existing deck
+- The "recent_slide_visuals" field in the context contains the actual nano_banana_prompt used for every existing slide in this deck — read these to understand the established color usage, typography, and visual motifs
+- Every slide except type "cover" must have a KEY TAKEAWAY headline as its title — reading only titles should tell the full story
+- key_points ≤ 12 words each
+- Do NOT include index, nano_banana_prompt, or attach_image_categories fields`;
+
+export async function generateSingleNewSlide(index, description, presentationContext, userId = null) {
+  if (MOCK_MODE) {
+    return {
+      index,
+      type: 'content',
+      title: `New Slide ${index + 1}`,
+      subtitle: null,
+      key_points: [],
+      speaker_note: '',
+      nano_banana_prompt: null,
+      attach_image_categories: [],
+    };
+  }
+
+  const message = `EXISTING PRESENTATION CONTEXT:
+${JSON.stringify(presentationContext, null, 2)}
+
+USER REQUEST: ${description}
+
+Output the JSON object for ONE new slide (slide index ${index}) that continues this deck.`;
+
+  const _t = Date.now();
+  logger.info('generating targeted single new slide', { index });
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1024,
+    system: SINGLE_NEW_SLIDE_SYSTEM,
+    messages: [{ role: 'user', content: message }],
+  });
+
+  if (userId) {
+    try {
+      recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+      metrics.recordAICall({ fn: 'generateSingleNewSlide', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs: Date.now() - _t });
+    } catch {}
+  }
+
+  const text = response.content[0].text.trim();
+  const jsonText = text.startsWith('```')
+    ? text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+    : text;
+  const raw = parseJSON(jsonText);
+  logger.info('targeted single new slide complete', { index, title: raw.title });
+
+  return {
+    index,
+    type: raw.type || 'content',
+    title: raw.title || `New Slide ${index + 1}`,
+    subtitle: raw.subtitle ?? null,
+    key_points: raw.key_points || [],
+    speaker_note: raw.speaker_note || '',
+    nano_banana_prompt: null,
+    attach_image_categories: [],
+  };
+}
+
 export async function streamNewSlides(description, count, startIndex, presentationContext, onSlide, userId = null) {
   const isAuto = count === null || count === 'auto';
 
@@ -1626,4 +1699,28 @@ FINAL CHECK before you respond: ${
   }
   logger.info('claude add-slides stream complete', { durationMs: Date.now() - tSlides, emittedCount, requested: count });
   tracer.recordStep(_tid, 'claude_new_slides', 'completed', Date.now() - _t);
+
+  // The stream occasionally ends with fewer SLIDE: lines than requested even
+  // though stop_reason isn't max_tokens and nothing failed to parse — Claude
+  // simply doesn't emit one. Rather than leave a gap (filled downstream with
+  // a generic "New Slide N" / empty key_points placeholder, which then tends
+  // to make Phase 2's prompt generation skip it too), generate the missing
+  // slide(s) directly with a single targeted call so every requested slide
+  // gets real, on-topic content.
+  if (!isAuto && emittedCount < count) {
+    const missing = [];
+    for (let i = emittedCount; i < count; i++) missing.push(startIndex + i);
+    logger.warn('streamNewSlides: stream produced fewer slides than requested — generating missing slide(s) directly', { emittedCount, count, missing });
+    await Promise.all(missing.map(async (index) => {
+      try {
+        onSlide(await generateSingleNewSlide(index, description, presentationContext, userId));
+      } catch (err) {
+        logger.error('streamNewSlides: targeted single-slide fallback failed', { index, errorMessage: err.message });
+        onSlide({
+          index, type: 'content', title: `New Slide ${index + 1}`, subtitle: null,
+          key_points: [], speaker_note: '', nano_banana_prompt: null, attach_image_categories: [],
+        });
+      }
+    }));
+  }
 }
