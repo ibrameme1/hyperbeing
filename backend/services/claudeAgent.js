@@ -1417,22 +1417,24 @@ Return only the title text, nothing else.`,
 
 // ─── Stream new slides (add-slides feature) ──────────────────────────────────
 
-const ADD_SLIDES_SYSTEM_PROMPT = `You are Nova, planning new slides to add to an existing presentation. The user has given you the full context of the existing deck plus a description of what new slides they want.
+// Compact planner: decides the set of new slides as type + title stubs ONLY.
+// The output is tiny (one short line per slide, no key_points/prompts), which
+// is far more reliable than a full-outline stream — the model doesn't
+// under-produce and drop the last slide the way it did when asked to emit full
+// outlines. Each stub is then expanded into a full outline, in parallel, by
+// generateSingleNewSlide.
+const NEW_SLIDES_PLAN_SYSTEM = `You are Nova, planning new slides to add to an existing presentation. The user has given you the full context of the existing deck plus a description of what new slides they want.
 
-Output format — CRITICAL. Output ONLY lines starting with SLIDE:. No HEADER: line. No other text, no markdown, no commentary.
-
-One line per new slide — a compact outline only, NOT the final visual prompt (that is generated separately in a follow-up step):
-SLIDE:{"index":<N>,"type":"cover|section|content|quote|data|image|conclusion","title":"...","subtitle":"...or null","key_points":["Bullet ≤ 12 words"],"speaker_note":"..."}
+Output ONLY a JSON array — no markdown, no commentary, no code fences, no prefix:
+[{"type":"cover|section|content|quote|data|image|conclusion","title":"KEY TAKEAWAY headline ≤ 14 words"}]
 
 Rules:
-- Output EXACTLY the number of SLIDE: lines requested — not fewer, not more
-- index values start from the provided startIndex and increment by 1
-- The new slides must continue the story naturally from the existing slides
-- Maintain the same visual style, theme, and tone as the existing deck
-- The "recent_slide_visuals" field in the context contains the actual nano_banana_prompt used for every existing slide in this deck — read these to understand the established color usage, typography, and visual motifs. A follow-up step will use this same context to generate the full visual prompt for each new slide
+- Output EXACTLY the number of slides requested, in order (unless told to choose the count)
+- Each slide must cover a DISTINCT angle — no two slides may overlap in topic
+- The new slides must continue the story naturally from the existing slides and match the deck's tone
+- The "recent_slide_visuals" field in the context shows the established visual language — stay consistent with it
 - Every slide except type "cover" must have a KEY TAKEAWAY headline as its title — reading only titles should tell the full story
-- key_points ≤ 12 words each
-- Do NOT include a nano_banana_prompt or attach_image_categories field — keep each line short and strictly valid JSON`;
+- Keep it to type + title only. No key_points, no subtitles, no prompts — those are generated in follow-up steps. Keep the whole array short and strictly valid JSON.`;
 
 // ─── Targeted single-slide prompt (fallback for any slide missed by the stream) ─
 // Plain-text output — no JSON parsing required, eliminating the failure mode
@@ -1526,12 +1528,13 @@ Rules:
 - key_points ≤ 12 words each
 - Do NOT include index, nano_banana_prompt, or attach_image_categories fields`;
 
-export async function generateSingleNewSlide(index, description, presentationContext, userId = null) {
+export async function generateSingleNewSlide(index, description, presentationContext, userId = null, opts = {}) {
+  const { assignedTitle = null, assignedType = null, siblingTitles = null } = opts;
   if (MOCK_MODE) {
     return {
       index,
-      type: 'content',
-      title: `New Slide ${index + 1}`,
+      type: assignedType || 'content',
+      title: assignedTitle || `New Slide ${index + 1}`,
       subtitle: null,
       key_points: [],
       speaker_note: '',
@@ -1540,12 +1543,18 @@ export async function generateSingleNewSlide(index, description, presentationCon
     };
   }
 
+  const assignment = assignedTitle
+    ? `\nThis is slide index ${index}. Its assigned headline/angle is: "${assignedTitle}" (type: ${assignedType || 'content'}). Flesh out THIS slide only — keep this exact angle (you may sharpen the wording), then write its key_points and speaker_note.`
+    : `\nOutput the JSON object for ONE new slide (slide index ${index}) that continues this deck.`;
+  const siblings = siblingTitles?.length
+    ? `\n\nThe full set of new slides being added together (cover ONLY your assigned angle — do not duplicate any other slide's content):\n${siblingTitles.map((t, i) => `${i + 1}. ${t}`).join('\n')}`
+    : '';
+
   const message = `EXISTING PRESENTATION CONTEXT:
 ${JSON.stringify(presentationContext, null, 2)}
 
 USER REQUEST: ${description}
-
-Output the JSON object for ONE new slide (slide index ${index}) that continues this deck.`;
+${assignment}${siblings}`;
 
   const _t = Date.now();
   logger.info('generating targeted single new slide', { index });
@@ -1573,8 +1582,8 @@ Output the JSON object for ONE new slide (slide index ${index}) that continues t
 
   return {
     index,
-    type: raw.type || 'content',
-    title: raw.title || `New Slide ${index + 1}`,
+    type: raw.type || assignedType || 'content',
+    title: raw.title || assignedTitle || `New Slide ${index + 1}`,
     subtitle: raw.subtitle ?? null,
     key_points: raw.key_points || [],
     speaker_note: raw.speaker_note || '',
@@ -1604,123 +1613,90 @@ export async function streamNewSlides(description, count, startIndex, presentati
     return;
   }
 
-  const indices = isAuto ? null : Array.from({ length: count }, (_, i) => startIndex + i);
-
-  const countInstruction = isAuto
-    ? `Generate however many slides (1–6) are genuinely needed to do this topic justice. Do NOT add padding slides. Quality over quantity.`
-    : `Generate exactly ${count} new slide(s), with index values ${indices.join(', ')} (one SLIDE: line per index, listed in that order).`;
-
-  const message = `EXISTING PRESENTATION CONTEXT:
-${JSON.stringify(presentationContext, null, 2)}
-
-USER REQUEST: ${description}
-
-${countInstruction} Start index at ${startIndex}.
-
-FINAL CHECK before you respond: ${
-    isAuto
-      ? `output one SLIDE: line per slide you decided to add — do not stop after the first one if more are needed.`
-      : `you must output exactly ${count} SLIDE: line(s) — one for each of these indices, in order: ${indices.join(', ')}. Do not stop after fewer lines.`
-  }`;
-
   const _tid = requestContext.getStore()?.requestId;
   const _t = Date.now();
   tracer.recordStep(_tid, 'claude_new_slides', 'started', 0);
 
-  logger.info('claude add-slides stream start', { count, startIndex });
+  logger.info('claude add-slides plan start', { count, startIndex });
   const tSlides = Date.now();
 
-  const stream = client.messages.stream({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 8000,
-    system: ADD_SLIDES_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: message }],
-  });
+  // Phase 1a — plan: one short call that returns just type + title per slide.
+  // Tiny output ⇒ the model reliably produces the full set instead of dropping
+  // the last slide the way a full-outline stream did. Distinct angles are
+  // decided here, so the parallel expansion below can't produce duplicates.
+  const countInstruction = isAuto
+    ? `Decide how many slides (1–6) genuinely serve this request — no padding. Quality over quantity.`
+    : `Output exactly ${count} slide objects, in order.`;
+  const planMessage = `EXISTING PRESENTATION CONTEXT:
+${JSON.stringify(presentationContext, null, 2)}
 
-  let buffer = '';
-  // Position-based index assignment: never trust the index Claude puts in the
-  // JSON — if it drifts (e.g. restarts at 0/1) it can collide with an existing
-  // slide's index and overwrite it during the merge step downstream. Each new
-  // slide is forced to startIndex + (emission order), guaranteeing the new
-  // slides always land in the fresh placeholder range. For fixed counts, drop
-  // any extra slides beyond what was requested/placeholdered.
-  let emittedCount = 0;
-  const emitSlide = (raw) => {
-    if (!isAuto && emittedCount >= count) {
-      logger.warn('streamNewSlides: dropping extra slide beyond requested count', { emittedCount, count, title: raw.title });
-      return;
-    }
-    raw.index = startIndex + emittedCount;
-    emittedCount++;
-    logger.debug('new slide parsed', { index: raw.index, title: raw.title });
-    onSlide(raw);
-  };
+USER REQUEST: ${description}
 
-  for await (const event of stream) {
-    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-      buffer += event.delta.text;
-      const { objects, remaining } = extractPrefixedObjects(buffer);
-      buffer = remaining;
+${countInstruction}`;
 
-      for (const { prefix, jsonStr } of objects) {
-        if (prefix === 'SLIDE:') {
-          try {
-            emitSlide(parseJSON(jsonStr));
-          } catch (e) {
-            logger.warn('failed to parse new slide', { errorMessage: e.message });
-          }
-        }
-      }
-    }
-  }
-
-  if (buffer.trim()) {
-    const { objects, remaining } = extractPrefixedObjects(buffer + '\n');
-    for (const { prefix, jsonStr } of objects) {
-      if (prefix === 'SLIDE:') {
-        try { emitSlide(parseJSON(jsonStr)); } catch (e) {
-          logger.warn('failed to parse new slide (final buffer)', { errorMessage: e.message, jsonStrPreview: jsonStr.slice(0, 200) });
-        }
-      }
-    }
-    if (remaining.trim()) {
-      logger.warn('streamNewSlides: incomplete SLIDE object left in buffer at stream end', { remainingPreview: remaining.slice(0, 300) });
-    }
-  }
-
-  let finalMsg = null;
-  try { finalMsg = await stream.finalMessage(); } catch {}
-  if (finalMsg?.stop_reason === 'max_tokens') {
-    logger.warn('streamNewSlides: response truncated by max_tokens', { emittedCount, count, startIndex });
-  }
-  if (userId && finalMsg) {
-    recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
-    metrics.recordAICall({ fn: 'streamNewSlides', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - tSlides });
-  }
-  logger.info('claude add-slides stream complete', { durationMs: Date.now() - tSlides, emittedCount, requested: count });
-  tracer.recordStep(_tid, 'claude_new_slides', 'completed', Date.now() - _t);
-
-  // The stream occasionally ends with fewer SLIDE: lines than requested even
-  // though stop_reason isn't max_tokens and nothing failed to parse — Claude
-  // simply doesn't emit one. Rather than leave a gap (filled downstream with
-  // a generic "New Slide N" / empty key_points placeholder, which then tends
-  // to make Phase 2's prompt generation skip it too), generate the missing
-  // slide(s) directly with a single targeted call so every requested slide
-  // gets real, on-topic content.
-  if (!isAuto && emittedCount < count) {
-    const missing = [];
-    for (let i = emittedCount; i < count; i++) missing.push(startIndex + i);
-    logger.warn('streamNewSlides: stream produced fewer slides than requested — generating missing slide(s) directly', { emittedCount, count, missing });
-    await Promise.all(missing.map(async (index) => {
+  let stubs = [];
+  try {
+    const planResp = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1500,
+      system: NEW_SLIDES_PLAN_SYSTEM,
+      messages: [{ role: 'user', content: planMessage }],
+    });
+    if (userId) {
       try {
-        onSlide(await generateSingleNewSlide(index, description, presentationContext, userId));
-      } catch (err) {
-        logger.error('streamNewSlides: targeted single-slide fallback failed', { index, errorMessage: err.message });
-        onSlide({
-          index, type: 'content', title: `New Slide ${index + 1}`, subtitle: null,
-          key_points: [], speaker_note: '', nano_banana_prompt: null, attach_image_categories: [],
-        });
-      }
-    }));
+        recordTokenUsage(userId, planResp.usage?.input_tokens, planResp.usage?.output_tokens);
+        metrics.recordAICall({ fn: 'planNewSlides', inputTokens: planResp.usage?.input_tokens, outputTokens: planResp.usage?.output_tokens, durationMs: Date.now() - tSlides });
+      } catch {}
+    }
+    const text = planResp.content[0].text.trim();
+    const jsonText = text.startsWith('```') ? text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '') : text;
+    const parsed = parseJSON(jsonText);
+    if (Array.isArray(parsed)) stubs = parsed.filter(s => s && typeof s === 'object');
+  } catch (err) {
+    logger.warn('streamNewSlides: plan call failed — falling back to generic stubs', { errorMessage: err.message });
   }
+
+  // Normalise the stub count: for fixed counts, trim extras and pad shortfalls
+  // with empty stubs (still expanded into real, on-topic, distinct slides
+  // below, since each expansion sees the user request + its siblings). For auto
+  // mode, use whatever the plan returned, clamped to 1–6.
+  if (isAuto) {
+    if (stubs.length === 0) stubs = [{ type: 'content', title: '' }];
+    stubs = stubs.slice(0, 6);
+  } else {
+    stubs = stubs.slice(0, count);
+    while (stubs.length < count) stubs.push({ type: 'content', title: '' });
+  }
+
+  const siblingTitles = stubs.map((s, i) => s.title || `New slide ${i + 1}`);
+  logger.info('claude add-slides plan complete', { durationMs: Date.now() - tSlides, planned: stubs.length, requested: count });
+
+  // Phase 1b — expand: flesh out every stub into a full outline in parallel.
+  // One call per slide means a slide can never be dropped, and concurrency
+  // keeps the whole phase to roughly a single call's latency.
+  const expanded = await Promise.all(stubs.map((stub, i) => {
+    const index = startIndex + i;
+    return generateSingleNewSlide(index, description, presentationContext, userId, {
+      assignedTitle: stub.title || null,
+      assignedType: stub.type || null,
+      siblingTitles,
+    }).catch(err => {
+      logger.error('streamNewSlides: slide expansion failed — using stub', { index, errorMessage: err.message });
+      return {
+        index,
+        type: stub.type || 'content',
+        title: stub.title || `New Slide ${index + 1}`,
+        subtitle: null,
+        key_points: [],
+        speaker_note: '',
+        nano_banana_prompt: null,
+        attach_image_categories: [],
+      };
+    });
+  }));
+
+  // Emit in index order so downstream sorting/placeholder matching is stable.
+  for (const slide of expanded) onSlide(slide);
+
+  tracer.recordStep(_tid, 'claude_new_slides', 'completed', Date.now() - _t);
 }

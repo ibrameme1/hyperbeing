@@ -299,6 +299,11 @@ function PresentationCard({ pres, onDelete }) {
   };
   const statusLabels = { chat: 'Draft', ready: 'Ready', generating: 'Generating…', completed: 'Complete' };
 
+  // While an add-slides run is in flight the row stays 'completed' but new
+  // slides are still being made — surface that as "Generating…" so the card
+  // doesn't falsely read "Complete".
+  const effectiveStatus = pres.adding_slides ? 'generating' : pres.status;
+
   return (
     <motion.div
       layout
@@ -337,9 +342,9 @@ function PresentationCard({ pres, onDelete }) {
           </div>
           <span
             className="text-xs font-semibold px-2 py-0.5 rounded-lg flex-shrink-0"
-            style={statusStyles[pres.status] || { background: 'rgba(120,120,120,0.15)', color: '#888' }}
+            style={statusStyles[effectiveStatus] || { background: 'rgba(120,120,120,0.15)', color: '#888' }}
           >
-            {statusLabels[pres.status] ?? '—'}
+            {statusLabels[effectiveStatus] ?? '—'}
           </span>
         </div>
       </div>

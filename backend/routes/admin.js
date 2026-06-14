@@ -194,7 +194,7 @@ router.patch('/users/:id', authenticateToken, requireAdmin, (req, res) => {
 
 // ─── GET /api/admin/presentations/all ────────────────────────────────────────
 router.get('/presentations/all', authenticateToken, requireAdmin, (req, res) => {
-  const { search = '', userId = '', limit = 50, offset = 0 } = req.query;
+  const { search = '', userId = '', limit = 50, offset = 0, sort = 'updated', dir = 'desc' } = req.query;
   const safeLimit  = Math.min(parseInt(limit)  || 50, 200);
   const safeOffset = Math.max(parseInt(offset) || 0, 0);
   const db = getDb();
@@ -216,14 +216,24 @@ router.get('/presentations/all', authenticateToken, requireAdmin, (req, res) => 
     ${where}
   `).get(...params).n;
 
+  // Approximate on-disk footprint of a presentation: the JSON text columns
+  // dominate (slides_data holds base64 image data). LENGTH() on TEXT is the
+  // same measure the storage-breakdown card uses, so the numbers line up.
+  const sizeExpr = `(COALESCE(LENGTH(p.slides_data),0) + COALESCE(LENGTH(p.slide_plan),0) + COALESCE(LENGTH(p.thumbnail),0) + COALESCE(LENGTH(p.locked_slides),0))`;
+  // Whitelist sortable columns — never interpolate raw user input into SQL.
+  const sortColumns = { size: 'bytes', updated: 'p.updated_at', created: 'p.created_at', slides: 'slide_count', title: 'p.title' };
+  const orderCol = sortColumns[sort] || 'p.updated_at';
+  const orderDir = String(dir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
   const presentations = db.prepare(`
     SELECT p.id, p.title, p.status, p.aspect_ratio, p.created_at, p.updated_at,
            u.id as user_id, u.name as user_name, u.email as user_email,
-           COALESCE(json_array_length(p.slides_data), 0) as slide_count
+           COALESCE(json_array_length(p.slides_data), 0) as slide_count,
+           ${sizeExpr} as bytes
     FROM presentations p
     JOIN users u ON u.id = p.user_id
     ${where}
-    ORDER BY p.updated_at DESC
+    ORDER BY ${orderCol} ${orderDir}
     LIMIT ? OFFSET ?
   `).all(...params, safeLimit, safeOffset);
 
