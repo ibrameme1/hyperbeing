@@ -87,7 +87,7 @@ function broadcastDashboardUpdate(db, userId, presentationId) {
   const clients = userSseRegistry.get(String(userId));
   if (!clients || clients.size === 0) return;
   const row = db.prepare(
-    'SELECT id, title, status, thumbnail, created_at, updated_at FROM presentations WHERE id = ? AND user_id = ?'
+    'SELECT id, title, status, thumbnail, adding_slides, created_at, updated_at FROM presentations WHERE id = ? AND user_id = ?'
   ).get(presentationId, userId);
   if (!row) return;
   const payload = `data: ${JSON.stringify({ type: 'presentation_updated', presentation: row })}\n\n`;
@@ -137,7 +137,7 @@ router.post('/fetch-url', authenticateToken, async (req, res) => {
 router.get('/', authenticateToken, (req, res) => {
   const rows = getDb()
     .prepare(
-      `SELECT id, title, status, thumbnail, created_at, updated_at
+      `SELECT id, title, status, thumbnail, adding_slides, created_at, updated_at
        FROM presentations WHERE user_id = ? ORDER BY updated_at DESC`
     )
     .all(req.user.id);
@@ -164,7 +164,7 @@ router.get('/dashboard-events', authenticateToken, (req, res) => {
 
   // Send current list immediately on connect so the dashboard always has fresh data
   const rows = getDb()
-    .prepare('SELECT id, title, status, thumbnail, created_at, updated_at FROM presentations WHERE user_id = ? ORDER BY updated_at DESC')
+    .prepare('SELECT id, title, status, thumbnail, adding_slides, created_at, updated_at FROM presentations WHERE user_id = ? ORDER BY updated_at DESC')
     .all(req.user.id);
   res.write(`data: ${JSON.stringify({ type: 'snapshot', presentations: rows })}\n\n`);
 
@@ -1304,9 +1304,13 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
     image_data: null,
   }));
   const newSlides = [...slides, ...placeholders];
-  db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+  // Flag the row as adding-slides so the dashboard shows "Generating…" — the
+  // presentation status stays 'completed' throughout the run, so without this
+  // the dashboard card would say "Complete" while new slides are still cooking.
+  db.prepare(`UPDATE presentations SET slides_data = ?, adding_slides = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
     .run(JSON.stringify(newSlides), req.params.id);
   broadcast(req.params.id, { type: 'slides_adding', placeholders });
+  broadcastDashboardUpdate(db, req.user.id, req.params.id);
 
   res.json({ message: 'Adding slides…', startIndex, count: slideCount, auto: isAuto });
 
@@ -1348,49 +1352,41 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       }, req.user.id);
       newSlideDefs.sort((a, b) => a.index - b.index);
 
-      // Phase 2: upgrade image prompts via streamSlidePrompts (same as main generation flow)
-      // streamNewSlides gives basic prompts; PROMPT_GEN_SYSTEM produces the full 5-layer structured ones.
+      // Phase 2: generate the full 5-layer nano_banana_prompt for every new
+      // slide. We do this with one targeted single-slide call per slide, all in
+      // parallel — NOT the monolithic streamSlidePrompts pass used by the main
+      // generation flow. That streaming pass regularly emitted one fewer SLIDE:
+      // line than requested (always dropping the last new slide), which then
+      // forced a slow serial targeted fallback AFTER the ~60s stream had already
+      // finished — so a single add-slides run could spend ~90s in prompt
+      // generation alone. Per-slide calls can't drop a slide and run
+      // concurrently, so this phase now costs roughly one prompt's latency.
       const promptHeader = {
         presentation_title: slidePlan.presentation_title || pres.title,
         theme: slidePlan.theme || 'modern-minimal',
         color_palette: slidePlan.color_palette || {},
       };
-      // Append visual continuity context so the prompt-generation pass matches
-      // the established look of the deck — same as the main generation flow,
-      // which sees the full deck's visual language while writing each prompt.
+      // Append visual continuity context so each prompt matches the established
+      // look of the deck — the existing-deck prompts are the consistency anchor
+      // that matters most for added slides.
       const continuityContext = allSlideVisuals.some(s => s.nano_banana_prompt)
         ? `\n\nEXISTING DECK CONTEXT — for visual continuity, here are all the slides already in this deck and the prompts used to generate them. Match their established color usage, typography, and design language:\n${allSlideVisuals
             .filter(s => s.nano_banana_prompt)
             .map(s => `Slide ${s.index} (${s.type}) "${s.title}":\n${s.nano_banana_prompt}`)
             .join('\n\n')}`
         : '';
-      const promptedByIndex = new Map(newSlideDefs.map(s => [s.index, s]));
-      await streamSlidePrompts(newSlideDefs, promptHeader, description + continuityContext, combinedImages, {
-        onPrompt(slide) { promptedByIndex.set(slide.index, slide); },
-      });
-      const promptedSlideDefs = newSlideDefs.map(s => promptedByIndex.get(s.index) || s);
-
-      // Phase 2 maps prompts to slides by position — if Claude ever outputs
-      // fewer SLIDE: lines than newSlideDefs.length (or a gap-filled slide
-      // from above didn't get picked up), that slide is left with no
-      // nano_banana_prompt and would fall back to using its bare title as the
-      // image prompt, producing a generic/off-brand image instead of a real
-      // one. Generate a proper prompt via the same targeted single-slide call
-      // used elsewhere (plain-text output, not JSON, so it can't fail to parse).
-      const stillMissingPrompt = promptedSlideDefs.filter(s => !s.nano_banana_prompt);
-      if (stillMissingPrompt.length > 0) {
-        logger.warn('add-slides: slides missing nano_banana_prompt after Phase 2 — generating targeted fallback', { missing: stillMissingPrompt.map(s => s.index) });
-        await Promise.all(stillMissingPrompt.map(async (slide) => {
-          try {
-            const singlePrompt = await generateSingleSlidePrompt(slide, promptHeader, description + continuityContext, combinedImages, req.user.id);
-            const idx = promptedSlideDefs.findIndex(s => s.index === slide.index);
-            promptedSlideDefs[idx] = { ...slide, ...singlePrompt };
-          } catch (err) {
-            logger.error('add-slides: targeted prompt fallback failed', { slideIndex: slide.index, errorMessage: err.message });
-          }
-        }));
-      }
-
+      const promptedSlideDefs = await Promise.all(newSlideDefs.map(async (slide) => {
+        try {
+          const single = await generateSingleSlidePrompt(slide, promptHeader, description + continuityContext, combinedImages, req.user.id);
+          return { ...slide, ...single };
+        } catch (err) {
+          // Leave this slide without a prompt — image gen falls back to the
+          // title and, failing that, surfaces a regenerate option that
+          // generates a proper prompt on demand.
+          logger.error('add-slides: targeted prompt generation failed', { slideIndex: slide.index, errorMessage: err.message });
+          return slide;
+        }
+      }));
 
       // For 'auto' mode the slide count is only known now — check affordability
       // and deduct credits before generating any images.
@@ -1569,6 +1565,15 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
         refundCredits(req.user.id, affordable * CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'generation_refund', 'Add slides failed — refunded', req.params.id, {});
       }
       broadcast(req.params.id, { type: 'error', message: err.message });
+    } finally {
+      // Clear the dashboard "Generating…" flag whether the run succeeded or
+      // failed, and refresh the dashboard so the card flips back to "Complete".
+      try {
+        db.prepare(`UPDATE presentations SET adding_slides = 0 WHERE id = ?`).run(req.params.id);
+        broadcastDashboardUpdate(db, req.user.id, req.params.id);
+      } catch (e) {
+        logger.error('add-slides: failed to clear adding_slides flag', { presentationId: req.params.id, errorMessage: e.message });
+      }
     }
   })();
 });
