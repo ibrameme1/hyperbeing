@@ -13,7 +13,7 @@ import {
   Terminal, Cpu, Search, AlertCircle, Info, AlertTriangle, Bug,
   Pencil, Check, X, ArrowLeft, Trash2, Database, Save, ExternalLink,
   TableProperties, ChevronLeft, HardDrive, Folder, File, Download,
-  ArrowUp, ChevronsUpDown,
+  ArrowUp, ChevronsUpDown, Copy,
 } from 'lucide-react';
 import api from '../api/client';
 
@@ -233,6 +233,9 @@ export default function AnalyticsDashboard() {
   const [allPresSearch, setAllPresSearch] = useState('');
   const [allPresOffset, setAllPresOffset] = useState(0);
   const [allPresTotal, setAllPresTotal] = useState(0);
+  const [allPresSort, setAllPresSort] = useState('updated');
+  const [allPresDir, setAllPresDir] = useState('desc');
+  const [copiedPrompt, setCopiedPrompt] = useState(null);
   const [selectedPresId, setSelectedPresId] = useState(null);
   const [selectedPresDetail, setSelectedPresDetail] = useState(null);
   const [selectedPresLoading, setSelectedPresLoading] = useState(false);
@@ -373,19 +376,31 @@ export default function AnalyticsDashboard() {
     } catch { setAllUsersError(true); } finally { setAllUsersLoading(false); }
   }, [allUsersSearch, allUsersOffset]);
 
-  const fetchAllPres = useCallback(async (search, offset) => {
+  const fetchAllPres = useCallback(async (search, offset, sort, dir) => {
     const s = search ?? allPresSearch;
     const o = offset ?? allPresOffset;
+    const so = sort ?? allPresSort;
+    const di = dir ?? allPresDir;
     setAllPresLoading(true);
     setAllPresError(false);
     try {
-      const p = new URLSearchParams({ limit: 50, offset: o, search: s });
+      const p = new URLSearchParams({ limit: 50, offset: o, search: s, sort: so, dir: di });
       const { data } = await api.get(`/admin/presentations/all?${p}`);
       setAllPresList(data.presentations);
       setAllPresTotal(data.total);
       setAllPresOffset(o);
     } catch { setAllPresError(true); } finally { setAllPresLoading(false); }
-  }, [allPresSearch, allPresOffset]);
+  }, [allPresSearch, allPresOffset, allPresSort, allPresDir]);
+
+  // Server-side sort (the list is paginated, so sorting must round-trip).
+  // Clicking the active column flips direction; a new column starts descending.
+  function presSortBy(col) {
+    const nextDir = allPresSort === col ? (allPresDir === 'asc' ? 'desc' : 'asc') : 'desc';
+    setAllPresSort(col);
+    setAllPresDir(nextDir);
+    setAllPresOffset(0);
+    fetchAllPres(allPresSearch, 0, col, nextDir);
+  }
 
   const fetchPresDetail = async (id) => {
     setSelectedPresId(id);
@@ -1409,11 +1424,27 @@ export default function AnalyticsDashboard() {
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-white/10 text-gray-500 text-left">
-                          <th className="pb-2 pr-3">Title</th>
-                          <th className="pb-2 pr-3">User</th>
-                          <th className="pb-2 pr-3">Status</th>
-                          <th className="pb-2 pr-3">Slides</th>
-                          <th className="pb-2 pr-3">Updated</th>
+                          {[
+                            { key: 'title', label: 'Title' },
+                            { key: null, label: 'User' },
+                            { key: null, label: 'Status' },
+                            { key: 'slides', label: 'Slides' },
+                            { key: 'size', label: 'Size' },
+                            { key: 'updated', label: 'Updated' },
+                          ].map((col, ci) => (
+                            <th
+                              key={ci}
+                              className={`pb-2 pr-3 whitespace-nowrap ${col.key ? 'cursor-pointer hover:text-gray-300 transition select-none' : ''}`}
+                              onClick={col.key ? () => presSortBy(col.key) : undefined}
+                            >
+                              <span className="flex items-center gap-1">
+                                {col.label}
+                                {col.key && (allPresSort === col.key
+                                  ? (allPresDir === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)
+                                  : <ChevronsUpDown size={10} className="opacity-30" />)}
+                              </span>
+                            </th>
+                          ))}
                           <th className="pb-2"></th>
                         </tr>
                       </thead>
@@ -1463,6 +1494,7 @@ export default function AnalyticsDashboard() {
                               </td>
                               <td className="pr-3"><StatusBadge status={p.status} /></td>
                               <td className="pr-3 font-mono text-gray-300">{p.slide_count}</td>
+                              <td className="pr-3 font-mono text-gray-300">{fmtBytes(p.bytes || 0)}</td>
                               <td className="pr-3 text-gray-500">{relTime(p.updated_at)}</td>
                               <td>
                                 <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1499,7 +1531,7 @@ export default function AnalyticsDashboard() {
                             {/* Slide detail panel */}
                             {selectedPresId === p.id && (
                               <tr key={`${p.id}-detail`}>
-                                <td colSpan={6} className="bg-gray-900/60 border-b border-white/10">
+                                <td colSpan={7} className="bg-gray-900/60 border-b border-white/10">
                                   <div className="px-4 py-3">
                                     {selectedPresLoading ? (
                                       <div className="flex items-center gap-2 py-4 text-xs text-gray-500">
@@ -1519,12 +1551,16 @@ export default function AnalyticsDashboard() {
                                             Palette: {JSON.stringify(selectedPresDetail.slide_plan?.color_palette ?? {})}
                                           </span>
                                         </div>
-                                        {(selectedPresDetail.slides_data ?? []).map((slide, si) => (
+                                        {(selectedPresDetail.slides_data ?? []).map((slide, si) => {
+                                          const prompt = slide.nano_banana_prompt || slide.image_prompt;
+                                          const promptKey = `${p.id}-${si}`;
+                                          return (
                                           <div key={si} className="rounded-lg border border-white/10 bg-white/5 p-3">
                                             <div className="flex items-center gap-3 mb-1">
-                                              <span className="font-mono text-[10px] text-gray-600">#{si}</span>
+                                              <span className="font-mono text-[10px] text-gray-600">#{slide.index ?? si}</span>
                                               <span className="text-[10px] rounded-full px-2 py-0.5 bg-blue-900/40 text-blue-400">{slide.type}</span>
                                               <p className="text-xs font-semibold text-gray-200 truncate">{slide.title}</p>
+                                              {slide.status && <span className="text-[9px] text-gray-600">· {slide.status}</span>}
                                             </div>
                                             {slide.subtitle && <p className="text-[10px] text-gray-500 mb-1">{slide.subtitle}</p>}
                                             {(slide.key_points ?? []).length > 0 && (
@@ -1532,13 +1568,36 @@ export default function AnalyticsDashboard() {
                                                 {slide.key_points.map((kp, ki) => <li key={ki}>{kp}</li>)}
                                               </ul>
                                             )}
-                                            {slide.nano_banana_prompt && (
-                                              <p className="text-[10px] text-gray-600 line-clamp-2 mt-1 italic">
-                                                {slide.nano_banana_prompt.slice(0, 200)}…
+                                            {prompt ? (
+                                              <div className="mt-1.5">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                  <span className="text-[9px] uppercase tracking-wide text-gray-500">Gemini prompt</span>
+                                                  <span className="text-[9px] text-gray-600">{prompt.length.toLocaleString()} chars</span>
+                                                  <button
+                                                    onClick={() => {
+                                                      navigator.clipboard?.writeText(prompt);
+                                                      setCopiedPrompt(promptKey);
+                                                      setTimeout(() => setCopiedPrompt(c => c === promptKey ? null : c), 1500);
+                                                    }}
+                                                    className="text-[9px] text-gray-500 hover:text-purple-400 transition flex items-center gap-1"
+                                                  >
+                                                    {copiedPrompt === promptKey
+                                                      ? <><Check size={9} /> Copied</>
+                                                      : <><Copy size={9} /> Copy</>}
+                                                  </button>
+                                                </div>
+                                                <pre className="text-[10px] text-gray-400 whitespace-pre-wrap break-words max-h-56 overflow-y-auto rounded bg-black/30 border border-white/5 p-2 font-mono leading-relaxed">
+                                                  {prompt}
+                                                </pre>
+                                              </div>
+                                            ) : (
+                                              <p className="text-[10px] text-gray-600 italic mt-1">
+                                                No prompt stored (slide may be locked, or failed before prompt generation).
                                               </p>
                                             )}
                                           </div>
-                                        ))}
+                                          );
+                                        })}
                                       </div>
                                     )}
                                   </div>
