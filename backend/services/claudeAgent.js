@@ -1078,7 +1078,9 @@ Color palette: ${JSON.stringify(header.color_palette)}
 Slide outline:
 ${outlineText}
 
-Original brief: ${message}`;
+Original brief: ${message}
+
+FINAL CHECK before you respond: you must output exactly ${sortedSlides.length} SLIDE: line(s) — one for each of these indices, in order: ${sortedSlides.map(s => s.index).join(', ')}. Do not stop after fewer lines.`;
 
   const userContent = buildUserContent(promptMessage, attachments);
 
@@ -1128,22 +1130,29 @@ Original brief: ${message}`;
   }
 
   if (buffer.trim()) {
-    const { objects } = extractPrefixedObjects(buffer + '\n');
+    const { objects, remaining } = extractPrefixedObjects(buffer + '\n');
     for (const { prefix, jsonStr } of objects) {
       if (prefix === 'SLIDE:') {
-        try { handleParsedPrompt(parseJSON(jsonStr)); } catch {}
+        try { handleParsedPrompt(parseJSON(jsonStr)); } catch (e) {
+          logger.warn('failed to parse slide prompt (final buffer)', { errorMessage: e.message, jsonStrPreview: jsonStr.slice(0, 200) });
+        }
       }
+    }
+    if (remaining.trim()) {
+      logger.warn('streamSlidePrompts: incomplete SLIDE object left in buffer at stream end', { remainingPreview: remaining.slice(0, 300) });
     }
   }
 
-  if (userId) {
-    try {
-      const finalMsg = await stream.finalMessage();
-      recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
-      metrics.recordAICall({ fn: 'streamSlidePrompts', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - t0 });
-    } catch {}
+  let finalMsg = null;
+  try { finalMsg = await stream.finalMessage(); } catch {}
+  if (finalMsg?.stop_reason === 'max_tokens') {
+    logger.warn('streamSlidePrompts: response truncated by max_tokens', { promptsGenerated: promptPosition, expected: sortedSlides.length });
   }
-  logger.info('claude prompt generation complete', { durationMs: Date.now() - t0 });
+  if (userId && finalMsg) {
+    recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
+    metrics.recordAICall({ fn: 'streamSlidePrompts', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - t0 });
+  }
+  logger.info('claude prompt generation complete', { durationMs: Date.now() - t0, promptsGenerated: promptPosition, expected: sortedSlides.length });
   tracer.recordStep(_tid, 'claude_prompt_gen', 'completed', Date.now() - _t);
 }
 
@@ -1408,97 +1417,22 @@ Return only the title text, nothing else.`,
 
 // ─── Stream new slides (add-slides feature) ──────────────────────────────────
 
-const ADD_SLIDES_SYSTEM_PROMPT = `You are Nova, adding new slides to an existing presentation. The user has given you the full context of the existing deck plus a description of what new slides they want.
+const ADD_SLIDES_SYSTEM_PROMPT = `You are Nova, planning new slides to add to an existing presentation. The user has given you the full context of the existing deck plus a description of what new slides they want.
 
 Output format — CRITICAL. Output ONLY lines starting with SLIDE:. No HEADER: line. No other text, no markdown, no commentary.
 
-One line per new slide:
-SLIDE:{"index":<N>,"type":"cover|section|content|quote|data|image|conclusion","title":"...","subtitle":"...or null","key_points":["..."],"speaker_note":"...","nano_banana_prompt":"...250-600 word prompt...","attach_image_categories":["moodboard"|"branding"|"all"|[]]}
+One line per new slide — a compact outline only, NOT the final visual prompt (that is generated separately in a follow-up step):
+SLIDE:{"index":<N>,"type":"cover|section|content|quote|data|image|conclusion","title":"...","subtitle":"...or null","key_points":["Bullet ≤ 12 words"],"speaker_note":"..."}
 
 Rules:
 - Output EXACTLY the number of SLIDE: lines requested — not fewer, not more
 - index values start from the provided startIndex and increment by 1
 - The new slides must continue the story naturally from the existing slides
 - Maintain the same visual style, theme, and tone as the existing deck
-- Every slide except type "cover" must have a KEY TAKEAWAY headline as its title
-- nano_banana_prompt must be 250–600 words following the MANDATORY 5-LAYER STRUCTURE below — same standard as the rest of the deck
-
-══════════════════════════════════════════
-MANDATORY 5-LAYER STRUCTURE FOR EVERY PROMPT
-══════════════════════════════════════════
-
-Every nano_banana_prompt must contain these layers in this order:
-
-1. BACKGROUND
-   State the exact color (with hex when relevant) AND one sentence on WHY this color serves the slide's mood.
-   Examples: "pure black (#000000). Sparse. The scarcity is the design." / "warm near-black (#0A0A0A) — the color of a cabin at cruising altitude. Cozy. Contained."
-
-2. TOP / HEADER
-   - Bold white ALL-CAPS display type, broken into 2–3 short lines
-   - The LAST line must be in HOT PINK (this is the brand accent — never skip it)
-   - Followed by a subhead in WHITE ITALIC that reframes or sharpens the headline
-   - No corporate filler. Headlines read like copywriter punchlines.
-
-3. MAIN BODY
-   Choose ONE format based on the slide's argument:
-
-   A) SINGLE HERO PHOTOGRAPH — one cinematic image filling the center. Describe lighting, expression, what the subject is doing, what's visible on any screen within the image, and the moment just before something happens (anticipation > action).
-
-   B) COLLAGE OF REAL MOMENTS — 4–8 overlapping candid images. Number each. For each: who is in it, what they're doing, their named emotional state, what's visible on their screen, what they're holding. Must feel unprompted and culturally specific.
-
-   C) STRUCTURED COLUMNS OR GRID — 3–5 vertical sections separated by hairline neon green dividers. Each section gets: a logo/symbol, a large bold stat, a real photo collage, audience pills (rounded rectangles with emoji), a bottom text box. Internal structure must be consistent across sections.
-
-   D) ISOMETRIC 3D RENDER — for ecosystem/architecture/data slides. Specify floors, rings, or pods. State materials (frosted glass, marble, metallic finish), lighting (soft ambient from top), color accents per layer, and what each element CONTAINS (icons, mini visuals, stat callouts).
-
-4. CALLOUT CARDS
-   Specify for each card: border color, background tint, internal text verbatim, emoji used, size relative to other elements.
-   Common forms: hot pink rounded rectangles with emoji, dark green cards with neon green borders, prize badges with country flags, glassmorphism floating cards.
-
-5. BOTTOM STRIP
-   Full-width strip — dark green or pure black. One bold white centered line that delivers the slide's verdict. Optionally followed by a smaller neon green italic line that adds a second beat.
-   The verdict line should land like a punchline: declarative, surprising, final.
-   Examples: "The most powerful marketing tool in Pakistan right now is a number going down." / "First mover doesn't just lead. First mover locks the market."
-
-══════════════════════════════════════════
-NON-NEGOTIABLE COLOR PALETTE
-══════════════════════════════════════════
-
-Default to this palette unless the user's brand explicitly requires otherwise:
-- Pure black (#000000) — primary background for editorial slides
-- Near-black (#0A0A0A) — when texture or grid is layered
-- Hot pink — accent for the final headline line, callout borders, glowing accents
-- Neon green — italic subtext, hairline dividers, pulsing indicators, audience pills
-- Dark green — full-width bottom strips, callout box backgrounds
-- White — primary type, photo borders
-- Gold (#FFB800) — premium/lifestyle elements in 3D style only
-
-For 3D infographic slides: pure white (#FFFFFF) base OR dark navy gradient (#0A0E1A to #1B4F9C), with electric green (#00FFA3) for digital accents.
-
-══════════════════════════════════════════
-QUALITY REQUIREMENTS — EVERY PROMPT MUST HAVE
-══════════════════════════════════════════
-
-- At least 3 sensory details (lighting, texture, expression, sound implication)
-- At least 1 piece of visible on-screen text quoted verbatim when phones or screens appear
-- At least 1 named human emotional state ("deeply confused," "pure anticipation," "completely losing it")
-- Culturally specific markers relevant to the user's audience (specific cities, age groups, social rituals)
-- Every stat paired with a consequence (not "30M users" but what that number means for the argument)
-- A moment of contradiction or surprise where possible
-
-══════════════════════════════════════════
-SELF-CHECK BEFORE OUTPUTTING EACH PROMPT
-══════════════════════════════════════════
-
-- Background color has a stated reason
-- Hot pink accent line is in the headline
-- White italic subhead is present
-- Main body describes at least one specific human moment with named emotion
-- Callouts specify color, border, and content verbatim
-- Bottom strip has a thesis/verdict line
-
-NEVER mention aspect ratio in the prompt text.
-BANNED FOREVER: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart", "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization".
-If moodboard/reference images are in context, explicitly describe which visual elements carry into this slide.`;
+- The "recent_slide_visuals" field in the context contains the actual nano_banana_prompt used for every existing slide in this deck — read these to understand the established color usage, typography, and visual motifs. A follow-up step will use this same context to generate the full visual prompt for each new slide
+- Every slide except type "cover" must have a KEY TAKEAWAY headline as its title — reading only titles should tell the full story
+- key_points ≤ 12 words each
+- Do NOT include a nano_banana_prompt or attach_image_categories field — keep each line short and strictly valid JSON`;
 
 // ─── Targeted single-slide prompt (fallback for any slide missed by the stream) ─
 // Plain-text output — no JSON parsing required, eliminating the failure mode
@@ -1576,6 +1510,79 @@ export async function generateSingleSlidePrompt(slide, header, originalBrief, at
   };
 }
 
+// ─── Targeted single-slide outline (fallback for any slide missed by streamNewSlides) ─
+
+const SINGLE_NEW_SLIDE_SYSTEM = `You are Nova, planning ONE new slide to add to an existing presentation. The user has given you the full context of the existing deck plus a description of what new slide(s) they want.
+
+Output ONLY a single JSON object — no markdown, no commentary, no code fences, no "SLIDE:" prefix:
+{"type":"cover|section|content|quote|data|image|conclusion","title":"...","subtitle":"...or null","key_points":["Bullet ≤ 12 words"],"speaker_note":"..."}
+
+Rules:
+- This is a compact outline only, NOT the final visual prompt (that is generated separately in a follow-up step)
+- The slide must continue the story naturally from the existing slides
+- Maintain the same visual style, theme, and tone as the existing deck
+- The "recent_slide_visuals" field in the context contains the actual nano_banana_prompt used for every existing slide in this deck — read these to understand the established color usage, typography, and visual motifs
+- Every slide except type "cover" must have a KEY TAKEAWAY headline as its title — reading only titles should tell the full story
+- key_points ≤ 12 words each
+- Do NOT include index, nano_banana_prompt, or attach_image_categories fields`;
+
+export async function generateSingleNewSlide(index, description, presentationContext, userId = null) {
+  if (MOCK_MODE) {
+    return {
+      index,
+      type: 'content',
+      title: `New Slide ${index + 1}`,
+      subtitle: null,
+      key_points: [],
+      speaker_note: '',
+      nano_banana_prompt: null,
+      attach_image_categories: [],
+    };
+  }
+
+  const message = `EXISTING PRESENTATION CONTEXT:
+${JSON.stringify(presentationContext, null, 2)}
+
+USER REQUEST: ${description}
+
+Output the JSON object for ONE new slide (slide index ${index}) that continues this deck.`;
+
+  const _t = Date.now();
+  logger.info('generating targeted single new slide', { index });
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1024,
+    system: SINGLE_NEW_SLIDE_SYSTEM,
+    messages: [{ role: 'user', content: message }],
+  });
+
+  if (userId) {
+    try {
+      recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+      metrics.recordAICall({ fn: 'generateSingleNewSlide', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs: Date.now() - _t });
+    } catch {}
+  }
+
+  const text = response.content[0].text.trim();
+  const jsonText = text.startsWith('```')
+    ? text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+    : text;
+  const raw = parseJSON(jsonText);
+  logger.info('targeted single new slide complete', { index, title: raw.title });
+
+  return {
+    index,
+    type: raw.type || 'content',
+    title: raw.title || `New Slide ${index + 1}`,
+    subtitle: raw.subtitle ?? null,
+    key_points: raw.key_points || [],
+    speaker_note: raw.speaker_note || '',
+    nano_banana_prompt: null,
+    attach_image_categories: [],
+  };
+}
+
 export async function streamNewSlides(description, count, startIndex, presentationContext, onSlide, userId = null) {
   const isAuto = count === null || count === 'auto';
 
@@ -1597,16 +1604,24 @@ export async function streamNewSlides(description, count, startIndex, presentati
     return;
   }
 
+  const indices = isAuto ? null : Array.from({ length: count }, (_, i) => startIndex + i);
+
   const countInstruction = isAuto
     ? `Generate however many slides (1–6) are genuinely needed to do this topic justice. Do NOT add padding slides. Quality over quantity.`
-    : `Generate exactly ${count} new slide(s).`;
+    : `Generate exactly ${count} new slide(s), with index values ${indices.join(', ')} (one SLIDE: line per index, listed in that order).`;
 
   const message = `EXISTING PRESENTATION CONTEXT:
 ${JSON.stringify(presentationContext, null, 2)}
 
 USER REQUEST: ${description}
 
-${countInstruction} Start index at ${startIndex}.`;
+${countInstruction} Start index at ${startIndex}.
+
+FINAL CHECK before you respond: ${
+    isAuto
+      ? `output one SLIDE: line per slide you decided to add — do not stop after the first one if more are needed.`
+      : `you must output exactly ${count} SLIDE: line(s) — one for each of these indices, in order: ${indices.join(', ')}. Do not stop after fewer lines.`
+  }`;
 
   const _tid = requestContext.getStore()?.requestId;
   const _t = Date.now();
@@ -1623,6 +1638,23 @@ ${countInstruction} Start index at ${startIndex}.`;
   });
 
   let buffer = '';
+  // Position-based index assignment: never trust the index Claude puts in the
+  // JSON — if it drifts (e.g. restarts at 0/1) it can collide with an existing
+  // slide's index and overwrite it during the merge step downstream. Each new
+  // slide is forced to startIndex + (emission order), guaranteeing the new
+  // slides always land in the fresh placeholder range. For fixed counts, drop
+  // any extra slides beyond what was requested/placeholdered.
+  let emittedCount = 0;
+  const emitSlide = (raw) => {
+    if (!isAuto && emittedCount >= count) {
+      logger.warn('streamNewSlides: dropping extra slide beyond requested count', { emittedCount, count, title: raw.title });
+      return;
+    }
+    raw.index = startIndex + emittedCount;
+    emittedCount++;
+    logger.debug('new slide parsed', { index: raw.index, title: raw.title });
+    onSlide(raw);
+  };
 
   for await (const event of stream) {
     if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
@@ -1633,9 +1665,7 @@ ${countInstruction} Start index at ${startIndex}.`;
       for (const { prefix, jsonStr } of objects) {
         if (prefix === 'SLIDE:') {
           try {
-            const slide = parseJSON(jsonStr);
-            logger.debug('new slide parsed', { index: slide.index, title: slide.title });
-            onSlide(slide);
+            emitSlide(parseJSON(jsonStr));
           } catch (e) {
             logger.warn('failed to parse new slide', { errorMessage: e.message });
           }
@@ -1645,21 +1675,52 @@ ${countInstruction} Start index at ${startIndex}.`;
   }
 
   if (buffer.trim()) {
-    const { objects } = extractPrefixedObjects(buffer + '\n');
+    const { objects, remaining } = extractPrefixedObjects(buffer + '\n');
     for (const { prefix, jsonStr } of objects) {
       if (prefix === 'SLIDE:') {
-        try { onSlide(parseJSON(jsonStr)); } catch {}
+        try { emitSlide(parseJSON(jsonStr)); } catch (e) {
+          logger.warn('failed to parse new slide (final buffer)', { errorMessage: e.message, jsonStrPreview: jsonStr.slice(0, 200) });
+        }
       }
+    }
+    if (remaining.trim()) {
+      logger.warn('streamNewSlides: incomplete SLIDE object left in buffer at stream end', { remainingPreview: remaining.slice(0, 300) });
     }
   }
 
-  if (userId) {
-    try {
-      const finalMsg = await stream.finalMessage();
-      recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
-      metrics.recordAICall({ fn: 'streamNewSlides', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - tSlides });
-    } catch {}
+  let finalMsg = null;
+  try { finalMsg = await stream.finalMessage(); } catch {}
+  if (finalMsg?.stop_reason === 'max_tokens') {
+    logger.warn('streamNewSlides: response truncated by max_tokens', { emittedCount, count, startIndex });
   }
-  logger.info('claude add-slides stream complete', { durationMs: Date.now() - tSlides });
+  if (userId && finalMsg) {
+    recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
+    metrics.recordAICall({ fn: 'streamNewSlides', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - tSlides });
+  }
+  logger.info('claude add-slides stream complete', { durationMs: Date.now() - tSlides, emittedCount, requested: count });
   tracer.recordStep(_tid, 'claude_new_slides', 'completed', Date.now() - _t);
+
+  // The stream occasionally ends with fewer SLIDE: lines than requested even
+  // though stop_reason isn't max_tokens and nothing failed to parse — Claude
+  // simply doesn't emit one. Rather than leave a gap (filled downstream with
+  // a generic "New Slide N" / empty key_points placeholder, which then tends
+  // to make Phase 2's prompt generation skip it too), generate the missing
+  // slide(s) directly with a single targeted call so every requested slide
+  // gets real, on-topic content.
+  if (!isAuto && emittedCount < count) {
+    const missing = [];
+    for (let i = emittedCount; i < count; i++) missing.push(startIndex + i);
+    logger.warn('streamNewSlides: stream produced fewer slides than requested — generating missing slide(s) directly', { emittedCount, count, missing });
+    await Promise.all(missing.map(async (index) => {
+      try {
+        onSlide(await generateSingleNewSlide(index, description, presentationContext, userId));
+      } catch (err) {
+        logger.error('streamNewSlides: targeted single-slide fallback failed', { index, errorMessage: err.message });
+        onSlide({
+          index, type: 'content', title: `New Slide ${index + 1}`, subtitle: null,
+          key_points: [], speaker_note: '', nano_banana_prompt: null, attach_image_categories: [],
+        });
+      }
+    }));
+  }
 }

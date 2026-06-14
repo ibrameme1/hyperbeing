@@ -476,7 +476,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   const isLocked = activeSlide?.status === 'locked';
   const isUpdating = updatingSlides.has(current) || activeSlide?.status === 'generating';
   const isFailed = activeSlide?.status === 'error' && !updatingSlides.has(current);
-  const isMissingImage = !isUpdating && !isFailed && !isLocked && activeSlide &&
+  const isInitialLoading = activeSlide?.status === 'loading';
+  const isMissingImage = !isUpdating && !isFailed && !isLocked && !isInitialLoading && activeSlide &&
     (!activeSlide.image_data || activeSlide.image_data === '' ||
      activeSlide.image_data?.startsWith('data:image/svg+xml'));
 
@@ -825,7 +826,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   <p className="text-white text-sm font-semibold">Generating slide…</p>
                   {slowSlideWarning ? (
                     <p className="text-white/70 text-xs max-w-xs leading-relaxed">
-                      Don't worry, your slide is still being processed. Our image service is experiencing high demand right now, but we're on it.
+                      Don't worry, your slide is still being processed. Our service is experiencing high demand right now, but we're on it.
                     </p>
                   ) : (
                     <p className="text-white/60 text-xs">This may take a moment</p>

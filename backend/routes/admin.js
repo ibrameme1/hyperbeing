@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
+import jwt from 'jsonwebtoken';
 import { getDb, DATA_DIR, DB_PATH } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { isAdmin } from '../services/stripeService.js';
@@ -12,6 +13,17 @@ const router = Router();
 function requireAdmin(req, res, next) {
   if (!isAdmin(req.user.id)) return res.status(403).json({ error: 'Admin only' });
   next();
+}
+
+// Resolves a path supplied by the admin UI to an absolute path inside
+// DATA_DIR, rejecting anything that would escape it (e.g. `../`).
+function resolveDataPath(relPath) {
+  const root = path.resolve(DATA_DIR);
+  const target = path.resolve(root, relPath || '.');
+  if (target !== root && !target.startsWith(root + path.sep)) {
+    throw new Error('Invalid path');
+  }
+  return target;
 }
 
 const ALLOWED_TABLES = [
@@ -420,6 +432,120 @@ router.post('/storage/vacuum', authenticateToken, requireAdmin, (_req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message || 'Vacuum failed' });
   }
+});
+
+// ─── POST /api/admin/storage/checkpoint ──────────────────────────────────────
+// Folds the WAL file back into the main SQLite file and truncates it to 0
+// bytes. Safe to run any time; does not require extra free disk space.
+router.post('/storage/checkpoint', authenticateToken, requireAdmin, (_req, res) => {
+  const db = getDb();
+  try {
+    const result = db.pragma('wal_checkpoint(TRUNCATE)');
+    const sizeBytes = fs.statSync(DB_PATH).size;
+    let walBytes = 0;
+    try { walBytes = fs.statSync(`${DB_PATH}-wal`).size; } catch {}
+    res.json({ ok: true, result, sizeBytes, walBytes });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Checkpoint failed' });
+  }
+});
+
+// ─── GET /api/admin/storage/browse ───────────────────────────────────────────
+// Lists the contents of a directory inside DATA_DIR (defaults to its root).
+router.get('/storage/browse', authenticateToken, requireAdmin, (req, res) => {
+  let target;
+  try {
+    target = resolveDataPath(req.query.dir);
+  } catch {
+    return res.status(400).json({ error: 'Invalid path' });
+  }
+
+  let entries;
+  try {
+    entries = fs.readdirSync(target).map(name => {
+      const full = path.join(target, name);
+      const stat = fs.statSync(full);
+      return {
+        name,
+        isFile: stat.isFile(),
+        isDirectory: stat.isDirectory(),
+        bytes: stat.size,
+        modified_at: stat.mtime,
+      };
+    });
+  } catch {
+    return res.status(404).json({ error: 'Directory not found' });
+  }
+
+  const dir = path.relative(path.resolve(DATA_DIR), target);
+  res.json({ dir: dir === '.' ? '' : dir.split(path.sep).join('/'), entries });
+});
+
+// ─── GET /api/admin/storage/file ─────────────────────────────────────────────
+// Views or downloads a single file inside DATA_DIR. EventSource/<a> downloads
+// can't set an Authorization header, so a `?token=` query param is also accepted.
+router.get('/storage/file', (req, res) => {
+  const token = req.query.token || req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).end();
+
+  let userId;
+  try {
+    ({ userId } = jwt.verify(token, process.env.JWT_SECRET));
+  } catch {
+    return res.status(401).end();
+  }
+  if (!isAdmin(userId)) return res.status(403).end();
+
+  let target;
+  try {
+    target = resolveDataPath(req.query.path);
+  } catch {
+    return res.status(400).json({ error: 'Invalid path' });
+  }
+
+  let stat;
+  try {
+    stat = fs.statSync(target);
+  } catch {
+    return res.status(404).json({ error: 'File not found' });
+  }
+  if (!stat.isFile()) return res.status(400).json({ error: 'Not a file' });
+
+  if (req.query.download) {
+    res.download(target, path.basename(target));
+  } else {
+    res.sendFile(target);
+  }
+});
+
+// ─── DELETE /api/admin/storage/file ──────────────────────────────────────────
+// Deletes a single file inside DATA_DIR. Directories and the live SQLite
+// database files are protected to avoid bricking the app.
+router.delete('/storage/file', authenticateToken, requireAdmin, (req, res) => {
+  let target;
+  try {
+    target = resolveDataPath(req.query.path);
+  } catch {
+    return res.status(400).json({ error: 'Invalid path' });
+  }
+
+  let stat;
+  try {
+    stat = fs.statSync(target);
+  } catch {
+    return res.status(404).json({ error: 'File not found' });
+  }
+  if (!stat.isFile()) return res.status(400).json({ error: 'Only files can be deleted' });
+
+  const protectedFiles = new Set(
+    [DB_PATH, `${DB_PATH}-wal`, `${DB_PATH}-shm`].map(p => path.resolve(p))
+  );
+  if (protectedFiles.has(target)) {
+    return res.status(400).json({ error: 'Cannot delete the active database file' });
+  }
+
+  fs.unlinkSync(target);
+  res.json({ ok: true });
 });
 
 export default router;

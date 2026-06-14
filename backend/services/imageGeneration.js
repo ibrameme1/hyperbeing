@@ -66,6 +66,13 @@ function imagesToParts(attachedImages) {
   return parts;
 }
 
+// True when generateSlideImage fell back to the generic gradient placeholder
+// rather than returning a real NB2-generated image — callers should treat
+// this as a failure (status 'error', show regenerate) rather than 'complete'.
+export function isPlaceholderImage(imageData) {
+  return !imageData || imageData.startsWith('data:image/svg');
+}
+
 export async function generateSlideImage(nanaBananaPrompt, slideType, theme, colorPalette, slideIndex = 0, attachedImages = [], aspectRatio = '16:9') {
   if (MOCK_MODE) {
     const delay = 700 + Math.random() * 900;
@@ -84,7 +91,13 @@ export async function generateSlideImage(nanaBananaPrompt, slideType, theme, col
   logger.debug('nano banana image gen start', { slideIndex, slideType, attachedImages: attachedImages.length });
 
   const imageData = await callNanoBanana(parts, aspectRatio, slideIndex, `nanobanana_slide_${slideIndex}`);
-  return imageData || generateRichPlaceholder(slideType, theme, slideIndex);
+  if (!imageData) {
+    logger.error('nano banana image generation failed after retries — falling back to placeholder', {
+      slideIndex, slideType, promptPreview: nanaBananaPrompt?.slice(0, 300),
+    });
+    return generateRichPlaceholder(slideType, theme, slideIndex);
+  }
+  return imageData;
 }
 
 // Edit an existing slide image: sends only the user's instruction + reference

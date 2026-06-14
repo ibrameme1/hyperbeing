@@ -12,7 +12,8 @@ import {
   ChevronRight, ChevronDown, ChevronUp, Circle, BarChart2, RefreshCw,
   Terminal, Cpu, Search, AlertCircle, Info, AlertTriangle, Bug,
   Pencil, Check, X, ArrowLeft, Trash2, Database, Save, ExternalLink,
-  TableProperties, ChevronLeft, HardDrive,
+  TableProperties, ChevronLeft, HardDrive, Folder, File, Download,
+  ArrowUp, ChevronsUpDown,
 } from 'lucide-react';
 import api from '../api/client';
 
@@ -244,6 +245,16 @@ export default function AnalyticsDashboard() {
   const [storageLoading, setStorageLoading] = useState(false);
   const [storageError, setStorageError] = useState(false);
   const [vacuumLoading, setVacuumLoading] = useState(false);
+  const [checkpointLoading, setCheckpointLoading] = useState(false);
+
+  // ── File explorer (data directory) ─────────────────────────────────────────
+  const [fsDir, setFsDir] = useState('');
+  const [fsEntries, setFsEntries] = useState(null);
+  const [fsLoading, setFsLoading] = useState(false);
+  const [fsError, setFsError] = useState(false);
+  const [fsSortCol, setFsSortCol] = useState('name');
+  const [fsSortDir, setFsSortDir] = useState('asc');
+  const [fsDeleting, setFsDeleting] = useState(null);
 
   // ── Database browser ───────────────────────────────────────────────────────
   const [dbTables, setDbTables] = useState(null);
@@ -407,6 +418,77 @@ export default function AnalyticsDashboard() {
     } finally { setVacuumLoading(false); }
   };
 
+  const handleCheckpoint = async () => {
+    setCheckpointLoading(true);
+    try {
+      await api.post('/admin/storage/checkpoint');
+      await fetchStorage();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Checkpoint failed');
+    } finally { setCheckpointLoading(false); }
+  };
+
+  const fetchFsBrowse = useCallback(async (dir = '') => {
+    setFsLoading(true);
+    setFsError(false);
+    try {
+      const { data } = await api.get('/admin/storage/browse', { params: { dir } });
+      setFsDir(data.dir);
+      setFsEntries(data.entries);
+    } catch {
+      setFsError(true);
+    } finally {
+      setFsLoading(false);
+    }
+  }, []);
+
+  function fsSortBy(col) {
+    if (fsSortCol === col) {
+      setFsSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setFsSortCol(col);
+      setFsSortDir('asc');
+    }
+  }
+
+  function fsFileUrl(entry, download) {
+    const token = localStorage.getItem('hb_token');
+    const apiBase = import.meta.env.VITE_API_URL || '';
+    const filePath = fsDir ? `${fsDir}/${entry.name}` : entry.name;
+    const params = new URLSearchParams({ path: filePath, token: token || '' });
+    if (download) params.set('download', '1');
+    return `${apiBase}/api/admin/storage/file?${params.toString()}`;
+  }
+
+  async function handleFsDelete(entry) {
+    if (!window.confirm(`Permanently delete "${entry.name}"? This cannot be undone.`)) return;
+    setFsDeleting(entry.name);
+    try {
+      const filePath = fsDir ? `${fsDir}/${entry.name}` : entry.name;
+      await api.delete('/admin/storage/file', { params: { path: filePath } });
+      await fetchFsBrowse(fsDir);
+      fetchStorage();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Delete failed');
+    } finally {
+      setFsDeleting(null);
+    }
+  }
+
+  const fsSortedEntries = (() => {
+    if (!fsEntries) return [];
+    const dirMul = fsSortDir === 'asc' ? 1 : -1;
+    return fsEntries.slice().sort((a, b) => {
+      // Folders always sort before files, regardless of sort direction
+      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+      let cmp = 0;
+      if (fsSortCol === 'size') cmp = a.bytes - b.bytes;
+      else if (fsSortCol === 'modified') cmp = new Date(a.modified_at) - new Date(b.modified_at);
+      else cmp = a.name.localeCompare(b.name);
+      return cmp * dirMul;
+    });
+  })();
+
   const fetchDbTables = async () => {
     try {
       const { data } = await api.get('/admin/db/tables');
@@ -462,6 +544,7 @@ export default function AnalyticsDashboard() {
       fetchDbData();
     }
     if (activeTab === 'storage' && !storageData) fetchStorage();
+    if (activeTab === 'storage' && !fsEntries) fetchFsBrowse('');
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initial + auto-refresh
@@ -1389,7 +1472,7 @@ export default function AnalyticsDashboard() {
                                     title="View slides"
                                   ><Eye size={13} /></button>
                                   <button
-                                    onClick={() => navigate(`/presentations/${p.id}`)}
+                                    onClick={() => window.open(`/presentations/${p.id}`, '_blank', 'noopener,noreferrer')}
                                     className="text-gray-600 hover:text-purple-400"
                                     title="Open in presentation viewer"
                                   ><ExternalLink size={13} /></button>
@@ -2116,6 +2199,15 @@ export default function AnalyticsDashboard() {
                   {storageLoading ? 'Loading…' : 'Refresh'}
                 </button>
                 <button
+                  onClick={handleCheckpoint}
+                  disabled={checkpointLoading}
+                  className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 hover:bg-white/10 transition disabled:opacity-50"
+                  title="Fold the -wal file back into the database and shrink it to 0 bytes"
+                >
+                  <Database size={12} className={checkpointLoading ? 'animate-pulse' : ''} />
+                  {checkpointLoading ? 'Checkpointing…' : 'Checkpoint WAL'}
+                </button>
+                <button
                   onClick={handleVacuum}
                   disabled={vacuumLoading}
                   className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 hover:bg-white/10 transition disabled:opacity-50"
@@ -2159,28 +2251,125 @@ export default function AnalyticsDashboard() {
                   )}
                 </div>
 
-                {/* Files in data directory */}
+                {/* File explorer */}
                 <ChartCard title="Files on disk">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-white/10 text-gray-500 text-left">
-                          <th className="pb-2 pr-3">File</th>
-                          <th className="pb-2 pr-3">Size</th>
-                          <th className="pb-2">Modified</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {storageData.files.filter(f => f.isFile).map(f => (
-                          <tr key={f.name} className="border-b border-white/5">
-                            <td className="py-2 pr-3 font-mono text-gray-300">{f.name}</td>
-                            <td className="py-2 pr-3 font-mono text-gray-300">{fmtBytes(f.bytes)}</td>
-                            <td className="py-2 text-gray-500">{relTime(f.modified_at)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  {/* Breadcrumb / path nav */}
+                  <div className="mb-3 flex items-center gap-2">
+                    <button
+                      onClick={() => fetchFsBrowse(fsDir.split('/').slice(0, -1).join('/'))}
+                      disabled={!fsDir || fsLoading}
+                      className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-gray-300 disabled:opacity-30 hover:bg-white/10 transition"
+                      title="Up one level"
+                    ><ArrowUp size={12} /></button>
+                    <div className="flex items-center gap-1 overflow-x-auto font-mono text-[11px] text-gray-400">
+                      <button
+                        onClick={() => fetchFsBrowse('')}
+                        className="hover:text-purple-400 transition whitespace-nowrap"
+                      >data</button>
+                      {fsDir && fsDir.split('/').map((seg, i, arr) => {
+                        const target = arr.slice(0, i + 1).join('/');
+                        return (
+                          <span key={target} className="flex items-center gap-1 whitespace-nowrap">
+                            <span className="text-gray-600">/</span>
+                            <button onClick={() => fetchFsBrowse(target)} className="hover:text-purple-400 transition">
+                              {seg}
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <button
+                      onClick={() => fetchFsBrowse(fsDir)}
+                      disabled={fsLoading}
+                      className="ml-auto flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-gray-300 disabled:opacity-50 hover:bg-white/10 transition"
+                    >
+                      <RefreshCw size={11} className={fsLoading ? 'animate-spin' : ''} />
+                      Refresh
+                    </button>
                   </div>
+
+                  {fsError && <SectionError onRetry={() => fetchFsBrowse(fsDir)} />}
+
+                  {fsEntries && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-white/10 text-gray-500 text-left">
+                            {[
+                              { key: 'name', label: 'Name' },
+                              { key: 'size', label: 'Size' },
+                              { key: 'modified', label: 'Modified' },
+                            ].map(col => (
+                              <th
+                                key={col.key}
+                                className="pb-2 pr-3 whitespace-nowrap cursor-pointer hover:text-gray-300 transition select-none"
+                                onClick={() => fsSortBy(col.key)}
+                              >
+                                <span className="flex items-center gap-1">
+                                  {col.label}
+                                  {fsSortCol === col.key
+                                    ? (fsSortDir === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)
+                                    : <ChevronsUpDown size={10} className="opacity-30" />}
+                                </span>
+                              </th>
+                            ))}
+                            <th className="pb-2 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {fsSortedEntries.length === 0 && (
+                            <tr><td colSpan={4} className="py-6 text-center text-gray-600">Empty directory</td></tr>
+                          )}
+                          {fsSortedEntries.map(entry => (
+                            <tr key={entry.name} className="group border-b border-white/5">
+                              <td className="py-2 pr-3 font-mono text-gray-300">
+                                {entry.isDirectory ? (
+                                  <button
+                                    onClick={() => fetchFsBrowse(fsDir ? `${fsDir}/${entry.name}` : entry.name)}
+                                    className="flex items-center gap-1.5 hover:text-purple-400 transition"
+                                  >
+                                    <Folder size={12} className="text-gray-500" />
+                                    {entry.name}
+                                  </button>
+                                ) : (
+                                  <span className="flex items-center gap-1.5">
+                                    <File size={12} className="text-gray-600" />
+                                    {entry.name}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 pr-3 font-mono text-gray-300">{entry.isFile ? fmtBytes(entry.bytes) : '—'}</td>
+                              <td className="py-2 text-gray-500">{relTime(entry.modified_at)}</td>
+                              <td className="py-2">
+                                {entry.isFile && (
+                                  <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <a
+                                      href={fsFileUrl(entry, false)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-gray-600 hover:text-blue-400"
+                                      title="View"
+                                    ><Eye size={13} /></a>
+                                    <a
+                                      href={fsFileUrl(entry, true)}
+                                      className="text-gray-600 hover:text-green-400"
+                                      title="Download"
+                                    ><Download size={13} /></a>
+                                    <button
+                                      onClick={() => handleFsDelete(entry)}
+                                      disabled={fsDeleting === entry.name}
+                                      className="text-gray-600 hover:text-red-400 disabled:opacity-50"
+                                      title="Delete"
+                                    ><Trash2 size={13} /></button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </ChartCard>
 
                 {/* Per-table breakdown */}

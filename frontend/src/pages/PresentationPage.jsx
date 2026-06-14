@@ -9,6 +9,7 @@ import api from '../api/client';
 import MessageBubble from '../components/MessageBubble';
 import LoadingScreen from '../components/LoadingScreen';
 import PlanRevealScreen from '../components/PlanRevealScreen';
+import NovaMascot from '../components/NovaMascot';
 import PresentationViewer from '../components/PresentationViewer';
 import { SkeletonPresentationViewer } from '../components/Skeleton';
 import { track } from '../utils/track';
@@ -53,18 +54,7 @@ function GeneratingScreen() {
         animate={{ opacity: 1, scale: 1 }}
         className="flex flex-col items-center gap-6 z-10 px-6 text-center"
       >
-        <div className="relative">
-          <motion.div
-            animate={{ scale: [1, 1.15, 1], opacity: [0.5, 1, 0.5] }}
-            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute inset-0 rounded-3xl blur-xl"
-            style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
-          />
-          <div className="relative w-16 h-16 rounded-3xl flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
-            <Sparkles size={28} className="text-white" />
-          </div>
-        </div>
+        <NovaMascot size={120} />
         <div className="flex flex-col items-center gap-2">
           <p className="text-white font-bold text-lg">Nova is crafting your presentation</p>
           <AnimatePresence mode="wait">
