@@ -8,12 +8,14 @@ const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2';
 
 const OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
-// Design mode always requests medium quality, 1K resolution. gpt-image-2
+// Design mode always requests medium quality, ~1K resolution. gpt-image-2
 // accepts arbitrary WIDTHxHEIGHT sizes (divisible by 16, aspect ratio
-// between 1:3 and 3:1), so these are exact 1K dimensions per aspect ratio.
+// between 1:3 and 3:1) but enforces a minimum pixel budget (1024x1024 ≈ 1.05MP)
+// — 1024x576 falls below that, so these sizes keep exact aspect ratios
+// while staying above the minimum.
 const SIZE_FOR_ASPECT_RATIO = {
-  '16:9': '1024x576',
-  '9:16': '576x1024',
+  '16:9': '1536x864',
+  '9:16': '864x1536',
   '1:1': '1024x1024',
 };
 
