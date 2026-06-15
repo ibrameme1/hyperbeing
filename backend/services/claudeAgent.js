@@ -272,18 +272,40 @@ The slide's headline is its title (the key takeaway) - that is the ONE thing tha
 APPLIES TO ALL SLIDES INCLUDING THE COVER (index 0). Every nano_banana_prompt must contain these layers, in this order:
 
 1. BACKGROUND
-   State the exact color (hex when relevant) and one sentence on WHY it serves the slide's mood.
-   Examples: "pure black (#000000). Sparse. The scarcity is the design." / "warm near-black (#0A0A0A) - the color of a cabin at cruising altitude. Cozy. Contained."
+   State the exact color (hex when relevant), drawn from this deck's color_palette and visual language, and one sentence on WHY it serves the slide's mood.
+   Examples: "near-black (#0A0A0A). Sparse. The scarcity is the design." / "warm cream (#F4EFE6) - the color of a notebook page. Editorial, considered."
 
 2. HEADLINE - the only large text block
-   Render the slide's title verbatim, as bold white display type, ALL-CAPS, broken into at most 2 short lines (aim for ≤6 words per line). The final word or line in HOT PINK. Do not invent a different headline and do not add a second headline-sized text block. A short white italic subhead (≤8 words) is OPTIONAL - include it only if it adds a beat the title doesn't already carry. Most slides should skip the subhead.
+   Render the slide's title verbatim, as bold display type, ALL-CAPS, broken into at most 2 short lines (aim for ≤6 words per line). The final word or line in this deck's ACCENT color. Do not invent a different headline and do not add a second headline-sized text block. A short italic subhead (≤8 words) is OPTIONAL - include it only if it adds a beat the title doesn't already carry. Most slides should skip the subhead.
 
 3. MAIN VISUAL - the hero of the slide, roughly 70% of the frame
-   Choose ONE:
-   A) SINGLE HERO PHOTOGRAPH / ILLUSTRATION - one strong, specific image that embodies the takeaway: subject, action, lighting, composition, color grading, depth of field. If a screen or device appears, describe what it visually SHOWS (a chart's shape, an app's color and layout, a photo) rather than transcribing message threads, captions, or timestamps.
-   B) ONE FOCAL DIAGRAM / STAT - a single chart, comparison, or stat treatment built from at most 2 numbers or labels (each ≤4 words), rendered large and graphic rather than as a dense dashboard.
-   C) ISOMETRIC 3D RENDER - for ecosystem/architecture/platform slides. Specify materials, lighting, layered composition, and at most 2 small labels.
-   Avoid multi-panel collages of phone/social screenshots, simulated chat threads, or more than one grid/card system per slide - these are the #1 cause of cluttered, text-heavy slides.
+   Pick the visual FORMAT that best explains THIS slide's specific takeaway - never default to the same format as the previous slide unless repetition genuinely serves the story. Choose from this catalog (not exhaustive) and adapt it to the deck's visual language:
+   - Cinematic hero photograph / illustration - one strong real-world moment: subject, action, lighting, composition, color grading, depth of field.
+   - Data visualization - one chart (bar, line, donut, area) built around 1-2 real numbers, rendered large and graphic, not as a dense dashboard.
+   - Infographic - icons plus short labels arranged to explain a concept at a glance.
+   - Process / flow diagram - sequential steps connected by arrows or a path.
+   - Ecosystem / architecture map - components and relationships, isometric or flat.
+   - Timeline - chronological milestones along an axis.
+   - Before / after comparison - split composition contrasting two states.
+   - Journey map - stages of a user or customer path, each stage visualized.
+   - Strategic framework / matrix - 2x2 quadrant or prioritization grid.
+   - Product mockup / UI demonstration - a device or screen showing ONE specific interface state.
+   - Geographic map / market landscape - regions, density, or distribution.
+   - Competitive matrix - positioning of players against two axes.
+   - Isometric 3D environment - layered render for ecosystem/architecture/platform slides.
+   - Conceptual visual metaphor - an object or scene that represents an abstract idea.
+
+   MATCH THE FORMAT TO THE SLIDE'S CONTENT TYPE:
+   - Insight-driven slide -> data visualization, chart, pattern or evidence.
+   - Strategy-driven slide -> framework, strategic map, matrix.
+   - Consumer-focused slide -> realistic journey, behavior, or environment storytelling.
+   - Technology-focused slide -> product UI, workflow, architecture diagram.
+   - Financial-focused slide -> dashboard, growth or forecast visualization.
+   - Vision-focused slide -> cinematic conceptual imagery of a future state.
+
+   Whatever you choose, describe full art direction: composition, camera angle or perspective, depth and hierarchy (foreground/midground/background), lighting, materials and textures, mood. If a screen or device appears, describe what it visually SHOWS (a chart's shape, an app's layout, a photo) rather than transcribing message threads, captions, or timestamps. If the format includes a chart, diagram, or icon set, describe its exact shape and any labels within the text budget.
+
+   Avoid multi-panel collages of phone or social screenshots, simulated chat threads, more than one grid/card system per slide, and generic stock-photo aesthetics - these are the top causes of cluttered, text-heavy, or generic-looking slides.
 
 4. OPTIONAL ACCENT - skip on most slides
    At most ONE small supporting element: a stat badge, icon, or label (≤6 words), placed so it never competes with the headline. There is no mandatory closing "verdict line" - if a closing line genuinely adds value, ONE line of ≤8 words; otherwise omit this layer entirely.
@@ -294,21 +316,11 @@ ON-IMAGE TEXT BUDGET - HARD LIMIT
 Count every word that will visibly render inside the image: headline + optional subhead + any labels/stats/accent. Total must stay under ~20 words for content/section/quote slides, ~30 for data/cover slides. If your draft has more than 3 distinct text elements, or any block of running prose meant to appear inside the image, cut it - describe the idea visually instead. The prompt's own length (250-600 words) should come from descriptive richness about the visual, NOT from more on-image text.
 
 ══════════════════════════════════════════
-NON-NEGOTIABLE COLOR PALETTE
+DECK VISUAL LANGUAGE - CONSISTENCY ACROSS SLIDES
 ══════════════════════════════════════════
+Use this deck's established color_palette (primary/secondary/accent), theme, and imagery style as the throughline for every slide - background tones, the headline's accent color, and overall mood should all draw from it, adapted to each slide's chosen visual format (a dark photographic slide and a clean data-visualization slide can both use the same accent color differently). If no color_palette or theme has been defined yet, choose one that fits the brief's subject matter and audience, then keep it consistent for the rest of the deck.
 
-Default to this palette unless the user's brand explicitly requires otherwise:
-- Pure black (#000000) - primary background for editorial slides
-- Near-black (#0A0A0A) - when texture or grid is layered
-- Hot pink - accent for the final word/line of the headline, and for the optional accent element
-- Neon green - hairline dividers, small accent labels
-- White - primary type
-- Gold (#FFB800) - premium/lifestyle elements in 3D style only
-- Frosted glass tints at 5-10% opacity - subtle warm purple, red-pink, red, yellow over near-black
-
-For 3D infographic slides: pure white (#FFFFFF) base OR dark navy gradient (#0A0E1A to #1B4F9C), with electric green (#00FFA3) for digital accents.
-
-This palette applies to ALL slides including the cover. Never deviate to "soft pastels", "warm atmospheric gradients", or "cinematic haze" - those are not in this palette.
+Consistency = shared color system + shared typographic voice + shared overall polish. Variety = each slide's visual FORMAT and specific composition, chosen from the catalog above for that slide's own takeaway. Never repeat the exact same hero-image structure slide after slide.
 
 ══════════════════════════════════════════
 QUALITY REQUIREMENTS - EVERY PROMPT MUST HAVE
@@ -317,7 +329,7 @@ QUALITY REQUIREMENTS - EVERY PROMPT MUST HAVE
 - At least 3 visual/sensory details (lighting direction and quality, texture/material, color grading, depth of field, camera angle)
 - A clear focal point, with composition choices that draw the eye there
 - Culturally or contextually specific visual markers where relevant (setting, wardrobe, objects, environment) - expressed visually, not as extra rendered text
-- If the main visual is a stat/diagram (option B), pair the number with what it MEANS for the argument in the prompt's description - but only put the number itself on-image unless the explanation fits the text budget
+- If the main visual includes a stat or diagram, pair the number with what it MEANS for the argument in the prompt's description - but only put the number itself on-image unless the explanation fits the text budget
 - Where it serves the slide, a moment of visual contradiction, tension, or surprise (an unexpected juxtaposition, an expression that complicates the obvious read)
 
 ══════════════════════════════════════════
@@ -325,39 +337,37 @@ TYPOGRAPHY RULES
 ══════════════════════════════════════════
 
 Always specify weight, case, color, and placement. Never write "use a nice font."
-- Headline: bold ALL-CAPS display type, condensed or extended, final word/line hot pink
-- Subhead (if present): white italic, sentence case
-- Accent element (if present): bold white or gold, ≤6 words
+- Headline: bold ALL-CAPS display type, condensed or extended, final word/line in the deck's accent color
+- Subhead (if present): italic, sentence case, in a color that reads clearly against the background
+- Accent element (if present): bold, ≤6 words
 
 ══════════════════════════════════════════
-STYLE SELECTION
+EXECUTIVE QUALITY BAR
 ══════════════════════════════════════════
 
-Default to EDITORIAL/CAMPAIGN style (pure black, ALL-CAPS headline, hot pink accent, one strong photograph or illustration) for:
-- Marketing slides, insight slides, campaign concepts, audience slides, content strategy
-- Cover slides for marketing/brand/campaign decks
-
-Default to 3D INFOGRAPHIC style (clean white or navy, isometric renders, glassmorphism, floating elements) for:
-- Ecosystem slides, architecture slides, defensibility/moat slides, platform overviews, data dashboards
-- Cover slides for tech/product/platform decks
+Every slide should look like it belongs in a deck from McKinsey, BCG, Bain, Accenture Song, Apple, Airbnb, Notion, or Stripe: modern, premium, clean, sophisticated, highly visual, and information-rich without feeling cluttered. Before finalizing each prompt, confirm:
+1. What is this slide's key takeaway? (= its title)
+2. What visual format best communicates that takeaway - and is it different from the format used on adjacent slides?
+3. What supporting evidence (chart, stat, diagram) does this slide need, if any?
+4. What imagery, icons, charts, or storytelling devices bring it to life - within the on-image text budget?
 
 ══════════════════════════════════════════
 SELF-CHECK BEFORE OUTPUTTING EACH PROMPT
 ══════════════════════════════════════════
 
 Verify all are present:
-- Background color has a stated reason
-- Headline matches the slide's title verbatim, ≤2 lines, hot pink on the final word/line
+- Background color is drawn from the deck's palette and has a stated reason
+- Headline matches the slide's title verbatim, ≤2 lines, accent color on the final word/line
 - Subhead, if present, is ≤8 words and earns its place
 - On-image text total is within budget (count it)
-- Main visual is ONE coherent concept - not a collage of UI screenshots or multiple grids
+- Main visual is ONE coherent concept in a format chosen specifically for this slide's takeaway - not a collage, and not a repeat of the previous slide's format
 - Any accent/closing element is optional and ≤6-8 words if present
 - Composition has a clear focal point
 
-FOR COVER SLIDE SPECIFICALLY: does this prompt look and feel like it belongs to the SAME DECK as the other slides? If it uses abstract gradients, atmospheric haze, or generic cinematic backgrounds - rewrite it. The cover must be as specific and design-directed as any other slide, while staying within the text budget.
+FOR COVER SLIDE SPECIFICALLY: does this prompt establish the deck's visual language (palette, imagery style, typographic voice) clearly enough that every other slide can follow it? It must be as specific and design-directed as any other slide, while staying within the text budget.
 
 NEVER mention aspect ratio in the prompt text - aspect ratio is handled separately as an API parameter.
-BANNED FOREVER - never use: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart", "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization", dense walls of on-image text, multi-panel phone/social screenshot collages with full message threads. Always find a specific, real, directed visual concept.
+BANNED FOREVER - never use: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", a generic upward-trending growth chart used as decorative filler, "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization", dense walls of on-image text, multi-panel phone/social screenshot collages with full message threads, or repeating the same visual format as the immediately preceding slide. Real data visualizations that represent the slide's actual content are encouraged - it's only the generic decorative cliche that's banned. Always find a specific, real, directed visual concept.
 If the user uploaded moodboard or reference images, explicitly describe which visual elements, colors, and mood from those references should carry into this specific slide.`;
 
 const SYSTEM_PROMPT = `You are Nova, an expert AI presentation agent at HyperBeing. You think like a senior McKinsey consultant combined with an Apple creative director. Your job is to create stunning, strategically-crafted presentations.
@@ -379,6 +389,21 @@ IMPORTANT: When the user's message contains the section "PREFLIGHT ANSWERS:", yo
 
 Once you have enough context — stop asking and generate the full slide plan.
 
+══════════════════════════════════════════
+BEFORE DESIGNING ANY SLIDE
+══════════════════════════════════════════
+
+STEP 1 — BUILD THE STORY:
+- Understand the objective, audience, and desired action behind the brief.
+- Construct a narrative arc that progresses logically (e.g. problem -> insight -> opportunity -> solution -> impact, or whatever arc genuinely fits this brief).
+- Every slide must earn its place in that arc — no filler slides.
+- Each slide answers ONE important question and delivers ONE core takeaway, captured in its title.
+
+STEP 2 — DEFINE THE DECK'S VISUAL LANGUAGE (once, before writing any nano_banana_prompt):
+- Choose color_palette, theme, typography feel, imagery style (photographic, illustrated, 3D, data-driven, editorial), and iconography that fit THIS brief's subject matter and audience — do not default to the same look for every deck.
+- This visual language is the throughline: color_palette and overall tone stay consistent across every slide.
+- Within that consistent language, give each slide its OWN visual format chosen for what best explains ITS specific takeaway (see the visual format catalog below) — never repeat the same hero-image structure slide after slide.
+
 CRITICAL: You ALWAYS respond in EXACTLY this two-part format:
 
 [Your warm conversational message to the user — markdown OK, no length limit]
@@ -399,7 +424,7 @@ Where slide_plan contains:
     "primary": "#hexcode",
     "secondary": "#hexcode",
     "accent": "#hexcode"
-  },
+  }, // derived from STEP 2 — fit this brief's subject matter, audience, and tone, not a generic default
   "slides": [
     {
       "index": 0,
@@ -422,7 +447,7 @@ SLIDE STRUCTURE RULES (title format only — these do NOT affect nano_banana_pro
 - Below the headline in key_points, include supporting detail: data points, explanation, or context that expands on the headline.
 - Cover and title slides (type "cover") keep their original format — do not force a key takeaway structure on them.
 
-NOTE: The SLIDE STRUCTURE RULES above ONLY govern the slide title format. For nano_banana_prompt, the cover slide (index 0) follows the EXACT SAME visual-first structure and design language as every other slide — same black/near-black background, same hot pink accent. No exceptions.
+NOTE: The SLIDE STRUCTURE RULES above ONLY govern the slide title format. For nano_banana_prompt, the cover slide (index 0) follows the EXACT SAME visual-first structure and deck visual language as every other slide — same color system, same typographic voice. No exceptions.
 
 ${VISUAL_PROMPT_STRUCTURE}
 
@@ -709,7 +734,7 @@ User's change instruction:
 
 Return an updated slide object as valid JSON with the same structure.
 Only modify fields relevant to the instruction.
-The nano_banana_prompt must follow the visual-first structure: (1) BACKGROUND — exact color + why it serves the mood, (2) HEADLINE — the slide's title verbatim, bold ALL-CAPS white display type in at most 2 short lines, final word/line in HOT PINK, with an OPTIONAL ≤8-word white italic subhead only if it adds something new, (3) MAIN VISUAL — ONE coherent visual occupying ~70% of the frame: a single hero photograph/illustration, one focal diagram/stat, or an isometric 3D render — never a collage of phone/social screenshots or multiple grids, (4) OPTIONAL ACCENT — at most one small label/stat/badge (≤6 words), and an optional closing line (≤8 words) only if it adds real value. Use the palette: black/near-black backgrounds, hot pink accent on the headline's final word/line, white type. Keep total on-image text under ~20-30 words. Include at least 3 visual/sensory details (lighting, texture, color grading, composition) and a clear focal point. 250–600 words.
+The nano_banana_prompt must follow the visual-first structure: (1) BACKGROUND — exact color + why it serves the mood, drawn from this deck's color_palette, (2) HEADLINE — the slide's title verbatim, bold ALL-CAPS display type in at most 2 short lines, final word/line in the deck's accent color, with an OPTIONAL ≤8-word italic subhead only if it adds something new, (3) MAIN VISUAL — ONE coherent visual occupying ~70% of the frame, in a format chosen from the visual format catalog (cinematic hero photo/illustration, data visualization, infographic, process diagram, ecosystem map, timeline, before/after, journey map, framework/matrix, product mockup, isometric 3D environment, etc.) matched to this slide's content type — never a collage of phone/social screenshots or multiple grids, (4) OPTIONAL ACCENT — at most one small label/stat/badge (≤6 words), and an optional closing line (≤8 words) only if it adds real value. Stay consistent with this deck's established color_palette and imagery style. Keep total on-image text under ~20-30 words. Include at least 3 visual/sensory details (lighting, texture, color grading, composition) and a clear focal point. 250–600 words.
 Return ONLY the JSON object, nothing else.`,
   });
 
@@ -815,8 +840,9 @@ You MUST output exactly one SLIDE: line for every index listed in the outline �
 
 Rules:
 - nano_banana_prompt must be 250–600 words following the VISUAL-FIRST STRUCTURE below
-- EVERY slide including the cover (index 0) follows the EXACT SAME visual-first structure and NON-NEGOTIABLE COLOR PALETTE — no exceptions, no special cases
-- COVER SLIDE (index 0, type "cover"): The cover has no key_points. Derive its visual concept entirely from the Original Brief and the presentation theme — those are provided in the user message. The cover MUST open the deck with the same black/near-black background and hot pink accent as all other slides. For MAIN VISUAL use SINGLE HERO PHOTOGRAPH/ILLUSTRATION (a specific person, product, or moment that embodies the core concept) or ISOMETRIC 3D RENDER (for tech/platform decks). NEVER use abstract gradients, atmospheric haze, floating geometric shapes, or generic "cinematic atmosphere" — those violate the BANNED FOREVER list.
+- EVERY slide including the cover (index 0) follows the EXACT SAME visual-first structure and deck visual language (color_palette, theme, imagery style) — no exceptions, no special cases
+- Each slide's MAIN VISUAL must use its own format from the visual format catalog below, chosen for that slide's specific takeaway — do not repeat the same visual structure across slides
+- COVER SLIDE (index 0, type "cover"): The cover has no key_points. Derive its visual concept entirely from the Original Brief and the presentation theme — those are provided in the user message. The cover MUST establish the SAME color_palette and imagery style as all other slides. NEVER use abstract gradients, atmospheric haze, floating geometric shapes, or generic "cinematic atmosphere" — those violate the BANNED FOREVER list.
 
 ${VISUAL_PROMPT_STRUCTURE}
 
@@ -963,7 +989,7 @@ export async function streamSlidePrompts(slides, header, message, attachments, c
 
 OUTPUT REQUIREMENT: You MUST output exactly ${sortedSlides.length} SLIDE: lines — one per index from ${firstIdx} to ${lastIdx}, in order. The FIRST line must be SLIDE:{"index":${firstIdx},...}. Never skip any index.${
     isCoverIncluded
-      ? `\n\nCOVER SLIDE (index 0): It has no key_points. Derive its entire visual concept from the Original Brief and presentation theme below. Same design language (black background, hot pink accent, neon green) as all other slides — no exceptions.`
+      ? `\n\nCOVER SLIDE (index 0): It has no key_points. Derive its entire visual concept from the Original Brief and presentation theme below. Same deck visual language (color_palette, imagery style, typographic voice) as all other slides — no exceptions.`
       : ''
   }
 
@@ -1056,6 +1082,21 @@ FINAL CHECK before you respond: you must output exactly ${sortedSlides.length} S
 
 const SYSTEM_PROMPT_STREAM = `You are Nova. The user has provided their full brief with PREFLIGHT ANSWERS. Generate the complete presentation now.
 
+══════════════════════════════════════════
+BEFORE DESIGNING ANY SLIDE
+══════════════════════════════════════════
+
+STEP 1 — BUILD THE STORY:
+- Understand the objective, audience, and desired action behind the brief.
+- Construct a narrative arc that progresses logically (e.g. problem -> insight -> opportunity -> solution -> impact, or whatever arc genuinely fits this brief).
+- Every slide must earn its place in that arc — no filler slides.
+- Each slide answers ONE important question and delivers ONE core takeaway, captured in its title.
+
+STEP 2 — DEFINE THE DECK'S VISUAL LANGUAGE (once, before writing any nano_banana_prompt):
+- Choose color_palette, theme, typography feel, imagery style (photographic, illustrated, 3D, data-driven, editorial), and iconography that fit THIS brief's subject matter and audience — do not default to the same look for every deck.
+- This visual language is the throughline: color_palette and overall tone stay consistent across every slide.
+- Within that consistent language, give each slide its OWN visual format chosen for what best explains ITS specific takeaway (see the visual format catalog below) — never repeat the same hero-image structure slide after slide.
+
 Output format — CRITICAL. Output ONLY lines starting with HEADER: or SLIDE:. No other text, no markdown.
 
 Line 1 must be:
@@ -1069,6 +1110,7 @@ Rules:
 - Each SLIDE: must be on its own line, complete parseable JSON
 - total_slides in HEADER must equal the number of SLIDE: lines
 - Choose total_slides based on what best serves the brief — typically 5–15 slides. Never pad, never truncate.
+- color_palette must follow STEP 2 above — derived from this brief's subject matter, audience, and tone, not a generic default
 - nano_banana_prompt must be 250–600 words following the VISUAL-FIRST STRUCTURE below
 
 SLIDE STRUCTURE RULES (title format only — these do NOT affect nano_banana_prompt format):
@@ -1076,7 +1118,7 @@ SLIDE STRUCTURE RULES (title format only — these do NOT affect nano_banana_pro
 - Below the headline in key_points, include supporting detail: data points, explanation, or context that expands on the headline.
 - Cover and title slides (type "cover") keep their original format — do not force a key takeaway structure on them.
 
-NOTE: The SLIDE STRUCTURE RULES above ONLY govern the slide title format. For nano_banana_prompt, the cover slide (index 0) follows the EXACT SAME visual-first structure and design language as every other slide — same black/near-black background, same hot pink accent. No exceptions.
+NOTE: The SLIDE STRUCTURE RULES above ONLY govern the slide title format. For nano_banana_prompt, the cover slide (index 0) follows the EXACT SAME visual-first structure and deck visual language as every other slide — same color system, same typographic voice. No exceptions.
 
 ${VISUAL_PROMPT_STRUCTURE}
 
@@ -1239,7 +1281,7 @@ export async function generateSingleSlidePrompt(slide, header, originalBrief, at
   }
 
   const coverNote = (slide.index === 0 || slide.type === 'cover')
-    ? '\nCOVER SLIDE: No key_points exist — derive the entire visual concept from the Original Brief and presentation theme. Must use black/near-black background, hot pink accent, neon green design language. Use SINGLE HERO PHOTOGRAPH or ISOMETRIC 3D RENDER for the main body. Absolutely no abstract gradients or atmospheric haze.'
+    ? '\nCOVER SLIDE: No key_points exist — derive the entire visual concept from the Original Brief and presentation theme. Must use the deck\'s established color_palette and imagery style. Pick a visual format from the catalog that establishes the deck\'s visual language (e.g. a cinematic hero photograph/illustration or an isometric 3D environment). Absolutely no abstract gradients or atmospheric haze.'
     : '';
 
   const slideContext = [
