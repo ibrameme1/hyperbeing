@@ -10,7 +10,16 @@ export const CREDIT_COSTS = {
   REFERENCE_IMAGE_PER_SLIDE: 0,    // surcharge per slide with a reference image attached — disabled
   EXPORT: 0,                       // exporting a presentation is always free
   PROMPT_CHAT_MESSAGE: 0,          // prompt-generator conversational turn — disabled
+  DESIGN_IMAGE_OWN_PROMPT: 15,     // design mode: per image when the user supplies their own prompt
+  DESIGN_IMAGE_NOVA_PROMPT: 18,    // design mode: per image when Nova crafts the prompt
 };
+
+// Design mode: maximum number of generations that can be in-flight
+// (status pending/generating) at once for a single user.
+export const DESIGN_MAX_PARALLEL_GENERATIONS = 8;
+
+// Design mode: how many images a user can request per generation batch.
+export const DESIGN_MAX_IMAGES_PER_BATCH = 4;
 
 // Number of edits a user can make this month at TIER_1 pricing before
 // every subsequent edit costs TIER_2. Keyed by plan.

@@ -18,6 +18,7 @@ import analyticsRoutes from './routes/analytics.js';
 import adminRoutes from './routes/admin.js';
 import adminDashboardRouter from './routes/adminDashboard.js';
 import feedbackRoutes from './routes/feedback.js';
+import designRoutes from './routes/design.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { logger } from './services/logger.js';
 import { getPostHog } from './services/posthogClient.js';
@@ -102,6 +103,7 @@ app.use('/api/user', userRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/design', designRoutes);
 
 // Admin monitoring dashboard — permissive CSP so vis.js CDN and inline scripts load
 app.use('/admin', (req, res, next) => {

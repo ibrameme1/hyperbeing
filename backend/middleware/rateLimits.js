@@ -94,6 +94,16 @@ export const addSlidesLimiter = rateLimit({
   handler: (req, res, next, options) => handler(res, options),
 });
 
+// 60 design-mode generation requests per hour per user (each can request up to 4 images)
+export const designGenerationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.userId || ipKeyGenerator(req),
+  handler: (req, res, next, options) => handler(res, options),
+});
+
 // 30 analyze calls per hour (pre-flight AI call)
 export const analyzeLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,

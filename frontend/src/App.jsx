@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import PresentationPage from './pages/PresentationPage';
 import PromptGeneratorPage from './pages/PromptGeneratorPage';
+import DesignGalleryPage from './pages/DesignGalleryPage';
 import Onboarding from './pages/Onboarding';
 import AuthCallback from './pages/AuthCallback';
 import Pricing from './pages/Pricing';
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="/presentations/:id" element={<ProtectedRoute>{wrap(<PresentationPage />)}</ProtectedRoute>} />
         <Route path="/onboarding" element={<ProtectedRoute>{wrap(<Onboarding />)}</ProtectedRoute>} />
         <Route path="/prompt-generator" element={<ProtectedRoute>{wrap(<PromptGeneratorPage />)}</ProtectedRoute>} />
+        <Route path="/design" element={<ProtectedRoute>{wrap(<DesignGalleryPage />)}</ProtectedRoute>} />
         <Route path="/auth/callback" element={wrap(<AuthCallback />)} />
         <Route path="/pricing" element={wrap(<Pricing />)} />
         <Route path="/billing/success" element={<ProtectedRoute>{wrap(<BillingSuccess />)}</ProtectedRoute>} />
