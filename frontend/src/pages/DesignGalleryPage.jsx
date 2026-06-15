@@ -17,6 +17,7 @@ function GalleryCell({ gen, onClick, isDark }) {
   const isComplete = gen.status === 'complete' && gen.image_data;
   const isError = gen.status === 'error';
   const isWorking = gen.status === 'pending' || gen.status === 'generating';
+  const isClickable = isComplete || isError;
 
   return (
     <motion.div
@@ -24,11 +25,11 @@ function GalleryCell({ gen, onClick, isDark }) {
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      onClick={() => isComplete && onClick(gen)}
-      role={isComplete ? 'button' : undefined}
-      tabIndex={isComplete ? 0 : -1}
-      onKeyDown={e => { if (isComplete && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onClick(gen); } }}
-      className={`aspect-[16/9] rounded-lg overflow-hidden relative ${isComplete ? 'cursor-pointer group focus:outline-none focus-visible:ring-2 focus-visible:ring-uv' : ''}`}
+      onClick={() => isClickable && onClick(gen)}
+      role={isClickable ? 'button' : undefined}
+      tabIndex={isClickable ? 0 : -1}
+      onKeyDown={e => { if (isClickable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onClick(gen); } }}
+      className={`aspect-[16/9] rounded-lg overflow-hidden relative ${isClickable ? 'cursor-pointer group focus:outline-none focus-visible:ring-2 focus-visible:ring-uv' : ''}`}
       style={{ background: 'var(--bg-card)', border: '0.5px solid var(--border)', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
     >
       {isComplete && (
@@ -45,10 +46,10 @@ function GalleryCell({ gen, onClick, isDark }) {
       )}
 
       {isError && (
-        <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-center px-3"
+        <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-center px-3 group-hover:opacity-80 transition-opacity"
              style={{ background: isDark ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.06)' }}>
           <AlertTriangle size={18} style={{ color: '#f87171' }} />
-          <span className="text-xs" style={{ color: '#f87171' }}>Generation failed</span>
+          <span className="text-xs" style={{ color: '#f87171' }}>Generation failed — click to retry</span>
         </div>
       )}
 
@@ -167,6 +168,21 @@ export default function DesignGalleryPage() {
     setEditingReference({ ...gen, attachmentId: id });
     setPrompt('');
     setSelected(null);
+  }
+
+  async function handleRetry(gen) {
+    try {
+      const { data } = await api.post(`/design/${gen.id}/retry`);
+      upsertGeneration(data.generation);
+      setCredits(data.creditsRemaining);
+    } catch (err) {
+      const status = err.response?.status;
+      if (status === 402) {
+        setOutOfCreditsDetails(err.response.data || null);
+        setShowOutOfCredits(true);
+        capture('out_of_credits', { page: 'design_gallery', action_type: 'design_generation_retry' });
+      }
+    }
   }
 
   async function handleSubmit() {
@@ -293,6 +309,7 @@ export default function DesignGalleryPage() {
             onClose={() => setSelected(null)}
             onReference={handleReference}
             onEdit={handleEdit}
+            onRetry={handleRetry}
             isDark={isDark}
           />
         )}

@@ -206,9 +206,78 @@ router.post('/generate', authenticateToken, designGenerationLimiter, (req, res) 
     });
 });
 
-// ─── Async generation runner ────────────────────────────────────────────────
-async function runDesignBatch(rowIds, { userId, mode, prompt, attachments, costPerImage, traceId }) {
+// ─── POST /api/design/:id/retry — retry a single failed generation ────────
+// Re-sends the same final prompt + reference images that were used originally.
+router.post('/:id/retry', authenticateToken, designGenerationLimiter, (req, res) => {
   const db = getDb();
+  const row = db.prepare('SELECT * FROM design_generations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!row) return res.status(404).json({ error: 'Generation not found' });
+  if (row.status !== 'error') return res.status(400).json({ error: 'Only failed generations can be retried' });
+
+  const costPerImage = row.mode === 'own' ? CREDIT_COSTS.DESIGN_IMAGE_OWN_PROMPT : CREDIT_COSTS.DESIGN_IMAGE_NOVA_PROMPT;
+
+  let deduction;
+  try {
+    deduction = deductCredits(req.user.id, costPerImage, 'design_generation', `Design mode retry (${row.mode === 'nova' ? 'Nova-crafted prompt' : 'your prompt'})`);
+  } catch (err) {
+    if (err.message === 'INSUFFICIENT_CREDITS') {
+      const sub = getOrCreateSubscription(req.user.id);
+      return res.status(402).json(novaInsufficientCredits({
+        creditsRemaining: sub.credits_remaining,
+        creditsNeeded: costPerImage,
+        actionType: 'design_generation',
+        currentPlan: sub.plan,
+      }));
+    }
+    throw err;
+  }
+
+  db.prepare(`UPDATE design_generations SET status = 'pending', error_message = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(row.id);
+  const updated = db.prepare('SELECT * FROM design_generations WHERE id = ?').get(row.id);
+
+  res.json({ generation: serializeRow(updated), creditsRemaining: deduction.newBalance });
+  broadcastToUser(req.user.id, { type: 'generation_updated', generation: serializeRow(updated) });
+
+  const attachments = safeJsonParse(row.reference_images, []);
+  const finalPrompt = row.final_prompt || row.user_prompt;
+  const userId = req.user.id;
+  const traceId = requestContext.getStore()?.requestId;
+
+  generateAndStore(row.id, { userId, mode: row.mode, finalPrompt, attachments, costPerImage, traceId, index: 0 })
+    .catch(err => {
+      logger.error('design retry failed', { id: row.id, userId, errorMessage: err.message, stack: err.stack?.split('\n').slice(0, 4).join('\n') });
+    });
+});
+
+// ─── Shared single-image generation + persistence ──────────────────────────
+async function generateAndStore(id, { userId, mode, finalPrompt, attachments, costPerImage, traceId, index }) {
+  const db = getDb();
+
+  db.prepare(`UPDATE design_generations SET status = 'generating', final_prompt = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .run(finalPrompt, id);
+  broadcastToUser(userId, { type: 'generation_updated', generation: serializeRow(db.prepare('SELECT * FROM design_generations WHERE id = ?').get(id)) });
+
+  try {
+    const imageData = await generateDesignImage(finalPrompt, attachments, DESIGN_ASPECT_RATIO, index);
+    if (!imageData) throw new Error('Image generation failed');
+
+    db.prepare(`UPDATE design_generations SET status = 'complete', image_data = ?, error_message = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(imageData, id);
+  } catch (err) {
+    logger.error('design image generation failed', {
+      id, userId, mode, traceId, errorMessage: err.message,
+      promptPreview: (finalPrompt || '').slice(0, 200), attachmentCount: attachments.length,
+    });
+    db.prepare(`UPDATE design_generations SET status = 'error', error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run('Image generation failed. Your credits for this image have been refunded.', id);
+    refundCredits(userId, costPerImage, 'design_generation_refund', 'Design image generation failed — refunded');
+  }
+
+  broadcastToUser(userId, { type: 'generation_updated', generation: serializeRow(db.prepare('SELECT * FROM design_generations WHERE id = ?').get(id)) });
+}
+
+// ─── Async generation runner for a fresh batch ─────────────────────────────
+async function runDesignBatch(rowIds, { userId, mode, prompt, attachments, costPerImage, traceId }) {
   const count = rowIds.length;
 
   let finalPrompts;
@@ -219,27 +288,8 @@ async function runDesignBatch(rowIds, { userId, mode, prompt, attachments, costP
   }
 
   for (let i = 0; i < rowIds.length; i++) {
-    const id = rowIds[i];
     const finalPrompt = finalPrompts[i] || prompt;
-
-    db.prepare(`UPDATE design_generations SET status = 'generating', final_prompt = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-      .run(finalPrompt, id);
-    broadcastToUser(userId, { type: 'generation_updated', generation: serializeRow(db.prepare('SELECT * FROM design_generations WHERE id = ?').get(id)) });
-
-    try {
-      const imageData = await generateDesignImage(finalPrompt, attachments, DESIGN_ASPECT_RATIO, i);
-      if (!imageData) throw new Error('Image generation failed');
-
-      db.prepare(`UPDATE design_generations SET status = 'complete', image_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-        .run(imageData, id);
-    } catch (err) {
-      logger.error('design image generation failed', { id, errorMessage: err.message });
-      db.prepare(`UPDATE design_generations SET status = 'error', error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-        .run('Image generation failed. Your credits for this image have been refunded.', id);
-      refundCredits(userId, costPerImage, 'design_generation_refund', 'Design image generation failed — refunded');
-    }
-
-    broadcastToUser(userId, { type: 'generation_updated', generation: serializeRow(db.prepare('SELECT * FROM design_generations WHERE id = ?').get(id)) });
+    await generateAndStore(rowIds[i], { userId, mode, finalPrompt, attachments, costPerImage, traceId, index: i });
   }
 }
 
