@@ -4,15 +4,16 @@ import { tracer } from './tracer.js';
 const MOCK_MODE = !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'demo';
 
 // "GPT Image 2.0" — OpenAI's image generation model
-const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
+const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2';
 
 const OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
-// Design mode always requests medium quality, 1K resolution. Size is the
-// closest native GPT Image size to the requested aspect ratio.
+// Design mode always requests medium quality, 1K resolution. gpt-image-2
+// accepts arbitrary WIDTHxHEIGHT sizes (divisible by 16, aspect ratio
+// between 1:3 and 3:1), so these are exact 1K dimensions per aspect ratio.
 const SIZE_FOR_ASPECT_RATIO = {
-  '16:9': '1536x1024',
-  '9:16': '1024x1536',
+  '16:9': '1024x576',
+  '9:16': '576x1024',
   '1:1': '1024x1024',
 };
 
