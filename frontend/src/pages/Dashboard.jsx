@@ -598,7 +598,10 @@ export default function Dashboard() {
     const slideInstruction = adminSlideCount
       ? `You MUST create exactly ${adminSlideCount} slide${adminSlideCount !== 1 ? 's' : ''} — no more, no fewer. This is a hard requirement set by the administrator.`
       : 'Nova should decide the number of slides needed to do this presentation justice.';
-    const comprehensiveMessage = `${pendingInput}${qaSection}\n\nDetected type: ${analysis.detected_type || ''}\nDetected industry: ${analysis.detected_industry || ''}\n\n${slideInstruction}`;
+    const researchSection = analysis.research_notes?.length > 0
+      ? `\n\nRESEARCH NOTES (from web search — use these real facts where relevant):\n${analysis.research_notes.map(n => `- ${n}`).join('\n')}`
+      : '';
+    const comprehensiveMessage = `${pendingInput}${qaSection}\n\nDetected type: ${analysis.detected_type || ''}\nDetected industry: ${analysis.detected_industry || ''}${researchSection}\n\n${slideInstruction}`;
 
     try {
       const { data } = await api.post('/presentations', {

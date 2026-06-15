@@ -595,11 +595,14 @@ export async function streamChat(conversationHistory, userMessage, attachments =
 
 const ANALYZE_PROMPT = `You are a presentation intelligence system. A user has submitted a brief to create a presentation. Analyze their input and return a JSON object with contextual questions to gather exactly what's needed.
 
-Return ONLY valid JSON — no text before or after:
+BEFORE you respond, decide if the brief references something that benefits from current, real-world information — a real company, brand, product, person, market, statistic, or recent event. If so, use the web_search tool to look up a handful of relevant, up-to-date facts (positioning, competitors, recent news, market size, audience demographics, etc.). Use what you find to make your questions sharper and more specific to the real thing the user is talking about. If the brief is generic/abstract and nothing would benefit from a lookup, skip search entirely.
+
+After any research, return ONLY valid JSON — no text before or after, no markdown fences:
 {
   "detected_type": "e.g. investor pitch / marketing deck / product launch / consulting report / brand deck",
   "detected_industry": "e.g. fintech / fashion / SaaS / FMCG / healthcare",
   "suggested_slide_count": <number 5-15>,
+  "research_notes": ["short factual finding from web search, if any — omit or leave empty if no search was needed"],
   "contextual_questions": [
     {
       "question": "Specific question based on the brief",
@@ -615,7 +618,8 @@ Rules:
 - Examples for an investor pitch: "Who is the primary audience?", "What funding stage is this for?", "What tone do you want?"
 - Examples for a product launch: "Who is the target consumer?", "What is the key emotion you want to evoke?", "How product-heavy should the visuals be?"
 - NEVER ask generic questions like "how many slides" — use suggested_slide_count instead
-- Questions and options must be directly relevant to the specific brief provided`;
+- Questions and options must be directly relevant to the specific brief provided — if you researched the real brand/product, reflect that in the questions and options
+- research_notes should be short, factual, citable bullet points (3-5 max) — empty array if no research was done`;
 
 export async function analyzePresentation(message, attachments = [], userId = null) {
   if (MOCK_MODE) {
@@ -624,6 +628,7 @@ export async function analyzePresentation(message, attachments = [], userId = nu
       detected_type: 'marketing deck',
       detected_industry: 'FMCG',
       suggested_slide_count: 8,
+      research_notes: [],
       contextual_questions: [
         { question: 'Who is the primary audience for this presentation?', options: ['Internal team', 'External clients', 'Investors', 'Consumers'] },
         { question: 'What tone should this deck have?', options: ['Bold and energetic', 'Premium and minimal', 'Corporate and structured', 'Creative and playful'] },
@@ -641,17 +646,20 @@ export async function analyzePresentation(message, attachments = [], userId = nu
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
+    max_tokens: 1536,
     system: ANALYZE_PROMPT,
+    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
     messages: [{ role: 'user', content: userContent }],
   });
 
   const durationMs = Date.now() - t0;
   if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
   metrics.recordAICall({ fn: 'analyzePresentation', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs });
-  logger.info('claude analyze complete', { durationMs, inputTokens: response.usage?.input_tokens });
+  logger.info('claude analyze complete', { durationMs, inputTokens: response.usage?.input_tokens, searches: response.content.filter(b => b.type === 'server_tool_use' && b.name === 'web_search').length });
 
-  const raw = response.content[0].text.trim();
+  // With web_search enabled, content can include server_tool_use / web_search_tool_result
+  // blocks interleaved with text — concatenate all text blocks to find the JSON.
+  const raw = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
   const jsonText = raw.startsWith('```') ? raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '') : raw;
 
   try {
