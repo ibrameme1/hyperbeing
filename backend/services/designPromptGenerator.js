@@ -14,6 +14,25 @@ const SYSTEM_PROMPT = fs.readFileSync(
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Forcing a tool call guarantees the SDK gives us back already-parsed JSON,
+// even when prompts contain quotes, newlines, or other characters that are
+// awkward to embed in a hand-rolled JSON response.
+const PROMPTS_TOOL = {
+  name: 'submit_design_prompts',
+  description: 'Submit the crafted image-generation prompts for the user\'s design brief.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      prompts: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Exactly N image-generation prompts, one per requested image, each a complete self-contained prompt.',
+      },
+    },
+    required: ['prompts'],
+  },
+};
+
 // Nova crafts `count` image-generation prompts from the user's brief and any
 // reference images. Returns an array of exactly `count` prompt strings.
 // Falls back to repeating the user's brief on any failure so the design
@@ -47,29 +66,22 @@ export async function craftDesignPrompts(userPrompt, attachedImages = [], count 
 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4000,
+      max_tokens: 8000,
       system: SYSTEM_PROMPT,
+      tools: [PROMPTS_TOOL],
+      tool_choice: { type: 'tool', name: 'submit_design_prompts' },
       messages: [{ role: 'user', content: userContent }],
     });
 
     if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
 
-    const rawText = response.content
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('');
+    const toolUse = response.content.find(b => b.type === 'tool_use' && b.name === 'submit_design_prompts');
+    const prompts = Array.isArray(toolUse?.input?.prompts)
+      ? toolUse.input.prompts.filter(p => typeof p === 'string' && p.trim())
+      : [];
 
-    let parsed;
-    try {
-      parsed = JSON.parse(rawText);
-    } catch {
-      const match = rawText.match(/\{[\s\S]*\}/);
-      parsed = match ? JSON.parse(match[0]) : null;
-    }
-
-    const prompts = Array.isArray(parsed?.prompts) ? parsed.prompts.filter(p => typeof p === 'string' && p.trim()) : [];
     if (prompts.length === 0) {
-      logger.warn('design prompt generator returned no usable prompts', { preview: rawText?.slice(0, 200) });
+      logger.warn('design prompt generator returned no usable prompts', { stopReason: response.stop_reason });
       tracer.recordStep(_tid, 'design_prompt_generator', 'completed', Date.now() - _t);
       return fallback;
     }
