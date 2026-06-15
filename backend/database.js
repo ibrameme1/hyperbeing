@@ -185,6 +185,29 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_app_logs_created ON app_logs(created_at);
   `);
 
+  // Design mode — image generation gallery
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS design_generations (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      batch_id TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      mode TEXT NOT NULL DEFAULT 'own',
+      user_prompt TEXT,
+      final_prompt TEXT,
+      image_data TEXT,
+      reference_images TEXT DEFAULT '[]',
+      settings TEXT DEFAULT '{}',
+      error_message TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_design_gen_user ON design_generations(user_id);
+    CREATE INDEX IF NOT EXISTS idx_design_gen_batch ON design_generations(batch_id);
+    CREATE INDEX IF NOT EXISTS idx_design_gen_status ON design_generations(status);
+  `);
+
   // Analytics events table for custom event tracking
   db.exec(`
     CREATE TABLE IF NOT EXISTS analytics_events (
