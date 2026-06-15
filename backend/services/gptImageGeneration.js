@@ -83,20 +83,25 @@ export async function generateDesignImage(prompt, referenceImages = [], aspectRa
       if (!response.ok) {
         const errBody = await response.text().catch(() => '');
         const isTransient = response.status === 429 || response.status >= 500;
-        logger.warn('gpt image gen failed', { index, attempt, status: response.status, errBody: errBody.slice(0, 300), isTransient });
+        const logCtx = { index, attempt, status: response.status, errBody: errBody.slice(0, 500), isTransient, model: IMAGE_MODEL, size, promptPreview: prompt.slice(0, 200) };
         if (attempt < maxAttempts && isTransient) {
+          logger.warn('gpt image gen failed, retrying', logCtx);
           await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
           continue;
         }
-        tracer.recordStep(_tid, stepName, 'failed', Date.now() - _t, `HTTP ${response.status}`);
+        logger.error('gpt image gen failed', logCtx);
+        tracer.recordStep(_tid, stepName, 'failed', Date.now() - _t, `HTTP ${response.status}: ${errBody.slice(0, 200)}`);
         return null;
       }
 
       const json = await response.json();
       const b64 = json?.data?.[0]?.b64_json;
       if (!b64) {
-        logger.warn('gpt image gen returned no image', { index, attempt });
-        if (attempt < maxAttempts) continue;
+        if (attempt < maxAttempts) {
+          logger.warn('gpt image gen returned no image, retrying', { index, attempt });
+          continue;
+        }
+        logger.error('gpt image gen returned no image', { index, attempt, model: IMAGE_MODEL, size, responsePreview: JSON.stringify(json).slice(0, 300) });
         tracer.recordStep(_tid, stepName, 'failed', Date.now() - _t, 'no image data');
         return null;
       }
@@ -104,11 +109,12 @@ export async function generateDesignImage(prompt, referenceImages = [], aspectRa
       tracer.recordStep(_tid, stepName, 'completed', Date.now() - _t);
       return `data:image/png;base64,${b64}`;
     } catch (err) {
-      logger.warn('gpt image gen errored', { index, attempt, errorMessage: err.message });
       if (attempt < maxAttempts) {
+        logger.warn('gpt image gen errored, retrying', { index, attempt, errorMessage: err.message });
         await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
         continue;
       }
+      logger.error('gpt image gen errored', { index, attempt, errorMessage: err.message, stack: err.stack?.split('\n').slice(0, 3).join('\n'), model: IMAGE_MODEL, size, promptPreview: prompt.slice(0, 200) });
       tracer.recordStep(_tid, stepName, 'failed', Date.now() - _t, err.message);
       return null;
     }

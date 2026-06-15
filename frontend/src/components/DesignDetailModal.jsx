@@ -1,14 +1,26 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Download, Copy, Check, ImagePlus, Pencil, Sparkles, Wand2, AlertCircle } from 'lucide-react';
+import { X, Download, Copy, Check, ImagePlus, Pencil, Sparkles, Wand2, AlertCircle, RotateCcw, Loader2 } from 'lucide-react';
 
 // ─── Design generation detail view ─────────────────────────────────────────
 // Shown when a user clicks a completed image in the design gallery —
 // big preview on one side, prompt + actions on the other.
-export default function DesignDetailModal({ generation, onClose, onReference, onEdit, isDark }) {
+export default function DesignDetailModal({ generation, onClose, onReference, onEdit, onRetry, isDark }) {
   const [copied, setCopied] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   if (!generation) return null;
+
+  const isError = generation.status === 'error';
+
+  async function handleRetry() {
+    setRetrying(true);
+    try {
+      await onRetry(generation);
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   const promptText = generation.final_prompt || generation.user_prompt || '';
   const settings = generation.settings || {};
@@ -53,6 +65,20 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
         <div className="flex-1 flex items-center justify-center p-4 md:p-6" style={{ background: isDark ? '#080808' : '#f5f5f5', minHeight: 280 }}>
           {generation.status === 'complete' && generation.image_data ? (
             <img src={generation.image_data} alt="" className="max-w-full max-h-full rounded-xl object-contain" style={{ maxHeight: '78vh' }} />
+          ) : isError ? (
+            <div className="flex flex-col items-center gap-3 text-center px-6" style={{ color: isDark ? '#888' : '#999' }}>
+              <AlertCircle size={28} style={{ color: '#f87171' }} />
+              <p className="text-sm">{generation.error_message || 'Generation failed.'}</p>
+              <button
+                onClick={handleRetry}
+                disabled={retrying}
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-60"
+                style={{ background: '#5B50FF', color: '#fff' }}
+              >
+                {retrying ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                {retrying ? 'Retrying…' : 'Retry'}
+              </button>
+            </div>
           ) : (
             <div className="flex flex-col items-center gap-2 text-center px-6" style={{ color: isDark ? '#666' : '#999' }}>
               <AlertCircle size={28} />
