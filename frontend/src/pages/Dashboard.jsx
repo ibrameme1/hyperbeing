@@ -420,6 +420,7 @@ export default function Dashboard() {
   const [pendingAttachments, setPendingAttachments] = useState([]);
   const [pendingInput, setPendingInput] = useState('');
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('16:9');
+  const [selectedStyle, setSelectedStyle] = useState('classic'); // 'classic' | 'minimalistic'
   const [credits, setCredits] = useState(null);
   const [currentPlan, setCurrentPlan] = useState('free');
   const [isAdmin, setIsAdmin] = useState(false);
@@ -608,9 +609,10 @@ export default function Dashboard() {
         message: comprehensiveMessage,
         attachments: pendingAttachments,
         aspectRatio: selectedAspectRatio,
+        style: selectedStyle,
       });
-      track('presentation_created', { presentation_id: data.presentation.id, aspect_ratio: selectedAspectRatio });
-      capture('presentation_created', { presentation_id: data.presentation.id, aspect_ratio: selectedAspectRatio });
+      track('presentation_created', { presentation_id: data.presentation.id, aspect_ratio: selectedAspectRatio, style: selectedStyle });
+      capture('presentation_created', { presentation_id: data.presentation.id, aspect_ratio: selectedAspectRatio, style: selectedStyle });
       navigate(`/presentations/${data.presentation.id}`);
     } catch (err) {
       setCreatingPresentation(false);
@@ -807,38 +809,32 @@ export default function Dashboard() {
               <div style={{ padding: '4px 20px 20px', borderTop: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8' }}>
                 {/* Controls row */}
                 <div className="flex items-center gap-2 py-2 flex-wrap">
-                  {/* Format selector */}
+                  {/* Style selector — Classic vs Minimalistic image-prompt aesthetic */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: isDark ? '#0f0f0f' : '#f0f0f0', borderRadius: 10, padding: 4, flexShrink: 0 }}>
                     {[
-                      { ratio: '16:9', label: 'Landscape', w: 20, h: 12 },
-                      { ratio: '1:1',  label: 'Square',    w: 14, h: 14 },
-                      { ratio: '9:16', label: 'Portrait',  w: 10, h: 16 },
-                    ].map(({ ratio, label, w, h }) => {
-                      const active = selectedAspectRatio === ratio;
+                      { value: 'classic', label: 'Classic' },
+                      { value: 'minimalistic', label: 'Minimalistic' },
+                    ].map(({ value, label }) => {
+                      const active = selectedStyle === value;
                       return (
                         <button
-                          key={ratio}
-                          onClick={() => setSelectedAspectRatio(ratio)}
-                          aria-label={label}
+                          key={value}
+                          onClick={() => setSelectedStyle(value)}
+                          aria-label={`${label} style`}
                           aria-pressed={active}
+                          title={value === 'classic'
+                            ? 'Bold editorial slides — pure black, hot pink accents, photo collages'
+                            : 'Cinematic, restrained slides — one idea per slide, near-monochrome, film-still finish'}
                           style={{
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                            padding: '6px 10px', borderRadius: 7, cursor: 'pointer', border: 'none',
+                            padding: '8px 12px', borderRadius: 7, cursor: 'pointer', border: 'none',
+                            fontSize: 11, fontWeight: 600, fontFamily: 'Inter,sans-serif',
                             background: active ? (isDark ? '#1e1e1e' : '#fff') : 'transparent',
                             boxShadow: active ? (isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.1)') : 'none',
+                            color: active ? '#5B50FF' : (isDark ? '#555' : '#888'),
                             transition: 'background 0.15s',
                           }}
                         >
-                          <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
-                            <rect
-                              x="0.5" y="0.5" width={w - 1} height={h - 1}
-                              rx="1.5"
-                              fill={active ? 'rgba(91,80,255,0.12)' : 'transparent'}
-                              stroke={active ? '#5B50FF' : (isDark ? '#555555' : '#999999')}
-                              strokeWidth="1.5"
-                            />
-                          </svg>
-                          <span style={{ fontSize: 10, fontWeight: 600, fontFamily: 'Inter,sans-serif', color: active ? '#5B50FF' : (isDark ? '#555' : '#888') }}>{label}</span>
+                          {label}
                         </button>
                       );
                     })}

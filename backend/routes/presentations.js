@@ -52,6 +52,7 @@ function validateAttachments(attachments, maxCount = 10) {
 }
 
 const VALID_ASPECT_RATIOS = ['16:9', '9:16', '1:1', '4:3'];
+const VALID_STYLES = ['classic', 'minimalistic'];
 
 // Mirrors the tier logic in deductCreditsForEdit — used to compute the
 // credits_needed figure for the cute-Nova 402 response when an edit is
@@ -209,7 +210,7 @@ router.post('/analyze', authenticateToken, analyzeLimiter, async (req, res) => {
 
 // ─── Create presentation + kick off async full flow ───────────────────────
 router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
-  const { message, attachments = [], aspectRatio = '16:9' } = req.body;
+  const { message, attachments = [], aspectRatio = '16:9', style = 'classic' } = req.body;
   if (!message?.trim() && attachments.length === 0) {
     return res.status(400).json({ error: 'Message or attachment required' });
   }
@@ -223,6 +224,9 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
   if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
   if (!VALID_ASPECT_RATIOS.includes(aspectRatio)) {
     return res.status(400).json({ error: `Invalid aspect ratio. Must be one of: ${VALID_ASPECT_RATIOS.join(', ')}` });
+  }
+  if (!VALID_STYLES.includes(style)) {
+    return res.status(400).json({ error: `Invalid style. Must be one of: ${VALID_STYLES.join(', ')}` });
   }
 
   try { checkTokenBudget(req.user.id); } catch (err) {
@@ -239,9 +243,9 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
   const msgId = uuid();
 
   db.prepare(
-    `INSERT INTO presentations (id, user_id, title, status, aspect_ratio)
-     VALUES (?, ?, 'Untitled Presentation', 'processing', ?)`
-  ).run(id, req.user.id, aspectRatio);
+    `INSERT INTO presentations (id, user_id, title, status, aspect_ratio, style)
+     VALUES (?, ?, 'Untitled Presentation', 'processing', ?, ?)`
+  ).run(id, req.user.id, aspectRatio, style);
 
   db.prepare(
     `INSERT INTO messages (id, presentation_id, role, content, attachments)
@@ -258,7 +262,7 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
 
   const userId = req.user.id;
   const _traceId = requestContext.getStore()?.requestId;
-  runFullFlow(id, message, attachments, userId, _traceId).catch(err => {
+  runFullFlow(id, message, attachments, userId, _traceId, style).catch(err => {
     logger.error('slide flow failed', { errorMessage: err.message, stack: err.stack?.split('\n').slice(0,4).join('\n') });
     broadcast(id, { type: 'error', message: err.message });
     const errDb = getDb();
@@ -267,15 +271,17 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
   });
 });
 
-async function runFullFlow(presentationId, message, attachments, userId = null, traceId = null) {
+async function runFullFlow(presentationId, message, attachments, userId = null, traceId = null, style = 'classic') {
   const db = getDb();
   const _t = Date.now();
   tracer.recordStep(traceId, 'full_flow', 'started', 0);
 
   broadcast(presentationId, { type: 'plan_generating' });
 
-  const presRow = db.prepare('SELECT aspect_ratio FROM presentations WHERE id = ?').get(presentationId);
+  const presRow = db.prepare('SELECT aspect_ratio, style FROM presentations WHERE id = ?').get(presentationId);
   const aspectRatio = presRow?.aspect_ratio || '16:9';
+  // Prefer the persisted style (source of truth) but fall back to the argument.
+  const deckStyle = presRow?.style || style || 'classic';
 
   const firstUserMsg = db
     .prepare(`SELECT attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
@@ -423,7 +429,8 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
       header?.color_palette || {},
       slide.index,
       attachedImages,
-      aspectRatio
+      aspectRatio,
+      deckStyle
     ).then(imageData => {
       // generateSlideImage falls back to a generic gradient placeholder rather
       // than throwing on persistent NB2 failure — treat that the same as an
@@ -460,7 +467,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
 
   await streamSlidePrompts(slides, header, message, attachments, {
     onPrompt(slide) { startSlideGeneration(slide); },
-  }, userId);
+  }, userId, deckStyle);
 
   // Fallback: if any slide was missed by the stream, generate a proper prompt via a targeted call
   const missingSlides = slides.filter(s => !promptedIndices.has(s.index));
@@ -468,7 +475,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
     logger.warn('slide prompts missing — generating targeted fallback prompts', { missing: missingSlides.map(s => s.index) });
     await Promise.all(missingSlides.map(async (slide) => {
       try {
-        const singlePrompt = await generateSingleSlidePrompt(slide, header, message, allImages.slice(0, 3), userId);
+        const singlePrompt = await generateSingleSlidePrompt(slide, header, message, allImages.slice(0, 3), userId, deckStyle);
         startSlideGeneration({ ...slide, ...singlePrompt });
       } catch (err) {
         logger.error('targeted prompt fallback failed, using title', { slideIndex: slide.index, errorMessage: err.message });
@@ -726,8 +733,9 @@ router.post('/:id/generate', authenticateToken, async (req, res) => {
 async function runGeneration(presentationId, slidePlan, userId = null) {
   const db = getDb();
   const slides = [];
-  const presRow = db.prepare('SELECT aspect_ratio FROM presentations WHERE id = ?').get(presentationId);
+  const presRow = db.prepare('SELECT aspect_ratio, style FROM presentations WHERE id = ?').get(presentationId);
   const aspectRatio = presRow?.aspect_ratio || '16:9';
+  const deckStyle = presRow?.style || 'classic';
 
   broadcast(presentationId, {
     type: 'started',
@@ -771,7 +779,8 @@ async function runGeneration(presentationId, slidePlan, userId = null) {
         slidePlan.color_palette,
         slide.index,
         attachedImages,
-        aspectRatio
+        aspectRatio,
+        deckStyle
       );
 
       if (isPlaceholderImage(imageData)) {
@@ -1086,7 +1095,7 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
         try { briefAttachments = JSON.parse(firstUserMsg?.attachments || '[]').filter(a => a.data); } catch {}
         try {
           const generated = await generateSingleSlidePrompt(
-            slide, header, firstUserMsg?.content || header.presentation_title, briefAttachments, req.user.id,
+            slide, header, firstUserMsg?.content || header.presentation_title, briefAttachments, req.user.id, pres.style || 'classic',
           );
           prompt = generated.nano_banana_prompt;
         } catch (err) {
@@ -1102,7 +1111,8 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
         slidePlan.color_palette,
         slide.index,
         [],
-        regenAspectRatio
+        regenAspectRatio,
+        pres.style || 'classic'
       );
 
       // generateSlideImage falls back to a generic gradient placeholder rather
@@ -1222,9 +1232,12 @@ router.post('/:id/suggest-title', authenticateToken, async (req, res) => {
 
 // ─── Add more slides ──────────────────────────────────────────────────────
 router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) => {
-  const { description, count = 1, attachments: reqAttachments = [] } = req.body;
+  const { description, count = 1, attachments: reqAttachments = [], style } = req.body;
   if (!description?.trim() || typeof description !== 'string') {
     return res.status(400).json({ error: 'Please describe the slides you\'d like to add.' });
+  }
+  if (style !== undefined && !VALID_STYLES.includes(style)) {
+    return res.status(400).json({ error: `Invalid style. Must be one of: ${VALID_STYLES.join(', ')}` });
   }
   if (description.length > 10_000) {
     return res.status(400).json({ error: 'Description too long (max 10,000 characters)' });
@@ -1254,6 +1267,9 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
   // while the old slide's data gets silently overwritten by that placeholder.
   const startIndex = slides.length ? Math.max(...slides.map(s => s.index)) + 1 : 0;
   const aspectRatio = pres.aspect_ratio || '16:9';
+  // New slides default to the deck's existing style so added slides match the
+  // look of the original deck; an explicit request body can still override it.
+  const addStyle = style || pres.style || 'classic';
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
 
   // For fixed counts we know the cost up front — check affordability and
@@ -1377,7 +1393,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
         : '';
       const promptedSlideDefs = await Promise.all(newSlideDefs.map(async (slide) => {
         try {
-          const single = await generateSingleSlidePrompt(slide, promptHeader, description + continuityContext, combinedImages, req.user.id);
+          const single = await generateSingleSlidePrompt(slide, promptHeader, description + continuityContext, combinedImages, req.user.id, addStyle);
           return { ...slide, ...single };
         } catch (err) {
           // Leave this slide without a prompt — image gen falls back to the
@@ -1469,7 +1485,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
             const prompt = slideDef.nano_banana_prompt || slideDef.title;
             let imageData = await generateSlideImage(
               prompt, slideDef.type, slidePlan.theme, slidePlan.color_palette,
-              slideDef.index, combinedImages, aspectRatio
+              slideDef.index, combinedImages, aspectRatio, addStyle
             );
 
             // generateSlideImage retries NB2 internally but falls back to a
@@ -1483,7 +1499,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
               logger.warn('add-slides image returned placeholder — auto-retrying once with same prompt', { presentationId: req.params.id, slideIndex: slideDef.index });
               imageData = await generateSlideImage(
                 prompt, slideDef.type, slidePlan.theme, slidePlan.color_palette,
-                slideDef.index, combinedImages, aspectRatio
+                slideDef.index, combinedImages, aspectRatio, addStyle
               );
             }
 
@@ -1634,7 +1650,8 @@ router.post('/:id/unlock-slides', authenticateToken,
           slidePlanData.color_palette || {},
           lockedSlide.slide_index,
           [],
-          aspectRatio
+          aspectRatio,
+          pres.style || 'classic'
         );
 
         const failed = isPlaceholderImage(imageData);

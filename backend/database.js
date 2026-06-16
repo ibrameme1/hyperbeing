@@ -160,6 +160,13 @@ export function initDatabase() {
     db.exec('ALTER TABLE presentations ADD COLUMN adding_slides INTEGER DEFAULT 0');
   } catch { /* already exists */ }
 
+  // Migrate: image-prompt style — "classic" (busy editorial 5-layer) vs
+  // "minimalistic" (cinematic, restrained, one-idea-per-slide). Drives which
+  // system prompt claudeAgent uses when generating nano_banana_prompts.
+  try {
+    db.exec("ALTER TABLE presentations ADD COLUMN style TEXT DEFAULT 'classic'");
+  } catch { /* already exists */ }
+
   // Migrate: extend credit_transactions into a full ledger
   for (const col of [
     "ALTER TABLE credit_transactions ADD COLUMN credits_before INTEGER",

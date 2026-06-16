@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { logger, requestContext } from './logger.js';
 import { tracer } from './tracer.js';
+import { generateDesignImage } from './gptImageGeneration.js';
 
 const MOCK_MODE = !process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY === 'demo';
 
@@ -73,7 +74,27 @@ export function isPlaceholderImage(imageData) {
   return !imageData || imageData.startsWith('data:image/svg');
 }
 
-export async function generateSlideImage(nanaBananaPrompt, slideType, theme, colorPalette, slideIndex = 0, attachedImages = [], aspectRatio = '16:9') {
+export async function generateSlideImage(nanaBananaPrompt, slideType, theme, colorPalette, slideIndex = 0, attachedImages = [], aspectRatio = '16:9', style = 'classic') {
+  // Minimalistic style is rendered by OpenAI GPT Image 2.0 (medium quality,
+  // 16:9, ~1K resolution) rather than Nano Banana / Gemini. Its prompts are
+  // already fully art-directed and self-contained, so they're sent nearly
+  // verbatim — no classic "premium/theme" wrapping that would fight the
+  // restrained look. generateDesignImage handles its own mock mode + retries
+  // and returns null on persistent failure, which we map to the same gradient
+  // placeholder the Gemini path uses.
+  if (style === 'minimalistic') {
+    const minimalPrompt = buildMinimalPrompt(nanaBananaPrompt);
+    logger.debug('gpt image (minimalistic) slide gen start', { slideIndex, slideType, attachedImages: attachedImages.length });
+    const gptImage = await generateDesignImage(minimalPrompt, attachedImages.slice(0, 4), '16:9', slideIndex);
+    if (!gptImage) {
+      logger.error('gpt image (minimalistic) generation failed — falling back to placeholder', {
+        slideIndex, slideType, promptPreview: nanaBananaPrompt?.slice(0, 300),
+      });
+      return generateRichPlaceholder(slideType, theme, slideIndex);
+    }
+    return gptImage;
+  }
+
   if (MOCK_MODE) {
     const delay = 700 + Math.random() * 900;
     await new Promise(r => setTimeout(r, delay));
@@ -115,6 +136,19 @@ export async function editSlideImage(instruction, attachedImages = [], aspectRat
   logger.debug('nano banana edit start', { slideIndex, attachedImages: attachedImages.length });
 
   return callNanoBanana(parts, aspectRatio, slideIndex, `nanobanana_edit_${slideIndex}`);
+}
+
+// Lean wrapper for minimalistic GPT Image prompts. The base prompt is already
+// fully directed (medium, palette, typography, finish), so we only add neutral
+// rendering guardrails — never the classic premium/theme directives that would
+// pull the image away from the restrained, cinematic look.
+function buildMinimalPrompt(basePrompt) {
+  const parts = [
+    basePrompt,
+    '16:9 widescreen composition. Render exactly as described, with no additional decoration.',
+    'No watermarks, no UI chrome, no captions or text beyond what the brief specifies.',
+  ];
+  return parts.filter(Boolean).join(' ');
 }
 
 function buildFullPrompt(basePrompt, slideType, theme, colorPalette) {
