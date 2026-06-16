@@ -246,8 +246,8 @@ export default function DesignGalleryPage() {
 
       <main className="flex-1 max-w-5xl mx-auto px-4 w-full pb-4">
         {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {[0, 1, 2, 3, 4, 5, 6, 7].map(i => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[0, 1, 2, 3, 4, 5].map(i => (
               <div key={i} className="aspect-[16/9] rounded-lg skeleton" />
             ))}
           </div>
@@ -266,7 +266,7 @@ export default function DesignGalleryPage() {
             </p>
           </motion.div>
         ) : (
-          <motion.div layout className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <AnimatePresence>
               {generations.map(gen => (
                 <GalleryCell key={gen.id} gen={gen} onClick={setSelected} isDark={isDark} />
