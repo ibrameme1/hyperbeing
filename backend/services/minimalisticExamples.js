@@ -47,7 +47,7 @@ export const MINIMALISTIC_STYLE_REFERENCE = `═══════════�
 MINIMALISTIC STYLE — LEARN FROM THESE REFERENCE PROMPTS
 ══════════════════════════════════════════
 
-The image prompt you write must match the STYLE of the reference prompts below. Study their voice, structure, sentence rhythm, and level of detail. Like them, your prompt should: commit to exactly ONE render medium (a cinematic photograph with a named camera + lens / an editorial infographic exhibit / a hyper-dramatic 3D product render / a top-down isometric 3D render); build the frame around ONE strong central idea — a single hero moment or one dominant metaphor object, never a busy collage or a grid of pills; use a restrained, near-monochrome palette with at most one accent colour; carry a large condensed or stencil headline plus a fine subtext line that pairs a hard stat with its consequence; quote any on-image text verbatim; and finish with a stated cinematic colour grade, heavy film grain, and a deep vignette.
+The image prompt you write must match the STYLE of the reference prompts below. Study their voice, structure, sentence rhythm, and level of detail. Your prompts should match these vibes — visually appealing, with a nice title or other text that minimalistically explains what's happening.
 
 THESE ARE STYLE REFERENCES ONLY. They describe other brands and topics (Knorr, Unilever, a SaaS app, Pakistani campaigns, the "Place / Participation / Proof" framework). NEVER copy their subjects, brands, companies, products, statistics, place names, headlines, or copy. Invent fresh subject matter that fits THE USER'S brief and the specific slide, rendered in this same style.
 
