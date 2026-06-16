@@ -4,6 +4,7 @@ import { recordTokenUsage } from './stripeService.js';
 import { logger, requestContext } from './logger.js';
 import { metrics } from './metrics.js';
 import { tracer } from './tracer.js';
+import { MINIMALISTIC_STYLE_REFERENCE } from './minimalisticExamples.js';
 
 // Strip em/en dashes and horizontal bars from AI output — they're replaced
 // with a plain hyphen so generated copy never shows "—" / "–" characters.
@@ -941,85 +942,19 @@ ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 // ─── Minimalistic style ──────────────────────────────────────────────────────
 // The classic style above produces busy editorial slides (hot pink + neon green,
 // photo collages, emoji pills). The minimalistic style is the opposite: cinematic,
-// restrained, near-monochrome, ONE idea per slide, rendered like a film still or a
-// premium financial-publication exhibit. The block below is shared across every
-// minimalistic system prompt so the look stays consistent everywhere image prompts
-// are generated (main flow, add-slides, single-slide fallback).
-
-const MINIMALISTIC_STRUCTURE = `══════════════════════════════════════════
-MANDATORY STRUCTURE — MINIMALISTIC STYLE
-══════════════════════════════════════════
-
-The minimalistic style is cinematic, editorial, and restrained. ONE powerful idea per slide, rendered with the discipline of a premium financial publication or a film still. No clutter, no decoration, no busy collages, no emoji. Every nano_banana_prompt must move through these five layers in order:
-
-1. MEDIUM & RENDER
-   Open by declaring exactly ONE rendering approach and commit to it fully:
-   A) CINEMATIC PHOTOGRAPH — name camera, lens, and lighting, e.g. "Stark, deeply moody cinematic photograph, shot on Leica SL2 with 35mm, available light only" / "Sony A7 IV, 85mm f/1.4" / "Canon R5, 24mm f/1.8, golden hour". Use for human moments and real-world scenes.
-   B) EDITORIAL INFOGRAPHIC RENDER — "Ultra-realistic editorial infographic render, like a premium financial publication / McKinsey or BCG case exhibit / HBR case study". Use for timelines, line graphs, data arguments.
-   C) HYPER-DRAMATIC 3D PRODUCT VISUALIZATION — "Octane Render quality, studio-perfect lighting". Use for metaphor objects (chessboards, hourglasses, product hero shots, floating devices).
-   D) TOP-DOWN ISOMETRIC 3D RENDER — "Unreal Engine 5 Lumen lighting, 4K photorealistic textures". Use for maps, city grids, systems seen from above.
-
-2. BACKGROUND & PALETTE
-   State the exact background and one sentence on why it serves the mood. The palette is restrained and near-monochrome — pick ONE world and stay inside it:
-   - Stark white (with a faint cool grey paper texture) for editorial / data slides — "McKinsey-cold editorial finish, zero decorative noise".
-   - Pure black / deep charcoal / matte obsidian / near-black with a subtle dark navy gradient bleed, for product, metaphor, and 3D slides.
-   - Moody cinematic interior with crushed blacks, cold blue-white ambient, a single desaturated amber accent, for photographic scenes.
-   Use AT MOST ONE accent colour, and only when it earns its place: saturated red / red-orange for urgency and danger, or warm gold / amber for premium and lifestyle. Nothing else.
-
-3. ONE CENTRAL CONCEPT
-   The slide carries exactly ONE idea, rendered large and unmistakable. Choose ONE:
-   A) A SINGLE HERO PHOTOGRAPH of a culturally specific human moment — describe the subject, their exact posture and named emotional state, the lighting, what is visible on any screen verbatim, and the anticipatory beat just before something happens.
-   B) A SINGLE DOMINANT METAPHOR OBJECT or scene — e.g. an enormous chessboard, a monumental crystal hourglass draining, a timeline of granite tombstones, a war-room map with brass pins and red thread, three phones floating side by side, one McKinsey-style line graph. Describe materials, lighting, scale, and what every labelled element reads verbatim.
-   Render it with depth: dramatic single-source or overhead spotlight lighting, precise shadows, real textures. NO collage of many images. NO column/pill grids.
-
-4. TYPOGRAPHY
-   - One headline in large, bold CONDENSED or STENCIL ALL-CAPS — white on dark backgrounds, dark on white backgrounds. One line, or at most two short lines.
-   - At most ONE word or line may take the single accent colour (usually red), and only for genuine emphasis. The headline may also be entirely monochrome. NEVER force a coloured accent line the way the classic style does.
-   - Directly beneath, a single fine SUBTEXT line in smaller type (white, grey, or italic) that pairs a hard stat with its consequence.
-   - Object labels (flag tags, tombstone engravings, axis annotations, callout cards) are small, tight, print-precise caps quoted verbatim. Print-precise linework.
-
-5. FINISH
-   Close with the cinematic finishing layer: heavy film grain, deep shadow vignette on all four edges, a defined single light source, and a stated colour grade (e.g. "crushed blacks, cold blue-white ambient, single amber glow" / "warm amber on the subject, cool dark shadows elsewhere"). The whole frame should feel quiet, deliberate, and brutally clear.
-
-══════════════════════════════════════════
-QUALITY REQUIREMENTS — EVERY PROMPT MUST HAVE
-══════════════════════════════════════════
-- At least 3 sensory details (lighting, texture, expression, material)
-- At least 1 piece of on-screen or object text quoted verbatim when a screen, sign, label, or chart appears (caption, view count, RIP engraving, flag text, axis annotation)
-- At least 1 named human emotional state when a person appears ("completely absorbed," "quiet frustration," "genuine involuntary pleasure," "wide-eyed surprise")
-- Culturally specific markers relevant to the audience (specific cities, brands, age groups, rituals)
-- Every stat paired with its consequence
-- A moment of contradiction or quiet tension where possible
-
-══════════════════════════════════════════
-STYLE SELECTION
-══════════════════════════════════════════
-- Human insight, lifestyle, audience, campaign slides → CINEMATIC PHOTOGRAPH
-- Timelines, growth, market data, before/after → EDITORIAL INFOGRAPHIC RENDER
-- Product, metaphor, competitive dynamics, urgency → HYPER-DRAMATIC 3D VISUALIZATION
-- Maps, distribution, ecosystems, systems from above → TOP-DOWN ISOMETRIC 3D RENDER
-- COVER SLIDE (index 0): choose the single strongest hero photograph or metaphor object that embodies the entire brief; same restrained palette and finish as the rest of the deck.
-
-══════════════════════════════════════════
-SELF-CHECK BEFORE OUTPUTTING EACH PROMPT
-══════════════════════════════════════════
-- Exactly ONE render medium declared and committed to
-- Near-monochrome palette with at most one accent colour
-- ONE central concept — no collages of many images, no column/pill grids
-- Headline is condensed/stencil caps; subtext pairs a stat with a consequence
-- Verbatim on-screen / object text included where applicable
-- Film grain + deep vignette + single light source + colour grade all stated
-
-BANNED IN MINIMALISTIC STYLE — never use: hot pink or neon green accents, emoji, audience "pills", glassmorphism floating cards, busy 4-8 image collages, decorative floating geometry, "abstract gradient background", "glowing orbs", "neural network visualization", "business people in a meeting", "person using laptop", "team collaborating in office", "handshake", "growth chart" (render a real, art-directed line graph instead).
-NEVER mention aspect ratio in the prompt text — aspect ratio is handled separately as an API parameter.
-If the user uploaded moodboard or reference images, explicitly describe which visual elements, colours, and mood from those references carry into this specific slide.`;
+// restrained, near-monochrome, ONE idea per slide. Rather than a written rule
+// block, it teaches the look by example — MINIMALISTIC_STYLE_REFERENCE (from
+// ./minimalisticExamples.js) carries the 12 ideal prompts plus guardrails, and is
+// shared across every minimalistic system prompt so the look stays consistent
+// everywhere image prompts are generated (main flow, add-slides, single-slide
+// fallback).
 
 const MINIMALISTIC_PROMPT_GEN_SYSTEM = `You are Nova, generating detailed visual prompts for an existing slide outline — in MINIMALISTIC style.
 
 Output format — CRITICAL. Output ONLY lines starting with SLIDE:. No other text, no markdown, no commentary.
 
 One line per slide:
-SLIDE:{"index":N,"nano_banana_prompt":"...250-500 word prompt per the MINIMALISTIC structure below...","attach_image_categories":["moodboard"|"branding"|"all"|[]]}
+SLIDE:{"index":N,"nano_banana_prompt":"...roughly 200-450 words, matching the reference style below...","attach_image_categories":["moodboard"|"branding"|"all"|[]]}
 
 ══════════════════════════════════════════
 CRITICAL OUTPUT RULE
@@ -1032,11 +967,11 @@ You MUST output exactly one SLIDE: line for every index listed in the outline �
 - After generating all prompts, mentally count them — if you have fewer than N, add the missing ones before stopping
 
 Rules:
-- nano_banana_prompt must be 250-500 words following the MINIMALISTIC structure below
-- EVERY slide including the cover (index 0) follows the EXACT SAME minimalistic structure and restrained palette — no exceptions
+- nano_banana_prompt must be roughly 200-450 words, matching the reference prompts below
+- EVERY slide including the cover (index 0) follows the EXACT SAME minimalistic style and restrained palette — no exceptions
 - COVER SLIDE (index 0, type "cover"): it has no key_points. Derive its visual concept entirely from the Original Brief and theme. Choose the single strongest hero photograph or metaphor object that embodies the whole deck, in the same restrained palette and cinematic finish as every other slide.
 
-${MINIMALISTIC_STRUCTURE}
+${MINIMALISTIC_STYLE_REFERENCE}
 
 ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 - "moodboard" — attach moodboard references to slides where visual style guidance is needed
@@ -1052,27 +987,27 @@ Line 1 must be:
 HEADER:{"presentation_title":"...","total_slides":N,"theme":"modern-minimal|bold-gradient|corporate|creative|tech","color_palette":{"primary":"#hex","secondary":"#hex","accent":"#hex"},"message":"Your warm 1-sentence confirmation to the user"}
 
 Then one line per slide:
-SLIDE:{"index":0,"type":"cover|section|content|quote|data|image|conclusion","title":"...","subtitle":"...or null","key_points":["..."],"speaker_note":"...","nano_banana_prompt":"...250-500 word prompt per the MINIMALISTIC structure below...","attach_image_categories":["moodboard"|"branding"|"all"|[]]}
+SLIDE:{"index":0,"type":"cover|section|content|quote|data|image|conclusion","title":"...","subtitle":"...or null","key_points":["..."],"speaker_note":"...","nano_banana_prompt":"...roughly 200-450 words, matching the reference style below...","attach_image_categories":["moodboard"|"branding"|"all"|[]]}
 
 Rules:
 - HEADER: must come first; total_slides must equal the number of SLIDE: lines
 - Choose total_slides based on what best serves the brief — typically 5-15 slides. Never pad, never truncate.
 - Every slide except the cover (index 0) must have a KEY TAKEAWAY headline as its title — reading only titles should tell the full story
 - key_points <= 12 words each
-- nano_banana_prompt must be 250-500 words following the MINIMALISTIC structure below
+- nano_banana_prompt must be roughly 200-450 words, matching the reference prompts below
 
-${MINIMALISTIC_STRUCTURE}
+${MINIMALISTIC_STYLE_REFERENCE}
 
 ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 - "moodboard" — visual style guidance · "branding" — products/brand identity · "all" — everything · [] — nothing`;
 
 const MINIMALISTIC_SINGLE_SLIDE_PROMPT_SYSTEM = `You are Nova. Generate a nano_banana_prompt for one presentation slide — in MINIMALISTIC style.
 
-Output ONLY the visual prompt as plain prose — 250 to 500 words. No JSON, no markdown, no labels, no "SLIDE:", no bullet points — just the prompt text itself.
+Output ONLY the visual prompt as plain prose — roughly 200 to 450 words, matching the length and density of the reference prompts below. No JSON, no markdown, no labels, no "SLIDE:", no bullet points — just the prompt text itself.
 
-The prompt MUST move through the five MINIMALISTIC layers in order: (1) MEDIUM & RENDER — declare ONE: cinematic photograph (camera+lens) / editorial infographic render / hyper-dramatic 3D visualization / top-down isometric 3D render. (2) BACKGROUND & PALETTE — restrained near-monochrome (stark white, or pure black/charcoal, or moody cinematic interior) with at most ONE accent colour. (3) ONE CENTRAL CONCEPT — a single hero photograph OR a single dominant metaphor object; never a collage or column grid. (4) TYPOGRAPHY — large condensed/stencil ALL-CAPS headline, at most one accent word, a fine subtext line pairing a stat with its consequence, object labels quoted verbatim. (5) FINISH — heavy film grain, deep vignette, single light source, stated colour grade.
+For a COVER slide (index 0): it has no key_points — derive the whole concept from the Original Brief and theme, choosing the single strongest hero photograph or metaphor object that embodies the deck, in the same restrained style as every other slide.
 
-${MINIMALISTIC_STRUCTURE}`;
+${MINIMALISTIC_STYLE_REFERENCE}`;
 
 // Pick the system prompt for a generation function based on the requested style.
 // Default is 'classic' so every existing call path is unchanged.
