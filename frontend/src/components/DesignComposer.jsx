@@ -76,7 +76,7 @@ export default function DesignComposer({
             value={prompt}
             onChange={e => onPromptChange(e.target.value)}
             placeholder={craftMode === 'nova'
-              ? 'Describe the design you want — Nova will craft the image prompts for you…'
+              ? 'Describe the design you want — Nova will craft the design for you…'
               : 'Write the exact image prompt you want to send to GPT Image…'}
             aria-label="Design brief"
             rows={3}

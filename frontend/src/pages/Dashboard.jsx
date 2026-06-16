@@ -772,7 +772,7 @@ export default function Dashboard() {
             <h1 className="font-sans text-3xl sm:text-5xl font-bold leading-tight tracking-tight" style={{ color: 'var(--text-primary)' }}>
               What will you<br />create today?
             </h1>
-            <p className="text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>{greeting(user?.name || 'there')} — {heroSubtitle}</p>
+            <p className="text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>{greeting(user?.name || 'there')} {heroSubtitle}</p>
           </motion.div>
 
           <ModeSwitcher mode="presentation" onChange={mode => { if (mode === 'design') navigate('/design'); }} isDark={isDark} />
