@@ -4,6 +4,7 @@ import { recordTokenUsage } from './stripeService.js';
 import { logger, requestContext } from './logger.js';
 import { metrics } from './metrics.js';
 import { tracer } from './tracer.js';
+import { MINIMALISTIC_STYLE_REFERENCE } from './minimalisticExamples.js';
 
 // Strip em/en dashes and horizontal bars from AI output — they're replaced
 // with a plain hyphen so generated copy never shows "—" / "–" characters.
@@ -595,11 +596,14 @@ export async function streamChat(conversationHistory, userMessage, attachments =
 
 const ANALYZE_PROMPT = `You are a presentation intelligence system. A user has submitted a brief to create a presentation. Analyze their input and return a JSON object with contextual questions to gather exactly what's needed.
 
-Return ONLY valid JSON — no text before or after:
+BEFORE you respond, decide if the brief references something that benefits from current, real-world information — a real company, brand, product, person, market, statistic, or recent event. If so, use the web_search tool to look up a handful of relevant, up-to-date facts (positioning, competitors, recent news, market size, audience demographics, etc.). Use what you find to make your questions sharper and more specific to the real thing the user is talking about. If the brief is generic/abstract and nothing would benefit from a lookup, skip search entirely.
+
+After any research, return ONLY valid JSON — no text before or after, no markdown fences:
 {
   "detected_type": "e.g. investor pitch / marketing deck / product launch / consulting report / brand deck",
   "detected_industry": "e.g. fintech / fashion / SaaS / FMCG / healthcare",
   "suggested_slide_count": <number 5-15>,
+  "research_notes": ["short factual finding from web search, if any — omit or leave empty if no search was needed"],
   "contextual_questions": [
     {
       "question": "Specific question based on the brief",
@@ -615,7 +619,8 @@ Rules:
 - Examples for an investor pitch: "Who is the primary audience?", "What funding stage is this for?", "What tone do you want?"
 - Examples for a product launch: "Who is the target consumer?", "What is the key emotion you want to evoke?", "How product-heavy should the visuals be?"
 - NEVER ask generic questions like "how many slides" — use suggested_slide_count instead
-- Questions and options must be directly relevant to the specific brief provided`;
+- Questions and options must be directly relevant to the specific brief provided — if you researched the real brand/product, reflect that in the questions and options
+- research_notes should be short, factual, citable bullet points (3-5 max) — empty array if no research was done`;
 
 export async function analyzePresentation(message, attachments = [], userId = null) {
   if (MOCK_MODE) {
@@ -624,6 +629,7 @@ export async function analyzePresentation(message, attachments = [], userId = nu
       detected_type: 'marketing deck',
       detected_industry: 'FMCG',
       suggested_slide_count: 8,
+      research_notes: [],
       contextual_questions: [
         { question: 'Who is the primary audience for this presentation?', options: ['Internal team', 'External clients', 'Investors', 'Consumers'] },
         { question: 'What tone should this deck have?', options: ['Bold and energetic', 'Premium and minimal', 'Corporate and structured', 'Creative and playful'] },
@@ -641,17 +647,20 @@ export async function analyzePresentation(message, attachments = [], userId = nu
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
+    max_tokens: 1536,
     system: ANALYZE_PROMPT,
+    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
     messages: [{ role: 'user', content: userContent }],
   });
 
   const durationMs = Date.now() - t0;
   if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
   metrics.recordAICall({ fn: 'analyzePresentation', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs });
-  logger.info('claude analyze complete', { durationMs, inputTokens: response.usage?.input_tokens });
+  logger.info('claude analyze complete', { durationMs, inputTokens: response.usage?.input_tokens, searches: response.content.filter(b => b.type === 'server_tool_use' && b.name === 'web_search').length });
 
-  const raw = response.content[0].text.trim();
+  // With web_search enabled, content can include server_tool_use / web_search_tool_result
+  // blocks interleaved with text — concatenate all text blocks to find the JSON.
+  const raw = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
   const jsonText = raw.startsWith('```') ? raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '') : raw;
 
   try {
@@ -930,6 +939,88 @@ ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 - "all" — attach all uploaded images
 - [] — attach nothing (e.g., pure text quote slides)`;
 
+// ─── Minimalistic style ──────────────────────────────────────────────────────
+// The classic style above produces busy editorial slides (hot pink + neon green,
+// photo collages, emoji pills). The minimalistic style is the opposite: cinematic,
+// restrained, near-monochrome, ONE idea per slide. Rather than a written rule
+// block, it teaches the look by example — MINIMALISTIC_STYLE_REFERENCE (from
+// ./minimalisticExamples.js) carries the 12 ideal prompts plus guardrails, and is
+// shared across every minimalistic system prompt so the look stays consistent
+// everywhere image prompts are generated (main flow, add-slides, single-slide
+// fallback).
+
+const MINIMALISTIC_PROMPT_GEN_SYSTEM = `You are Nova, generating detailed visual prompts for an existing slide outline — in MINIMALISTIC style.
+
+Output format — CRITICAL. Output ONLY lines starting with SLIDE:. No other text, no markdown, no commentary.
+
+One line per slide:
+SLIDE:{"index":N,"nano_banana_prompt":"...roughly 200-450 words, matching the reference style below...","attach_image_categories":["moodboard"|"branding"|"all"|[]]}
+
+══════════════════════════════════════════
+CRITICAL OUTPUT RULE
+══════════════════════════════════════════
+
+You MUST output exactly one SLIDE: line for every index listed in the outline — in ascending order.
+- If the outline has N slides you output EXACTLY N SLIDE: lines
+- The FIRST line you output MUST be SLIDE: for the LOWEST index in the outline (do NOT skip or defer any slide — including the cover)
+- Missing any index causes a hard system error and ruins the entire presentation
+- After generating all prompts, mentally count them — if you have fewer than N, add the missing ones before stopping
+
+Rules:
+- nano_banana_prompt must be roughly 200-450 words, matching the reference prompts below
+- EVERY slide including the cover (index 0) follows the EXACT SAME minimalistic style and restrained palette — no exceptions
+- COVER SLIDE (index 0, type "cover"): it has no key_points. Derive its visual concept entirely from the Original Brief and theme. Choose the single strongest hero photograph or metaphor object that embodies the whole deck, in the same restrained palette and cinematic finish as every other slide.
+
+${MINIMALISTIC_STYLE_REFERENCE}
+
+ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
+- "moodboard" — attach moodboard references to slides where visual style guidance is needed
+- "branding" — attach branding/logos/pack shots to slides where products or brand identity feature
+- "all" — attach all uploaded images
+- [] — attach nothing (e.g., pure text quote slides)`;
+
+const MINIMALISTIC_SYSTEM_PROMPT_STREAM = `You are Nova. The user has provided their full brief with PREFLIGHT ANSWERS. Generate the complete presentation now — in MINIMALISTIC style.
+
+Output format — CRITICAL. Output ONLY lines starting with HEADER: or SLIDE:. No other text, no markdown.
+
+Line 1 must be:
+HEADER:{"presentation_title":"...","total_slides":N,"theme":"modern-minimal|bold-gradient|corporate|creative|tech","color_palette":{"primary":"#hex","secondary":"#hex","accent":"#hex"},"message":"Your warm 1-sentence confirmation to the user"}
+
+Then one line per slide:
+SLIDE:{"index":0,"type":"cover|section|content|quote|data|image|conclusion","title":"...","subtitle":"...or null","key_points":["..."],"speaker_note":"...","nano_banana_prompt":"...roughly 200-450 words, matching the reference style below...","attach_image_categories":["moodboard"|"branding"|"all"|[]]}
+
+Rules:
+- HEADER: must come first; total_slides must equal the number of SLIDE: lines
+- Choose total_slides based on what best serves the brief — typically 5-15 slides. Never pad, never truncate.
+- Every slide except the cover (index 0) must have a KEY TAKEAWAY headline as its title — reading only titles should tell the full story
+- key_points <= 12 words each
+- nano_banana_prompt must be roughly 200-450 words, matching the reference prompts below
+
+${MINIMALISTIC_STYLE_REFERENCE}
+
+ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
+- "moodboard" — visual style guidance · "branding" — products/brand identity · "all" — everything · [] — nothing`;
+
+const MINIMALISTIC_SINGLE_SLIDE_PROMPT_SYSTEM = `You are Nova. Generate a nano_banana_prompt for one presentation slide — in MINIMALISTIC style.
+
+Output ONLY the visual prompt as plain prose — roughly 200 to 450 words, matching the length and density of the reference prompts below. No JSON, no markdown, no labels, no "SLIDE:", no bullet points — just the prompt text itself.
+
+For a COVER slide (index 0): it has no key_points — derive the whole concept from the Original Brief and theme, choosing the single strongest hero photograph or metaphor object that embodies the deck, in the same restrained style as every other slide.
+
+${MINIMALISTIC_STYLE_REFERENCE}`;
+
+// Pick the system prompt for a generation function based on the requested style.
+// Default is 'classic' so every existing call path is unchanged.
+function pickPromptGenSystem(style) {
+  return style === 'minimalistic' ? MINIMALISTIC_PROMPT_GEN_SYSTEM : PROMPT_GEN_SYSTEM;
+}
+function pickSlidePlanSystem(style) {
+  return style === 'minimalistic' ? MINIMALISTIC_SYSTEM_PROMPT_STREAM : SYSTEM_PROMPT_STREAM;
+}
+function pickSingleSlideSystem(style) {
+  return style === 'minimalistic' ? MINIMALISTIC_SINGLE_SLIDE_PROMPT_SYSTEM : SINGLE_SLIDE_PROMPT_SYSTEM;
+}
+
 // Streaming compact plan — calls callbacks.onHeader(header) and callbacks.onSlide(slide)
 // as each line arrives so the frontend can show rows immediately.
 // Returns { header, slides } for backward-compatible use in runFullFlow.
@@ -1037,7 +1128,7 @@ export async function generateCompactPlan(message, attachments, userId = null, c
   return { header, slides };
 }
 
-export async function streamSlidePrompts(slides, header, message, attachments, callbacks, userId = null) {
+export async function streamSlidePrompts(slides, header, message, attachments, callbacks, userId = null, style = 'classic') {
   const { onPrompt } = callbacks;
 
   if (MOCK_MODE) {
@@ -1090,7 +1181,7 @@ FINAL CHECK before you respond: you must output exactly ${sortedSlides.length} S
   const stream = client.messages.stream({
     model: 'claude-sonnet-4-6',
     max_tokens: 16000,
-    system: PROMPT_GEN_SYSTEM,
+    system: pickPromptGenSystem(style),
     messages: [{ role: 'user', content: userContent }],
   });
 
@@ -1299,7 +1390,7 @@ ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 - "all" — attach all uploaded images
 - [] — attach nothing (e.g., pure text quote slides)`;
 
-export async function streamSlidePlan(message, attachments, callbacks, userId = null) {
+export async function streamSlidePlan(message, attachments, callbacks, userId = null, style = 'classic') {
   const { onHeader, onSlide } = callbacks;
 
   if (MOCK_MODE) {
@@ -1325,7 +1416,7 @@ export async function streamSlidePlan(message, attachments, callbacks, userId = 
   const stream = client.messages.stream({
     model: 'claude-sonnet-4-6',
     max_tokens: 16000,
-    system: SYSTEM_PROMPT_STREAM,
+    system: pickSlidePlanSystem(style),
     messages: [{ role: 'user', content: userContent }],
   });
 
@@ -1458,14 +1549,17 @@ QUALITY: include at least 3 sensory details, 1 verbatim on-screen text (when pho
 
 BANNED FOREVER: "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization", "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart".`;
 
-export async function generateSingleSlidePrompt(slide, header, originalBrief, attachments = [], userId = null) {
+export async function generateSingleSlidePrompt(slide, header, originalBrief, attachments = [], userId = null, style = 'classic') {
   if (MOCK_MODE) {
     return { nano_banana_prompt: slide.title, attach_image_categories: ['moodboard'] };
   }
 
-  const coverNote = (slide.index === 0 || slide.type === 'cover')
-    ? '\nCOVER SLIDE: No key_points exist — derive the entire visual concept from the Original Brief and presentation theme. Must use black/near-black background, hot pink accent, neon green design language. Use SINGLE HERO PHOTOGRAPH or ISOMETRIC 3D RENDER for the main body. Absolutely no abstract gradients or atmospheric haze.'
-    : '';
+  const isCover = (slide.index === 0 || slide.type === 'cover');
+  const coverNote = !isCover
+    ? ''
+    : style === 'minimalistic'
+      ? '\nCOVER SLIDE: No key_points exist — derive the entire visual concept from the Original Brief and presentation theme. Choose the single strongest hero photograph or metaphor object that embodies the whole deck, in the same restrained near-monochrome palette and cinematic finish as every other slide. No abstract gradients or atmospheric haze.'
+      : '\nCOVER SLIDE: No key_points exist — derive the entire visual concept from the Original Brief and presentation theme. Must use black/near-black background, hot pink accent, neon green design language. Use SINGLE HERO PHOTOGRAPH or ISOMETRIC 3D RENDER for the main body. Absolutely no abstract gradients or atmospheric haze.';
 
   const slideContext = [
     `Presentation: "${header.presentation_title}"`,
@@ -1492,7 +1586,7 @@ export async function generateSingleSlidePrompt(slide, header, originalBrief, at
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1200,
-    system: SINGLE_SLIDE_PROMPT_SYSTEM,
+    system: pickSingleSlideSystem(style),
     messages: [{ role: 'user', content: userContent }],
   });
 

@@ -160,6 +160,13 @@ export function initDatabase() {
     db.exec('ALTER TABLE presentations ADD COLUMN adding_slides INTEGER DEFAULT 0');
   } catch { /* already exists */ }
 
+  // Migrate: image-prompt style — "classic" (busy editorial 5-layer) vs
+  // "minimalistic" (cinematic, restrained, one-idea-per-slide). Drives which
+  // system prompt claudeAgent uses when generating nano_banana_prompts.
+  try {
+    db.exec("ALTER TABLE presentations ADD COLUMN style TEXT DEFAULT 'classic'");
+  } catch { /* already exists */ }
+
   // Migrate: extend credit_transactions into a full ledger
   for (const col of [
     "ALTER TABLE credit_transactions ADD COLUMN credits_before INTEGER",
@@ -183,6 +190,29 @@ export function initDatabase() {
     );
     CREATE INDEX IF NOT EXISTS idx_app_logs_level   ON app_logs(level);
     CREATE INDEX IF NOT EXISTS idx_app_logs_created ON app_logs(created_at);
+  `);
+
+  // Design mode — image generation gallery
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS design_generations (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      batch_id TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      mode TEXT NOT NULL DEFAULT 'own',
+      user_prompt TEXT,
+      final_prompt TEXT,
+      image_data TEXT,
+      reference_images TEXT DEFAULT '[]',
+      settings TEXT DEFAULT '{}',
+      error_message TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_design_gen_user ON design_generations(user_id);
+    CREATE INDEX IF NOT EXISTS idx_design_gen_batch ON design_generations(batch_id);
+    CREATE INDEX IF NOT EXISTS idx_design_gen_status ON design_generations(status);
   `);
 
   // Analytics events table for custom event tracking

@@ -104,7 +104,7 @@ function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDe
   );
 }
 
-export default function PresentationViewer({ slides, presentationId, title, onBack, onSlidesUpdate, onTitleChange, currentPlan = 'free' }) {
+export default function PresentationViewer({ slides, presentationId, title, onBack, onSlidesUpdate, onTitleChange, currentPlan = 'free', deckStyle = 'classic' }) {
   const [current, setCurrent] = useState(0);
   const [outOfCredits, setOutOfCredits] = useState(null);
   const [unlockingSlides, setUnlockingSlides] = useState(new Set());
@@ -136,8 +136,11 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   const [showAddSlides, setShowAddSlides] = useState(false);
   const [addDesc, setAddDesc] = useState('');
   const [addCount, setAddCount] = useState(1); // number 1-5 or 'auto'
+  const [addStyle, setAddStyle] = useState(deckStyle); // 'classic' | 'minimalistic' — defaults to the deck's style
   const [addAttachments, setAddAttachments] = useState([]);
   const [addLoading, setAddLoading] = useState(false);
+  // Keep the add-slides style in sync with the deck's style once it loads in.
+  useEffect(() => { setAddStyle(deckStyle); }, [deckStyle]);
   const addFileRef = useRef(null);
 
   // Error states
@@ -453,6 +456,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       await api.post(`/presentations/${presentationId}/add-slides`, {
         description: addDesc.trim(),
         count: addCount,
+        style: addStyle,
         attachments: addAttachments.map(a => ({ data: a.data, mimeType: a.mimeType, name: a.name })),
       });
       setShowAddSlides(false);
@@ -977,6 +981,30 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   {addCount === 'auto' && (
                     <p className="text-[11px] mt-1.5" style={{ color: 'var(--uv-soft)' }}>Nova will pick the right number of slides based on your content</p>
                   )}
+                </div>
+
+                <div>
+                  <p className="text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-2">Visual style</p>
+                  <div className="flex gap-2">
+                    {[
+                      { value: 'classic', label: 'Classic', desc: 'Bold editorial' },
+                      { value: 'minimalistic', label: 'Minimalistic', desc: 'Cinematic & clean' },
+                    ].map(({ value, label, desc }) => (
+                      <button
+                        key={value}
+                        onClick={() => setAddStyle(value)}
+                        className={`flex-1 py-2 px-3 rounded-xl text-sm font-semibold border-2 transition-all text-left ${
+                          addStyle === value
+                            ? 'border-transparent text-white'
+                            : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-400 bg-gray-50 dark:bg-zinc-800 hover:border-gray-300 dark:hover:border-zinc-600'
+                        }`}
+                        style={addStyle === value ? { background: '#5B50FF' } : {}}
+                      >
+                        {label}
+                        <span className={`block text-[11px] font-normal mt-0.5 ${addStyle === value ? 'text-white/75' : 'text-gray-400 dark:text-zinc-500'}`}>{desc}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>
