@@ -429,7 +429,8 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
       header?.color_palette || {},
       slide.index,
       attachedImages,
-      aspectRatio
+      aspectRatio,
+      deckStyle
     ).then(imageData => {
       // generateSlideImage falls back to a generic gradient placeholder rather
       // than throwing on persistent NB2 failure — treat that the same as an
@@ -732,8 +733,9 @@ router.post('/:id/generate', authenticateToken, async (req, res) => {
 async function runGeneration(presentationId, slidePlan, userId = null) {
   const db = getDb();
   const slides = [];
-  const presRow = db.prepare('SELECT aspect_ratio FROM presentations WHERE id = ?').get(presentationId);
+  const presRow = db.prepare('SELECT aspect_ratio, style FROM presentations WHERE id = ?').get(presentationId);
   const aspectRatio = presRow?.aspect_ratio || '16:9';
+  const deckStyle = presRow?.style || 'classic';
 
   broadcast(presentationId, {
     type: 'started',
@@ -777,7 +779,8 @@ async function runGeneration(presentationId, slidePlan, userId = null) {
         slidePlan.color_palette,
         slide.index,
         attachedImages,
-        aspectRatio
+        aspectRatio,
+        deckStyle
       );
 
       if (isPlaceholderImage(imageData)) {
@@ -1108,7 +1111,8 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
         slidePlan.color_palette,
         slide.index,
         [],
-        regenAspectRatio
+        regenAspectRatio,
+        pres.style || 'classic'
       );
 
       // generateSlideImage falls back to a generic gradient placeholder rather
@@ -1481,7 +1485,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
             const prompt = slideDef.nano_banana_prompt || slideDef.title;
             let imageData = await generateSlideImage(
               prompt, slideDef.type, slidePlan.theme, slidePlan.color_palette,
-              slideDef.index, combinedImages, aspectRatio
+              slideDef.index, combinedImages, aspectRatio, addStyle
             );
 
             // generateSlideImage retries NB2 internally but falls back to a
@@ -1495,7 +1499,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
               logger.warn('add-slides image returned placeholder — auto-retrying once with same prompt', { presentationId: req.params.id, slideIndex: slideDef.index });
               imageData = await generateSlideImage(
                 prompt, slideDef.type, slidePlan.theme, slidePlan.color_palette,
-                slideDef.index, combinedImages, aspectRatio
+                slideDef.index, combinedImages, aspectRatio, addStyle
               );
             }
 
@@ -1646,7 +1650,8 @@ router.post('/:id/unlock-slides', authenticateToken,
           slidePlanData.color_palette || {},
           lockedSlide.slide_index,
           [],
-          aspectRatio
+          aspectRatio,
+          pres.style || 'classic'
         );
 
         const failed = isPlaceholderImage(imageData);

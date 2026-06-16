@@ -809,43 +809,6 @@ export default function Dashboard() {
               <div style={{ padding: '4px 20px 20px', borderTop: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8' }}>
                 {/* Controls row */}
                 <div className="flex items-center gap-2 py-2 flex-wrap">
-                  {/* Format selector */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: isDark ? '#0f0f0f' : '#f0f0f0', borderRadius: 10, padding: 4, flexShrink: 0 }}>
-                    {[
-                      { ratio: '16:9', label: 'Landscape', w: 20, h: 12 },
-                      { ratio: '1:1',  label: 'Square',    w: 14, h: 14 },
-                      { ratio: '9:16', label: 'Portrait',  w: 10, h: 16 },
-                    ].map(({ ratio, label, w, h }) => {
-                      const active = selectedAspectRatio === ratio;
-                      return (
-                        <button
-                          key={ratio}
-                          onClick={() => setSelectedAspectRatio(ratio)}
-                          aria-label={label}
-                          aria-pressed={active}
-                          style={{
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                            padding: '6px 10px', borderRadius: 7, cursor: 'pointer', border: 'none',
-                            background: active ? (isDark ? '#1e1e1e' : '#fff') : 'transparent',
-                            boxShadow: active ? (isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.1)') : 'none',
-                            transition: 'background 0.15s',
-                          }}
-                        >
-                          <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
-                            <rect
-                              x="0.5" y="0.5" width={w - 1} height={h - 1}
-                              rx="1.5"
-                              fill={active ? 'rgba(91,80,255,0.12)' : 'transparent'}
-                              stroke={active ? '#5B50FF' : (isDark ? '#555555' : '#999999')}
-                              strokeWidth="1.5"
-                            />
-                          </svg>
-                          <span style={{ fontSize: 10, fontWeight: 600, fontFamily: 'Inter,sans-serif', color: active ? '#5B50FF' : (isDark ? '#555' : '#888') }}>{label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
                   {/* Style selector — Classic vs Minimalistic image-prompt aesthetic */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: isDark ? '#0f0f0f' : '#f0f0f0', borderRadius: 10, padding: 4, flexShrink: 0 }}>
                     {[
