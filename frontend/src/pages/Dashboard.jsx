@@ -763,19 +763,19 @@ export default function Dashboard() {
       {/* Hero gradient section */}
       <div style={{ background: isDark ? '#0f0f0f' : '#f5f5f5' }}>
         <div className="max-w-3xl mx-auto px-4 pt-8 pb-10">
-          <ModeSwitcher mode="presentation" onChange={mode => { if (mode === 'design') navigate('/design'); }} isDark={isDark} />
-
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            className="text-center mb-8 mt-6"
+            className="text-center mb-6"
           >
             <h1 className="font-sans text-3xl sm:text-5xl font-bold leading-tight tracking-tight" style={{ color: 'var(--text-primary)' }}>
               What will you<br />create today?
             </h1>
             <p className="text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>{greeting(user?.name || 'there')} — {heroSubtitle}</p>
           </motion.div>
+
+          <ModeSwitcher mode="presentation" onChange={mode => { if (mode === 'design') navigate('/design'); }} isDark={isDark} />
 
           {/* Composer card */}
           <motion.div

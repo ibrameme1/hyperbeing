@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import { Send, ImageIcon, X, Sparkles, Wand2 } from 'lucide-react';
+import NovaMascot from './NovaMascot';
 import { fileToImageAttachment } from '../utils/imageAttachment';
 import { DESIGN_CREDIT_COSTS, DESIGN_MAX_IMAGES_PER_BATCH } from '../utils/designMode';
 
@@ -78,7 +79,7 @@ export default function DesignComposer({
               ? 'Describe the design you want — Nova will craft the image prompts for you…'
               : 'Write the exact image prompt you want to send to GPT Image…'}
             aria-label="Design brief"
-            rows={4}
+            rows={3}
             className="hb-ta w-full resize-none bg-transparent"
             style={{
               border: 'none', outline: 'none', fontSize: 15, lineHeight: 1.7,
@@ -113,10 +114,10 @@ export default function DesignComposer({
         )}
 
         <div style={{ padding: '4px 20px 20px', borderTop: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8' }}>
-          <div className="flex items-center gap-3 py-2 flex-wrap">
+          <div className="flex items-center gap-2 py-2 flex-wrap">
             {/* Image count slider */}
             <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
+              display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
               background: isDark ? '#0f0f0f' : '#f0f0f0', borderRadius: 10, padding: '6px 12px',
             }}>
               <span style={{ fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif', color: isDark ? '#888' : '#666', whiteSpace: 'nowrap' }}>
@@ -134,13 +135,15 @@ export default function DesignComposer({
               />
             </div>
 
-            {/* Craft mode toggle */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: isDark ? '#0f0f0f' : '#f0f0f0', borderRadius: 10, padding: 4 }}>
+            {/* Craft mode split — the transparent Nova loop animation plays inside
+                the "Let Nova craft" segment whenever it's the active option. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: isDark ? '#0f0f0f' : '#f0f0f0', borderRadius: 10, padding: 4, flexShrink: 0 }}>
               {[
-                { key: 'nova', label: 'Let Nova craft prompts', icon: Sparkles },
-                { key: 'own', label: 'Use my prompts', icon: Wand2 },
-              ].map(({ key, label, icon: Icon }) => {
+                { key: 'nova', label: 'Let Nova craft' },
+                { key: 'own', label: 'My prompts' },
+              ].map(({ key, label }) => {
                 const active = craftMode === key;
+                const isNova = key === 'nova';
                 return (
                   <button
                     key={key}
@@ -148,7 +151,8 @@ export default function DesignComposer({
                     aria-pressed={active}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 6,
-                      padding: '6px 10px', borderRadius: 7, cursor: 'pointer', border: 'none',
+                      padding: isNova && active ? '4px 12px 4px 8px' : '6px 10px',
+                      borderRadius: 7, cursor: 'pointer', border: 'none',
                       fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif',
                       background: active ? (isDark ? '#1e1e1e' : '#fff') : 'transparent',
                       boxShadow: active ? (isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.1)') : 'none',
@@ -156,19 +160,25 @@ export default function DesignComposer({
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    <Icon size={12} />
+                    {isNova
+                      ? (active
+                          ? <NovaMascot size={22} className="-my-1 shrink-0" />
+                          : <Sparkles size={12} />)
+                      : <Wand2 size={12} />}
                     {label}
                   </button>
                 );
               })}
             </div>
 
-            {/* Attach references */}
+            {/* Attach references — icon-only to keep the controls on one line */}
             <button
               onClick={open}
+              aria-label="Attach reference images"
+              title="Attach reference images"
               style={{
-                display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'Inter,sans-serif',
-                fontWeight: 500, fontSize: 13, padding: '6px 12px', borderRadius: 8,
+                display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, fontFamily: 'Inter,sans-serif',
+                fontWeight: 500, fontSize: 13, padding: '6px 10px', borderRadius: 8,
                 border: '0.5px solid', cursor: 'pointer',
                 borderColor: attachments.length > 0 ? 'rgba(91,80,255,0.4)' : (isDark ? '#2a2a2a' : '#e0e0e0'),
                 background: attachments.length > 0 ? 'rgba(91,80,255,0.1)' : 'transparent',
@@ -176,7 +186,6 @@ export default function DesignComposer({
               }}
             >
               <ImageIcon size={14} />
-              <span style={{ display: 'none' }} className="sm:inline-block">References</span>
               {attachments.length > 0 && (
                 <span style={{ background: '#5B50FF', color: '#fff', borderRadius: 9999, fontSize: 11, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
                   {attachments.length}
@@ -184,8 +193,8 @@ export default function DesignComposer({
               )}
             </button>
 
-            {/* Cost + submit */}
-            <div className="hidden sm:flex items-center gap-2 ml-auto">
+            {/* Cost + submit — pinned right, stays on the same line as the options */}
+            <div className="hidden sm:flex items-center gap-2 ml-auto shrink-0">
               <p className="text-xs" style={{ color: isDark ? '#555' : '#aaa' }}>{totalCost} credit{totalCost !== 1 ? 's' : ''}</p>
               <button
                 onClick={onSubmit}
