@@ -5,15 +5,18 @@ import { useDropzone } from 'react-dropzone';
 import {
   Sparkles, Send, X, Clock, Trash2, Loader2,
   ImageIcon, Palette, Plus, ChevronDown, ChevronUp, Zap,
-  Bot,
+  Bot, Search, Globe,
 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
+import { usePresentations, useSubscription, useDeletePresentation, queryKeys } from '../api/queries';
+import { openAuthedEventSource } from '../utils/sse';
 import OutOfCreditsModal from '../components/OutOfCreditsModal';
 import NovaMascot from '../components/NovaMascot';
 import { useTheme } from '../contexts/ThemeContext';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
-import { SkeletonDashboardPage } from '../components/Skeleton';
+import { SkeletonDashboardPage, SkeletonCard } from '../components/Skeleton';
 import FeedbackButton from '../components/FeedbackButton';
 import { fileToImageAttachment } from '../utils/imageAttachment';
 import TopNav from '../components/TopNav';
@@ -29,16 +32,31 @@ const ANALYZING_MESSAGES = [
   { text: "almost there — cooking something good.", emoji: "🍳" },
 ];
 
-function AnalyzingOverlay({ onCancel }) {
+// Shown while web search is on — Nova takes a little longer, so this set leans
+// into the "researching online" story.
+const SEARCHING_MESSAGES = [
+  { text: "let me look this up online real quick…", emoji: "🔍" },
+  { text: "digging up the latest on the web…", emoji: "🌐" },
+  { text: "reading up on the competition…", emoji: "🕵️" },
+  { text: "checking recent news + market data…", emoji: "📰" },
+  { text: "pulling real facts so the questions hit harder…", emoji: "🎯" },
+  { text: "cross-referencing a few sources…", emoji: "📚" },
+  { text: "almost done researching — hang tight.", emoji: "⏳" },
+];
+
+function AnalyzingOverlay({ onCancel, webSearch = false, searchQueries = [] }) {
   const [msgIdx, setMsgIdx] = useState(0);
   const shouldReduceMotion = useReducedMotion();
+  const messages = webSearch ? SEARCHING_MESSAGES : ANALYZING_MESSAGES;
+  const latestQuery = searchQueries[searchQueries.length - 1];
 
   useEffect(() => {
-    const t = setInterval(() => setMsgIdx(i => (i + 1) % ANALYZING_MESSAGES.length), 2400);
+    setMsgIdx(0);
+    const t = setInterval(() => setMsgIdx(i => (i + 1) % messages.length), 2400);
     return () => clearInterval(t);
-  }, []);
+  }, [messages]);
 
-  const msg = ANALYZING_MESSAGES[msgIdx];
+  const msg = messages[msgIdx];
 
   return (
     <motion.div
@@ -85,6 +103,39 @@ function AnalyzingOverlay({ onCancel }) {
               </motion.div>
             </AnimatePresence>
           </div>
+
+          {/* Live web-search status — shows the real query Nova is running */}
+          {webSearch && (
+            <div className="w-full mb-4" aria-live="polite" aria-atomic="true">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <Search size={13} className={shouldReduceMotion ? '' : 'animate-pulse'} style={{ color: '#8B5CF6' }} />
+                <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  {latestQuery ? 'Searching the web' : 'Preparing to search…'}
+                </span>
+              </div>
+              <AnimatePresence mode="wait">
+                {latestQuery && (
+                  <motion.p
+                    key={latestQuery}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.24 }}
+                    className="text-sm text-center font-medium truncate px-2"
+                    style={{ color: '#C4B5FD' }}
+                    title={latestQuery}
+                  >
+                    “{latestQuery}”
+                  </motion.p>
+                )}
+              </AnimatePresence>
+              {searchQueries.length > 1 && (
+                <p className="text-[11px] text-center mt-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  {searchQueries.length} searches so far
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Typing dots */}
           <div className="flex gap-1.5">
@@ -270,21 +321,16 @@ function PresentationCard({ pres, onDelete }) {
     if (confirmDelete) cancelBtnRef.current?.focus();
   }, [confirmDelete]);
 
-  async function handleDelete(e) {
+  function handleDelete(e) {
     e.stopPropagation();
     if (!confirmDelete) { setConfirmDelete(true); return; }
     setDeleting(true);
     setConfirmDelete(false);
     setDeleteError(false);
-    try {
-      await api.delete(`/presentations/${pres.id}`);
-      capture('presentation_deleted', { presentation_id: pres.id });
-      onDelete(pres.id);
-    } catch {
-      setDeleting(false);
-      setDeleteError(true);
-      setTimeout(() => setDeleteError(false), 3000);
-    }
+    capture('presentation_deleted', { presentation_id: pres.id });
+    // Optimistic — the parent's mutation removes this card from the list
+    // immediately and rolls back (re-adding it) if the request fails.
+    onDelete(pres.id);
   }
 
   function handleCancelDelete(e) {
@@ -399,8 +445,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [input, setInput] = useState('');
 
-  // User-scoped cache key prevents stale data from a previous user ever being shown
-  const presCacheKey = `hb_presentations_${user?.id}`;
+  const queryClient = useQueryClient();
 
   const prefs = (() => { try { return JSON.parse(localStorage.getItem('hb_prefs') || 'null'); } catch { return null; } })();
   const heroSubtitle = prefs
@@ -410,9 +455,6 @@ export default function Dashboard() {
   const [brandingFiles, setBrandingFiles] = useState([]);
   const [showZones, setShowZones] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const [presentations, setPresentations] = useState([]);
-  const [presLoading, setPresLoading] = useState(true);
-  const [presError, setPresError] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [fetchingUrls, setFetchingUrls] = useState([]);
   const [analysis, setAnalysis] = useState(null);
@@ -421,9 +463,10 @@ export default function Dashboard() {
   const [pendingInput, setPendingInput] = useState('');
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('16:9');
   const [selectedStyle, setSelectedStyle] = useState('classic'); // 'classic' | 'minimalistic'
-  const [credits, setCredits] = useState(null);
-  const [currentPlan, setCurrentPlan] = useState('free');
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(() => {
+    try { return localStorage.getItem('hb_websearch') === '1'; } catch { return false; }
+  });
+  const [searchQueries, setSearchQueries] = useState([]);
   const [showOutOfCredits, setShowOutOfCredits] = useState(false);
   const [outOfCreditsDetails, setOutOfCreditsDetails] = useState(null);
   const [creatingPresentation, setCreatingPresentation] = useState(false);
@@ -433,91 +476,49 @@ export default function Dashboard() {
   const textareaRef = useRef(null);
   const analyzeAbortRef = useRef(null);
 
-  function refreshCredits() {
-    api.get('/billing/subscription')
-      .then(r => {
-        setCredits(r.data.subscription.credits_remaining);
-        setCurrentPlan(r.data.subscription.plan);
-        setIsAdmin(r.data.subscription.is_admin || false);
-      })
-      .catch(() => {});
-  }
+  // ── Data via React Query (cached + deduped across navigations) ────────────
+  const {
+    data: presentations = [],
+    isLoading: presLoading,
+    isError: presError,
+    refetch: refetchPresentations,
+  } = usePresentations({ enabled: !!user?.id });
 
-  const fetchPresentations = useCallback((updateCache = true) => {
-    return api.get('/presentations')
-      .then(r => {
-        const list = r.data.presentations || [];
-        setPresentations(list);
-        setPresError(false);
-        if (updateCache) {
-          try { sessionStorage.setItem(presCacheKey, JSON.stringify(list)); } catch {}
-        }
-        return list;
-      })
-      .catch(() => {
-        setPresError(true);
-        return [];
-      });
-  }, [presCacheKey]);
+  const { data: subscription } = useSubscription({ enabled: !!user?.id, refetchInterval: 30_000 });
+  const credits = subscription?.credits_remaining ?? null;
+  const currentPlan = subscription?.plan ?? 'free';
+  const isAdmin = subscription?.is_admin || false;
 
+  const deletePresentation = useDeletePresentation();
+
+  // SSE pushes real-time status changes straight into the query cache.
   useEffect(() => {
-    if (!user?.id) {
-      setPresentations([]);
-      setPresLoading(false);
-      return;
-    }
-
-    setPresLoading(true);
-
-    // Show cached data instantly while the HTTP fetch is in flight
-    try {
-      const cached = sessionStorage.getItem(presCacheKey);
-      if (cached) {
-        setPresentations(JSON.parse(cached));
-        setPresLoading(false);
-      }
-    } catch {}
-
-    refreshCredits();
-    const creditsInterval = setInterval(refreshCredits, 30_000);
-
-    // Fetch immediately via HTTP — fastest path, no SSE handshake delay
-    fetchPresentations().finally(() => setPresLoading(false));
-
-    // SSE for real-time updates only (status changes, new presentations while on page)
-    const token = localStorage.getItem('hb_token');
+    if (!user?.id) return;
     const apiBase = import.meta.env.VITE_API_URL || '';
-    const sse = new EventSource(`${apiBase}/api/presentations/dashboard-events?token=${encodeURIComponent(token)}`);
+    const sse = openAuthedEventSource(
+      (token) => `${apiBase}/api/presentations/dashboard-events?token=${encodeURIComponent(token)}`,
+      {
+        onMessage: (e) => {
+          let event;
+          try { event = JSON.parse(e.data); } catch { return; }
 
-    sse.onmessage = (e) => {
-      let event;
-      try { event = JSON.parse(e.data); } catch { return; }
-
-      if (event.type === 'snapshot') {
-        const list = event.presentations || [];
-        setPresentations(list);
-        try { sessionStorage.setItem(presCacheKey, JSON.stringify(list)); } catch {}
-        setPresLoading(false);
-      } else if (event.type === 'presentation_updated') {
-        setPresentations(prev => {
-          const exists = prev.some(p => p.id === event.presentation.id);
-          const next = exists
-            ? prev.map(p => p.id === event.presentation.id ? event.presentation : p)
-            : [event.presentation, ...prev];
-          next.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-          try { sessionStorage.setItem(presCacheKey, JSON.stringify(next)); } catch {}
-          return next;
-        });
+          if (event.type === 'snapshot') {
+            queryClient.setQueryData(queryKeys.presentations, event.presentations || []);
+          } else if (event.type === 'presentation_updated') {
+            queryClient.setQueryData(queryKeys.presentations, (prev = []) => {
+              const exists = prev.some(p => p.id === event.presentation.id);
+              const next = exists
+                ? prev.map(p => p.id === event.presentation.id ? event.presentation : p)
+                : [event.presentation, ...prev];
+              next.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+              return next;
+            });
+          }
+        },
       }
-    };
-
-    sse.onerror = () => {};
-
-    return () => {
-      clearInterval(creditsInterval);
-      sse.close();
-    };
-  }, [user?.id, fetchPresentations]);
+    );
+    return () => sse.close();
+  }, [user?.id, queryClient]);
 
   const allAttachments = [
     ...moodboardFiles.map(f => ({ ...f, category: 'moodboard' })),
@@ -541,6 +542,7 @@ export default function Dashboard() {
     analyzeAbortRef.current = controller;
     setAnalyzing(true);
     setSubmitError('');
+    setSearchQueries([]);
 
     // Detect URLs in the input and fetch their content to enrich the brief
     const urlRegex = /https?:\/\/[^\s,)>]+/g;
@@ -566,24 +568,70 @@ export default function Dashboard() {
       if (urlContext) enrichedMessage += urlContext;
     }
 
+    const attachmentsPayload = allAttachments.map(a => ({ type: a.type, name: a.name, data: a.data, mimeType: a.mimeType, category: a.category }));
+
     try {
-      const { data } = await api.post('/presentations/analyze', {
-        message: enrichedMessage,
-        attachments: allAttachments.map(a => ({ type: a.type, name: a.name, data: a.data, mimeType: a.mimeType, category: a.category })),
-      }, { signal: controller.signal });
-      setPendingInput(enrichedMessage);
-      setPendingAttachments(allAttachments.map(a => ({ type: a.type, name: a.name, data: a.data, mimeType: a.mimeType, category: a.category })));
-      setAnalysis(data);
-      setShowQuestionFlow(true);
+      const apiBase = import.meta.env.VITE_API_URL || '';
+      const token = localStorage.getItem('hb_token');
+      const res = await fetch(`${apiBase}/api/presentations/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ message: enrichedMessage, attachments: attachmentsPayload, webSearch: webSearchEnabled }),
+        signal: controller.signal,
+      });
+
+      // Rate limit / validation / token budget are returned as JSON before the
+      // SSE stream begins, so a non-OK response carries a normal error body.
+      if (!res.ok) {
+        let body = {};
+        try { body = await res.json(); } catch {}
+        const status = res.status;
+        setSubmitError(
+          body.error ||
+          (status === 429 ? `You're creating presentations too quickly. Please wait ${body.retryAfter ?? 60} seconds.` :
+           status === 413 ? 'Your brief or attachments are too large. Try shortening your description or using fewer images.' :
+           status === 402 ? 'You\'ve reached your monthly limit. Upgrade your plan to continue.' :
+           'Could not analyse your brief. Please try again.')
+        );
+        return;
+      }
+
+      // Read the SSE stream: live `search` events + a final `done` payload.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let analysis = null;
+      let streamError = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+        for (const part of parts) {
+          const line = part.split('\n').find(l => l.startsWith('data: '));
+          if (!line) continue;
+          let ev;
+          try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+          if (ev.type === 'search') setSearchQueries(prev => [...prev, ev.query]);
+          else if (ev.type === 'done') analysis = ev.analysis;
+          else if (ev.type === 'error') streamError = ev.error;
+        }
+      }
+
+      if (streamError) { setSubmitError(streamError); return; }
+      if (analysis) {
+        setPendingInput(enrichedMessage);
+        setPendingAttachments(attachmentsPayload);
+        setAnalysis(analysis);
+        setShowQuestionFlow(true);
+      } else {
+        setSubmitError('Could not analyse your brief. Please try again.');
+      }
     } catch (err) {
-      if (err.code === 'ERR_CANCELED' || err.name === 'CanceledError') return;
-      const status = err.response?.status;
-      setSubmitError(
-        err.response?.data?.error ||
-        (status === 429 ? `You're creating presentations too quickly. Please wait ${err.response?.data?.retryAfter ?? 60} seconds.` :
-         status === 413 ? 'Your brief or attachments are too large. Try shortening your description or using fewer images.' :
-         'Could not analyse your brief. Please try again.')
-      );
+      if (err.name === 'AbortError' || err.code === 'ERR_CANCELED') return;
+      setSubmitError('Could not analyse your brief. Please try again.');
     } finally {
       setAnalyzing(false);
       analyzeAbortRef.current = null;
@@ -637,12 +685,18 @@ export default function Dashboard() {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit();
   }
 
-  function handleDeletePresentation(id) {
-    setPresentations(prev => {
-      const next = prev.filter(p => p.id !== id);
-      try { sessionStorage.setItem(presCacheKey, JSON.stringify(next)); } catch {}
+  function toggleWebSearch() {
+    setWebSearchEnabled(prev => {
+      const next = !prev;
+      try { localStorage.setItem('hb_websearch', next ? '1' : '0'); } catch {}
+      capture('web_search_toggled', { enabled: next });
       return next;
     });
+  }
+
+  function handleDeletePresentation(id) {
+    // Optimistically removes from the cache and rolls back on failure.
+    deletePresentation.mutate(id);
   }
 
   const totalAttachments = allAttachments.length;
@@ -695,7 +749,7 @@ export default function Dashboard() {
           </motion.div>
         </motion.div>
       )}
-      {analyzing && <AnalyzingOverlay onCancel={handleCancelAnalyzing} />}
+      {analyzing && <AnalyzingOverlay onCancel={handleCancelAnalyzing} webSearch={webSearchEnabled} searchQueries={searchQueries} />}
       {creatingPresentation && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -840,6 +894,40 @@ export default function Dashboard() {
                     })}
                   </div>
 
+                  {/* Web search toggle — when on, Nova researches the brief online */}
+                  <button
+                    type="button"
+                    onClick={toggleWebSearch}
+                    role="switch"
+                    aria-checked={webSearchEnabled}
+                    aria-label="Web search"
+                    title="When on, Nova searches the web for sharper data, takes a little longer"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
+                      padding: '8px 12px', borderRadius: 10, cursor: 'pointer',
+                      fontSize: 11, fontWeight: 600, fontFamily: 'Inter,sans-serif',
+                      border: webSearchEnabled ? '1px solid rgba(91,80,255,0.4)' : (isDark ? '1px solid #2a2a2a' : '1px solid #e8e8e8'),
+                      background: webSearchEnabled ? 'rgba(91,80,255,0.12)' : (isDark ? '#0f0f0f' : '#f0f0f0'),
+                      color: webSearchEnabled ? '#5B50FF' : (isDark ? '#777' : '#888'),
+                      transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+                    }}
+                  >
+                    <Globe size={13} />
+                    <span>Web search</span>
+                    {/* Track */}
+                    <span style={{
+                      position: 'relative', width: 26, height: 15, borderRadius: 999,
+                      background: webSearchEnabled ? '#5B50FF' : (isDark ? '#2a2a2a' : '#ccc'),
+                      transition: 'background 0.18s', flexShrink: 0,
+                    }}>
+                      <span style={{
+                        position: 'absolute', top: 2, left: webSearchEnabled ? 13 : 2,
+                        width: 11, height: 11, borderRadius: '50%', background: '#fff',
+                        transition: 'left 0.18s',
+                      }} />
+                    </span>
+                  </button>
+
                   {/* Admin: fixed slide count override */}
                   {isAdmin && (
                     <div className="relative">
@@ -924,6 +1012,14 @@ export default function Dashboard() {
                   </div>
                 </div>
 
+                {/* Web-search helper caption */}
+                {webSearchEnabled && (
+                  <p className="text-xs px-1 pb-1 flex items-center gap-1.5" style={{ color: isDark ? '#666' : '#999' }}>
+                    <Search size={11} style={{ color: '#5B50FF' }} />
+                    Nova searches the web for sharper data, takes a little longer
+                  </p>
+                )}
+
                 {/* Mobile-only: full-width Create button */}
                 <button
                   onClick={handleSubmit}
@@ -991,7 +1087,7 @@ export default function Dashboard() {
               <div className="text-center py-8 rounded-2xl" style={{ background: 'var(--bg-input)' }}>
                 <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>Couldn't load your presentations.</p>
                 <button
-                  onClick={() => { setPresLoading(true); fetchPresentations().finally(() => setPresLoading(false)); }}
+                  onClick={() => refetchPresentations()}
                   className="text-sm font-semibold transition-opacity hover:opacity-70"
                   style={{ color: 'var(--text-secondary)' }}
                 >
@@ -1002,15 +1098,7 @@ export default function Dashboard() {
 
             {presLoading ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                {[0, 1, 2, 3, 4, 5].map(i => (
-                  <div key={i} className="rounded-lg overflow-hidden" style={{ background: 'var(--bg-card)', border: '0.5px solid var(--border)', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-                    <div className="aspect-[16/9] skeleton" />
-                    <div className="p-4 space-y-2">
-                      <div className="h-4 rounded-lg skeleton w-3/4" />
-                      <div className="h-3 rounded-lg skeleton w-1/2" />
-                    </div>
-                  </div>
-                ))}
+                {[0, 1, 2, 3, 4, 5].map(i => <SkeletonCard key={i} />)}
               </div>
             ) : (
               <motion.div layout className="grid grid-cols-2 sm:grid-cols-3 gap-4">

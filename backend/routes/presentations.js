@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { streamChat, analyzePresentation, generateCompactPlan, streamSlidePrompts, generateSingleSlidePrompt, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
+import { streamChat, analyzePresentationStream, generateCompactPlan, streamSlidePrompts, generateSingleSlidePrompt, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
 import { generateSlideImage, editSlideImage, generateEditFailedImage, isPlaceholderImage } from '../services/imageGeneration.js';
 import {
   deductCredits, refundCredits, deductCreditsForEdit, computeAffordableSlides,
@@ -199,12 +199,26 @@ router.post('/analyze', authenticateToken, analyzeLimiter, async (req, res) => {
     throw err;
   }
 
+  const webSearch = req.body.webSearch === true;
+
+  // Stream over SSE so the client can show live search queries as Nova runs them.
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
   try {
-    const analysis = await analyzePresentation(message, attachments, req.user.id);
-    res.json(analysis);
+    const analysis = await analyzePresentationStream(message, attachments, req.user.id, {
+      webSearch,
+      onEvent: (ev) => { res.write(`data: ${JSON.stringify(ev)}\n\n`); },
+    });
+    res.write(`data: ${JSON.stringify({ type: 'done', analysis })}\n\n`);
+    res.end();
   } catch (err) {
     logger.error('analysis failed', { errorMessage: err.message });
-    res.status(500).json({ error: 'Brief analysis failed. Please try again — if the problem persists, try shortening your description.' });
+    res.write(`data: ${JSON.stringify({ type: 'error', error: 'Brief analysis failed. Please try again — if the problem persists, try shortening your description.' })}\n\n`);
+    res.end();
   }
 });
 

@@ -2,7 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, AlertTriangle, Sparkles, ImageOff } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
+import { useDesigns, useSubscription, queryKeys } from '../api/queries';
+import { openAuthedEventSource } from '../utils/sse';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import TopNav from '../components/TopNav';
@@ -69,8 +72,8 @@ export default function DesignGalleryPage() {
   const { isDark, toggle: toggleTheme } = useTheme();
   const navigate = useNavigate();
 
-  const [generations, setGenerations] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { data: generations = [], isLoading: loading } = useDesigns({ enabled: !!user?.id });
   const [selected, setSelected] = useState(null);
 
   const [prompt, setPrompt] = useState('');
@@ -81,62 +84,50 @@ export default function DesignGalleryPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
-  const [credits, setCredits] = useState(null);
-  const [currentPlan, setCurrentPlan] = useState('free');
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { data: subscription } = useSubscription({ enabled: !!user?.id, refetchInterval: 30_000 });
+  const credits = subscription?.credits_remaining ?? null;
+  const currentPlan = subscription?.plan ?? 'free';
+  const isAdmin = subscription?.is_admin || false;
+
+  // Update just the credit count in the subscription cache after a mutation.
+  const setCreditsRemaining = useCallback((n) => {
+    queryClient.setQueryData(queryKeys.subscription, (old) => old ? { ...old, credits_remaining: n } : old);
+  }, [queryClient]);
   const [showOutOfCredits, setShowOutOfCredits] = useState(false);
   const [outOfCreditsDetails, setOutOfCreditsDetails] = useState(null);
 
-  function refreshCredits() {
-    api.get('/billing/subscription')
-      .then(r => {
-        setCredits(r.data.subscription.credits_remaining);
-        setCurrentPlan(r.data.subscription.plan);
-        setIsAdmin(r.data.subscription.is_admin || false);
-      })
-      .catch(() => {});
-  }
-
+  // Upsert a generation into the query cache (used by SSE + generate/retry).
   const upsertGeneration = useCallback((gen) => {
-    setGenerations(prev => {
+    queryClient.setQueryData(queryKeys.designs, (prev = []) => {
       const exists = prev.some(g => g.id === gen.id);
       const next = exists ? prev.map(g => g.id === gen.id ? gen : g) : [gen, ...prev];
       next.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       return next;
     });
     setSelected(prev => (prev && prev.id === gen.id) ? gen : prev);
-  }, []);
+  }, [queryClient]);
 
+  // SSE pushes real-time generation status into the cache.
   useEffect(() => {
     if (!user?.id) return;
-
-    refreshCredits();
-    const creditsInterval = setInterval(refreshCredits, 30_000);
-
-    api.get('/design')
-      .then(r => setGenerations(r.data.generations || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-
-    const token = localStorage.getItem('hb_token');
     const apiBase = import.meta.env.VITE_API_URL || '';
-    const sse = new EventSource(`${apiBase}/api/design/events?token=${encodeURIComponent(token)}`);
-
-    sse.onmessage = (e) => {
-      let event;
-      try { event = JSON.parse(e.data); } catch { return; }
-      if (event.type === 'generation_updated' && event.generation) {
-        upsertGeneration(event.generation);
-        if (event.generation.status === 'complete' || event.generation.status === 'error') refreshCredits();
+    const sse = openAuthedEventSource(
+      (token) => `${apiBase}/api/design/events?token=${encodeURIComponent(token)}`,
+      {
+        onMessage: (e) => {
+          let event;
+          try { event = JSON.parse(e.data); } catch { return; }
+          if (event.type === 'generation_updated' && event.generation) {
+            upsertGeneration(event.generation);
+            if (event.generation.status === 'complete' || event.generation.status === 'error') {
+              queryClient.invalidateQueries({ queryKey: queryKeys.subscription });
+            }
+          }
+        },
       }
-    };
-    sse.onerror = () => {};
-
-    return () => {
-      clearInterval(creditsInterval);
-      sse.close();
-    };
-  }, [user?.id, upsertGeneration]);
+    );
+    return () => sse.close();
+  }, [user?.id, upsertGeneration, queryClient]);
 
   function handleModeChange(mode) {
     if (mode === 'presentation') navigate('/dashboard');
@@ -174,7 +165,7 @@ export default function DesignGalleryPage() {
     try {
       const { data } = await api.post(`/design/${gen.id}/retry`);
       upsertGeneration(data.generation);
-      setCredits(data.creditsRemaining);
+      setCreditsRemaining(data.creditsRemaining);
     } catch (err) {
       const status = err.response?.status;
       if (status === 402) {
@@ -204,8 +195,8 @@ export default function DesignGalleryPage() {
         attachments: attachments.map(a => ({ type: 'image', name: a.name, data: a.data, mimeType: a.mimeType })),
       });
 
-      setGenerations(prev => [...data.generations, ...prev]);
-      setCredits(data.creditsRemaining);
+      queryClient.setQueryData(queryKeys.designs, (prev = []) => [...data.generations, ...prev]);
+      setCreditsRemaining(data.creditsRemaining);
       setPrompt('');
       setAttachments([]);
       setEditingReference(null);
