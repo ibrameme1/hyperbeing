@@ -4,6 +4,7 @@ import { User, Briefcase, Zap, Building2, ArrowLeft, CheckCircle2, Loader2, Crow
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
+import { SkeletonBlock, SkeletonText } from '../components/Skeleton';
 
 const INDUSTRIES = ['Technology', 'Finance', 'Healthcare', 'Education', 'Marketing', 'Design', 'Consulting', 'Real Estate', 'Media', 'Other'];
 const USE_CASES = ['Investor pitches', 'Sales decks', 'Internal reports', 'Client proposals', 'Educational content', 'Product demos', 'Conference talks', 'Other'];
@@ -28,7 +29,7 @@ function PlanBadge({ plan }) {
 }
 
 export default function Profile() {
-  const { user, logout, deleteAccount } = useAuth();
+  const { user, logout, deleteAccount, setAuthUser } = useAuth();
   const navigate = useNavigate();
 
   const [name, setName]         = useState('');
@@ -86,11 +87,18 @@ export default function Profile() {
   async function handleSave(e) {
     e.preventDefault();
     setSaving(true);
+    // Optimistic — reflect the new name in the app shell (nav/greeting) and show
+    // the "saved" confirmation immediately; roll back if the request fails.
+    const prevUser = user;
+    setAuthUser?.({ ...user, name });
+    setSaved(true);
     try {
       await api.put('/auth/profile', { name, email, bio, company, jobTitle, useCase, industry });
-      setSaved(true);
+      try { localStorage.setItem('hb_user', JSON.stringify({ ...user, name })); } catch {}
       setTimeout(() => setSaved(false), 3000);
     } catch {
+      setSaved(false);
+      setAuthUser?.(prevUser);
       alert('Could not save profile. Please try again.');
     } finally {
       setSaving(false);
@@ -132,7 +140,34 @@ export default function Profile() {
 
       <div className="max-w-3xl mx-auto px-6 py-10">
         {loading ? (
-          <div className="flex justify-center py-20"><Loader2 size={28} className="animate-spin" style={{ color: '#8B5CF6' }} /></div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Left — subscription card skeleton */}
+            <div className="md:col-span-1 space-y-4">
+              <div className="rounded-2xl p-5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <div className="flex items-center justify-between mb-4">
+                  <SkeletonBlock width={90} height={12} radius={6} />
+                  <SkeletonBlock width={56} height={22} radius={11} />
+                </div>
+                <SkeletonBlock width="100%" height={6} radius={3} className="mb-4" />
+                <SkeletonText lines={2} widths={['70%', '50%']} />
+              </div>
+            </div>
+            {/* Right — profile form skeleton */}
+            <div className="md:col-span-2 space-y-4">
+              <div className="rounded-2xl p-6" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <SkeletonBlock width={140} height={18} radius={6} className="mb-6" />
+                <div className="space-y-5">
+                  {[0, 1, 2, 3].map(i => (
+                    <div key={i} className="space-y-2">
+                      <SkeletonBlock width={100} height={12} radius={6} />
+                      <SkeletonBlock width="100%" height={40} radius={10} />
+                    </div>
+                  ))}
+                  <SkeletonBlock width={120} height={40} radius={10} />
+                </div>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 

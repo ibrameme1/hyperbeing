@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clearAuthStorage } from '../utils/auth';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api',
@@ -29,14 +30,7 @@ api.interceptors.response.use(
           // refresh failed — fall through to logout
         }
       }
-      localStorage.removeItem('hb_token');
-      localStorage.removeItem('hb_refresh_token');
-      localStorage.removeItem('hb_user');
-      try {
-        Object.keys(sessionStorage)
-          .filter(k => k.startsWith('hb_presentations_'))
-          .forEach(k => sessionStorage.removeItem(k));
-      } catch {}
+      clearAuthStorage();
       window.location.href = '/login';
     }
     return Promise.reject(err);

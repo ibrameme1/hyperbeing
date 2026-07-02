@@ -403,12 +403,18 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   }
 
   async function handleTitleSave() {
-    if (!titleValue.trim()) { setTitleValue(title); setTitleEditing(false); return; }
+    const trimmed = titleValue.trim();
+    if (!trimmed) { setTitleValue(title); setTitleEditing(false); return; }
     setTitleEditing(false);
+    const previous = title;
+    // Optimistic — show the new title immediately, roll back if the save fails.
+    onTitleChange?.(trimmed);
     try {
-      await api.patch(`/presentations/${presentationId}/title`, { title: titleValue.trim() });
-      onTitleChange?.(titleValue.trim());
-    } catch { setTitleValue(title); }
+      await api.patch(`/presentations/${presentationId}/title`, { title: trimmed });
+    } catch {
+      setTitleValue(previous);
+      onTitleChange?.(previous);
+    }
   }
 
   async function handleSuggestTitle() {

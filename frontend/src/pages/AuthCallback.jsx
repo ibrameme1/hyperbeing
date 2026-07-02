@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { capture, identifyUser } from '../utils/posthog';
+import { markActive } from '../utils/auth';
 
 export default function AuthCallback() {
   const [params] = useSearchParams();
@@ -22,6 +23,7 @@ export default function AuthCallback() {
     localStorage.setItem('hb_token', token);
     const refresh = params.get('refresh');
     if (refresh) localStorage.setItem('hb_refresh_token', refresh);
+    markActive();
 
     // Fetch user info, update context state, then route
     fetch(`${import.meta.env.VITE_API_URL || ''}/api/auth/me`, {

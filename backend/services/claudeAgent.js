@@ -594,9 +594,13 @@ export async function streamChat(conversationHistory, userMessage, attachments =
   return { message: sanitizeText(messageText), ...metadata };
 }
 
-const ANALYZE_PROMPT = `You are a presentation intelligence system. A user has submitted a brief to create a presentation. Analyze their input and return a JSON object with contextual questions to gather exactly what's needed.
+const ANALYZE_INTRO = `You are a presentation intelligence system. A user has submitted a brief to create a presentation. Analyze their input and return a JSON object with contextual questions to gather exactly what's needed.`;
 
-BEFORE you respond, decide if the brief references something that benefits from current, real-world information — a real company, brand, product, person, market, statistic, or recent event. If so, use the web_search tool to look up a handful of relevant, up-to-date facts (positioning, competitors, recent news, market size, audience demographics, etc.). Use what you find to make your questions sharper and more specific to the real thing the user is talking about. If the brief is generic/abstract and nothing would benefit from a lookup, skip search entirely.
+const ANALYZE_SEARCH = `
+
+BEFORE you respond, decide if the brief references something that benefits from current, real-world information — a real company, brand, product, person, market, statistic, or recent event. If so, use the web_search tool to look up a handful of relevant, up-to-date facts (positioning, competitors, recent news, market size, audience demographics, etc.). Use what you find to make your questions sharper and more specific to the real thing the user is talking about. If the brief is generic/abstract and nothing would benefit from a lookup, skip search entirely.`;
+
+const ANALYZE_BODY = `
 
 After any research, return ONLY valid JSON — no text before or after, no markdown fences:
 {
@@ -621,6 +625,14 @@ Rules:
 - NEVER ask generic questions like "how many slides" — use suggested_slide_count instead
 - Questions and options must be directly relevant to the specific brief provided — if you researched the real brand/product, reflect that in the questions and options
 - research_notes should be short, factual, citable bullet points (3-5 max) — empty array if no research was done`;
+
+// Compose the analyze system prompt. Only include the web-search instruction
+// when search is enabled — otherwise Claude answers straight from the brief.
+function buildAnalyzePrompt(webSearch) {
+  return ANALYZE_INTRO + (webSearch ? ANALYZE_SEARCH : '') + ANALYZE_BODY;
+}
+
+const ANALYZE_PROMPT = buildAnalyzePrompt(true);
 
 export async function analyzePresentation(message, attachments = [], userId = null) {
   if (MOCK_MODE) {
@@ -660,6 +672,93 @@ export async function analyzePresentation(message, attachments = [], userId = nu
 
   // With web_search enabled, content can include server_tool_use / web_search_tool_result
   // blocks interleaved with text — concatenate all text blocks to find the JSON.
+  const raw = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  const jsonText = raw.startsWith('```') ? raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '') : raw;
+
+  try {
+    const result = sanitizeDeep(JSON.parse(jsonText));
+    tracer.recordStep(_tid, 'claude_question_gen', 'completed', Date.now() - _t);
+    return result;
+  } catch {
+    const match = jsonText.match(/\{[\s\S]*\}/);
+    if (match) {
+      const result = sanitizeDeep(JSON.parse(match[0]));
+      tracer.recordStep(_tid, 'claude_question_gen', 'completed', Date.now() - _t);
+      return result;
+    }
+    tracer.recordStep(_tid, 'claude_question_gen', 'failed', Date.now() - _t, 'Failed to parse analysis response');
+    throw new Error('Failed to parse analysis response');
+  }
+}
+
+// Streaming variant of analyzePresentation. When webSearch is true, Claude may
+// run its web_search tool; each real search query is surfaced via onEvent so the
+// UI can show what Nova is looking up live. Resolves to the parsed analysis JSON.
+export async function analyzePresentationStream(message, attachments = [], userId = null, { webSearch = false, onEvent = () => {} } = {}) {
+  if (MOCK_MODE) {
+    if (webSearch) {
+      const demoQueries = ['market size and competitors', 'recent brand news', 'target audience demographics'];
+      for (const query of demoQueries) {
+        await new Promise(r => setTimeout(r, 500));
+        onEvent({ type: 'search', query });
+      }
+    } else {
+      await new Promise(r => setTimeout(r, 600));
+    }
+    return {
+      detected_type: 'marketing deck',
+      detected_industry: 'FMCG',
+      suggested_slide_count: 8,
+      research_notes: webSearch ? ['Demo research note from web search'] : [],
+      contextual_questions: [
+        { question: 'Who is the primary audience for this presentation?', options: ['Internal team', 'External clients', 'Investors', 'Consumers'] },
+        { question: 'What tone should this deck have?', options: ['Bold and energetic', 'Premium and minimal', 'Corporate and structured', 'Creative and playful'] },
+        { question: 'How visually product-focused should the slides be?', options: ['Product-led — visuals front and centre', 'Story-led — product supports the narrative', 'Data-led — insights and numbers', 'Mixed balance'] },
+      ],
+    };
+  }
+
+  const _tid = requestContext.getStore()?.requestId;
+  const _t = Date.now();
+  tracer.recordStep(_tid, 'claude_question_gen', 'started', 0);
+
+  const userContent = buildUserContent(message, attachments);
+  const t0 = Date.now();
+
+  const stream = client.messages.stream({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1536,
+    system: buildAnalyzePrompt(webSearch),
+    ...(webSearch ? { tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }] } : {}),
+    messages: [{ role: 'user', content: userContent }],
+  });
+
+  // Accumulate partial JSON of web_search tool-use blocks so we can emit the
+  // real query the moment Claude finishes deciding what to search for.
+  const toolInputByIndex = {};
+
+  for await (const event of stream) {
+    if (event.type === 'content_block_start' && event.content_block?.type === 'server_tool_use' && event.content_block?.name === 'web_search') {
+      toolInputByIndex[event.index] = '';
+    } else if (event.type === 'content_block_delta' && event.delta?.type === 'input_json_delta' && toolInputByIndex[event.index] !== undefined) {
+      toolInputByIndex[event.index] += event.delta.partial_json || '';
+    } else if (event.type === 'content_block_stop' && toolInputByIndex[event.index] !== undefined) {
+      const rawInput = toolInputByIndex[event.index];
+      delete toolInputByIndex[event.index];
+      try {
+        const query = JSON.parse(rawInput)?.query;
+        if (query) onEvent({ type: 'search', query: sanitizeText(String(query)) });
+      } catch {}
+    }
+  }
+
+  const response = await stream.finalMessage();
+  const durationMs = Date.now() - t0;
+  if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+  metrics.recordAICall({ fn: 'analyzePresentationStream', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs });
+  const searchCount = response.content.filter(b => b.type === 'server_tool_use' && b.name === 'web_search').length;
+  logger.info('claude analyze stream complete', { durationMs, webSearch, searches: searchCount });
+
   const raw = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
   const jsonText = raw.startsWith('```') ? raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '') : raw;
 

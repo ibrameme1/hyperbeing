@@ -15,6 +15,7 @@ import { SkeletonPresentationViewer } from '../components/Skeleton';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
 import { fileToImageAttachment } from '../utils/imageAttachment';
+import { openAuthedEventSource } from '../utils/sse';
 
 // ─── Generating messages ───────────────────────────────────────────────────
 const GENERATING_MESSAGES = [
@@ -572,14 +573,10 @@ export default function PresentationPage() {
       sseRef.current = null;
     }
 
-    const token = localStorage.getItem('hb_token');
     const apiBase = import.meta.env.VITE_API_URL || '';
-    const sse = new EventSource(`${apiBase}/api/presentations/${presId}/events?token=${encodeURIComponent(token)}`);
-    sseRef.current = sse;
-
     let stageTimer = 0;
 
-    sse.onmessage = (e) => {
+    const onMessage = (e) => {
       const event = JSON.parse(e.data);
 
       if (event.type === 'plan_generating') {
@@ -770,11 +767,18 @@ export default function PresentationPage() {
       }
     };
 
-    sse.onerror = () => {
-      // Don't close — EventSource auto-reconnects, and the catch-up replay
-      // on reconnect will re-send any completed slides we missed.
-      setSseError('Live updates disconnected. Refresh to reconnect.');
-    };
+    // On transient disconnects EventSource auto-reconnects and the catch-up replay
+    // re-sends missed slides; on hard auth failures the helper revalidates the
+    // session (refresh or clean logout) and reconnects with a fresh token.
+    const sse = openAuthedEventSource(
+      (token) => `${apiBase}/api/presentations/${presId}/events?token=${encodeURIComponent(token)}`,
+      {
+        onMessage,
+        onOpen: () => setSseError(''),
+        onTransientError: () => setSseError('Live updates disconnected. Refresh to reconnect.'),
+      }
+    );
+    sseRef.current = sse;
 
     return () => {
       clearInterval(stageTimer);
