@@ -247,17 +247,18 @@ export async function sendPresentationReady(name, email, presentationId, title) 
   await send(email, `"${displayTitle}" is ready to view 👀`, html);
 }
 
-// ── 10b. User feedback notification (sent to admins) ───────────────────────────
+// ── 10b. User feedback notification (sent to the team inbox) ───────────────────
 
-export async function sendFeedbackNotification(adminEmails, name, email, message, page) {
-  if (!adminEmails || adminEmails.length === 0) return;
+const FEEDBACK_INBOX = process.env.FEEDBACK_EMAIL || 'team@hyperbeing.co';
+
+export async function sendFeedbackNotification(name, email, message, page) {
   const html = base(`
     <p style="margin:0 0 4px;font-size:13px;color:#7c3aed;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">New feedback 💬</p>
     <h1 style="margin:0 0 16px;font-size:26px;font-weight:800;color:#18181b;line-height:1.2;">${escapeHtml(name)} sent feedback</h1>
     <p style="margin:0 0 8px;font-size:13px;color:#a1a1aa;">From: ${escapeHtml(email)}${page ? ` &middot; Page: ${escapeHtml(page)}` : ''}</p>
     <p style="margin:0;font-size:15px;color:#52525b;line-height:1.6;white-space:pre-wrap;border-left:3px solid #8b5cf6;padding-left:12px;">${escapeHtml(message)}</p>
   `);
-  await send(adminEmails.join(','), `Feedback from ${escapeHtml(name)}`, html);
+  await send(FEEDBACK_INBOX, `Feedback from ${escapeHtml(name)}`, html);
 }
 
 // ── 10. Account deleted ───────────────────────────────────────────────────────
