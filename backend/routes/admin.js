@@ -28,7 +28,7 @@ function resolveDataPath(relPath) {
 
 const ALLOWED_TABLES = [
   'users', 'presentations', 'messages', 'subscriptions',
-  'credit_transactions', 'prompt_sessions', 'app_logs', 'analytics_events',
+  'credit_transactions', 'prompt_sessions', 'app_logs', 'analytics_events', 'feedback',
 ];
 
 // ─── GET /api/admin/logs ──────────────────────────────────────────────────────
@@ -285,6 +285,48 @@ router.delete('/presentations/:id', authenticateToken, requireAdmin, (req, res) 
   const pres = db.prepare('SELECT id FROM presentations WHERE id = ?').get(req.params.id);
   if (!pres) return res.status(404).json({ error: 'Not found' });
   db.prepare('DELETE FROM presentations WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ─── GET /api/admin/feedback/all ─────────────────────────────────────────────
+router.get('/feedback/all', authenticateToken, requireAdmin, (req, res) => {
+  const { search = '', limit = 50, offset = 0 } = req.query;
+  const safeLimit  = Math.min(parseInt(limit)  || 50, 200);
+  const safeOffset = Math.max(parseInt(offset) || 0, 0);
+  const db = getDb();
+
+  const params = [];
+  let where = 'WHERE 1=1';
+  if (search.trim()) {
+    where += ' AND (f.message LIKE ? OR f.page LIKE ? OR u.name LIKE ? OR u.email LIKE ?)';
+    params.push(`%${search.trim()}%`, `%${search.trim()}%`, `%${search.trim()}%`, `%${search.trim()}%`);
+  }
+
+  const total = db.prepare(`
+    SELECT COUNT(*) as n
+    FROM feedback f JOIN users u ON u.id = f.user_id
+    ${where}
+  `).get(...params).n;
+
+  const feedback = db.prepare(`
+    SELECT f.id, f.page, f.message, f.created_at,
+           u.id as user_id, u.name as user_name, u.email as user_email
+    FROM feedback f
+    JOIN users u ON u.id = f.user_id
+    ${where}
+    ORDER BY f.created_at DESC
+    LIMIT ? OFFSET ?
+  `).all(...params, safeLimit, safeOffset);
+
+  res.json({ feedback, total });
+});
+
+// ─── DELETE /api/admin/feedback/:id ──────────────────────────────────────────
+router.delete('/feedback/:id', authenticateToken, requireAdmin, (req, res) => {
+  const db = getDb();
+  const row = db.prepare('SELECT id FROM feedback WHERE id = ?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  db.prepare('DELETE FROM feedback WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
 

@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { ADMIN_EMAILS } from '../services/stripeService.js';
 import { sendFeedbackNotification } from '../services/emailService.js';
 
 const router = Router();
@@ -26,7 +25,6 @@ router.post('/', authenticateToken, async (req, res) => {
   ).run(id, req.user.id, page || null, message.trim());
 
   sendFeedbackNotification(
-    [...ADMIN_EMAILS],
     user?.name || 'A user',
     user?.email || 'unknown',
     message.trim(),

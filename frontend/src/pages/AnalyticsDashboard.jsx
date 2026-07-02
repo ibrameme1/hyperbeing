@@ -243,6 +243,15 @@ export default function AnalyticsDashboard() {
   const [editPresTitle, setEditPresTitle] = useState('');
   const [presDeleting, setPresDeleting] = useState(null);
 
+  // ── Feedback section ────────────────────────────────────────────────────────
+  const [feedbackList, setFeedbackList] = useState(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackError, setFeedbackError] = useState(false);
+  const [feedbackSearch, setFeedbackSearch] = useState('');
+  const [feedbackOffset, setFeedbackOffset] = useState(0);
+  const [feedbackTotal, setFeedbackTotal] = useState(0);
+  const [feedbackDeleting, setFeedbackDeleting] = useState(null);
+
   // ── Storage / disk usage ────────────────────────────────────────────────────
   const [storageData, setStorageData] = useState(null);
   const [storageLoading, setStorageLoading] = useState(false);
@@ -402,6 +411,34 @@ export default function AnalyticsDashboard() {
     fetchAllPres(allPresSearch, 0, col, nextDir);
   }
 
+  const fetchFeedback = useCallback(async (search, offset) => {
+    const s = search ?? feedbackSearch;
+    const o = offset ?? feedbackOffset;
+    setFeedbackLoading(true);
+    setFeedbackError(false);
+    try {
+      const p = new URLSearchParams({ limit: 50, offset: o, search: s });
+      const { data } = await api.get(`/admin/feedback/all?${p}`);
+      setFeedbackList(data.feedback);
+      setFeedbackTotal(data.total);
+      setFeedbackOffset(o);
+    } catch { setFeedbackError(true); } finally { setFeedbackLoading(false); }
+  }, [feedbackSearch, feedbackOffset]);
+
+  async function handleDeleteFeedback(id) {
+    if (!window.confirm('Delete this feedback entry? This cannot be undone.')) return;
+    setFeedbackDeleting(id);
+    try {
+      await api.delete(`/admin/feedback/${id}`);
+      setFeedbackList(prev => prev.filter(f => f.id !== id));
+      setFeedbackTotal(t => Math.max(0, t - 1));
+    } catch (err) {
+      alert(err.response?.data?.error || 'Delete failed');
+    } finally {
+      setFeedbackDeleting(null);
+    }
+  }
+
   const fetchPresDetail = async (id) => {
     setSelectedPresId(id);
     setSelectedPresDetail(null);
@@ -554,6 +591,7 @@ export default function AnalyticsDashboard() {
     if (activeTab === 'metrics') fetchMetrics();
     if (activeTab === 'users' && !allUsers) fetchAllUsers();
     if (activeTab === 'presentations' && !allPresList) fetchAllPres();
+    if (activeTab === 'feedback' && !feedbackList) fetchFeedback();
     if (activeTab === 'database') {
       if (!dbTables) fetchDbTables();
       fetchDbData();
@@ -638,6 +676,7 @@ export default function AnalyticsDashboard() {
     { id: 'overview',      label: 'Overview',      icon: BarChart2 },
     { id: 'users',         label: 'Users',          icon: Users },
     { id: 'presentations', label: 'Presentations',  icon: FileText },
+    { id: 'feedback',      label: 'Feedback',        icon: MessageSquare },
     { id: 'events',        label: 'Events',          icon: Activity },
     { id: 'logs',          label: 'Logs',            icon: Terminal },
     { id: 'metrics',       label: 'Metrics',         icon: Cpu },
@@ -1635,6 +1674,107 @@ export default function AnalyticsDashboard() {
                   className="w-full rounded-xl border border-white/10 bg-white/5 py-4 text-xs text-gray-400 hover:bg-white/10 transition"
                 >
                   Load all presentations
+                </button>
+              )}
+            </ChartCard>
+          </motion.div>
+        )}
+
+        {/* ── FEEDBACK TAB ── */}
+        {activeTab === 'feedback' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+            <SectionTitle>User Feedback</SectionTitle>
+
+            <ChartCard title={`All Feedback${feedbackTotal ? ` (${feedbackTotal})` : ''}`}>
+              <div className="mb-3 flex items-center gap-2">
+                <div className="flex flex-1 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                  <Search size={13} className="text-gray-500 flex-shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="Search message, page, name or email…"
+                    value={feedbackSearch}
+                    onChange={e => setFeedbackSearch(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { setFeedbackOffset(0); fetchFeedback(feedbackSearch, 0); } }}
+                    className="w-full bg-transparent text-xs text-gray-200 placeholder-gray-600 outline-none"
+                  />
+                </div>
+                <button
+                  onClick={() => { setFeedbackOffset(0); fetchFeedback(feedbackSearch, 0); }}
+                  disabled={feedbackLoading}
+                  className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 hover:bg-white/10 transition disabled:opacity-50"
+                >
+                  <RefreshCw size={12} className={feedbackLoading ? 'animate-spin' : ''} />
+                  {feedbackLoading ? 'Loading…' : 'Search'}
+                </button>
+              </div>
+
+              {feedbackError && <SectionError onRetry={() => fetchFeedback(feedbackSearch, feedbackOffset)} />}
+
+              {feedbackList && (
+                <>
+                  {feedbackList.length === 0 ? (
+                    <p className="py-8 text-center text-xs text-gray-600">No feedback yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {feedbackList.map(f => (
+                        <div key={f.id} className="group rounded-xl border border-white/10 bg-white/5 p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-purple-900/50 text-[10px] font-bold text-purple-300">
+                                {f.user_name?.[0]?.toUpperCase() ?? '?'}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-medium text-gray-200">{f.user_name}</p>
+                                <p className="truncate text-[10px] text-gray-600">{f.user_email}</p>
+                              </div>
+                            </div>
+                            <div className="flex flex-shrink-0 items-center gap-3">
+                              {f.page && <span className="text-[10px] text-gray-600">{f.page}</span>}
+                              <span className="text-[10px] text-gray-600">{relTime(f.created_at)}</span>
+                              <button
+                                onClick={() => handleDeleteFeedback(f.id)}
+                                disabled={feedbackDeleting === f.id}
+                                className="text-gray-700 opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 disabled:opacity-40"
+                                title="Delete feedback"
+                              >
+                                {feedbackDeleting === f.id
+                                  ? <RefreshCw size={12} className="animate-spin" />
+                                  : <Trash2 size={12} />}
+                              </button>
+                            </div>
+                          </div>
+                          <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-gray-300">{f.message}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-xs text-gray-600">
+                      {feedbackTotal === 0 ? 0 : feedbackOffset + 1}–{Math.min(feedbackOffset + 50, feedbackTotal)} of {feedbackTotal}
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        disabled={feedbackOffset === 0 || feedbackLoading}
+                        onClick={() => fetchFeedback(feedbackSearch, Math.max(0, feedbackOffset - 50))}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 disabled:opacity-30 hover:bg-white/10 transition"
+                      ><ChevronLeft size={12} /></button>
+                      <button
+                        disabled={feedbackOffset + 50 >= feedbackTotal || feedbackLoading}
+                        onClick={() => fetchFeedback(feedbackSearch, feedbackOffset + 50)}
+                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 disabled:opacity-30 hover:bg-white/10 transition"
+                      ><ChevronRight size={12} /></button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {!feedbackList && !feedbackLoading && (
+                <button
+                  onClick={() => fetchFeedback('', 0)}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 py-4 text-xs text-gray-400 hover:bg-white/10 transition"
+                >
+                  Load feedback
                 </button>
               )}
             </ChartCard>
