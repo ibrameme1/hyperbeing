@@ -77,7 +77,7 @@ export default function DesignComposer({
             onChange={e => onPromptChange(e.target.value)}
             placeholder={craftMode === 'nova'
               ? 'Describe the design you want — Nova will craft the design for you…'
-              : 'Write the exact image prompt you want to send to GPT Image…'}
+              : 'Describe exactly what to generate, e.g. "A minimalist fox logo, geometric lines, navy on white background". Attach inspiration images below for style reference…'}
             aria-label="Design brief"
             rows={3}
             className="hb-ta w-full resize-none bg-transparent"
