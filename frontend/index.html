@@ -19,6 +19,174 @@
         if (t === 'dark') document.documentElement.classList.add('dark');
       })();
     </script>
+
+    <!-- Organization schema: identifies HyperBeing as a business entity -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "HyperBeing",
+      "url": "https://www.hyperbeing.co",
+      "description": "AI presentation maker that creates hyper-personalized, large-context decks, built for teams who want to spend less time formatting slides and more time on strategy.",
+      "areaServed": "Worldwide",
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "bestRating": "5",
+        "reviewCount": "1"
+      }
+    }
+    </script>
+
+    <!-- SoftwareApplication schema: describes the product itself, its pricing tiers, and category -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "HyperBeing",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "url": "https://www.hyperbeing.co",
+      "description": "AI presentation maker that handles large, messy context without collapsing it into a generic template, and adapts deck style to your industry.",
+      "offers": [
+        { "@type": "Offer", "name": "Basic", "price": "25", "priceCurrency": "USD", "billingIncrement": "P1M" },
+        { "@type": "Offer", "name": "Pro", "price": "65", "priceCurrency": "USD", "billingIncrement": "P1M" },
+        { "@type": "Offer", "name": "Ultra 1", "price": "149", "priceCurrency": "USD", "billingIncrement": "P1M" },
+        { "@type": "Offer", "name": "Ultra 2", "price": "209", "priceCurrency": "USD", "billingIncrement": "P1M" },
+        { "@type": "Offer", "name": "Ultra 3", "price": "269", "priceCurrency": "USD", "billingIncrement": "P1M" },
+        { "@type": "Offer", "name": "Ultra 4", "price": "299", "priceCurrency": "USD", "billingIncrement": "P1M" }
+      ],
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.9",
+        "bestRating": "5",
+        "reviewCount": "1"
+      }
+    }
+    </script>
+
+    <!-- FAQPage schema: lets search/AI engines surface these Q&As directly in results -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How much does HyperBeing cost?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Plans range from $25/month (Basic) to $299/month (Ultra 4) on monthly billing. Annual billing lowers the per-month cost, starting at $20/month for Basic."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What's the difference between the plans?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Basic and Pro suit individuals and small teams with lighter deck volume. The Ultra tiers (1 through 4) are built for teams with higher deck volume and more complex, large-context briefs."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can HyperBeing handle a long, messy brief?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Large-context handling is the core feature. It keeps the thread of a long brief instead of losing detail or forcing it into a rigid template."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How is this different from Gamma, Canva, or Claude for making decks?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Those tools tend to flatten long briefs into generic templates and use similar styling regardless of industry. HyperBeing preserves large-context detail and adapts deck style to your specific niche."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Who is HyperBeing built for?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Consultants, marketers, corporate teams, founders, and investment bankers who spend significant time building decks and want to redirect that time to strategy."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Where is HyperBeing available?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Worldwide. It's a web-based product with no location restrictions."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Who uses HyperBeing?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "HyperBeing counts Unilever as a client and holds a 4.9/5 rating from users."
+          }
+        }
+      ]
+    }
+    </script>
+
+    <!-- Service schema: one entry per pricing tier, framed as a distinct service offering -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Service",
+          "name": "HyperBeing Basic",
+          "serviceType": "AI presentation generation",
+          "provider": { "@type": "Organization", "name": "HyperBeing" },
+          "areaServed": "Worldwide",
+          "offers": { "@type": "Offer", "price": "25", "priceCurrency": "USD", "billingIncrement": "P1M" }
+        },
+        {
+          "@type": "Service",
+          "name": "HyperBeing Pro",
+          "serviceType": "AI presentation generation",
+          "provider": { "@type": "Organization", "name": "HyperBeing" },
+          "areaServed": "Worldwide",
+          "offers": { "@type": "Offer", "price": "65", "priceCurrency": "USD", "billingIncrement": "P1M" }
+        },
+        {
+          "@type": "Service",
+          "name": "HyperBeing Ultra 1",
+          "serviceType": "AI presentation generation",
+          "provider": { "@type": "Organization", "name": "HyperBeing" },
+          "areaServed": "Worldwide",
+          "offers": { "@type": "Offer", "price": "149", "priceCurrency": "USD", "billingIncrement": "P1M" }
+        },
+        {
+          "@type": "Service",
+          "name": "HyperBeing Ultra 2",
+          "serviceType": "AI presentation generation",
+          "provider": { "@type": "Organization", "name": "HyperBeing" },
+          "areaServed": "Worldwide",
+          "offers": { "@type": "Offer", "price": "209", "priceCurrency": "USD", "billingIncrement": "P1M" }
+        },
+        {
+          "@type": "Service",
+          "name": "HyperBeing Ultra 3",
+          "serviceType": "AI presentation generation",
+          "provider": { "@type": "Organization", "name": "HyperBeing" },
+          "areaServed": "Worldwide",
+          "offers": { "@type": "Offer", "price": "269", "priceCurrency": "USD", "billingIncrement": "P1M" }
+        },
+        {
+          "@type": "Service",
+          "name": "HyperBeing Ultra 4",
+          "serviceType": "AI presentation generation",
+          "provider": { "@type": "Organization", "name": "HyperBeing" },
+          "areaServed": "Worldwide",
+          "offers": { "@type": "Offer", "price": "299", "priceCurrency": "USD", "billingIncrement": "P1M" }
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
