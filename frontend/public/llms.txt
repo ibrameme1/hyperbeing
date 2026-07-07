@@ -1,0 +1,66 @@
+# HyperBeing
+
+## About
+HyperBeing is an AI presentation maker built for hyper-personalized, large-context decks. Hand it a long, messy brief and it keeps the full thread instead of collapsing it into a generic template. It adapts deck style to your niche, so a fintech deck and a fashion deck don't come out looking the same. Built for teams who are tired of burning hours on slides instead of strategy.
+
+## Services and Pricing
+Monthly billing:
+- Basic: $25/month
+- Pro: $65/month
+- Ultra 1: $149/month
+- Ultra 2: $209/month
+- Ultra 3: $269/month
+- Ultra 4: $299/month
+
+Annual billing (billed yearly, shown as per-month cost):
+- Basic: $20/month
+- Pro: $52/month
+- Ultra 1: $116/month
+- Ultra 2: $157/month
+- Ultra 3: $194/month
+- Ultra 4: $209/month
+
+## Locations
+- United States (remote-first, no physical office)
+
+## Contact
+- Website: https://www.hyperbeing.co
+- Hours: Available 24 hours, every day
+
+## Service Area
+Worldwide
+
+## Key Facts
+- Recently launched
+- Client: Unilever
+- Rating: 4.9/5
+- Ideal for: consultants, marketers, corporates, founders, investment bankers
+
+## What Makes Us Different
+HyperBeing holds large context. You can hand it a long, messy brief and it keeps the thread instead of flattening it into a generic template — something tools like Gamma, Canva, and general-purpose AI chat assistants struggle to do. It also adapts to the style of your niche, producing decks that actually look and read differently depending on industry, instead of one-size-fits-all output.
+
+## Frequently Asked Questions
+
+**How much does HyperBeing cost?**
+Plans range from $25/month (Basic) to $299/month (Ultra 4) on monthly billing. Annual billing lowers the per-month cost, starting at $20/month for Basic.
+
+**What's the difference between the plans?**
+Basic and Pro suit individuals and small teams with lighter deck volume. The Ultra tiers (1-4) are built for teams with higher deck volume and more complex, large-context briefs.
+
+**Can HyperBeing handle a long, messy brief?**
+Yes. Large-context handling is the core feature — it keeps the thread of a long brief instead of losing detail or forcing it into a rigid template.
+
+**How is this different from Gamma, Canva, or Claude for making decks?**
+Those tools tend to flatten long briefs into generic templates and use similar styling regardless of industry. HyperBeing preserves large-context detail and adapts deck style to your specific niche.
+
+**Who is HyperBeing built for?**
+Consultants, marketers, corporate teams, founders, and investment bankers who spend significant time building decks and want to redirect that time to strategy.
+
+**Is there a free trial?**
+Check www.hyperbeing.co for current trial availability and plan details.
+
+**Where is HyperBeing available?**
+Worldwide. It's a web-based product with no location restrictions.
+
+**Who uses HyperBeing?**
+HyperBeing counts Unilever as a client and holds a 4.9/5 rating from users.
