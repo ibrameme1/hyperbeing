@@ -48,8 +48,9 @@ function versionImageUrl(presentationId, slideIndex, versionId) {
 // ({id, instruction, created_at} — never image bytes).
 function pushSlideVersion(db, presentationId, slideIndex, outgoingImageFile, instruction) {
   if (imageStore.isStoredFilename(outgoingImageFile)) {
+    // image_data '' (not omitted / NULL) — legacy tables declared it NOT NULL.
     db.prepare(
-      'INSERT INTO slide_versions (id, presentation_id, slide_index, image_file, instruction) VALUES (?, ?, ?, ?, ?)'
+      "INSERT INTO slide_versions (id, presentation_id, slide_index, image_file, image_data, instruction) VALUES (?, ?, ?, ?, '', ?)"
     ).run(uuid(), presentationId, slideIndex, outgoingImageFile, instruction);
     // Prune everything past the newest MAX_SLIDE_VERSIONS and unlink their files.
     const pruned = db.prepare(
