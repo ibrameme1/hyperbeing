@@ -36,6 +36,15 @@ Worldwide
 - Rating: 4.9/5
 - Ideal for: consultants, marketers, corporates, founders, investment bankers
 
+## Markdown Mirrors (Clean AI-Readable Versions)
+Every page on this site has a plain markdown mirror. Add /index.md to any URL to get the clean content without navigation, scripts, or layout chrome.
+- https://www.hyperbeing.co/index.md
+- https://www.hyperbeing.co/pricing/index.md
+- https://www.hyperbeing.co/services/marketing-decks/index.md
+- https://www.hyperbeing.co/services/consulting-decks/index.md
+- https://www.hyperbeing.co/terms/index.md
+- https://www.hyperbeing.co/privacy/index.md
+
 ## What Makes Us Different
 HyperBeing holds large context. You can hand it a long, messy brief and it keeps the thread instead of flattening it into a generic template — something tools like Gamma, Canva, and general-purpose AI chat assistants struggle to do. It also adapts to the style of your niche, producing decks that actually look and read differently depending on industry, instead of one-size-fits-all output.
 
