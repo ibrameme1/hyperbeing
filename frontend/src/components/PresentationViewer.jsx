@@ -13,6 +13,7 @@ import { exportToPDF, exportImages } from '../utils/pdfExport';
 import api from '../api/client';
 import { capture } from '../utils/posthog';
 import { fileToImageAttachment } from '../utils/imageAttachment';
+import { mediaUrl, isRealImage } from '../utils/mediaUrl';
 
 // Separate component so each item has its own wasDragging ref
 function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDelete }) {
@@ -41,8 +42,8 @@ function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDe
               : {}),
           }}
         >
-          {slide.image_data && !slide.image_data.startsWith('data:image/svg') ? (
-            <img src={slide.image_data} alt={slide.title} className="w-full h-full object-cover pointer-events-none" draggable={false} />
+          {isRealImage(slide.image_data) ? (
+            <img src={mediaUrl(slide.image_data)} alt={slide.title} className="w-full h-full object-cover pointer-events-none" draggable={false} />
           ) : (
             <div className="w-full h-full skeleton" />
           )}
@@ -1149,7 +1150,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 {!versionsLoading && slideVersions.map(v => (
                   <div key={v.id} className="flex gap-3 p-2.5 rounded-xl border border-gray-200 dark:border-zinc-800">
                     <img
-                      src={v.image_data}
+                      src={mediaUrl(v.image_data)}
                       alt="Previous slide version"
                       className="w-24 flex-shrink-0 rounded-lg object-cover"
                       style={{ aspectRatio: '16/9' }}

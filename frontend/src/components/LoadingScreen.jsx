@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import NovaMascot from './NovaMascot';
+import { mediaUrl } from '../utils/mediaUrl';
 
 const PLANNING_MESSAGES = [
   'Nova is crafting your slide plan…',
@@ -157,7 +158,7 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
                   style={{ aspectRatio: '16/9', borderRadius: '6px', border: '0.5px solid #1e1e1e' }}
                 >
                   {slide.image_data ? (
-                    <img src={slide.image_data} alt={slide.title} className="w-full h-full object-cover" />
+                    <img src={mediaUrl(slide.image_data)} alt={slide.title} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full skeleton" />
                   )}

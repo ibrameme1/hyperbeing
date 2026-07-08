@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { v4 as uuid } from 'uuid';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DB_PATH
@@ -212,9 +213,18 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_slide_versions_slide ON slide_versions(presentation_id, slide_index);
   `);
 
+  // slide_versions.image_data held base64 in the first cut; images now live on
+  // disk (GAPS #7) and this column holds the filename instead. Add image_file
+  // and make image_data nullable-in-practice (kept for the migration window).
+  try { db.exec('ALTER TABLE slide_versions ADD COLUMN image_file TEXT'); } catch { /* exists */ }
+
   // One-time migration (guarded by PRAGMA user_version): move version images
   // embedded in slides_data into slide_versions, leaving metadata stubs behind.
   migrateEmbeddedSlideVersions();
+
+  // One-time migration (user_version 2): move real slide images (and version
+  // images, and thumbnails) out of the DB onto the image store on disk.
+  migrateImagesToDisk();
 
   // Structured application logs (rolling — capped at 10 K rows by logger.js)
   db.exec(`
@@ -317,6 +327,82 @@ function migrateEmbeddedSlideVersions() {
   });
   txn();
   if (rows.length > 0) console.log(`✅ Migrated embedded slide versions for ${rows.length} presentation(s)`);
+}
+
+// Image store dir — mirrors services/imageStore.js (kept local to avoid a
+// database.js → imageStore.js → database.js import cycle during the migration).
+const IMAGE_DIR = process.env.IMAGE_STORAGE_DIR || path.join(DATA_DIR, 'images');
+const EXT_FOR_MIME = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp' };
+
+// Writes a base64 image data URL to the image dir, returns its filename, or
+// null if it isn't a raster image we persist (svg placeholders stay inline).
+function writeImageFile(dataUrl) {
+  if (typeof dataUrl !== 'string') return null;
+  const m = /^data:([^;]+);base64,(.*)$/s.exec(dataUrl);
+  if (!m) return null;
+  const ext = EXT_FOR_MIME[m[1].toLowerCase()];
+  if (!ext) return null;
+  fs.mkdirSync(IMAGE_DIR, { recursive: true });
+  const filename = `${uuid()}.${ext}`;
+  fs.writeFileSync(path.join(IMAGE_DIR, filename), Buffer.from(m[2], 'base64'));
+  return filename;
+}
+
+// Moves real slide images (and version images and thumbnails) out of the DB
+// onto disk (GAPS #7). Runs once — user_version 2 marks completion. Each image
+// is written to a file first, then the row is rewritten to reference it, so a
+// crash mid-migration can only leave un-migrated (still-inline) images, never
+// lost ones. svg placeholders and nulls are left untouched.
+function migrateImagesToDisk() {
+  const version = db.pragma('user_version', { simple: true });
+  if (version >= 2) return;
+
+  let movedSlides = 0, movedVersions = 0;
+
+  const txn = db.transaction(() => {
+    // ── Slide images + thumbnail ──
+    const presRows = db.prepare('SELECT id, slides_data, thumbnail FROM presentations').all();
+    const updatePres = db.prepare('UPDATE presentations SET slides_data = ?, thumbnail = ? WHERE id = ?');
+    for (const row of presRows) {
+      let slides = [];
+      try { slides = JSON.parse(row.slides_data || '[]'); } catch { continue; }
+      let changed = false;
+      for (const slide of slides) {
+        const file = writeImageFile(slide.image_data);
+        if (file) {
+          slide.image_file = file;
+          slide.image_data = `/api/presentations/${row.id}/slides/${slide.index}/image?f=${file}`;
+          movedSlides++;
+          changed = true;
+        }
+      }
+      // Thumbnail points at the first slide's file when we have one; otherwise
+      // convert any standalone base64 thumbnail on its own.
+      let thumb = row.thumbnail;
+      const firstWithFile = slides.find(s => s.image_file);
+      if (firstWithFile) thumb = firstWithFile.image_file;
+      else { const tf = writeImageFile(row.thumbnail); if (tf) thumb = tf; }
+
+      if (changed || thumb !== row.thumbnail) {
+        updatePres.run(JSON.stringify(slides), thumb ?? null, row.id);
+      }
+    }
+
+    // ── Version images ──
+    const verRows = db.prepare("SELECT id, image_data FROM slide_versions WHERE image_file IS NULL AND image_data IS NOT NULL").all();
+    const updateVer = db.prepare('UPDATE slide_versions SET image_file = ?, image_data = NULL WHERE id = ?');
+    for (const v of verRows) {
+      const file = writeImageFile(v.image_data);
+      if (file) { updateVer.run(file, v.id); movedVersions++; }
+    }
+
+    db.pragma('user_version = 2');
+  });
+  txn();
+
+  if (movedSlides || movedVersions) {
+    console.log(`✅ Migrated ${movedSlides} slide image(s) and ${movedVersions} version image(s) to disk`);
+  }
 }
 
 export function getDb() {

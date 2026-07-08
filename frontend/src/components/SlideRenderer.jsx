@@ -1,11 +1,12 @@
 import { Lock, Loader2 } from 'lucide-react';
+import { mediaUrl, isRealImage } from '../utils/mediaUrl';
 
 const CREDIT_COST_PER_SLIDE = 18;
 
 export default function SlideRenderer({ slide, className = '', onUnlock, unlocking = false, showWatermark = false }) {
   if (!slide) return null;
 
-  const hasImage = slide.image_data && !slide.image_data.startsWith('data:image/svg');
+  const hasImage = isRealImage(slide.image_data);
 
   return (
     <div
@@ -18,7 +19,7 @@ export default function SlideRenderer({ slide, className = '', onUnlock, unlocki
       {slide.image_data && (
         <img
           key={slide.image_data}
-          src={slide.image_data}
+          src={mediaUrl(slide.image_data)}
           alt=""
           className="absolute inset-0 w-full h-full object-cover animate-fadeIn"
         />
