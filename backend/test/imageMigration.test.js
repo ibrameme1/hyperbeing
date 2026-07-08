@@ -22,10 +22,13 @@ beforeAll(async () => {
   // Build a minimal schema by hand and seed pre-migration rows, WITHOUT running
   // the app migrations yet (so user_version stays 0).
   const seed = new Database(DB_PATH);
+  // slide_versions.image_data is NOT NULL here on purpose — that's how the
+  // first cut created it in production, and it's what made the migration crash
+  // (SET image_data = NULL) and version inserts fail. The fix must cope with it.
   seed.exec(`
     CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT, email TEXT);
     CREATE TABLE presentations (id TEXT PRIMARY KEY, user_id TEXT, slides_data TEXT, thumbnail TEXT);
-    CREATE TABLE slide_versions (id TEXT PRIMARY KEY, presentation_id TEXT, slide_index INTEGER, image_data TEXT, image_file TEXT, instruction TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE slide_versions (id TEXT PRIMARY KEY, presentation_id TEXT, slide_index INTEGER, image_data TEXT NOT NULL, instruction TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
   `);
   userId = uuid(); presId = uuid();
   seed.prepare('INSERT INTO users (id, name, email) VALUES (?,?,?)').run(userId, 'U', 'u@t.local');
@@ -68,13 +71,26 @@ describe('migrateImagesToDisk', () => {
     expect(row.thumbnail).toBe(s0.image_file);
   });
 
-  it('moves version images to disk (image_data nulled, image_file set)', () => {
+  it('moves version images to disk without violating the NOT NULL column', () => {
     const v = db.prepare('SELECT image_file, image_data FROM slide_versions WHERE presentation_id = ?').get(presId);
     expect(v.image_file).toMatch(/\.png$/);
-    expect(v.image_data).toBeNull();
+    expect(v.image_data).toBe(''); // '' not NULL — legacy NOT NULL columns can't hold NULL
   });
 
   it('is idempotent — user_version is bumped so it will not run again', () => {
     expect(db.pragma('user_version', { simple: true })).toBeGreaterThanOrEqual(2);
+  });
+
+  it('a new version row can be inserted the way pushSlideVersion does (NOT NULL safe)', () => {
+    const insert = () => db.prepare(
+      "INSERT INTO slide_versions (id, presentation_id, slide_index, image_file, image_data, instruction) VALUES (?, ?, ?, ?, '', ?)"
+    ).run(uuid(), presId, 0, 'abc.png', 'edit');
+    expect(insert).not.toThrow();
+    // Omitting image_data entirely must still fail on the legacy NOT NULL table —
+    // proves the '' is doing real work.
+    const bad = () => db.prepare(
+      'INSERT INTO slide_versions (id, presentation_id, slide_index, image_file, instruction) VALUES (?, ?, ?, ?, ?)'
+    ).run(uuid(), presId, 0, 'def.png', 'edit');
+    expect(bad).toThrow();
   });
 });

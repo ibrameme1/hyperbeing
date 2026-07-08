@@ -200,12 +200,16 @@ export function initDatabase() {
   // slides_data JSON (slides keep only {id, instruction, created_at} stubs).
   // Keeping multi-MB base64 images out of the presentations row keeps every
   // slide mutation from rewriting old versions too.
+  // NB: image_data is intentionally nullable. Version images live on disk now
+  // (image_file); image_data is only a legacy/transitional column. Tables
+  // created by the first cut declared it NOT NULL — which SQLite can't drop via
+  // ALTER — so writers store '' rather than NULL to stay compatible with both.
   db.exec(`
     CREATE TABLE IF NOT EXISTS slide_versions (
       id TEXT PRIMARY KEY,
       presentation_id TEXT NOT NULL,
       slide_index INTEGER NOT NULL,
-      image_data TEXT NOT NULL,
+      image_data TEXT,
       instruction TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (presentation_id) REFERENCES presentations(id) ON DELETE CASCADE
@@ -390,7 +394,10 @@ function migrateImagesToDisk() {
 
     // ── Version images ──
     const verRows = db.prepare("SELECT id, image_data FROM slide_versions WHERE image_file IS NULL AND image_data IS NOT NULL").all();
-    const updateVer = db.prepare('UPDATE slide_versions SET image_file = ?, image_data = NULL WHERE id = ?');
+    // Store '' rather than NULL — tables from the first cut declared image_data
+    // NOT NULL and SQLite can't drop that constraint. image_data is never read
+    // once image_file is set, so '' is inert.
+    const updateVer = db.prepare("UPDATE slide_versions SET image_file = ?, image_data = '' WHERE id = ?");
     for (const v of verRows) {
       const file = writeImageFile(v.image_data);
       if (file) { updateVer.run(file, v.id); movedVersions++; }
