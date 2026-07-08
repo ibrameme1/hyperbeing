@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+#
+# Auto-regenerate the markdown mirrors when a commit changes page content.
+#
+# Design goals:
+#   * Never block a commit. If anything goes wrong (missing deps, no Chromium,
+#     build failure), we warn and let the commit proceed.
+#   * Only pay the cost (a full Vite build + headless render, ~30-60s) when the
+#     commit actually touches page content — otherwise skip instantly.
+#   * Stage any regenerated .md files so they land in the same commit.
+#
+# Enable once per clone with:
+#   git config core.hooksPath .githooks
+
+# Deliberately do NOT use `set -e`: this hook must never abort the commit.
+REPO_ROOT="$(git rev-parse --show-toplevel)" || exit 0
+cd "$REPO_ROOT" || exit 0
+
+# Only regenerate when staged changes touch rendered page content or the route
+# list. Commits to backend, docs, scripts, etc. skip this entirely.
+if git diff --cached --name-only --diff-filter=ACMR \
+     | grep -qE '^frontend/(src/|index\.html$|public/sitemap\.xml$)'; then
+  echo "[pre-commit] Page content changed — regenerating markdown mirrors…"
+else
+  exit 0
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "[pre-commit] python3 not found — skipping mirror regeneration (commit continues)." >&2
+  exit 0
+fi
+
+# Use this environment's preinstalled Chromium if present; harmless elsewhere.
+[ -d /opt/pw-browsers ] && export PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+
+# Run the generator. Its own non-fatal warnings go to the console but don't
+# affect the commit; only a hard non-zero exit means "couldn't generate".
+python3 scripts/generate_markdown_mirrors.py
+status=$?
+
+# Clean up the throwaway production build the generator created (dist/ is
+# gitignored, but no reason to leave it around).
+rm -rf frontend/dist
+
+if [ "$status" -ne 0 ]; then
+  echo "[pre-commit] Generator exited $status — committing WITHOUT refreshed mirrors." >&2
+  echo "[pre-commit] (Install node + 'pip install beautifulsoup4 markdownify playwright' + Chromium to enable local regeneration.)" >&2
+  exit 0
+fi
+
+# Stage every generated mirror so it's part of this commit.
+find frontend/public -name index.md -print0 | xargs -0 --no-run-if-empty git add
+
+echo "[pre-commit] Mirrors regenerated and staged."
+exit 0
