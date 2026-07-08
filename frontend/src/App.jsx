@@ -16,6 +16,7 @@ import BillingSuccess from './pages/BillingSuccess';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
 import Homepage from './pages/Homepage';
+import ServicePage from './pages/ServicePage';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import Profile from './pages/Profile';
 import CookieConsent from './components/CookieConsent';
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="/design" element={<ProtectedRoute>{wrap(<DesignGalleryPage />)}</ProtectedRoute>} />
         <Route path="/auth/callback" element={wrap(<AuthCallback />)} />
         <Route path="/pricing" element={wrap(<Pricing />)} />
+        <Route path="/services/:slug" element={wrap(<ServicePage />)} />
         <Route path="/billing/success" element={<ProtectedRoute>{wrap(<BillingSuccess />)}</ProtectedRoute>} />
         <Route path="/terms" element={wrap(<Terms />)} />
         <Route path="/privacy" element={wrap(<Privacy />)} />

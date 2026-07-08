@@ -16,6 +16,45 @@ const FEATURES = [
   { icon: '⬡', title: 'Enterprise grade', desc: 'SSO, audit logs, team workspaces, and volume pricing. Built to scale.', visual: 'enterprise' },
 ];
 
+const FAQ_ITEMS = [
+  {
+    q: 'What does HyperBeing do?',
+    a: "HyperBeing is an AI presentation maker that generates fully designed decks from a written brief. It reads the entire brief before building a slide plan, then generates each slide as an art-directed image instead of filling in a template. It's built for consultants, marketers, corporate teams, founders, and investment bankers.",
+  },
+  {
+    q: 'How much does HyperBeing cost?',
+    a: 'Plans range from $25/month (Basic) to $299/month (Ultra 4) on monthly billing. Annual billing lowers the cost, starting at $20/month for Basic and going up to $209/month for Ultra 4. There are six tiers total: Basic, Pro, and Ultra 1 through Ultra 4.',
+  },
+  {
+    q: 'How long does it take to generate a deck?',
+    a: "A typical deck takes 5 to 10 minutes from brief to finished slides. Generation time depends on deck length and how much detail is in the brief. There's no manual design work required in that time.",
+  },
+  {
+    q: 'Do you serve companies outside the United States?',
+    a: 'Yes. HyperBeing is a web-based product available worldwide, with no location restrictions. Teams can sign up and generate decks from any country.',
+  },
+  {
+    q: 'What makes HyperBeing different from tools like Gamma or Canva?',
+    a: "HyperBeing holds large context: you can hand it a long, messy brief and it keeps the full thread instead of collapsing it into a generic template. It also adapts deck style to your industry, so a fintech deck and a fashion deck don't come out looking the same.",
+  },
+  {
+    q: 'What file formats can I export a deck to?',
+    a: "Decks export as PowerPoint (.pptx), PDF, or a shareable link. Exporting doesn't require any file conversion on your end.",
+  },
+  {
+    q: 'Do I need design experience to use HyperBeing?',
+    a: 'No. Each slide is generated as a fully art-directed image directly from your brief, without manual layout or design work. You write or paste the brief, and HyperBeing builds the deck.',
+  },
+  {
+    q: 'How does HyperBeing handle a long, messy brief instead of losing detail?',
+    a: 'HyperBeing reads the entire brief before generating a slide plan, rather than processing it in fragments. This lets it keep specific details, numbers, and structure from a long brief instead of flattening them into a generic template.',
+  },
+  {
+    q: 'Do you offer enterprise features like SSO and audit logs?',
+    a: 'Yes. Higher-tier plans include single sign-on (SSO), audit logs, and team workspaces. Volume pricing is available for larger teams.',
+  },
+];
+
 const FEATURE_SPLITS = [
   {
     headline: 'Nova reads your room.',
@@ -623,6 +662,38 @@ function FeatureVisual({ type }) {
 // large enough to stay a clear "presence" rather than shrinking away.
 const DOCK_SCALE = 0.75;
 
+/* ─── FAQ accordion item ─── */
+function FAQItem({ q, a }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ borderBottom: '0.5px solid #e8e8f0' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
+          padding: '24px 4px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', fontWeight: 600, color: '#0d0b1a' }}>{q}</span>
+        <span style={{ fontSize: '18px', color: '#5B50FF', flexShrink: 0, transform: open ? 'rotate(45deg)' : 'none', transition: 'transform 0.15s' }}>+</span>
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            style={{ overflow: 'hidden' }}
+          >
+            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#6b6490', lineHeight: 1.7, padding: '0 4px 24px' }}>{a}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 /* ─── Main component ─── */
 export default function Homepage() {
   const { user } = useAuth();
@@ -1033,6 +1104,38 @@ export default function Homepage() {
             })}
           </div>
         </div>
+      </section>
+
+      {/* ── 8b. FAQ ── */}
+      <section style={{ background: '#ffffff', padding: '96px 24px', borderTop: '0.5px solid #e8e8f0' }}>
+        <div style={{ maxWidth: '760px', margin: '0 auto' }}>
+          <Reveal>
+            <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(32px, 4vw, 44px)', fontWeight: 400, letterSpacing: '-0.02em', color: '#0d0b1a', marginBottom: '48px', textAlign: 'center' }}>
+              Frequently asked questions
+            </h2>
+          </Reveal>
+          <Reveal delay={0.05}>
+            <div>
+              {FAQ_ITEMS.map(({ q, a }) => (
+                <FAQItem key={q} q={q} a={a} />
+              ))}
+            </div>
+          </Reveal>
+        </div>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'FAQPage',
+              mainEntity: FAQ_ITEMS.map(({ q, a }) => ({
+                '@type': 'Question',
+                name: q,
+                acceptedAnswer: { '@type': 'Answer', text: a },
+              })),
+            }),
+          }}
+        />
       </section>
 
       {/* ── 9. FINAL CTA ── */}

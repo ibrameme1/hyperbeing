@@ -19,6 +19,99 @@
         if (t === 'dark') document.documentElement.classList.add('dark');
       })();
     </script>
+
+    <!-- Organization schema: identifies HyperBeing as a business entity -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "HyperBeing",
+      "url": "https://www.hyperbeing.co",
+      "description": "AI presentation maker that creates hyper-personalized, large-context decks, built for teams who want to spend less time formatting slides and more time on strategy.",
+      "areaServed": "Worldwide"
+    }
+    </script>
+
+    <!-- SoftwareApplication schema: describes the product itself, its pricing tiers, and category -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "HyperBeing",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "url": "https://www.hyperbeing.co",
+      "description": "AI presentation maker that handles large, messy context without collapsing it into a generic template, and adapts deck style to your industry.",
+      "offers": [
+        { "@type": "Offer", "name": "Basic", "price": "25", "priceCurrency": "USD", "billingIncrement": "P1M" },
+        { "@type": "Offer", "name": "Pro", "price": "65", "priceCurrency": "USD", "billingIncrement": "P1M" },
+        { "@type": "Offer", "name": "Ultra 1", "price": "149", "priceCurrency": "USD", "billingIncrement": "P1M" },
+        { "@type": "Offer", "name": "Ultra 2", "price": "209", "priceCurrency": "USD", "billingIncrement": "P1M" },
+        { "@type": "Offer", "name": "Ultra 3", "price": "269", "priceCurrency": "USD", "billingIncrement": "P1M" },
+        { "@type": "Offer", "name": "Ultra 4", "price": "299", "priceCurrency": "USD", "billingIncrement": "P1M" }
+      ]
+    }
+    </script>
+
+    <!-- FAQPage schema lives in Homepage.jsx, next to the visible FAQ section it describes,
+         so the two never drift out of sync. -->
+
+    <!-- Service schema: one entry per pricing tier, framed as a distinct service offering -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Service",
+          "name": "HyperBeing Basic",
+          "serviceType": "AI presentation generation",
+          "provider": { "@type": "Organization", "name": "HyperBeing" },
+          "areaServed": "Worldwide",
+          "offers": { "@type": "Offer", "price": "25", "priceCurrency": "USD", "billingIncrement": "P1M" }
+        },
+        {
+          "@type": "Service",
+          "name": "HyperBeing Pro",
+          "serviceType": "AI presentation generation",
+          "provider": { "@type": "Organization", "name": "HyperBeing" },
+          "areaServed": "Worldwide",
+          "offers": { "@type": "Offer", "price": "65", "priceCurrency": "USD", "billingIncrement": "P1M" }
+        },
+        {
+          "@type": "Service",
+          "name": "HyperBeing Ultra 1",
+          "serviceType": "AI presentation generation",
+          "provider": { "@type": "Organization", "name": "HyperBeing" },
+          "areaServed": "Worldwide",
+          "offers": { "@type": "Offer", "price": "149", "priceCurrency": "USD", "billingIncrement": "P1M" }
+        },
+        {
+          "@type": "Service",
+          "name": "HyperBeing Ultra 2",
+          "serviceType": "AI presentation generation",
+          "provider": { "@type": "Organization", "name": "HyperBeing" },
+          "areaServed": "Worldwide",
+          "offers": { "@type": "Offer", "price": "209", "priceCurrency": "USD", "billingIncrement": "P1M" }
+        },
+        {
+          "@type": "Service",
+          "name": "HyperBeing Ultra 3",
+          "serviceType": "AI presentation generation",
+          "provider": { "@type": "Organization", "name": "HyperBeing" },
+          "areaServed": "Worldwide",
+          "offers": { "@type": "Offer", "price": "269", "priceCurrency": "USD", "billingIncrement": "P1M" }
+        },
+        {
+          "@type": "Service",
+          "name": "HyperBeing Ultra 4",
+          "serviceType": "AI presentation generation",
+          "provider": { "@type": "Organization", "name": "HyperBeing" },
+          "areaServed": "Worldwide",
+          "offers": { "@type": "Offer", "price": "299", "priceCurrency": "USD", "billingIncrement": "P1M" }
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
