@@ -54,6 +54,11 @@ export function getEditTierThreshold(planKey) {
 
 // Walk up the plan ladder from currentPlan and return the first plan whose
 // monthly credit allocation covers creditsNeeded. Falls back to the top plan.
+// NOTE: this deliberately compares the plan's FULL monthly allocation against
+// the incremental shortfall (not the user's would-be remaining balance) — the
+// upsell message is "this plan's monthly credits cover what you're missing",
+// which is simple and always true at the next reset. Don't "fix" it to
+// subtract current usage without also changing the upgrade copy.
 export function suggestPlanForCost(currentPlan, creditsNeeded) {
   const startIdx = Math.max(PLAN_LADDER.indexOf(currentPlan), 0);
   for (let i = startIdx + 1; i < PLAN_LADDER.length; i++) {

@@ -1,4 +1,4 @@
-// In-memory request trace store — last 100 requests, no persistence needed.
+// In-memory request trace store — last MAX_REQUESTS (500) requests, no persistence needed.
 
 const MAX_REQUESTS = 500;
 

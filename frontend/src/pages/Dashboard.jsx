@@ -19,6 +19,14 @@ import { capture } from '../utils/posthog';
 import { SkeletonDashboardPage, SkeletonCard } from '../components/Skeleton';
 import FeedbackButton from '../components/FeedbackButton';
 import { fileToImageAttachment } from '../utils/imageAttachment';
+
+// Builds the authed URL for a presentation's thumbnail image. Access tokens
+// rotate every 15 min, so a leaked URL goes stale quickly.
+function thumbnailUrl(pres) {
+  const base = import.meta.env.VITE_API_URL || '';
+  const token = localStorage.getItem('hb_token') || '';
+  return `${base}/api/presentations/${pres.id}/thumbnail?token=${encodeURIComponent(token)}&v=${encodeURIComponent(pres.updated_at || '')}`;
+}
 import TopNav from '../components/TopNav';
 import ModeSwitcher from '../components/ModeSwitcher';
 
@@ -369,8 +377,12 @@ function PresentationCard({ pres, onDelete }) {
     >
       <div className="aspect-[16/9] overflow-hidden"
            style={{ background: 'linear-gradient(135deg, rgba(91,80,255,0.1) 0%, rgba(139,128,255,0.1) 100%)' }}>
-        {pres.thumbnail ? (
-          <img src={pres.thumbnail} alt="" loading="lazy" className="w-full h-full object-cover" />
+        {pres.has_thumbnail ? (
+          // Thumbnails come from a dedicated endpoint instead of base64 in the
+          // list payload (which made the dashboard response tens of MB).
+          // <img> can't send Authorization headers, so the JWT rides the query
+          // string like the SSE routes; ?v= busts the cache after updates.
+          <img src={thumbnailUrl(pres)} alt="" loading="lazy" className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full skeleton flex items-center justify-center">
             <Sparkles className="w-7 h-7 opacity-40" style={{ color: '#5B50FF' }} />

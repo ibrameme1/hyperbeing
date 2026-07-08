@@ -1,9 +1,15 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import {
-  stripe, PLANS, ULTRA_TIERS, getOrCreateSubscription, resetCreditsForPlan, grantCredits, isAdmin,
+  stripe, PLANS, ULTRA_TIERS, PLAN_LADDER, getOrCreateSubscription, resetCreditsForPlan, grantCredits, isAdmin,
   applyPlanUpgrade, scheduleDowngrade, scheduleCancellation,
 } from '../services/stripeService.js';
+
+// Plan ordering derived from the single source of truth in config/credits.js.
+// 'ultra' is a legacy alias for ultra1 (old rows are normalized on boot, but
+// checkout may still receive it from cached frontends).
+const PLAN_RANK = Object.fromEntries(PLAN_LADDER.map((p, i) => [p, i]));
+PLAN_RANK.ultra = PLAN_RANK.ultra1;
 import { logger } from '../services/logger.js';
 import { getDb } from '../database.js';
 import {
@@ -68,9 +74,20 @@ router.get('/subscription', authMiddleware, async (req, res) => {
 
     if (sub.stripe_subscription_id && process.env.STRIPE_SECRET_KEY) {
       try {
+        // invoices.retrieveUpcoming was removed from stripe-node (v18+);
+        // createPreview is its replacement. Wrapped so a preview failure never
+        // blocks the subscription payload.
+        const previewUpcoming = async () => {
+          try {
+            return await stripe.invoices.createPreview({ subscription: sub.stripe_subscription_id });
+          } catch (previewErr) {
+            logger.warn('upcoming invoice preview failed', { errorMessage: previewErr.message, userId: req.userId });
+            return null;
+          }
+        };
         const [stripeSub, upcoming] = await Promise.all([
           stripe.subscriptions.retrieve(sub.stripe_subscription_id),
-          stripe.invoices.retrieveUpcoming({ subscription: sub.stripe_subscription_id }).catch(() => null),
+          previewUpcoming(),
         ]);
         current_period_end = new Date(stripeSub.current_period_end * 1000).toISOString();
         cancel_at_period_end = !!stripeSub.cancel_at_period_end;
@@ -104,7 +121,7 @@ router.get('/subscription', authMiddleware, async (req, res) => {
 // ── POST /api/billing/checkout ────────────────────────────────────────────────
 router.post('/checkout', authMiddleware, billingLimiter,
   validate({
-    planKey:   isEnum('basic', 'pro', 'ultra'),
+    planKey:   isEnum('basic', 'pro', 'ultra', 'ultra1', 'ultra2', 'ultra3', 'ultra4'),
     billing:   isOptionalString(10),
     ultraTier: (v) => (v === undefined || v === null) ? null : isIntBetween(0, 3)(v),
   }),
@@ -149,7 +166,6 @@ router.post('/checkout', authMiddleware, billingLimiter,
       if (stripeSub) {
       const currentItemId = stripeSub.items.data[0]?.id;
 
-      const PLAN_RANK = { free: 0, basic: 1, pro: 2, ultra: 3, ultra1: 3, ultra2: 4, ultra3: 5, ultra4: 6 };
       const isDowngrade = (PLAN_RANK[actualPlanKey] ?? 0) < (PLAN_RANK[sub.plan] ?? 0);
 
       // Cancel a pending downgrade — user re-picks the plan they're currently on.

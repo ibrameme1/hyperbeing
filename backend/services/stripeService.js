@@ -9,7 +9,10 @@ let _stripe = null;
 export function getStripe() {
   if (!_stripe) {
     if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY not set');
-    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-12-18.acacia' });
+    // No apiVersion pin — use the version the installed SDK was built for.
+    // A stale pin (previously '2024-12-18.acacia' with stripe v22) makes
+    // request/response shapes drift from what the SDK types expect.
+    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   }
   return _stripe;
 }
@@ -198,6 +201,18 @@ export function deductCreditsForEdit(userId, presentationId, hasReferenceImage, 
   return txn();
 }
 
+// Mirrors the tier logic inside deductCreditsForEdit WITHOUT deducting — used
+// to compute the credits_needed figure for the cute-Nova 402 response when an
+// edit is rejected for insufficient credits. Keep in lockstep with the
+// deduction above.
+export function previewEditCost(sub, hasReferenceImage) {
+  const threshold = getEditTierThreshold(sub.plan);
+  const tier = (sub.edits_this_month || 0) >= threshold ? 'TIER_2' : 'TIER_1';
+  let cost = tier === 'TIER_1' ? CREDIT_COSTS.SLIDE_EDIT_TIER_1 : CREDIT_COSTS.SLIDE_EDIT_TIER_2;
+  if (hasReferenceImage) cost += CREDIT_COSTS.REFERENCE_IMAGE_PER_SLIDE;
+  return cost;
+}
+
 // ── Partial-generation affordability ──────────────────────────────────────────
 
 // Given a requested slide count, returns how many slides the user can afford
@@ -257,6 +272,10 @@ export function grantCredits(userId, amount, type, description) {
 // (they start with the same prefix but don't exist in live mode).
 export async function clearStaleTestSubscriptions() {
   if (!process.env.STRIPE_SECRET_KEY) return;
+  // One serial Stripe call per subscription row — gets slow as users grow.
+  // Set STRIPE_CLEANUP_ON_BOOT=false to skip (stale IDs are also cleared
+  // lazily by GET /api/billing/subscription when they 404).
+  if (process.env.STRIPE_CLEANUP_ON_BOOT === 'false') return;
   const db = getDb();
   const rows = db.prepare("SELECT user_id, stripe_subscription_id FROM subscriptions WHERE stripe_subscription_id IS NOT NULL").all();
   for (const row of rows) {

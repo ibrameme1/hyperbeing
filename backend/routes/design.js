@@ -11,6 +11,7 @@ import {
   CREDIT_COSTS, novaInsufficientCredits,
 } from '../services/stripeService.js';
 import { DESIGN_MAX_PARALLEL_GENERATIONS, DESIGN_MAX_IMAGES_PER_BATCH } from '../config/credits.js';
+import { validateAttachments as validateAttachmentsShared } from '../middleware/attachments.js';
 import { logger, requestContext } from '../services/logger.js';
 
 const router = Router();
@@ -19,25 +20,8 @@ const DESIGN_ASPECT_RATIO = '16:9';
 const DESIGN_QUALITY = 'medium';
 const DESIGN_RESOLUTION = '1k';
 
-// ─── Attachment validation (mirrors presentations.js) ──────────────────────
-function validateAttachment(a) {
-  if (typeof a !== 'object' || a === null) return 'Must be an object';
-  if (a.type !== undefined && !['image', 'file'].includes(a.type)) return 'Invalid type';
-  if (typeof a.name !== 'string' || a.name.length > 255) return 'Invalid name';
-  if (typeof a.data !== 'string') return 'Missing data';
-  if (a.data.length > 10_000_000) return 'One of your images is too large (max ~7MB). Please use a smaller image.';
-  return null;
-}
-
-function validateAttachments(attachments, maxCount = 4) {
-  if (!Array.isArray(attachments)) return 'Attachments must be an array';
-  if (attachments.length > maxCount) return `Too many reference images (max ${maxCount})`;
-  for (const a of attachments) {
-    const err = validateAttachment(a);
-    if (err) return err;
-  }
-  return null;
-}
+// Shared attachment validation — Design Mode allows up to 4 reference images.
+const validateAttachments = (attachments) => validateAttachmentsShared(attachments, 4, 'reference images');
 
 // ─── Per-user SSE registry for gallery live updates ────────────────────────
 const userSseRegistry = new Map();
@@ -213,6 +197,17 @@ router.post('/:id/retry', authenticateToken, designGenerationLimiter, (req, res)
   const row = db.prepare('SELECT * FROM design_generations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!row) return res.status(404).json({ error: 'Generation not found' });
   if (row.status !== 'error') return res.status(400).json({ error: 'Only failed generations can be retried' });
+
+  // Retries count against the same parallel-generation cap as fresh batches.
+  const inFlight = db
+    .prepare("SELECT COUNT(*) AS n FROM design_generations WHERE user_id = ? AND status IN ('pending','generating')")
+    .get(req.user.id).n;
+  if (inFlight + 1 > DESIGN_MAX_PARALLEL_GENERATIONS) {
+    return res.status(429).json({
+      error: `You can have at most ${DESIGN_MAX_PARALLEL_GENERATIONS} images generating at once. Wait for some to finish before retrying.`,
+      code: 'TOO_MANY_PARALLEL_GENERATIONS',
+    });
+  }
 
   const costPerImage = row.mode === 'own' ? CREDIT_COSTS.DESIGN_IMAGE_OWN_PROMPT : CREDIT_COSTS.DESIGN_IMAGE_NOVA_PROMPT;
 

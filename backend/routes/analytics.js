@@ -27,9 +27,6 @@ function requireAdmin(req, res, next) {
   }
 }
 
-// Apply admin guard to every route in this router
-router.use(requireAdmin);
-
 // ── SSE clients registry ──────────────────────────────────────────────────────
 const liveClients = new Set();
 
@@ -49,9 +46,25 @@ function optionalUserId(req) {
 }
 
 // ── POST /api/analytics/track ─────────────────────────────────────────────────
+// Registered BEFORE the admin guard: this is the write path every visitor's
+// track() call hits. (It used to sit behind requireAdmin, which silently
+// rejected all non-admin events — the analytics tables only ever saw the
+// admin's own activity.) Auth is optional by design: anonymous visitors are
+// tracked without a user_id.
 router.post('/track', (req, res) => {
   const { event_type, page, metadata, session_id } = req.body;
-  if (!event_type) return res.status(400).json({ error: 'event_type required' });
+  if (!event_type || typeof event_type !== 'string' || event_type.length > 100) {
+    return res.status(400).json({ error: 'event_type required' });
+  }
+  if (page != null && (typeof page !== 'string' || page.length > 500)) {
+    return res.status(400).json({ error: 'Invalid page' });
+  }
+  if (session_id != null && (typeof session_id !== 'string' || session_id.length > 100)) {
+    return res.status(400).json({ error: 'Invalid session_id' });
+  }
+  if (metadata != null && JSON.stringify(metadata).length > 4000) {
+    return res.status(400).json({ error: 'Metadata too large' });
+  }
 
   const userId = optionalUserId(req);
   const db = getDb();
@@ -73,6 +86,9 @@ router.post('/track', (req, res) => {
   broadcastAnalyticsEvent(event);
   res.json({ ok: true });
 });
+
+// Every route below this line is admin-only (dashboards, aggregates, live feed).
+router.use(requireAdmin);
 
 // ── GET /api/analytics/live ───────────────────────────────────────────────────
 router.get('/live', (req, res) => {

@@ -1,12 +1,14 @@
 {
   "name": "hyperbeing-backend",
   "version": "1.0.0",
-  "description": "AI Presentation Maker — Backend",
+  "description": "AI Presentation Maker \u2014 Backend",
   "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node --import ./instrument.js server.js",
-    "dev": "nodemon --import ./instrument.js server.js"
+    "dev": "nodemon --import ./instrument.js server.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.0",
@@ -33,6 +35,7 @@
     "uuid": "^11.0.3"
   },
   "devDependencies": {
-    "nodemon": "^3.1.7"
+    "nodemon": "^3.1.7",
+    "vitest": "^4.1.10"
   }
 }

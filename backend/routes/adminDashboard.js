@@ -1,18 +1,43 @@
 import { Router } from 'express';
+import { timingSafeEqual } from 'crypto';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { tracer } from '../services/tracer.js';
 import { getDb } from '../database.js';
 import { metrics } from '../services/metrics.js';
 
 const router = Router();
 
+// Constant-time comparison so token guesses can't be timed character by character.
+function tokenMatches(supplied) {
+  const expected = process.env.ADMIN_TOKEN;
+  if (!expected || typeof supplied !== 'string') return false;
+  const a = Buffer.from(supplied);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+// Brute-force guard on the token check (30 attempts / 15 min per IP).
+const adminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(req),
+});
+
 function requireAdminToken(req, res, next) {
-  const token = req.query.token || req.headers['x-admin-token'];
-  if (!process.env.ADMIN_TOKEN || token !== process.env.ADMIN_TOKEN) {
+  // Prefer the x-admin-token header; the ?token= query param is only kept for
+  // the initial page load, and the dashboard immediately strips it from the
+  // URL (history.replaceState) so it doesn't linger in history/referrers.
+  const token = req.headers['x-admin-token'] || req.query.token;
+  if (!tokenMatches(token)) {
     return res.status(401).send(`<!DOCTYPE html><html><body style="font-family:monospace;background:#0a0a0a;color:#ff4444;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><h1>401 — Unauthorized</h1></body></html>`);
   }
   next();
 }
 
+router.use(adminLimiter);
 router.use(requireAdminToken);
 
 router.get('/api/data', (req, res) => {
@@ -226,7 +251,13 @@ tr.cr:hover td{background:var(--bg3)}
 
 <script>
 const TOKEN = '${tok}';
+// Strip ?token= from the address bar immediately — it was only needed for the
+// initial page load and shouldn't linger in history or get copy-pasted.
+try { history.replaceState(null, '', location.pathname); } catch {}
+// EventSource can't send headers, so /api/events keeps the query param;
+// regular fetches send the token via the x-admin-token header instead.
 const api = p => '/admin' + p + (p.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN);
+const authedFetch = (p, opts = {}) => fetch('/admin' + p, { ...opts, headers: { ...(opts.headers || {}), 'x-admin-token': TOKEN } });
 
 // ── Node definitions ─────────────────────────────────────────────────────────
 const GN = [
@@ -754,7 +785,7 @@ function renderDB(dbStats, snap) {
 // ── Data fetch ────────────────────────────────────────────────────────────────
 async function fetchData() {
   try {
-    const r = await fetch(api('/api/data'), {signal: AbortSignal.timeout(8000)});
+    const r = await authedFetch('/api/data', {signal: AbortSignal.timeout(8000)});
     if (!r.ok) { setStatus('err','HTTP '+r.status); return; }
     const data = await r.json();
     allRequests = data.requests||[];

@@ -1,5 +1,23 @@
 import jsPDF from 'jspdf';
 import { track } from './track';
+import { mediaUrl } from './mediaUrl';
+
+// Slide images now live on the server (GAPS #7), so image_data may be an authed
+// URL rather than inline base64. jsPDF.addImage and the watermark canvas both
+// need actual bytes, so fetch the URL into a data URL first. Inline data URLs
+// pass straight through.
+async function toDataUrl(imageData) {
+  if (!imageData || imageData.startsWith('data:')) return imageData;
+  const res = await fetch(mediaUrl(imageData));
+  if (!res.ok) throw new Error(`image fetch failed: ${res.status}`);
+  const blob = await res.blob();
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
 // Stamps a subtle "Made with HyperBeing" mark in the bottom-right corner of
 // a generated slide image — applied to exports for free-plan users.
@@ -33,13 +51,14 @@ function addWatermark(dataUrl) {
   });
 }
 
-// Returns each slide's image_data, watermarked when on the free plan.
+// Returns each slide's image as a data URL, watermarked when on the free plan.
 // Placeholder SVGs are left untouched.
 async function getExportImage(slide, currentPlan) {
   const data = slide.image_data;
   if (!data || data.startsWith('data:image/svg')) return data;
-  if (currentPlan !== 'free') return data;
-  return addWatermark(data);
+  const dataUrl = await toDataUrl(data);
+  if (currentPlan !== 'free') return dataUrl;
+  return addWatermark(dataUrl);
 }
 
 export async function exportImages(slides, title = 'Presentation', currentPlan = 'free') {

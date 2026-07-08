@@ -1,7 +1,15 @@
 import { Resend } from 'resend';
 import { logger } from './logger.js';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazily constructed — new Resend(undefined) THROWS at import time, which
+// used to crash the whole server on boot when RESEND_API_KEY was unset
+// (email is meant to degrade silently like every other optional integration).
+let _resend = null;
+function getResend() {
+  if (!process.env.RESEND_API_KEY) return null;
+  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY);
+  return _resend;
+}
 
 const FROM = process.env.EMAIL_FROM || 'HyperBeing <onboarding@resend.dev>';
 
@@ -66,7 +74,8 @@ function escapeHtml(str) {
 // ── Low-level send (never throws — logs errors) ───────────────────────────────
 
 async function send(to, subject, html) {
-  if (!process.env.RESEND_API_KEY) return;
+  const resend = getResend();
+  if (!resend) return;
   try {
     const { error } = await resend.emails.send({ from: FROM, to, subject, html });
     if (error) logger.warn('email send failed', { to, subject, error: error.message });

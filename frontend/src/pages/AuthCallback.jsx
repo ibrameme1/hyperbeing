@@ -6,11 +6,17 @@ import { capture, identifyUser } from '../utils/posthog';
 import { markActive } from '../utils/auth';
 
 export default function AuthCallback() {
-  const [params] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { setAuthUser } = useAuth();
 
   useEffect(() => {
+    // Tokens arrive in the URL FRAGMENT (#token=…) so they never reach server
+    // logs or Referer headers. Query params are kept as a fallback for any
+    // redirect issued by an older backend during deploys.
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const params = { get: (k) => hashParams.get(k) ?? searchParams.get(k) };
+
     const token = params.get('token');
     const isNew = params.get('new') === 'true';
     const error = params.get('error');
@@ -19,6 +25,9 @@ export default function AuthCallback() {
       navigate('/login?error=oauth');
       return;
     }
+
+    // Scrub the fragment so tokens don't sit in the address bar / history.
+    try { window.history.replaceState(null, '', window.location.pathname); } catch {}
 
     localStorage.setItem('hb_token', token);
     const refresh = params.get('refresh');
