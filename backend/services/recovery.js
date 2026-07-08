@@ -1,5 +1,8 @@
+import fs from 'fs';
+import path from 'path';
 import { getDb } from '../database.js';
 import { refundCredits, CREDIT_COSTS } from './stripeService.js';
+import { IMAGE_DIR } from './imageStore.js';
 import { logger } from './logger.js';
 
 // Startup crash recovery. Generation runs as detached in-process promises, so
@@ -67,5 +70,55 @@ export function sweepStaleWork() {
 
   if (stuckPres.length || stuckDesigns.length) {
     logger.info('startup sweep complete', { presentations: stuckPres.length, designs: stuckDesigns.length });
+  }
+}
+
+// Deletes image files on the volume that no DB row references. Orphans build up
+// when a file is written to disk but the matching DB write never commits — the
+// crash-looped image migration left ~an image set per failed boot, and a
+// generation killed mid-flight can leave one too (file writes aren't
+// transactional). An age guard protects files a live generation just wrote but
+// hasn't persisted into slides_data yet — only files older than
+// ORPHAN_MIN_AGE_MS are eligible, so this can never race in-flight work.
+const ORPHAN_MIN_AGE_MS = 60 * 60 * 1000; // 1 hour
+
+export function sweepOrphanImages() {
+  let files;
+  try {
+    files = fs.readdirSync(IMAGE_DIR);
+  } catch {
+    return; // image dir not created yet — nothing to sweep
+  }
+
+  const db = getDb();
+  const referenced = new Set();
+  for (const row of db.prepare('SELECT slides_data, thumbnail FROM presentations').all()) {
+    if (row.thumbnail) referenced.add(path.basename(row.thumbnail));
+    let slides = [];
+    try { slides = JSON.parse(row.slides_data || '[]'); } catch { continue; }
+    for (const s of slides) if (s.image_file) referenced.add(path.basename(s.image_file));
+  }
+  try {
+    for (const v of db.prepare('SELECT image_file FROM slide_versions').all()) {
+      if (v.image_file) referenced.add(path.basename(v.image_file));
+    }
+  } catch { /* table may not exist */ }
+
+  const cutoff = Date.now() - ORPHAN_MIN_AGE_MS;
+  let deleted = 0, freedBytes = 0;
+  for (const f of files) {
+    if (referenced.has(f)) continue;
+    const full = path.join(IMAGE_DIR, f);
+    try {
+      const st = fs.statSync(full);
+      if (!st.isFile() || st.mtimeMs > cutoff) continue; // too new — could be in-flight
+      freedBytes += st.size;
+      fs.unlinkSync(full);
+      deleted++;
+    } catch { /* concurrent delete / race — ignore */ }
+  }
+
+  if (deleted > 0) {
+    logger.info('swept orphan image files on startup', { deleted, freedMB: +(freedBytes / 1048576).toFixed(1) });
   }
 }
