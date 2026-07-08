@@ -74,8 +74,11 @@ export function initDatabase() {
       stripe_customer_id TEXT UNIQUE,
       stripe_subscription_id TEXT UNIQUE,
       status TEXT DEFAULT 'active',
-      credits_remaining INTEGER DEFAULT 5,
-      credits_total INTEGER DEFAULT 5,
+      -- Real free-plan allocation comes from PLAN_CREDITS in config/credits.js
+      -- (rows are always created via getOrCreateSubscription). Defaults are 0
+      -- so nobody mistakes the schema for the source of truth.
+      credits_remaining INTEGER DEFAULT 0,
+      credits_total INTEGER DEFAULT 0,
       current_period_end DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -179,6 +182,40 @@ export function initDatabase() {
     try { db.exec(col); } catch { /* already exists */ }
   }
 
+  // Indexes on the hottest foreign keys — dashboard list, message fetch,
+  // ledger reads. (The smaller tables below already had theirs.)
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_presentations_user ON presentations(user_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_presentation ON messages(presentation_id);
+    CREATE INDEX IF NOT EXISTS idx_credit_txn_user ON credit_transactions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id);
+  `);
+
+  // Migrate: normalize the legacy 'ultra' plan key to its concrete tier so
+  // pricing lookups never depend on the PLANS.ultra alias.
+  db.prepare("UPDATE subscriptions SET plan = 'ultra1' WHERE plan = 'ultra'").run();
+
+  // Slide version history — image blobs live here instead of inside the
+  // slides_data JSON (slides keep only {id, instruction, created_at} stubs).
+  // Keeping multi-MB base64 images out of the presentations row keeps every
+  // slide mutation from rewriting old versions too.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS slide_versions (
+      id TEXT PRIMARY KEY,
+      presentation_id TEXT NOT NULL,
+      slide_index INTEGER NOT NULL,
+      image_data TEXT NOT NULL,
+      instruction TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (presentation_id) REFERENCES presentations(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_slide_versions_slide ON slide_versions(presentation_id, slide_index);
+  `);
+
+  // One-time migration (guarded by PRAGMA user_version): move version images
+  // embedded in slides_data into slide_versions, leaving metadata stubs behind.
+  migrateEmbeddedSlideVersions();
+
   // Structured application logs (rolling — capped at 10 K rows by logger.js)
   db.exec(`
     CREATE TABLE IF NOT EXISTS app_logs (
@@ -244,6 +281,42 @@ export function initDatabase() {
 
   console.log('✅ Database ready');
   return db;
+}
+
+// Moves full base64 images out of slides_data[].versions[] into the
+// slide_versions table. Runs once — user_version 1 marks completion, so
+// subsequent boots skip the (potentially expensive) full-table JSON parse.
+function migrateEmbeddedSlideVersions() {
+  const version = db.pragma('user_version', { simple: true });
+  if (version >= 1) return;
+
+  const rows = db.prepare("SELECT id, slides_data FROM presentations WHERE slides_data LIKE '%\"versions\"%'").all();
+  const insert = db.prepare(
+    'INSERT OR IGNORE INTO slide_versions (id, presentation_id, slide_index, image_data, instruction, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+  const update = db.prepare('UPDATE presentations SET slides_data = ? WHERE id = ?');
+
+  const txn = db.transaction(() => {
+    for (const row of rows) {
+      let slides;
+      try { slides = JSON.parse(row.slides_data); } catch { continue; }
+      let changed = false;
+      for (const slide of slides) {
+        if (!Array.isArray(slide.versions)) continue;
+        for (const v of slide.versions) {
+          if (v.image_data) {
+            insert.run(v.id, row.id, slide.index, v.image_data, v.instruction || null, v.created_at || new Date().toISOString());
+            delete v.image_data;
+            changed = true;
+          }
+        }
+      }
+      if (changed) update.run(JSON.stringify(slides), row.id);
+    }
+    db.pragma('user_version = 1');
+  });
+  txn();
+  if (rows.length > 0) console.log(`✅ Migrated embedded slide versions for ${rows.length} presentation(s)`);
 }
 
 export function getDb() {

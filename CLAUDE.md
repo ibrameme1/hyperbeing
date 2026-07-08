@@ -22,14 +22,17 @@ npm run build          # production build (Sentry plugin needs SENTRY_* or warns
 # Both at once (repo root)
 ./start.sh
 
+# Tests (backend only — vitest)
+cd backend && npm test
+
 # One-off scripts
 node backend/scripts/topup-free-users.js
 python3 scripts/generate_markdown_mirrors.py   # regenerates frontend/public/**/index.md
 ```
 
-There are **no tests and no linter** (see GAPS #4). Verify changes by running the app; with no API keys set (or keys = `demo`) every AI service runs in **mock mode** with canned plans and SVG placeholder images — that's the intended way to exercise the pipeline locally.
+Backend tests live in `backend/test/` (credit ledger, streaming parser, SSRF guard) — run them before pushing backend changes. There is still **no linter and no CI** (GAPS #4). Beyond tests, verify by running the app; with no API keys set (or keys = `demo`) every AI service runs in **mock mode** with canned plans and SVG placeholder images — that's the intended way to exercise the pipeline locally (a mock deck generates 3 slides + 7 locked on the free plan; the "error" states + refunds are the documented placeholder quirk).
 
-Env: copy `backend/.env.example` → `backend/.env`. The example file is incomplete — the code also reads `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_*_PRICE_ID`, `ADMIN_EMAILS`, `ADMIN_TOKEN`, `SESSION_SECRET`, OAuth client ids/secrets, `API_URL`, `DB_PATH`, `LOG_LEVEL`. Missing keys degrade silently (Stripe/email/OAuth just don't work). DB file: `backend/data/hyperbeing.db` (gitignored).
+Env: copy `backend/.env.example` → `backend/.env` — it now lists every variable the backend reads. Missing keys degrade silently (Stripe/email/OAuth just don't work). DB file: `backend/data/hyperbeing.db` (gitignored).
 
 ## Conventions this codebase actually follows
 
@@ -53,13 +56,17 @@ Env: copy `backend/.env.example` → `backend/.env`. The example file is incompl
 - **Claude streams `HEADER:{json}` / `SLIDE:{json}` lines** parsed by `extractPrefixedObjects` (bracket-counting). Prompt-format changes and parser changes must move together.
 - **EventSource can't send headers** → SSE routes auth via `?token=` query param and `utils/sse.js` handles reconnection/refresh. Access tokens last 15 min (refresh 7 days) — don't assume long-lived tokens.
 - **Mock mode makes every image an SVG placeholder**, which the error-detection paths then flag — mock generations showing "error" slides with refunds is a known quirk, not your bug.
-- **`POST /:id/generate` (chat-flow path) is legacy** — serial pipeline, currently charges no credits (GAPS #1). The real pipeline is `runFullFlow` behind `POST /api/presentations`.
-- **`PUT /api/auth/profile` is currently broken** (writes nonexistent `users.updated_at` — GAPS #3).
+- **There is no chat flow.** Decks are created ONLY from the Dashboard prompt (`POST /api/presentations` → `runFullFlow`). The old in-presentation Nova chat (`POST /:id/messages`, `POST /:id/generate`, `runGeneration`, `ChatPhase`) was removed in 2026-07 — don't reintroduce it from old references. The `messages` table still stores the initial brief.
+- **Slide version images live in the `slide_versions` table**, not in `slides_data` — slides carry `{id, instruction, created_at}` stubs only. Use `pushSlideVersion(db, presId, slideIndex, image, instruction)`.
+- **Dashboard thumbnails are served by `GET /:id/thumbnail`** (JWT via `?token=`, like SSE); list/SSE payloads carry `has_thumbnail`, never base64.
+- **OAuth callback tokens arrive in the URL fragment** (`#token=…`), not the query string — `AuthCallback.jsx` parses `location.hash`.
+- **The `users` table has no `updated_at` column** — don't write one (this broke profile saves once already).
 - Frontend env: empty `VITE_API_URL` = use dev proxy; set it to the Railway URL in production builds.
 
 ## Rules
 
-- **Never change `config/credits.js` values or ledger semantics casually** — it's real money. Keep deduct/refund symmetry.
+- **Never change `config/credits.js` values or ledger semantics casually** — it's real money. Keep deduct/refund symmetry. `backend/test/stripeService.test.js` guards the basics — run it.
+- **User-supplied URLs fetched server-side must go through `assertPublicUrl`** (`services/urlGuard.js`) — SSRF guard; follow redirects manually and re-validate each hop (see `fetch-url` in presentations.js).
 - **Schema changes are append-only**: add columns via the try/catch `ALTER TABLE` pattern in `database.js` `initDatabase()`; never rename, retype, or drop. Migrations run on every boot and must be idempotent.
 - **Generated files — never hand-edit:** `frontend/public/**/index.md` (markdown mirrors; regenerate via `scripts/generate_markdown_mirrors.py`, auto-run by `.githooks/pre-commit`). Keep `frontend/public/llms.txt` and `sitemap.xml` in sync when adding public routes.
 - **The giant prompt blocks in `claudeAgent.js`, `backend/prompts/*.md`, and `minimalisticExamples.js` are product behavior.** Edit them like code: smallest possible diff, and check every consumer of the output format (`extractPrefixedObjects`, the `\n---\n` chat separator, the 5-layer prompt structure).

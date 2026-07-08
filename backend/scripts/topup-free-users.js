@@ -8,7 +8,10 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'hyperbeing.
 
 const db = new Database(DB_PATH);
 
-const TARGET_CREDITS = 15;
+// Free-plan allocation comes from the single source of truth in config/credits.js
+// (this used to be a hardcoded 15, disagreeing with PLAN_CREDITS.free).
+const { PLAN_CREDITS } = await import('../config/credits.js');
+const TARGET_CREDITS = PLAN_CREDITS.free;
 
 const result = db.prepare(`
   UPDATE subscriptions

@@ -30,7 +30,10 @@ function frontendUrl() {
 function redirectWithToken(res, userId, isNew = false) {
   const token = signToken(userId);
   const refreshToken = signRefreshToken(userId);
-  res.redirect(`${frontendUrl()}/auth/callback?token=${token}&refresh=${refreshToken}&new=${isNew}`);
+  // Tokens go in the URL FRAGMENT, not the query string — fragments are never
+  // sent to servers, so they stay out of access logs, Referer headers, and
+  // any intermediary. AuthCallback.jsx reads window.location.hash.
+  res.redirect(`${frontendUrl()}/auth/callback#token=${token}&refresh=${refreshToken}&new=${isNew}`);
 }
 
 // ── Passport: Google ─────────────────────────────────────────────────────────
@@ -241,13 +244,11 @@ router.post('/login',
     const dummyHash = '$2a$12$invalidhashpadding000000000000000000000000000000000000000';
     const valid = await bcrypt.compare(password, user?.password_hash || dummyHash);
 
-    if (!user || !user.password_hash) {
+    // One identical response for "no such account" and "wrong password" — a
+    // distinct USER_NOT_FOUND code let attackers enumerate registered emails.
+    if (!user || !user.password_hash || !valid) {
       req.recordAuthFailure?.();
-      return res.status(401).json({ error: 'No account found with that email.', code: 'USER_NOT_FOUND' });
-    }
-    if (!valid) {
-      req.recordAuthFailure?.();
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
     req.clearAuthBackoff?.();
@@ -256,19 +257,26 @@ router.post('/login',
   },
 );
 
-router.post('/onboarding', (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Authentication required' });
-  try {
-    const { userId } = jwt.verify(token, process.env.JWT_SECRET);
-    const db = getDb();
-    db.prepare('UPDATE users SET profile_data = ? WHERE id = ?')
-      .run(JSON.stringify(req.body), userId);
+router.post('/onboarding', authenticateToken,
+  // Only the known onboarding answer fields are persisted — validate() strips
+  // everything else, so this can no longer be used to stuff arbitrary blobs
+  // into users.profile_data.
+  validate({
+    use_case:       isOptionalString(200),
+    presenter_type: isOptionalString(200),
+    design_vibe:    isOptionalString(200),
+    priority:       isOptionalString(200),
+    role:           isOptionalString(200),
+    frequency:      isOptionalString(200),
+    team_size:      isOptionalString(200),
+    referral:       isOptionalString(200),
+  }),
+  (req, res) => {
+    getDb().prepare('UPDATE users SET profile_data = ? WHERE id = ?')
+      .run(JSON.stringify(req.body), req.user.id);
     res.json({ ok: true });
-  } catch {
-    res.status(401).json({ error: 'Invalid token' });
-  }
-});
+  },
+);
 
 router.post('/refresh', (req, res) => {
   const { refreshToken } = req.body;
@@ -330,7 +338,9 @@ router.put('/profile', authenticateToken,
   (req, res) => {
     const { name, ...profileFields } = req.body;
     const profile_data = JSON.stringify(profileFields);
-    getDb().prepare('UPDATE users SET name = ?, profile_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+    // NB: users has no updated_at column — writing one here broke every
+    // profile save with a 500 (GAPS #3).
+    getDb().prepare('UPDATE users SET name = ?, profile_data = ? WHERE id = ?')
       .run(name, profile_data, req.user.id);
     res.json({ message: 'Profile updated' });
   }

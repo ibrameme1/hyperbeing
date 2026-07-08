@@ -1,20 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useDropzone } from 'react-dropzone';
-import {
-  Send, Paperclip, ArrowLeft, Sparkles, X, Wand2, Loader2, FileImage, AlertTriangle
-} from 'lucide-react';
+import { ArrowLeft, AlertTriangle } from 'lucide-react';
 import api from '../api/client';
-import MessageBubble from '../components/MessageBubble';
-import LoadingScreen from '../components/LoadingScreen';
 import PlanRevealScreen from '../components/PlanRevealScreen';
 import NovaMascot from '../components/NovaMascot';
 import PresentationViewer from '../components/PresentationViewer';
 import { SkeletonPresentationViewer } from '../components/Skeleton';
-import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
-import { fileToImageAttachment } from '../utils/imageAttachment';
 import { openAuthedEventSource } from '../utils/sse';
 
 // ─── Generating messages ───────────────────────────────────────────────────
@@ -86,337 +79,6 @@ function GeneratingScreen() {
   );
 }
 
-// ─── Chat Phase ────────────────────────────────────────────────────────────
-function ChatPhase({ presentation, messages, onNewMessage, onGenerate, generateError, sseError, onDismissSseError }) {
-  const [input, setInput] = useState('');
-  const [attachments, setAttachments] = useState([]);
-  const [sending, setSending] = useState(false);
-  const [sendingLabel, setSendingLabel] = useState('Thinking…');
-  const [sendError, setSendError] = useState('');
-  const [streamingContent, setStreamingContent] = useState(null);
-  const bottomRef = useRef(null);
-  const textareaRef = useRef(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent]);
-
-  const onDrop = useCallback(acceptedFiles => {
-    acceptedFiles.forEach(async file => {
-      const { data, mimeType } = await fileToImageAttachment(file);
-      setAttachments(prev => [...prev, {
-        id: Math.random().toString(36).slice(2),
-        name: file.name,
-        type: 'image',
-        mimeType,
-        data,
-      }]);
-    });
-  }, []);
-
-  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
-    onDrop,
-    noClick: true,
-    accept: { 'image/*': [] },
-  });
-
-  async function handleSend() {
-    if (!input.trim() && attachments.length === 0) return;
-    setSending(true);
-    setSendError('');
-    setSendingLabel('Thinking…');
-    track('chat_message_sent', { presentation_id: presentation.id, has_attachments: attachments.length > 0 });
-    capture('chat_message_sent', { presentation_id: presentation.id, has_attachments: attachments.length > 0 });
-    const userMsg = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input.trim(),
-      attachments: [...attachments],
-    };
-
-    onNewMessage(userMsg);
-    setInput('');
-    setAttachments([]);
-    setStreamingContent('');
-
-    const labelTimer = setTimeout(() => setSendingLabel('Building your slide plan…'), 8000);
-
-    try {
-      const token = localStorage.getItem('hb_token');
-      const apiBase = import.meta.env.VITE_API_URL || '';
-      const response = await fetch(`${apiBase}/api/presentations/${presentation.id}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          message: userMsg.content,
-          attachments: userMsg.attachments.map(a => ({
-            type: a.type, name: a.name, data: a.data, mimeType: a.mimeType,
-          })),
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const status = response.status;
-        setSendError(
-          errorData.error ||
-          (status === 429 ? 'You\'re sending messages too quickly. Please wait a moment.' :
-           status === 402 ? 'You\'ve reached your monthly token limit. Please upgrade your plan.' :
-           status === 503 ? 'Nova is temporarily unavailable. Please try again in a few seconds.' :
-           'Message failed to send. Please try again.')
-        );
-        return;
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let sseBuffer = '';
-      let streamText = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        sseBuffer += decoder.decode(value, { stream: true });
-
-        const lines = sseBuffer.split('\n');
-        sseBuffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          let event;
-          try { event = JSON.parse(line.slice(6)); } catch { continue; }
-
-          if (event.type === 'chunk') {
-            streamText += event.text;
-            setStreamingContent(streamText);
-          } else if (event.type === 'done') {
-            setStreamingContent(null);
-            onNewMessage(event.aiMessage);
-            if (event.aiMessage.metadata?.state === 'ready') {
-              const { data: presData } = await api.get(`/presentations/${presentation.id}`);
-              onGenerate(presData.presentation);
-            }
-          } else if (event.type === 'error') {
-            setSendError(event.error || 'Message failed to send. Please try again.');
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Send failed:', err);
-      const status = err.response?.status;
-      setSendError(
-        err.response?.data?.error ||
-        (status === 429 ? 'You\'re sending messages too quickly. Please wait a moment.' :
-         status === 402 ? 'You\'ve reached your monthly token limit. Please upgrade your plan.' :
-         status === 503 ? 'Nova is temporarily unavailable. Please try again in a few seconds.' :
-         'Message failed to send. Please try again.')
-      );
-    } finally {
-      clearTimeout(labelTimer);
-      setSending(false);
-      setStreamingContent(null);
-    }
-  }
-
-  function handleKeyDown(e) {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSend();
-  }
-
-  const isReady = messages.some(m => m.metadata?.state === 'ready') || presentation.status === 'ready';
-
-  return (
-    <div className="h-screen flex flex-col" style={{ background: 'var(--bg-page)' }}>
-      {/* SSE error banner */}
-      {sseError && (
-        <div
-          className="flex items-center justify-between px-4 py-2.5 text-sm"
-          style={{
-            background: 'rgba(239,68,68,0.08)',
-            borderBottom: '1px solid rgba(239,68,68,0.2)',
-            color: '#ef4444',
-            fontFamily: 'Inter, sans-serif',
-            fontSize: 13,
-          }}
-        >
-          <span>{sseError}</span>
-          <button
-            onClick={onDismissSseError}
-            style={{ color: '#888', cursor: 'pointer', background: 'none', border: 'none', fontSize: 16, lineHeight: 1, padding: '0 2px', marginLeft: 8 }}
-            aria-label="Dismiss"
-          >
-            ×
-          </button>
-        </div>
-      )}
-      {/* Top bar */}
-      <div className="flex items-center gap-4 px-5 py-4 border-b border-ios-gray5"
-           style={{ background: 'var(--bg-nav)', backdropFilter: 'blur(20px)' }}>
-        <button onClick={() => window.history.back()} className="text-ios-blue flex items-center gap-1 text-sm font-medium">
-          <ArrowLeft size={16} />
-          Back
-        </button>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{presentation.title}</p>
-          <p className="text-xs text-ios-gray1">
-            {isReady ? '✓ Ready to generate' : 'Gathering details…'}
-          </p>
-        </div>
-        {isReady && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            onClick={() => onGenerate(presentation)}
-            className="ios-btn py-2 px-4 text-sm"
-          >
-            <Wand2 size={15} />
-            Generate
-          </motion.button>
-        )}
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-        {messages.map((msg, i) => (
-          <MessageBubble key={msg.id || i} message={msg} />
-        ))}
-
-        {streamingContent !== null && (
-          <MessageBubble message={{ role: 'assistant', content: streamingContent || '…', streaming: true }} />
-        )}
-
-        {sending && streamingContent === null && (
-          <div className="flex gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-2xl flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
-              <Sparkles size={14} className="text-white" />
-            </div>
-            <div className="bubble-ai flex items-center gap-2 text-ios-gray1">
-              <Loader2 size={14} className="animate-spin" />
-              <span>{sendingLabel}</span>
-            </div>
-          </div>
-        )}
-
-        {sendError && (
-          <div className="flex justify-center">
-            <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-2xl px-4 py-2.5 max-w-sm text-center">{sendError}</p>
-          </div>
-        )}
-
-        {isReady && !sending && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center gap-2"
-          >
-            <button
-              onClick={() => onGenerate(presentation)}
-              className="ios-btn py-3 px-8 text-base shadow-ios-lg"
-              style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
-            >
-              <Wand2 size={18} />
-              Generate Presentation
-            </button>
-            {generateError && (
-              <p
-                style={{
-                  color: '#ef4444',
-                  fontSize: 12,
-                  fontFamily: 'Inter, sans-serif',
-                  textAlign: 'center',
-                  padding: '6px 12px',
-                  background: 'rgba(239,68,68,0.08)',
-                  border: '1px solid rgba(239,68,68,0.2)',
-                  borderRadius: 8,
-                  maxWidth: 320,
-                }}
-              >
-                {generateError}
-              </p>
-            )}
-          </motion.div>
-        )}
-
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Input area */}
-      <div className="border-t border-ios-gray5 p-4"
-           style={{ background: 'var(--bg-nav)', backdropFilter: 'blur(20px)' }}>
-        <div
-          {...getRootProps()}
-          className={`rounded-3xl shadow-ios transition-all duration-200 ${
-            isDragActive ? 'ring-2 ring-ios-blue' : ''
-          }`}
-          style={{ background: 'var(--bg-card)' }}
-        >
-          <input {...getInputProps()} />
-
-          <AnimatePresence>
-            {attachments.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="px-4 pt-3 flex gap-2 flex-wrap"
-              >
-                {attachments.map(att => (
-                  <div key={att.id} className="relative group">
-                    <img
-                      src={att.data}
-                      alt={att.name}
-                      className="h-12 w-12 rounded-xl object-cover border border-ios-gray5"
-                    />
-                    <button
-                      onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))}
-                      className="absolute -top-1 -right-1 w-4 h-4 bg-gray-800 text-white rounded-full flex items-center justify-center text-[9px]"
-                    >
-                      <X size={8} />
-                    </button>
-                  </div>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="flex items-end gap-2 p-3">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={isDragActive ? 'Drop images here…' : 'Reply to Nova…'}
-              rows={2}
-              className="flex-1 resize-none border-none outline-none placeholder:text-ios-gray2 dark:placeholder:text-zinc-500 text-sm bg-transparent leading-relaxed"
-              style={{ color: 'var(--text-primary)' }}
-            />
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <button
-                onClick={open}
-                className="w-8 h-8 rounded-xl bg-ios-gray5 flex items-center justify-center hover:bg-ios-gray4 transition-colors"
-              >
-                <Paperclip size={15} className="text-ios-gray1" />
-              </button>
-              <button
-                onClick={handleSend}
-                disabled={sending || (!input.trim() && attachments.length === 0)}
-                className="w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-150 active:scale-95 disabled:opacity-40"
-                style={{ background: '#007AFF' }}
-              >
-                <Send size={14} className="text-white" />
-              </button>
-            </div>
-          </div>
-        </div>
-        <p className="text-center text-[11px] text-ios-gray2 mt-2">⌘ + Enter to send</p>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Page ─────────────────────────────────────────────────────────────
 export default function PresentationPage() {
   const { id } = useParams();
@@ -428,11 +90,9 @@ export default function PresentationPage() {
   const initIsCompleted = initPres?.status === 'completed';
 
   const [presentation, setPresentation] = useState(initPres || null);
-  const [messages, setMessages] = useState([]);
   const [phase, setPhase] = useState(initIsCompleted ? 'viewing' : 'loading');
   const [loadError, setLoadError] = useState(false);
   const [loadRetry, setLoadRetry] = useState(0);
-  const [generateError, setGenerateError] = useState('');
   const [sseError, setSseError] = useState('');
 
   // For completed presentations opened from dashboard, show skeleton wireframes immediately.
@@ -517,11 +177,6 @@ export default function PresentationPage() {
   useEffect(() => {
     api.get(`/presentations/${id}`).then(({ data }) => {
       setPresentation(data.presentation);
-      setMessages(data.messages.map(m => ({
-        ...m,
-        attachments: Array.isArray(m.attachments) ? m.attachments : [],
-        metadata: m.metadata || {},
-      })));
 
       if (data.presentation.status === 'completed' && data.presentation.slides_data) {
         setGeneratedSlides(data.presentation.slides_data);
@@ -562,7 +217,9 @@ export default function PresentationPage() {
         }
         startSSE(id);
       } else {
-        setPhase('chat');
+        // Legacy statuses from the removed chat flow ('chat'/'ready') have no
+        // slides to show — treat them like a failed generation.
+        setPhase('error');
       }
     }).catch(() => setLoadError(true));
   }, [id, loadRetry]);
@@ -790,31 +447,6 @@ export default function PresentationPage() {
     return () => { sseRef.current?.close(); stopPolling(); };
   }, []);
 
-  async function handleGenerate(updatedPres) {
-    setPresentation(updatedPres);
-    setPhase('generating');
-    setGenerationStage(0);
-    setGeneratedSlides([]);
-    setSlidePlan([]);
-    setGenerateError('');
-
-    try {
-      await api.post(`/presentations/${id}/generate`);
-      startSSE(id);
-    } catch (err) {
-      console.error('Generate failed:', err);
-      setPhase('chat');
-      setGenerateError('Something went wrong starting generation. Try again.');
-    }
-  }
-
-  function handleNewMessage(msg) {
-    setMessages(prev => {
-      const exists = prev.some(m => m.id === msg.id);
-      return exists ? prev : [...prev, msg];
-    });
-  }
-
   if (loadError) {
     return (
       <div className="h-screen flex items-center justify-center" style={{ background: 'var(--bg-page)', fontFamily: 'Inter, sans-serif' }}>
@@ -954,15 +586,6 @@ export default function PresentationPage() {
     );
   }
 
-  return (
-    <ChatPhase
-      presentation={presentation}
-      messages={messages}
-      onNewMessage={handleNewMessage}
-      onGenerate={handleGenerate}
-      generateError={generateError}
-      sseError={sseError}
-      onDismissSseError={() => setSseError('')}
-    />
-  );
+  // Every reachable status maps to a phase above; nothing left to render.
+  return null;
 }

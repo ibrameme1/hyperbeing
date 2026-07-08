@@ -83,11 +83,10 @@ export default function Login() {
         window.location.replace('/onboarding');
       }
     } catch (err) {
-      const code = err.response?.data?.code;
-      if (mode === 'login' && code === 'USER_NOT_FOUND') {
-        setError('__no_account__');
-      } else {
-        const status = err.response?.status;
+      // The backend intentionally returns one identical message for unknown
+      // email vs wrong password (prevents account enumeration), so there is
+      // no "no account — sign up instead" special case anymore.
+      const status = err.response?.status;
       setError(
         err.response?.data?.error ||
         (status === 429 ? `Too many attempts. Please wait ${err.response?.data?.retryAfter ?? 'a moment'} seconds and try again.` :
@@ -95,7 +94,6 @@ export default function Login() {
          mode === 'register' ? 'Could not create your account. Please check your details and try again.' :
          'Sign-in failed. Please check your email and password.')
       );
-      }
     } finally {
       setLoading(false);
     }
@@ -302,21 +300,7 @@ export default function Login() {
                 className="py-2.5 px-4 text-xs text-center"
                 style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', fontFamily: 'Inter, sans-serif' }}
               >
-                {error === '__no_account__' ? (
-                  <span style={{ color: '#ef4444' }}>
-                    No account with that email.{' '}
-                    <button
-                      type="button"
-                      onClick={() => { setMode('register'); setError(''); }}
-                      className="underline font-semibold"
-                      style={{ color: '#5B50FF' }}
-                    >
-                      Sign up instead →
-                    </button>
-                  </span>
-                ) : (
-                  <span style={{ color: '#ef4444' }}>{error}</span>
-                )}
+                <span style={{ color: '#ef4444' }}>{error}</span>
               </motion.div>
             )}
           </AnimatePresence>

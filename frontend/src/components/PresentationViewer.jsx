@@ -315,7 +315,10 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
         onSlidesUpdate(next);
         return next;
       });
-      setSlideVersions(data.slide.versions || []);
+      // slide.versions carries metadata stubs only (images live in the
+      // slide_versions table) — re-fetch the panel's full entries.
+      const refreshed = await api.get(`/presentations/${presentationId}/slides/${slideIndex}/versions`);
+      setSlideVersions(refreshed.data.versions || []);
     } catch (err) {
       console.error('Failed to restore version:', err);
       setVersionsError("Couldn't restore this version — please try again.");

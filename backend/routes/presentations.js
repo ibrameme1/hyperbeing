@@ -3,13 +3,15 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { streamChat, analyzePresentationStream, generateCompactPlan, streamSlidePrompts, generateSingleSlidePrompt, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
+import { analyzePresentationStream, generateCompactPlan, streamSlidePrompts, generateSingleSlidePrompt, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
 import { generateSlideImage, editSlideImage, generateEditFailedImage, isPlaceholderImage } from '../services/imageGeneration.js';
 import {
   deductCredits, refundCredits, deductCreditsForEdit, computeAffordableSlides,
   updateLedgerMetadata, getOrCreateSubscription, CREDIT_COSTS, checkTokenBudget,
-  suggestPlanForCost, novaInsufficientCredits, getEditTierThreshold, isAdmin,
+  suggestPlanForCost, novaInsufficientCredits, previewEditCost, isAdmin,
 } from '../services/stripeService.js';
+import { validateAttachments } from '../middleware/attachments.js';
+import { assertPublicUrl } from '../services/urlGuard.js';
 import { validate, isString, isOptionalString, isEnum, isArray, isIntBetween } from '../middleware/validate.js';
 import { createPresentationLimiter, addSlidesLimiter, analyzeLimiter } from '../middleware/rateLimits.js';
 import { logger, requestContext } from '../services/logger.js';
@@ -19,51 +21,32 @@ import { sendPresentationReady } from '../services/emailService.js';
 // Max number of prior versions kept per slide for the version history panel
 const MAX_SLIDE_VERSIONS = 10;
 
-// Prepends the slide's outgoing image to its version history (most recent first),
-// capped at MAX_SLIDE_VERSIONS. Placeholder/SVG images aren't worth keeping.
-function pushSlideVersion(existingVersions, outgoingImageData, instruction) {
-  const versions = existingVersions || [];
-  if (!outgoingImageData || outgoingImageData.startsWith('data:image/svg')) return versions;
-  const entry = { id: uuid(), image_data: outgoingImageData, instruction, created_at: new Date().toISOString() };
-  return [entry, ...versions].slice(0, MAX_SLIDE_VERSIONS);
-}
-
-// Validates a single attachment object
-function validateAttachment(a) {
-  if (typeof a !== 'object' || a === null) return 'Must be an object';
-  if (a.type !== undefined && !['image', 'file'].includes(a.type)) return 'Invalid type';
-  if (typeof a.name !== 'string' || a.name.length > 255) return 'Invalid name';
-  if (typeof a.data !== 'string') return 'Missing data';
-  // Base64 data URIs can be large — cap at ~7MB per attachment
-  if (a.data.length > 10_000_000) return 'One of your images is too large (max ~7MB). Please use a smaller image.';
-  return null;
-}
-
-// Validates an attachments array: must be an array, within the count limit,
-// and every item must pass validateAttachment()
-function validateAttachments(attachments, maxCount = 10) {
-  if (!Array.isArray(attachments)) return 'Attachments must be an array';
-  if (attachments.length > maxCount) return `Too many attachments (max ${maxCount})`;
-  for (const a of attachments) {
-    const err = validateAttachment(a);
-    if (err) return err;
+// Saves the slide's outgoing image into the slide_versions table (pruned to
+// MAX_SLIDE_VERSIONS newest) and returns the metadata stubs stored on the
+// slide itself — {id, instruction, created_at}, no image data, so old images
+// never bloat slides_data. Placeholder/SVG images aren't worth keeping.
+function pushSlideVersion(db, presentationId, slideIndex, outgoingImageData, instruction) {
+  if (outgoingImageData && !outgoingImageData.startsWith('data:image/svg')) {
+    db.prepare(
+      'INSERT INTO slide_versions (id, presentation_id, slide_index, image_data, instruction) VALUES (?, ?, ?, ?, ?)'
+    ).run(uuid(), presentationId, slideIndex, outgoingImageData, instruction);
+    db.prepare(
+      `DELETE FROM slide_versions WHERE presentation_id = ? AND slide_index = ? AND id NOT IN (
+         SELECT id FROM slide_versions WHERE presentation_id = ? AND slide_index = ?
+         ORDER BY created_at DESC, rowid DESC LIMIT ?)`
+    ).run(presentationId, slideIndex, presentationId, slideIndex, MAX_SLIDE_VERSIONS);
   }
-  return null;
+  return listSlideVersionMeta(db, presentationId, slideIndex);
+}
+
+function listSlideVersionMeta(db, presentationId, slideIndex) {
+  return db.prepare(
+    'SELECT id, instruction, created_at FROM slide_versions WHERE presentation_id = ? AND slide_index = ? ORDER BY created_at DESC, rowid DESC'
+  ).all(presentationId, slideIndex);
 }
 
 const VALID_ASPECT_RATIOS = ['16:9', '9:16', '1:1', '4:3'];
 const VALID_STYLES = ['classic', 'minimalistic'];
-
-// Mirrors the tier logic in deductCreditsForEdit — used to compute the
-// credits_needed figure for the cute-Nova 402 response when an edit is
-// rejected for insufficient credits.
-function previewEditCost(sub, hasReferenceImage) {
-  const threshold = getEditTierThreshold(sub.plan);
-  const tier = (sub.edits_this_month || 0) >= threshold ? 'TIER_2' : 'TIER_1';
-  let cost = tier === 'TIER_1' ? CREDIT_COSTS.SLIDE_EDIT_TIER_1 : CREDIT_COSTS.SLIDE_EDIT_TIER_2;
-  if (hasReferenceImage) cost += CREDIT_COSTS.REFERENCE_IMAGE_PER_SLIDE;
-  return cost;
-}
 
 const router = Router();
 
@@ -88,7 +71,7 @@ function broadcastDashboardUpdate(db, userId, presentationId) {
   const clients = userSseRegistry.get(String(userId));
   if (!clients || clients.size === 0) return;
   const row = db.prepare(
-    'SELECT id, title, status, thumbnail, adding_slides, created_at, updated_at FROM presentations WHERE id = ? AND user_id = ?'
+    'SELECT id, title, status, (thumbnail IS NOT NULL) AS has_thumbnail, adding_slides, created_at, updated_at FROM presentations WHERE id = ? AND user_id = ?'
   ).get(presentationId, userId);
   if (!row) return;
   const payload = `data: ${JSON.stringify({ type: 'presentation_updated', presentation: row })}\n\n`;
@@ -100,16 +83,33 @@ function broadcastDashboardUpdate(db, userId, presentationId) {
 // ─── Fetch URL content for use as brief context ───────────────────────────────
 router.post('/fetch-url', authenticateToken, async (req, res) => {
   const { url } = req.body;
-  if (!url || !/^https?:\/\/.+/.test(url)) {
+  if (!url || typeof url !== 'string' || url.length > 2000) {
     return res.status(400).json({ error: 'Valid URL required' });
   }
 
   try {
-    const response = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HyperBeing/1.0; +https://hyperbeing.co)' },
-      signal: AbortSignal.timeout(12000),
-    });
+    // SSRF guard: hostname must resolve to a public address, http(s) only,
+    // standard ports only. Redirects are followed manually so every hop is
+    // re-validated — otherwise a public URL could 302 to an internal one.
+    let currentUrl = url;
+    let response;
+    for (let hop = 0; hop < 4; hop++) {
+      await assertPublicUrl(currentUrl);
+      response = await fetch(currentUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HyperBeing/1.0; +https://hyperbeing.co)' },
+        signal: AbortSignal.timeout(12000),
+        redirect: 'manual',
+      });
+      if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
+        currentUrl = new URL(response.headers.get('location'), currentUrl).href;
+        continue;
+      }
+      break;
+    }
 
+    if (response.status >= 300 && response.status < 400) {
+      return res.status(400).json({ error: 'Too many redirects' });
+    }
     if (!response.ok) {
       return res.status(400).json({ error: `Site returned ${response.status}` });
     }
@@ -136,9 +136,11 @@ router.post('/fetch-url', authenticateToken, async (req, res) => {
 
 // ─── List presentations ────────────────────────────────────────────────────
 router.get('/', authenticateToken, (req, res) => {
+  // has_thumbnail instead of the base64 image itself — a power user's list was
+  // tens of MB per load. The image is served by GET /:id/thumbnail below.
   const rows = getDb()
     .prepare(
-      `SELECT id, title, status, thumbnail, adding_slides, created_at, updated_at
+      `SELECT id, title, status, (thumbnail IS NOT NULL) AS has_thumbnail, adding_slides, created_at, updated_at
        FROM presentations WHERE user_id = ? ORDER BY updated_at DESC`
     )
     .all(req.user.id);
@@ -165,7 +167,7 @@ router.get('/dashboard-events', authenticateToken, (req, res) => {
 
   // Send current list immediately on connect so the dashboard always has fresh data
   const rows = getDb()
-    .prepare('SELECT id, title, status, thumbnail, adding_slides, created_at, updated_at FROM presentations WHERE user_id = ? ORDER BY updated_at DESC')
+    .prepare('SELECT id, title, status, (thumbnail IS NOT NULL) AS has_thumbnail, adding_slides, created_at, updated_at FROM presentations WHERE user_id = ? ORDER BY updated_at DESC')
     .all(req.user.id);
   res.write(`data: ${JSON.stringify({ type: 'snapshot', presentations: rows })}\n\n`);
 
@@ -178,6 +180,35 @@ router.get('/dashboard-events', authenticateToken, (req, res) => {
     userSseRegistry.get(userId)?.delete(res);
     if (userSseRegistry.get(userId)?.size === 0) userSseRegistry.delete(userId);
   });
+});
+
+// ─── Thumbnail image (referenced by dashboard cards via <img src>) ─────────
+// <img> tags can't send an Authorization header, so — like the SSE routes —
+// this accepts the JWT as a ?token= query param. Access tokens live 15 min,
+// which bounds how long a leaked URL stays useful.
+router.get('/:id/thumbnail', (req, res) => {
+  const token = req.query.token || req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).end();
+
+  let userId;
+  try {
+    ({ userId } = jwt.verify(token, process.env.JWT_SECRET));
+  } catch {
+    return res.status(401).end();
+  }
+
+  const db = getDb();
+  const pres = isAdmin(userId)
+    ? db.prepare('SELECT thumbnail FROM presentations WHERE id = ?').get(req.params.id)
+    : db.prepare('SELECT thumbnail FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, userId);
+  if (!pres?.thumbnail) return res.status(404).end();
+
+  const match = /^data:([^;]+);base64,(.*)$/.exec(pres.thumbnail);
+  if (!match) return res.status(404).end();
+
+  res.setHeader('Content-Type', match[1]);
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  res.send(Buffer.from(match[2], 'base64'));
 });
 
 // ─── Analyze brief and return contextual questions ─────────────────────────
@@ -572,70 +603,6 @@ router.get('/:id', authenticateToken, (req, res) => {
   });
 });
 
-// ─── Continue chat (streaming SSE) ───────────────────────────────────────
-router.post('/:id/messages', authenticateToken, async (req, res) => {
-  const { message, attachments = [] } = req.body;
-  if (!message?.trim() && attachments.length === 0) {
-    return res.status(400).json({ error: 'Message required' });
-  }
-  const attachmentsErr = validateAttachments(attachments);
-  if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
-
-  const db = getDb();
-  const pres = db
-    .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
-    .get(req.params.id, req.user.id);
-  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
-
-  try { checkTokenBudget(req.user.id); } catch (err) {
-    if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
-    throw err;
-  }
-
-  const history = db
-    .prepare('SELECT * FROM messages WHERE presentation_id = ? ORDER BY created_at ASC')
-    .all(req.params.id);
-
-  const msgId = uuid();
-  db.prepare(
-    `INSERT INTO messages (id, presentation_id, role, content, attachments)
-     VALUES (?, ?, 'user', ?, ?)`
-  ).run(msgId, req.params.id, message, JSON.stringify(attachments));
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-  res.flushHeaders();
-
-  try {
-    const agentResponse = await streamChat(history, message, attachments, (chunk) => {
-      res.write(`data: ${JSON.stringify({ type: 'chunk', text: chunk })}\n\n`);
-    }, req.user.id);
-
-    const aiMsgId = uuid();
-    db.prepare(
-      `INSERT INTO messages (id, presentation_id, role, content, metadata)
-       VALUES (?, ?, 'assistant', ?, ?)`
-    ).run(aiMsgId, req.params.id, agentResponse.message, JSON.stringify(agentResponse));
-
-    if (agentResponse.state === 'ready' && agentResponse.slide_plan) {
-      const { presentation_title } = agentResponse.slide_plan;
-      db.prepare(
-        `UPDATE presentations SET title = ?, slide_plan = ?, status = 'ready', updated_at = CURRENT_TIMESTAMP
-         WHERE id = ?`
-      ).run(presentation_title || pres.title, JSON.stringify(agentResponse.slide_plan), req.params.id);
-    }
-
-    res.write(`data: ${JSON.stringify({ type: 'done', aiMessage: { id: aiMsgId, role: 'assistant', content: agentResponse.message, metadata: agentResponse } })}\n\n`);
-    res.end();
-  } catch (err) {
-    logger.error('chat agent failed', { errorMessage: err.message });
-    res.write(`data: ${JSON.stringify({ type: 'error', error: 'Nova couldn\'t process your message right now. Please try again.' })}\n\n`);
-    res.end();
-  }
-});
-
 // ─── SSE: real-time events (auth via ?token= query param, headers not possible with EventSource)
 router.get('/:id/events', (req, res) => {
   const token = req.query.token || req.headers.authorization?.split(' ')[1];
@@ -716,127 +683,6 @@ router.get('/:id/events', (req, res) => {
     if (sseRegistry.get(id)?.size === 0) sseRegistry.delete(id);
   });
 });
-
-// ─── Trigger generation ────────────────────────────────────────────────────
-router.post('/:id/generate', authenticateToken, async (req, res) => {
-  const db = getDb();
-  const pres = db
-    .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
-    .get(req.params.id, req.user.id);
-
-  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
-  if (!pres.slide_plan) return res.status(400).json({ error: 'Your slide plan isn\'t ready yet — finish the chat with Nova first.' });
-
-  const slidePlan = JSON.parse(pres.slide_plan);
-
-  db.prepare(
-    `UPDATE presentations SET status = 'generating', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-  ).run(req.params.id);
-
-  broadcastDashboardUpdate(db, req.user.id, req.params.id);
-  res.json({ message: 'Generation started', total_slides: slidePlan.slides.length });
-
-  // Run generation async — do not await
-  const genUserId = req.user.id;
-  runGeneration(req.params.id, slidePlan, genUserId).catch(err => {
-    logger.error('generation failed', { errorMessage: err.message });
-    broadcast(req.params.id, { type: 'error', message: err.message });
-  });
-});
-
-async function runGeneration(presentationId, slidePlan, userId = null) {
-  const db = getDb();
-  const slides = [];
-  const presRow = db.prepare('SELECT aspect_ratio, style FROM presentations WHERE id = ?').get(presentationId);
-  const aspectRatio = presRow?.aspect_ratio || '16:9';
-  const deckStyle = presRow?.style || 'classic';
-
-  broadcast(presentationId, {
-    type: 'started',
-    total_slides: slidePlan.slides.length,
-  });
-
-  // Fetch user-uploaded images from the first user message
-  const firstUserMsg = db
-    .prepare(`SELECT attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
-    .get(presentationId);
-
-  let userAttachments = [];
-  try {
-    userAttachments = JSON.parse(firstUserMsg?.attachments || '[]');
-  } catch { userAttachments = []; }
-
-  const moodboardImages = userAttachments.filter(a => a.category === 'moodboard' && a.data);
-  const brandingImages = userAttachments.filter(a => a.category === 'branding' && a.data);
-  const allImages = userAttachments.filter(a => a.data);
-
-  for (const slide of slidePlan.slides) {
-    broadcast(presentationId, { type: 'slide_generating', index: slide.index });
-
-    // Resolve which images to attach to this slide
-    const categories = slide.attach_image_categories || [];
-    let attachedImages = [];
-    if (categories.includes('all')) {
-      attachedImages = allImages;
-    } else {
-      if (categories.includes('moodboard')) attachedImages.push(...moodboardImages);
-      if (categories.includes('branding')) attachedImages.push(...brandingImages);
-    }
-    // Cap at 3 images to avoid token limits
-    attachedImages = attachedImages.slice(0, 3);
-
-    try {
-      const imageData = await generateSlideImage(
-        slide.nano_banana_prompt || slide.image_prompt || slide.title,
-        slide.type,
-        slidePlan.theme,
-        slidePlan.color_palette,
-        slide.index,
-        attachedImages,
-        aspectRatio,
-        deckStyle
-      );
-
-      if (isPlaceholderImage(imageData)) {
-        const errSlide = { ...slide, image_data: null, status: 'error' };
-        slides.push(errSlide);
-        db.prepare(
-          `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-        ).run(JSON.stringify(slides), presentationId);
-        refundCredits(userId, CREDIT_COSTS.PER_SLIDE, 'generation_refund', 'Slide image generation failed — refunded', presentationId, { slide_index: slide.index });
-        logger.error('slide image generation returned placeholder', { presentationId, slideIndex: slide.index });
-        broadcast(presentationId, { type: 'slide_error', index: slide.index, message: 'Image generation failed' });
-        continue;
-      }
-
-      const completedSlide = { ...slide, image_data: imageData, status: 'complete' };
-      slides.push(completedSlide);
-
-      // Persist progress so SSE catch-up works for late-connecting clients
-      db.prepare(
-        `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-      ).run(JSON.stringify(slides), presentationId);
-
-      // Save thumbnail from first slide
-      if (slide.index === 0) {
-        db.prepare(`UPDATE presentations SET thumbnail = ? WHERE id = ?`).run(imageData, presentationId);
-      }
-
-      broadcast(presentationId, { type: 'slide_ready', slide: completedSlide });
-    } catch (err) {
-      logger.error('slide image failed', { slideIndex: slide.index, errorMessage: err.message });
-      slides.push({ ...slide, image_data: null, status: 'error' });
-      broadcast(presentationId, { type: 'slide_error', index: slide.index, message: err.message });
-    }
-  }
-
-  db.prepare(
-    `UPDATE presentations SET status = 'completed', slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-  ).run(JSON.stringify(slides), presentationId);
-
-  if (userId) broadcastDashboardUpdate(db, userId, presentationId);
-  broadcast(presentationId, { type: 'complete', total_slides: slides.length });
-}
 
 // ─── Regenerate a single slide (user-described edit → direct to Gemini) ──────
 router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res) => {
@@ -936,7 +782,7 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
             image_data: imageData,
             status: 'complete',
             _edited: true,
-            versions: pushSlideVersion(baseSlide.versions, baseSlide.image_data, instruction.trim()),
+            versions: pushSlideVersion(db, req.params.id, targetIndex, baseSlide.image_data, instruction.trim()),
           };
 
       if (freshArrayPos >= 0) {
@@ -984,7 +830,11 @@ router.get('/:id/slides/:index/versions', authenticateToken, (req, res) => {
   const slide = slides.find(s => s.index === targetIndex);
   if (!slide) return res.status(404).json({ error: 'Slide not found. It may have been removed or the index is out of range.' });
 
-  res.json({ versions: slide.versions || [] });
+  // Version images live in the slide_versions table, not in slides_data.
+  const versions = db.prepare(
+    'SELECT id, image_data, instruction, created_at FROM slide_versions WHERE presentation_id = ? AND slide_index = ? ORDER BY created_at DESC, rowid DESC'
+  ).all(req.params.id, targetIndex);
+  res.json({ versions });
 });
 
 // ─── Restore a previous version of a slide ────────────────────────────────────
@@ -1003,19 +853,20 @@ router.post('/:id/slides/:index/versions/:versionId/restore', authenticateToken,
   const slide = slides[arrayPos];
   if (!slide) return res.status(404).json({ error: 'Slide not found. It may have been removed or the index is out of range.' });
 
-  const versions = slide.versions || [];
-  const versionPos = versions.findIndex(v => v.id === req.params.versionId);
-  if (versionPos === -1) return res.status(404).json({ error: 'Version not found.' });
+  const restoredVersion = db.prepare(
+    'SELECT * FROM slide_versions WHERE id = ? AND presentation_id = ? AND slide_index = ?'
+  ).get(req.params.versionId, req.params.id, targetIndex);
+  if (!restoredVersion) return res.status(404).json({ error: 'Version not found.' });
 
-  const restoredVersion = versions[versionPos];
-  const remainingVersions = versions.filter((_, i) => i !== versionPos);
+  // The restored entry leaves the history; the outgoing image joins it.
+  db.prepare('DELETE FROM slide_versions WHERE id = ?').run(restoredVersion.id);
 
   const updatedSlide = {
     ...slide,
     image_data: restoredVersion.image_data,
     status: 'complete',
     _edited: true,
-    versions: pushSlideVersion(remainingVersions, slide.image_data, 'Reverted to an earlier version'),
+    versions: pushSlideVersion(db, req.params.id, targetIndex, slide.image_data, 'Reverted to an earlier version'),
   };
 
   slides[arrayPos] = updatedSlide;
@@ -1732,6 +1583,9 @@ router.delete('/:id/slides/:index', authenticateToken, (req, res) => {
   const filtered = slides.filter(s => s.index !== targetIndex);
 
   if (filtered.length === slides.length) return res.status(404).json({ error: 'Slide not found' });
+
+  // Slide indices are never reused, so its version history can go too.
+  db.prepare('DELETE FROM slide_versions WHERE presentation_id = ? AND slide_index = ?').run(req.params.id, targetIndex);
 
   const newFirst = filtered[0];
   const hasThumb = newFirst?.image_data && !newFirst.image_data.startsWith('data:image/svg');

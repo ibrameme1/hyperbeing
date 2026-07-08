@@ -19,7 +19,7 @@ The single most important mental model: **slides are not structured documents �
 | Backend | Node 20 + Express (ESM, `"type": "module"`) | Simple single-process API server |
 | Database | SQLite via better-sqlite3 (synchronous), WAL mode | Zero-ops persistence; everything including images and logs lives in one file |
 | Auth | JWT (15-min access + 7-day refresh) + Passport for Google/Meta/TikTok OAuth | Stateless API auth; express-session exists **only** for the OAuth redirect dance (5-min cookie) |
-| Planning/copy AI | Anthropic Claude (`claude-sonnet-4-6`) | Nova's brain: brief analysis, slide plans, image-prompt writing, chat |
+| Planning/copy AI | Anthropic Claude (`claude-sonnet-4-6`) | Nova's brain: brief analysis, slide plans, image-prompt writing |
 | Image AI (classic style) | Google `gemini-3.1-flash-image-preview` — called "Nano Banana"/"NB2" throughout the code | Multimodal: accepts reference images + text, returns slide bitmaps |
 | Image AI (minimalistic style) | OpenAI `gpt-image-2` (`gptImageGeneration.js`) | The restrained "minimalistic" deck style renders better here; also powers Design Mode |
 | Payments | Stripe (subscriptions + webhook) | Credit economy defined in `backend/config/credits.js` |
@@ -28,7 +28,7 @@ The single most important mental model: **slides are not structured documents �
 | Real-time | Server-Sent Events (SSE), hand-rolled | One-directional streaming fits generation progress; no websocket infra needed |
 | Hosting | Frontend on Vercel (`vercel.json` SPA rewrite), backend on Railway (`railway.toml`) | The `VITE_API_URL` env points the SPA at the Railway API |
 
-There is **no test suite, no linter, and no CI** anywhere in the repo. `npm run dev` / `npm run build` are the only scripts.
+The backend has a small vitest suite (`backend/test/` — credit ledger, streaming parser, SSRF guard; `npm test`). There is still no linter and no CI.
 
 ## Repository layout
 
@@ -41,17 +41,17 @@ backend/
   middleware/          auth (JWT), validate (schema validators), rateLimits, requestLogger
   routes/
     auth.js            register/login/refresh/OAuth (Google, Meta, TikTok)/profile/account
-    presentations.js   THE core file (~1760 lines): full generation pipeline, SSE, edit/retry/add/unlock/reorder/delete
+    presentations.js   THE core file (~1600 lines): full generation pipeline, SSE, edit/retry/add/unlock/reorder/delete
     promptChat.js      Prompt Generator sessions
     design.js          Design Mode: batch image generation + gallery SSE
     billing.js         Stripe checkout/portal/webhook/upgrade/downgrade
     user.js            GET /credits
-    analytics.js       In-house event tracking + admin analytics API (admin-gated — see GAPS)
+    analytics.js       In-house event tracking (POST /track is public-ish) + admin-only analytics API
     admin.js           Admin API: logs, metrics, grant-credits, DB browsing
     adminDashboard.js  Self-contained HTML monitoring dashboard at /admin (ADMIN_TOKEN query auth)
     feedback.js        Feedback form → DB + email
   services/
-    claudeAgent.js     All Claude calls + the giant Nova system prompts (~1900 lines)
+    claudeAgent.js     All Claude calls + the giant Nova system prompts (~1160 lines)
     imageGeneration.js Gemini/NB2 slide image generation + retry + SVG placeholder fallback
     gptImageGeneration.js  OpenAI image calls (minimalistic slides + Design Mode)
     designPromptGenerator.js  Nova crafts Design Mode prompts (forced tool call)
@@ -86,7 +86,7 @@ PRODUCT.md             Product positioning + design principles — read it befor
    ├── SQLite (backend/data/hyperbeing.db) — users, presentations, messages,
    │     subscriptions, credit_transactions (ledger), design_generations,
    │     prompt_sessions, feedback, analytics_events, app_logs
-   ├── Anthropic API (claude-sonnet-4-6) — planning, prompts, chat, web_search tool
+   ├── Anthropic API (claude-sonnet-4-6) — planning, prompts, web_search tool
    ├── Google Gemini image API ("Nano Banana") — classic-style slide images
    ├── OpenAI images API (gpt-image-2) — minimalistic slides + Design Mode
    ├── Stripe — checkout, webhook at /api/billing/webhook (raw body, sig-verified)
@@ -106,7 +106,7 @@ Front-door flow (Dashboard → new presentation):
 6. **Phase 3: images** — `generateSlideImage()` calls Gemini with 4 retry attempts and exponential backoff. On persistent failure it returns an **SVG gradient placeholder**; `isPlaceholderImage()` (checks the `data:image/svg` prefix) is how every caller distinguishes success from failure. Failures set slide `status:'error'` and **refund** that slide's credits. Completed slides are broadcast (`slide_ready`) and persisted incrementally via `persistProgress()`, which merges by slide index and never overwrites slides flagged `_edited`.
 7. **Finish** — status → `completed`, slide 0's image becomes the dashboard `thumbnail`, a "deck ready" email is sent.
 
-Alternate flow: the chat path (`POST /:id/messages` → `streamChat`) can produce a full `slide_plan` with `state:"ready"`, after which the frontend calls `POST /:id/generate` → `runGeneration()` — an **older, serial** pipeline that shares almost nothing with `runFullFlow()` and, critically, **charges no credits** (see GAPS #1).
+There is no alternate flow anymore: the in-presentation chat path (`POST /:id/messages` → `streamChat` → `POST /:id/generate` → `runGeneration()`, plus the frontend `ChatPhase`) was **removed in 2026-07** — it was unreachable in practice (no code path ever created a presentation with status `'chat'`) and its serial pipeline charged no credits. The Dashboard prompt is the only way decks are created. The `messages` table remains: it stores the initial brief (and its attachments, which the pipeline re-reads).
 
 ### SSE / real-time design
 
@@ -124,11 +124,13 @@ Plan changes: upgrades charge a prorated invoice immediately (`error_if_incomple
 
 ### Slide data model
 
-Everything about a presentation's slides lives in two JSON TEXT columns on the `presentations` row: `slide_plan` (outline, no images) and `slides_data` (array of slide objects **including full base64 image data URLs**, plus per-slide `versions` history capped at 10, `_edited` flags, `status` of `generating|complete|error|locked`). Slide identity is the `index` field (stable, never reindexed after deletion — new slides get `max(index)+1`; using array position instead of max-index caused a nasty duplicate-index bug that the comments in `add-slides` describe in detail). Every slide mutation is a read-parse-modify-rewrite of the whole JSON array.
+Everything about a presentation's slides lives in two JSON TEXT columns on the `presentations` row: `slide_plan` (outline, no images) and `slides_data` (array of slide objects **including full base64 image data URLs**, `_edited` flags, `status` of `generating|complete|error|locked`). Slide identity is the `index` field (stable, never reindexed after deletion — new slides get `max(index)+1`; using array position instead of max-index caused a nasty duplicate-index bug that the comments in `add-slides` describe in detail). Every slide mutation is a read-parse-modify-rewrite of the whole JSON array.
+
+Version history is the exception: since 2026-07, prior slide images live in the `slide_versions` table (capped at 10 per slide, pruned on insert, one-time boot migration moved legacy embedded versions over); slides carry only `{id, instruction, created_at}` stubs so old images never bloat `slides_data`. Dashboard thumbnails are likewise no longer inlined in list payloads — `GET /api/presentations` returns `has_thumbnail` and the image is served by `GET /:id/thumbnail`.
 
 ## Key design decisions you should respect
 
-- **Fire-and-forget async jobs, not a queue.** Generation runs as a detached promise after the HTTP response. Consequences: a server restart mid-generation strands rows in `processing`/`generating` forever, and all coordination happens through the DB + SSE. Comments throughout `presentations.js` document the concurrency bugs this caused and the re-read-before-write patterns adopted to mitigate them. When mutating `slides_data` from an async continuation, **always re-read the row fresh right before writing** and check the slide's current `status` — the codebase treats "slide no longer `generating`" as "someone else won; discard my result and refund".
+- **Fire-and-forget async jobs, not a queue.** Generation runs as a detached promise after the HTTP response. A startup sweep (`services/recovery.js`) now cleans up after crashes/deploys — anything still marked in-flight at boot is errored and refunded. All coordination happens through the DB + SSE. Comments throughout `presentations.js` document the concurrency bugs this caused and the re-read-before-write patterns adopted to mitigate them. When mutating `slides_data` from an async continuation, **always re-read the row fresh right before writing** and check the slide's current `status` — the codebase treats "slide no longer `generating`" as "someone else won; discard my result and refund".
 - **Mock mode everywhere.** If `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` / `OPENAI_API_KEY` are unset or literally `demo`, each service silently switches to canned responses and SVG placeholder images. The whole app is demoable with zero keys. Don't break this — it's also the only way to exercise the pipeline cheaply.
 - **Prompts are product.** More than half of `claudeAgent.js` is prompt text (the 5-layer nano-banana structure, the non-negotiable black/hot-pink/neon-green palette, the "BANNED FOREVER" clichés list). The "minimalistic" style learns from 12 few-shot exemplars in `minimalisticExamples.js` instead of rules. Treat prompt edits as behavior changes with the same care as code.
 - **Streaming line-protocol over JSON documents.** Claude outputs `HEADER:`/`SLIDE:` prefixed JSON lines so the UI can react per-slide instead of waiting for a full document. If you change a prompt's output format, you must update `extractPrefixedObjects` consumers, and vice versa.
