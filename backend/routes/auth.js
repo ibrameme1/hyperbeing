@@ -21,6 +21,12 @@ const router = Router();
 // confirmed — unverified signups never touch the DB. Single-process, in-memory
 // by design (see CLAUDE.md); a server restart just makes the user sign up again.
 const pendingRegistrations = new Map(); // email(lowercased) -> { name, passwordHash, code, expiresAt, attempts }
+
+// Existing email/password accounts get a ONE-TIME verification code the first
+// time they sign in after this feature shipped (tracked by users.email_verified).
+// This holds the in-flight challenge; it's only created after a correct password.
+const pendingLoginVerifications = new Map(); // email(lowercased) -> { userId, code, expiresAt, attempts }
+
 const CODE_TTL_MS = 10 * 60 * 1000;     // codes expire after 10 minutes
 const MAX_CODE_ATTEMPTS = 6;            // wrong-code guesses before the code is burned
 
@@ -29,11 +35,13 @@ function generateCode() {
   return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
 }
 
-// Evict expired pending registrations so the map can't grow unbounded.
+// Evict expired pending entries so the maps can't grow unbounded.
 setInterval(() => {
   const now = Date.now();
-  for (const [key, entry] of pendingRegistrations) {
-    if (entry.expiresAt < now) pendingRegistrations.delete(key);
+  for (const map of [pendingRegistrations, pendingLoginVerifications]) {
+    for (const [key, entry] of map) {
+      if (entry.expiresAt < now) map.delete(key);
+    }
   }
 }, 5 * 60 * 1000).unref?.();
 
@@ -108,8 +116,10 @@ function upsertOAuthUser({ provider, providerId, name, email, avatar }) {
   }
 
   const id = uuid();
+  // OAuth accounts are trusted via the provider — created already verified so
+  // they never hit the one-time login code check.
   db.prepare(
-    `INSERT INTO users (id, name, email, ${col}, avatar) VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO users (id, name, email, ${col}, avatar, email_verified) VALUES (?, ?, ?, ?, ?, 1)`
   ).run(id, name || 'User', email || null, providerId, avatar || null);
 
   return { user: { id, name: name || 'User', email }, isNew: true };
@@ -301,8 +311,10 @@ router.post('/verify-email',
     }
 
     const id = uuid();
+    // Created verified — the code they just entered IS the email verification,
+    // so this account is exempt from the one-time login check.
     db.prepare(
-      'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)'
+      'INSERT INTO users (id, name, email, password_hash, email_verified) VALUES (?, ?, ?, ?, 1)'
     ).run(id, pending.name, normalizedEmail, pending.passwordHash);
     pendingRegistrations.delete(normalizedEmail);
 
@@ -348,10 +360,11 @@ router.post('/login',
   }),
   async (req, res) => {
     const { email, password } = req.body;
+    const normalizedEmail = email.toLowerCase();
     const db = getDb();
     const user = db
-      .prepare('SELECT id, name, email, password_hash FROM users WHERE email = ?')
-      .get(email.toLowerCase());
+      .prepare('SELECT id, name, email, password_hash, email_verified FROM users WHERE email = ?')
+      .get(normalizedEmail);
 
     // Use constant-time comparison even when user not found (timing attack prevention)
     const dummyHash = '$2a$12$invalidhashpadding000000000000000000000000000000000000000';
@@ -365,8 +378,95 @@ router.post('/login',
     }
 
     req.clearAuthBackoff?.();
-    const { password_hash: _, ...safeUser } = user;
+
+    // One-time verification gate for legacy accounts that predate email
+    // verification. Password was correct, but the address was never confirmed —
+    // email a code and withhold the session until POST /verify-login. Verified
+    // accounts (all new signups, OAuth, and anyone who's done this once) skip it.
+    if (!user.email_verified) {
+      const code = generateCode();
+      pendingLoginVerifications.set(normalizedEmail, {
+        userId: user.id,
+        code,
+        expiresAt: Date.now() + CODE_TTL_MS,
+        attempts: 0,
+      });
+      sendVerificationCode(user.name, normalizedEmail, code);
+      logger.info('login requires one-time verification', { userId: user.id });
+      const payload = { requiresVerification: true, email: normalizedEmail };
+      if (!isEmailConfigured()) payload.devCode = code;
+      return res.json(payload);
+    }
+
+    const { password_hash: _, email_verified: __, ...safeUser } = user;
     res.json({ token: signToken(user.id), refreshToken: signRefreshToken(user.id), user: safeUser });
+  },
+);
+
+// Confirm the one-time login code for a legacy unverified account, then mark it
+// verified so this never happens again. The pending entry only exists if the
+// password was already accepted at /login, so possessing the code proves the
+// address is reachable.
+router.post('/verify-login',
+  authBackoff,
+  authLimiter,
+  validate({
+    email: isEmail(),
+    code:  isString(4, 8),
+  }),
+  (req, res) => {
+    const normalizedEmail = req.body.email.toLowerCase();
+    const code = req.body.code.trim();
+    const pending = pendingLoginVerifications.get(normalizedEmail);
+
+    if (!pending || pending.expiresAt < Date.now()) {
+      pendingLoginVerifications.delete(normalizedEmail);
+      return res.status(400).json({ error: 'Your verification code has expired. Please sign in again.' });
+    }
+
+    if (pending.code !== code) {
+      pending.attempts += 1;
+      if (pending.attempts >= MAX_CODE_ATTEMPTS) {
+        pendingLoginVerifications.delete(normalizedEmail);
+        req.recordAuthFailure?.();
+        return res.status(400).json({ error: 'Too many incorrect codes. Please sign in again.' });
+      }
+      req.recordAuthFailure?.();
+      return res.status(400).json({ error: 'That code is incorrect. Please check your email and try again.' });
+    }
+
+    const db = getDb();
+    db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?').run(pending.userId);
+    pendingLoginVerifications.delete(normalizedEmail);
+
+    const user = db.prepare('SELECT id, name, email, avatar FROM users WHERE id = ?').get(pending.userId);
+    req.clearAuthBackoff?.();
+    logger.info('one-time login verification complete', { userId: pending.userId });
+    res.json({ token: signToken(user.id), refreshToken: signRefreshToken(user.id), user });
+  },
+);
+
+// Re-send the one-time login code for an in-flight sign-in challenge.
+router.post('/resend-login-code',
+  authBackoff,
+  authLimiter,
+  validate({ email: isEmail() }),
+  (req, res) => {
+    const normalizedEmail = req.body.email.toLowerCase();
+    const pending = pendingLoginVerifications.get(normalizedEmail);
+    if (!pending) {
+      return res.status(400).json({ error: 'No pending sign-in found for that email. Please sign in again.' });
+    }
+    const code = generateCode();
+    pending.code = code;
+    pending.expiresAt = Date.now() + CODE_TTL_MS;
+    pending.attempts = 0;
+    const user = getDb().prepare('SELECT name FROM users WHERE id = ?').get(pending.userId);
+    sendVerificationCode(user?.name || 'there', normalizedEmail, code);
+    logger.info('login verification code resent', { email: normalizedEmail });
+    const payload = { ok: true };
+    if (!isEmailConfigured()) payload.devCode = code;
+    res.json(payload);
   },
 );
 

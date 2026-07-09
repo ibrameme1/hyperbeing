@@ -56,15 +56,17 @@ export default function Login() {
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
 
-  // Email-verification step (shown after a successful email sign-up, before onboarding)
+  // Email-verification step. Shown after a successful email sign-up (before
+  // onboarding), and for legacy accounts on their one-time first sign-in check.
   const [pendingEmail, setPendingEmail] = useState('');
   const [code, setCode] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [resendNote, setResendNote] = useState('');
+  const [verifyContext, setVerifyContext] = useState('signup'); // 'signup' | 'login'
 
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  const { login, register, verifyEmail, resendCode } = useAuth();
+  const { login, verifyLogin, resendLoginCode, register, verifyEmail, resendCode } = useAuth();
   const [searchParams] = useSearchParams();
 
   // Show error if OAuth failed
@@ -82,12 +84,23 @@ export default function Login() {
     setLoading(true);
     try {
       if (mode === 'login') {
-        await login(email, password);
-        window.location.replace('/dashboard');
+        const data = await login(email, password);
+        // Legacy accounts hit a one-time verification step before the session.
+        if (data.requiresVerification) {
+          setVerifyContext('login');
+          setPendingEmail(data.email || email.toLowerCase());
+          setCode('');
+          setResendNote(
+            data.devCode ? `Email delivery isn't configured — your code is ${data.devCode}` : ''
+          );
+        } else {
+          window.location.replace('/dashboard');
+        }
       } else {
         // Sign-up no longer logs in immediately — it emails a code and we move
         // to the verification step. The account is created only after verify.
         const data = await register(name, email, password);
+        setVerifyContext('signup');
         setPendingEmail(data.email || email.toLowerCase());
         setCode('');
         setResendNote(
@@ -118,8 +131,13 @@ export default function Login() {
     setError('');
     setVerifying(true);
     try {
-      await verifyEmail(pendingEmail, code.trim());
-      window.location.replace('/onboarding');
+      if (verifyContext === 'login') {
+        await verifyLogin(pendingEmail, code.trim());
+        window.location.replace('/dashboard');
+      } else {
+        await verifyEmail(pendingEmail, code.trim());
+        window.location.replace('/onboarding');
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Could not verify that code. Please try again.');
     } finally {
@@ -131,7 +149,9 @@ export default function Login() {
     setError('');
     setResendNote('');
     try {
-      const data = await resendCode(pendingEmail);
+      const data = verifyContext === 'login'
+        ? await resendLoginCode(pendingEmail)
+        : await resendCode(pendingEmail);
       setResendNote(
         data.devCode
           ? `Email delivery isn't configured — your code is ${data.devCode}`
@@ -231,7 +251,10 @@ export default function Login() {
               Check your email
             </h1>
             <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
-              We sent a 6-digit code to <span style={{ color: '#0d0b1a', fontWeight: 600 }}>{pendingEmail}</span>. Enter it below to finish signing up.
+              We sent a 6-digit code to <span style={{ color: '#0d0b1a', fontWeight: 600 }}>{pendingEmail}</span>.{' '}
+              {verifyContext === 'login'
+                ? "It's a one-time check to verify your account — enter it below to continue."
+                : 'Enter it below to finish signing up.'}
             </p>
 
             <form onSubmit={handleVerify} className="space-y-3">

@@ -133,6 +133,17 @@ export function initDatabase() {
     db.exec('ALTER TABLE users ADD COLUMN profile_data TEXT DEFAULT NULL');
   } catch { /* already exists */ }
 
+  // Migrate: email_verified flag drives the one-time verification gate.
+  // New accounts are created verified (email signups verify a code up front;
+  // OAuth users are trusted via their provider). This backfill runs once, when
+  // the column is first added: legacy OAuth-only accounts are marked verified,
+  // while legacy email/password accounts stay 0 so they get the one-time
+  // code check on their next sign-in.
+  try {
+    db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0');
+    db.exec('UPDATE users SET email_verified = 1 WHERE password_hash IS NULL');
+  } catch { /* already exists */ }
+
   // Migrate: per-user token usage tracking
   try {
     db.exec('ALTER TABLE subscriptions ADD COLUMN tokens_used INTEGER DEFAULT 0');
