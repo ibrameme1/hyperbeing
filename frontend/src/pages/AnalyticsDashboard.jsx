@@ -13,7 +13,7 @@ import {
   Terminal, Cpu, Search, AlertCircle, Info, AlertTriangle, Bug,
   Pencil, Check, X, ArrowLeft, Trash2, Database, Save, ExternalLink,
   TableProperties, ChevronLeft, HardDrive, Folder, File, Download,
-  ArrowUp, ChevronsUpDown, Copy,
+  ArrowUp, ChevronsUpDown, Copy, Image as ImageIcon,
 } from 'lucide-react';
 import api from '../api/client';
 
@@ -267,6 +267,11 @@ export default function AnalyticsDashboard() {
   const [fsSortCol, setFsSortCol] = useState('name');
   const [fsSortDir, setFsSortDir] = useState('asc');
   const [fsDeleting, setFsDeleting] = useState(null);
+  const [fsTypeFilter, setFsTypeFilter] = useState('all'); // all | image | dir | file
+  const [fsQuery, setFsQuery] = useState('');
+  const [fsSearchResults, setFsSearchResults] = useState(null); // null = not searching
+  const [fsSearchLoading, setFsSearchLoading] = useState(false);
+  const [fsPreview, setFsPreview] = useState(null); // entry being previewed in the lightbox
 
   // ── Database browser ───────────────────────────────────────────────────────
   const [dbTables, setDbTables] = useState(null);
@@ -503,11 +508,14 @@ export default function AnalyticsDashboard() {
     }
   }
 
+  function fsEntryPath(entry) {
+    return entry.path ?? (fsDir ? `${fsDir}/${entry.name}` : entry.name);
+  }
+
   function fsFileUrl(entry, download) {
     const token = localStorage.getItem('hb_token');
     const apiBase = import.meta.env.VITE_API_URL || '';
-    const filePath = fsDir ? `${fsDir}/${entry.name}` : entry.name;
-    const params = new URLSearchParams({ path: filePath, token: token || '' });
+    const params = new URLSearchParams({ path: fsEntryPath(entry), token: token || '' });
     if (download) params.set('download', '1');
     return `${apiBase}/api/admin/storage/file?${params.toString()}`;
   }
@@ -516,9 +524,12 @@ export default function AnalyticsDashboard() {
     if (!window.confirm(`Permanently delete "${entry.name}"? This cannot be undone.`)) return;
     setFsDeleting(entry.name);
     try {
-      const filePath = fsDir ? `${fsDir}/${entry.name}` : entry.name;
-      await api.delete('/admin/storage/file', { params: { path: filePath } });
-      await fetchFsBrowse(fsDir);
+      await api.delete('/admin/storage/file', { params: { path: fsEntryPath(entry) } });
+      if (fsSearchResults) {
+        setFsSearchResults(rs => rs.filter(r => r !== entry));
+      } else {
+        await fetchFsBrowse(fsDir);
+      }
       fetchStorage();
     } catch (err) {
       alert(err.response?.data?.error || 'Delete failed');
@@ -527,14 +538,48 @@ export default function AnalyticsDashboard() {
     }
   }
 
+  // Debounced recursive search: querying re-fetches from /storage/search,
+  // clearing the query drops back to the plain directory listing.
+  useEffect(() => {
+    if (!fsQuery.trim()) {
+      setFsSearchResults(null);
+      return;
+    }
+    setFsSearchLoading(true);
+    const handle = setTimeout(async () => {
+      try {
+        const { data } = await api.get('/admin/storage/search', {
+          params: { q: fsQuery.trim(), dir: fsDir, type: fsTypeFilter },
+        });
+        setFsSearchResults(data.results);
+      } catch {
+        setFsSearchResults([]);
+      } finally {
+        setFsSearchLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [fsQuery, fsDir, fsTypeFilter]);
+
+  const fsVisibleEntries = (() => {
+    const source = fsSearchResults ?? fsEntries ?? [];
+    if (fsSearchResults) return source; // already filtered server-side
+    if (fsTypeFilter === 'all') return source;
+    return source.filter(e => {
+      if (fsTypeFilter === 'dir') return e.isDirectory;
+      if (fsTypeFilter === 'image') return e.isImage;
+      return e.isFile && !e.isImage;
+    });
+  })();
+
   const fsSortedEntries = (() => {
-    if (!fsEntries) return [];
+    if (!fsVisibleEntries.length) return [];
     const dirMul = fsSortDir === 'asc' ? 1 : -1;
-    return fsEntries.slice().sort((a, b) => {
+    return fsVisibleEntries.slice().sort((a, b) => {
       // Folders always sort before files, regardless of sort direction
       if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
       let cmp = 0;
-      if (fsSortCol === 'size') cmp = a.bytes - b.bytes;
+      if (fsSortCol === 'size') cmp = (a.bytes ?? 0) - (b.bytes ?? 0);
       else if (fsSortCol === 'modified') cmp = new Date(a.modified_at) - new Date(b.modified_at);
       else cmp = a.name.localeCompare(b.name);
       return cmp * dirMul;
@@ -2452,6 +2497,12 @@ export default function AnalyticsDashboard() {
 
                 {/* File explorer */}
                 <ChartCard title="Files on disk">
+                  {storageData.scanTruncated && (
+                    <p className="mb-3 flex items-center gap-1.5 rounded-lg border border-yellow-900/40 bg-yellow-900/10 px-2.5 py-1.5 text-[11px] text-yellow-500">
+                      <AlertTriangle size={11} /> Volume is large — some folder sizes may be undercounted.
+                    </p>
+                  )}
+
                   {/* Breadcrumb / path nav */}
                   <div className="mb-3 flex items-center gap-2">
                     <button
@@ -2487,9 +2538,45 @@ export default function AnalyticsDashboard() {
                     </button>
                   </div>
 
+                  {/* Search + type filter */}
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-600" />
+                      <input
+                        value={fsQuery}
+                        onChange={e => setFsQuery(e.target.value)}
+                        placeholder={`Search every file under ${fsDir || 'data'}/ recursively…`}
+                        className="w-full rounded-lg border border-white/10 bg-white/5 py-1.5 pl-8 pr-3 text-xs text-gray-200 placeholder:text-gray-600 focus:border-purple-500/50 focus:outline-none"
+                      />
+                      {fsSearchLoading && <RefreshCw size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-gray-600" />}
+                    </div>
+                    <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 p-0.5">
+                      {[
+                        { key: 'all', label: 'All' },
+                        { key: 'image', label: 'Images' },
+                        { key: 'dir', label: 'Folders' },
+                        { key: 'file', label: 'Other' },
+                      ].map(t => (
+                        <button
+                          key={t.key}
+                          onClick={() => setFsTypeFilter(t.key)}
+                          className={`rounded-md px-2 py-1 text-[11px] transition ${
+                            fsTypeFilter === t.key ? 'bg-purple-500/20 text-purple-300' : 'text-gray-500 hover:text-gray-300'
+                          }`}
+                        >{t.label}</button>
+                      ))}
+                    </div>
+                  </div>
+
                   {fsError && <SectionError onRetry={() => fetchFsBrowse(fsDir)} />}
 
-                  {fsEntries && (
+                  {fsSearchResults && (
+                    <p className="mb-2 text-[11px] text-gray-500">
+                      {fsSearchResults.length} match{fsSearchResults.length === 1 ? '' : 'es'} for &ldquo;{fsQuery.trim()}&rdquo;
+                    </p>
+                  )}
+
+                  {(fsSearchResults ?? fsEntries) && (
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
@@ -2517,38 +2604,63 @@ export default function AnalyticsDashboard() {
                         </thead>
                         <tbody>
                           {fsSortedEntries.length === 0 && (
-                            <tr><td colSpan={4} className="py-6 text-center text-gray-600">Empty directory</td></tr>
+                            <tr><td colSpan={4} className="py-6 text-center text-gray-600">
+                              {fsSearchResults ? 'No matches' : 'Empty directory'}
+                            </td></tr>
                           )}
                           {fsSortedEntries.map(entry => (
-                            <tr key={entry.name} className="group border-b border-white/5">
+                            <tr key={fsEntryPath(entry)} className="group border-b border-white/5">
                               <td className="py-2 pr-3 font-mono text-gray-300">
                                 {entry.isDirectory ? (
                                   <button
-                                    onClick={() => fetchFsBrowse(fsDir ? `${fsDir}/${entry.name}` : entry.name)}
+                                    onClick={() => fetchFsBrowse(fsEntryPath(entry))}
                                     className="flex items-center gap-1.5 hover:text-purple-400 transition"
+                                    title={fsSearchResults ? fsEntryPath(entry) : entry.name}
                                   >
-                                    <Folder size={12} className="text-gray-500" />
-                                    {entry.name}
+                                    <Folder size={12} className="text-gray-500 shrink-0" />
+                                    {fsSearchResults ? fsEntryPath(entry) : entry.name}
+                                  </button>
+                                ) : entry.isImage ? (
+                                  <button
+                                    onClick={() => setFsPreview(entry)}
+                                    className="flex items-center gap-2 hover:text-purple-400 transition"
+                                    title={fsSearchResults ? fsEntryPath(entry) : entry.name}
+                                  >
+                                    <img
+                                      src={fsFileUrl(entry, false)}
+                                      alt=""
+                                      loading="lazy"
+                                      className="h-6 w-6 shrink-0 rounded object-cover ring-1 ring-white/10"
+                                    />
+                                    {fsSearchResults ? fsEntryPath(entry) : entry.name}
                                   </button>
                                 ) : (
-                                  <span className="flex items-center gap-1.5">
-                                    <File size={12} className="text-gray-600" />
-                                    {entry.name}
+                                  <span className="flex items-center gap-1.5" title={fsSearchResults ? fsEntryPath(entry) : entry.name}>
+                                    <File size={12} className="text-gray-600 shrink-0" />
+                                    {fsSearchResults ? fsEntryPath(entry) : entry.name}
                                   </span>
                                 )}
                               </td>
-                              <td className="py-2 pr-3 font-mono text-gray-300">{entry.isFile ? fmtBytes(entry.bytes) : '—'}</td>
-                              <td className="py-2 text-gray-500">{relTime(entry.modified_at)}</td>
+                              <td className="py-2 pr-3 font-mono text-gray-300">{entry.bytes != null ? fmtBytes(entry.bytes) : '—'}</td>
+                              <td className="py-2 text-gray-500">{entry.modified_at ? relTime(entry.modified_at) : '—'}</td>
                               <td className="py-2">
                                 {entry.isFile && (
                                   <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <a
-                                      href={fsFileUrl(entry, false)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-gray-600 hover:text-blue-400"
-                                      title="View"
-                                    ><Eye size={13} /></a>
+                                    {entry.isImage ? (
+                                      <button
+                                        onClick={() => setFsPreview(entry)}
+                                        className="text-gray-600 hover:text-blue-400"
+                                        title="Preview"
+                                      ><Eye size={13} /></button>
+                                    ) : (
+                                      <a
+                                        href={fsFileUrl(entry, false)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-gray-600 hover:text-blue-400"
+                                        title="View"
+                                      ><Eye size={13} /></a>
+                                    )}
                                     <a
                                       href={fsFileUrl(entry, true)}
                                       className="text-gray-600 hover:text-green-400"
@@ -2615,6 +2727,45 @@ export default function AnalyticsDashboard() {
         )}
 
       </div>
+
+      {/* Image preview lightbox */}
+      <AnimatePresence>
+        {fsPreview && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setFsPreview(null)}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-8"
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.96, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="flex max-h-full max-w-4xl flex-col items-center gap-3"
+            >
+              <img
+                src={fsFileUrl(fsPreview, false)}
+                alt={fsPreview.name}
+                className="max-h-[75vh] max-w-full rounded-lg object-contain shadow-2xl"
+              />
+              <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-2">
+                <span className="font-mono text-xs text-gray-300">{fsPreview.path ?? fsPreview.name}</span>
+                {fsPreview.bytes != null && <span className="text-xs text-gray-500">{fmtBytes(fsPreview.bytes)}</span>}
+                <a
+                  href={fsFileUrl(fsPreview, true)}
+                  className="text-gray-400 hover:text-green-400"
+                  title="Download"
+                ><Download size={14} /></a>
+                <button onClick={() => setFsPreview(null)} className="text-gray-400 hover:text-red-400" title="Close">
+                  <X size={14} />
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

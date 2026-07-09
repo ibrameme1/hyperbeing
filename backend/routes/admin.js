@@ -26,6 +26,98 @@ function resolveDataPath(relPath) {
   return target;
 }
 
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.avif', '.bmp']);
+function isImageName(name) {
+  return IMAGE_EXTS.has(path.extname(name).toLowerCase());
+}
+
+// Recursively sums file sizes under `dir`. Caps the number of entries it will
+// stat so a huge/broken tree (or a symlink cycle) can't hang the request;
+// `truncated` is set on the result when the cap was hit, so callers can warn.
+const MAX_SCAN_ENTRIES = 200_000;
+function walkDirBytes(dir, state) {
+  let bytes = 0;
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return bytes;
+  }
+  for (const entry of entries) {
+    if (state.scanned >= MAX_SCAN_ENTRIES) { state.truncated = true; break; }
+    if (entry.isSymbolicLink()) continue;
+    state.scanned++;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      bytes += walkDirBytes(full, state);
+    } else if (entry.isFile()) {
+      try { bytes += fs.statSync(full).size; } catch {}
+    }
+  }
+  return bytes;
+}
+
+function dirSize(dir) {
+  const state = { scanned: 0, truncated: false };
+  const bytes = walkDirBytes(dir, state);
+  return { bytes, truncated: state.truncated };
+}
+
+// Recursively finds entries whose name contains `query` (case-insensitive)
+// under `dir`, optionally restricted to a `type` ('image' | 'dir' | 'file').
+// Stops at `limit` matches or MAX_SCAN_ENTRIES visited nodes, whichever hits
+// first, and reports whether the scan was cut short.
+function searchDir(root, dir, query, type, limit) {
+  const results = [];
+  const state = { scanned: 0, truncated: false };
+  const q = query.toLowerCase();
+
+  function walk(current, relDir) {
+    if (results.length >= limit || state.scanned >= MAX_SCAN_ENTRIES) { state.truncated = true; return; }
+    let entries;
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (results.length >= limit || state.scanned >= MAX_SCAN_ENTRIES) { state.truncated = true; return; }
+      if (entry.isSymbolicLink()) continue;
+      state.scanned++;
+      const full = path.join(current, entry.name);
+      const relPath = relDir ? `${relDir}/${entry.name}` : entry.name;
+      const isDirectory = entry.isDirectory();
+      const isFile = entry.isFile();
+      const image = isFile && isImageName(entry.name);
+
+      const typeMatches =
+        !type || type === 'all' ||
+        (type === 'image' && image) ||
+        (type === 'dir' && isDirectory) ||
+        (type === 'file' && isFile && !image);
+
+      if (typeMatches && entry.name.toLowerCase().includes(q)) {
+        let stat;
+        try { stat = fs.statSync(full); } catch { stat = null; }
+        results.push({
+          path: relPath,
+          name: entry.name,
+          isFile,
+          isDirectory,
+          isImage: image,
+          bytes: stat ? (isDirectory ? null : stat.size) : 0,
+          modified_at: stat ? stat.mtime : null,
+        });
+      }
+
+      if (isDirectory) walk(full, relPath);
+    }
+  }
+
+  walk(root, dir);
+  return { results, truncated: state.truncated };
+}
+
 const ALLOWED_TABLES = [
   'users', 'presentations', 'messages', 'subscriptions',
   'credit_transactions', 'prompt_sessions', 'app_logs', 'analytics_events', 'feedback',
@@ -423,17 +515,34 @@ router.delete('/db/:table/:id', authenticateToken, requireAdmin, (req, res) => {
 router.get('/storage', authenticateToken, requireAdmin, (_req, res) => {
   const db = getDb();
 
-  // Files living in the data directory (db file + WAL/SHM siblings + anything else)
+  // Entries living in the data directory (db file + WAL/SHM siblings, the
+  // images dir, lost+found, and anything else). Directory sizes are computed
+  // recursively so nested content (e.g. slide images) actually counts.
   let files = [];
+  let scanTruncated = false;
   try {
-    files = fs.readdirSync(DATA_DIR).map(name => {
-      const full = path.join(DATA_DIR, name);
+    files = fs.readdirSync(DATA_DIR, { withFileTypes: true }).map(entry => {
+      const full = path.join(DATA_DIR, entry.name);
       const stat = fs.statSync(full);
-      return { name, bytes: stat.size, isFile: stat.isFile(), modified_at: stat.mtime };
+      const isDirectory = entry.isDirectory();
+      let bytes = stat.size;
+      if (isDirectory) {
+        const d = dirSize(full);
+        bytes = d.bytes;
+        if (d.truncated) scanTruncated = true;
+      }
+      return {
+        name: entry.name,
+        bytes,
+        isFile: entry.isFile(),
+        isDirectory,
+        isImage: entry.isFile() && isImageName(entry.name),
+        modified_at: stat.mtime,
+      };
     });
   } catch {}
 
-  const totalDiskBytes = files.reduce((sum, f) => sum + (f.isFile ? f.bytes : 0), 0);
+  const totalDiskBytes = files.reduce((sum, f) => sum + f.bytes, 0);
 
   // Underlying volume capacity, if statfs is available on this platform
   let volume = null;
@@ -467,6 +576,7 @@ router.get('/storage', authenticateToken, requireAdmin, (_req, res) => {
     dataDir: DATA_DIR,
     dbPath: DB_PATH,
     totalDiskBytes,
+    scanTruncated,
     files,
     volume,
     tables,
@@ -513,15 +623,24 @@ router.get('/storage/browse', authenticateToken, requireAdmin, (req, res) => {
   }
 
   let entries;
+  let scanTruncated = false;
   try {
-    entries = fs.readdirSync(target).map(name => {
-      const full = path.join(target, name);
+    entries = fs.readdirSync(target, { withFileTypes: true }).map(entry => {
+      const full = path.join(target, entry.name);
       const stat = fs.statSync(full);
+      const isDirectory = entry.isDirectory();
+      let bytes = stat.size;
+      if (isDirectory) {
+        const d = dirSize(full);
+        bytes = d.bytes;
+        if (d.truncated) scanTruncated = true;
+      }
       return {
-        name,
-        isFile: stat.isFile(),
-        isDirectory: stat.isDirectory(),
-        bytes: stat.size,
+        name: entry.name,
+        isFile: entry.isFile(),
+        isDirectory,
+        isImage: entry.isFile() && isImageName(entry.name),
+        bytes,
         modified_at: stat.mtime,
       };
     });
@@ -530,7 +649,29 @@ router.get('/storage/browse', authenticateToken, requireAdmin, (req, res) => {
   }
 
   const dir = path.relative(path.resolve(DATA_DIR), target);
-  res.json({ dir: dir === '.' ? '' : dir.split(path.sep).join('/'), entries });
+  res.json({ dir: dir === '.' ? '' : dir.split(path.sep).join('/'), entries, scanTruncated });
+});
+
+// ─── GET /api/admin/storage/search ───────────────────────────────────────────
+// Recursively searches the data directory (or a subdirectory of it) by name,
+// optionally filtered by type (image | dir | file), so files buried several
+// folders deep (e.g. a slide image) can be found without manual browsing.
+router.get('/storage/search', authenticateToken, requireAdmin, (req, res) => {
+  const q = (req.query.q || '').trim();
+  if (!q) return res.json({ results: [], truncated: false });
+
+  let target;
+  try {
+    target = resolveDataPath(req.query.dir);
+  } catch {
+    return res.status(400).json({ error: 'Invalid path' });
+  }
+
+  const type = ['image', 'dir', 'file', 'all'].includes(req.query.type) ? req.query.type : 'all';
+  const baseDir = path.relative(path.resolve(DATA_DIR), target);
+  const { results, truncated } = searchDir(target, baseDir === '.' ? '' : baseDir.split(path.sep).join('/'), q, type, 500);
+
+  res.json({ results, truncated });
 });
 
 // ─── GET /api/admin/storage/file ─────────────────────────────────────────────
