@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
@@ -9,11 +10,32 @@ import { Strategy as FacebookStrategy } from 'passport-facebook';
 import axios from 'axios';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { sendWelcomeEmail, sendAccountDeleted } from '../services/emailService.js';
+import { sendWelcomeEmail, sendAccountDeleted, sendVerificationCode, isEmailConfigured } from '../services/emailService.js';
 import { validate, isString, isEmail, isOptionalString } from '../middleware/validate.js';
 import { authLimiter, loginLimiter, authBackoff } from '../middleware/rateLimits.js';
 
 const router = Router();
+
+// ── Pending email-verification store ───────────────────────────────────────────
+// Registrations are NOT written to the users table until the emailed code is
+// confirmed — unverified signups never touch the DB. Single-process, in-memory
+// by design (see CLAUDE.md); a server restart just makes the user sign up again.
+const pendingRegistrations = new Map(); // email(lowercased) -> { name, passwordHash, code, expiresAt, attempts }
+const CODE_TTL_MS = 10 * 60 * 1000;     // codes expire after 10 minutes
+const MAX_CODE_ATTEMPTS = 6;            // wrong-code guesses before the code is burned
+
+function generateCode() {
+  // 6-digit numeric code, cryptographically random, zero-padded.
+  return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
+}
+
+// Evict expired pending registrations so the map can't grow unbounded.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of pendingRegistrations) {
+    if (entry.expiresAt < now) pendingRegistrations.delete(key);
+  }
+}, 5 * 60 * 1000).unref?.();
 
 function signToken(userId) {
   return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '15m' });
@@ -206,23 +228,114 @@ router.post('/register',
   }),
   async (req, res) => {
     const { name, email, password } = req.body;
+    const normalizedEmail = email.toLowerCase();
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase());
+    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
     if (existing) {
       req.recordAuthFailure?.();
       return res.status(409).json({ error: 'Email already in use' });
     }
 
-    const password_hash = await bcrypt.hash(password, 12);
+    // Don't create the account yet — hold the details in the pending store and
+    // email a one-time code. The user only lands in the DB once they prove the
+    // address is reachable via POST /verify-email.
+    const passwordHash = await bcrypt.hash(password, 12);
+    const code = generateCode();
+    pendingRegistrations.set(normalizedEmail, {
+      name,
+      passwordHash,
+      code,
+      expiresAt: Date.now() + CODE_TTL_MS,
+      attempts: 0,
+    });
+
+    req.clearAuthBackoff?.();
+    sendVerificationCode(name, normalizedEmail, code);
+    logger.info('registration pending email verification', { email: normalizedEmail });
+
+    // When email isn't configured (local/mock mode) the code can't be delivered,
+    // so hand it back to the client to keep the signup flow exercisable. Never
+    // do this once Resend is wired up — the code stays out of the response.
+    const payload = { pendingVerification: true, email: normalizedEmail };
+    if (!isEmailConfigured()) payload.devCode = code;
+    res.status(202).json(payload);
+  },
+);
+
+// Confirm the emailed code and actually create the account.
+router.post('/verify-email',
+  authBackoff,
+  authLimiter,
+  validate({
+    email: isEmail(),
+    code:  isString(4, 8),
+  }),
+  async (req, res) => {
+    const normalizedEmail = req.body.email.toLowerCase();
+    const code = req.body.code.trim();
+    const pending = pendingRegistrations.get(normalizedEmail);
+
+    if (!pending || pending.expiresAt < Date.now()) {
+      pendingRegistrations.delete(normalizedEmail);
+      return res.status(400).json({ error: 'Your verification code has expired. Please sign up again.' });
+    }
+
+    if (pending.code !== code) {
+      pending.attempts += 1;
+      if (pending.attempts >= MAX_CODE_ATTEMPTS) {
+        pendingRegistrations.delete(normalizedEmail);
+        req.recordAuthFailure?.();
+        return res.status(400).json({ error: 'Too many incorrect codes. Please sign up again.' });
+      }
+      req.recordAuthFailure?.();
+      return res.status(400).json({ error: 'That code is incorrect. Please check your email and try again.' });
+    }
+
+    const db = getDb();
+    // Re-check uniqueness — another signup could have claimed the email in the
+    // window between register and verify.
+    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
+    if (existing) {
+      pendingRegistrations.delete(normalizedEmail);
+      return res.status(409).json({ error: 'Email already in use' });
+    }
+
     const id = uuid();
     db.prepare(
       'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)'
-    ).run(id, name, email.toLowerCase(), password_hash);
+    ).run(id, pending.name, normalizedEmail, pending.passwordHash);
+    pendingRegistrations.delete(normalizedEmail);
 
     req.clearAuthBackoff?.();
-    const user = { id, name, email: email.toLowerCase() };
-    sendWelcomeEmail(name, email.toLowerCase());
+    const user = { id, name: pending.name, email: normalizedEmail };
+    sendWelcomeEmail(pending.name, normalizedEmail);
+    logger.info('email verified, account created', { userId: id });
     res.status(201).json({ token: signToken(id), refreshToken: signRefreshToken(id), user });
+  },
+);
+
+// Re-send the verification code for an in-flight signup.
+router.post('/resend-code',
+  authBackoff,
+  authLimiter,
+  validate({ email: isEmail() }),
+  (req, res) => {
+    const normalizedEmail = req.body.email.toLowerCase();
+    const pending = pendingRegistrations.get(normalizedEmail);
+    if (!pending) {
+      return res.status(400).json({ error: 'No pending signup found for that email. Please sign up again.' });
+    }
+
+    const code = generateCode();
+    pending.code = code;
+    pending.expiresAt = Date.now() + CODE_TTL_MS;
+    pending.attempts = 0;
+    sendVerificationCode(pending.name, normalizedEmail, code);
+    logger.info('verification code resent', { email: normalizedEmail });
+
+    const payload = { ok: true };
+    if (!isEmailConfigured()) payload.devCode = code;
+    res.json(payload);
   },
 );
 
@@ -344,6 +457,52 @@ router.put('/profile', authenticateToken,
       .run(name, profile_data, req.user.id);
     res.json({ message: 'Profile updated' });
   }
+);
+
+// ── Change password ────────────────────────────────────────────────────────────
+// Step 1 of the UI flow: confirm the current password before revealing the
+// "new password" fields. Returns 401 on mismatch so the client can gate.
+router.post('/verify-password', authenticateToken,
+  validate({ password: isString(1, 128) }),
+  async (req, res) => {
+    const db = getDb();
+    const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+    if (!user?.password_hash) {
+      return res.status(400).json({ error: 'This account has no password set. It was created with a social login.' });
+    }
+    const valid = await bcrypt.compare(req.body.password, user.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect.' });
+    res.json({ valid: true });
+  },
+);
+
+// Step 2: verify the current password again (never trust the client's step 1)
+// and set the new one.
+router.post('/change-password', authenticateToken,
+  validate({
+    currentPassword: isString(1, 128),
+    newPassword:     isString(8, 128),
+  }),
+  async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    const db = getDb();
+    const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+    if (!user?.password_hash) {
+      return res.status(400).json({ error: 'This account has no password set. It was created with a social login.' });
+    }
+    const valid = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect.' });
+
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ error: 'Your new password must be different from your current one.' });
+    }
+
+    const password_hash = await bcrypt.hash(newPassword, 12);
+    // NB: users has no updated_at column — don't write one here (GAPS #3).
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(password_hash, req.user.id);
+    logger.info('password changed', { userId: req.user.id });
+    res.json({ message: 'Password updated' });
+  },
 );
 
 export default router;

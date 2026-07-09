@@ -56,9 +56,15 @@ export default function Login() {
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
 
+  // Email-verification step (shown after a successful email sign-up, before onboarding)
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [resendNote, setResendNote] = useState('');
+
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  const { login, register } = useAuth();
+  const { login, register, verifyEmail, resendCode } = useAuth();
   const [searchParams] = useSearchParams();
 
   // Show error if OAuth failed
@@ -79,8 +85,16 @@ export default function Login() {
         await login(email, password);
         window.location.replace('/dashboard');
       } else {
-        await register(name, email, password);
-        window.location.replace('/onboarding');
+        // Sign-up no longer logs in immediately — it emails a code and we move
+        // to the verification step. The account is created only after verify.
+        const data = await register(name, email, password);
+        setPendingEmail(data.email || email.toLowerCase());
+        setCode('');
+        setResendNote(
+          data.devCode
+            ? `Email delivery isn't configured — your code is ${data.devCode}`
+            : ''
+        );
       }
     } catch (err) {
       // The backend intentionally returns one identical message for unknown
@@ -96,6 +110,35 @@ export default function Login() {
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleVerify(e) {
+    e.preventDefault();
+    setError('');
+    setVerifying(true);
+    try {
+      await verifyEmail(pendingEmail, code.trim());
+      window.location.replace('/onboarding');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not verify that code. Please try again.');
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  async function handleResend() {
+    setError('');
+    setResendNote('');
+    try {
+      const data = await resendCode(pendingEmail);
+      setResendNote(
+        data.devCode
+          ? `Email delivery isn't configured — your code is ${data.devCode}`
+          : 'A new code is on its way to your inbox.'
+      );
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not resend the code. Please try again.');
     }
   }
 
@@ -179,6 +222,77 @@ export default function Login() {
           </Link>
         </div>
 
+        {pendingEmail ? (
+          <>
+            <h1
+              className="text-center mb-1"
+              style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '32px', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.1, color: '#0d0b1a' }}
+            >
+              Check your email
+            </h1>
+            <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
+              We sent a 6-digit code to <span style={{ color: '#0d0b1a', fontWeight: 600 }}>{pendingEmail}</span>. Enter it below to finish signing up.
+            </p>
+
+            <form onSubmit={handleVerify} className="space-y-3">
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="Enter 6-digit code"
+                value={code}
+                onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                required
+                className="w-full px-4 py-3 text-sm text-center tracking-[0.4em] focus:outline-none transition-all duration-200"
+                style={{ ...inputStyle, borderRadius: '6px' }}
+                onFocus={e => { e.target.style.borderColor = '#5B50FF'; e.target.style.boxShadow = '0 0 0 3px rgba(91,80,255,0.35)'; }}
+                onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
+              />
+
+              <AnimatePresence>
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                    className="py-2.5 px-4 text-xs text-center"
+                    style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', fontFamily: 'Inter, sans-serif' }}
+                  >
+                    <span style={{ color: '#ef4444' }}>{error}</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {resendNote && (
+                <p className="text-center text-xs" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>{resendNote}</p>
+              )}
+
+              <button
+                type="submit"
+                disabled={verifying || code.length < 6}
+                className="w-full py-3 font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
+                style={{ fontFamily: 'Inter, sans-serif', background: '#5B50FF', borderRadius: '6px', boxShadow: 'rgba(91,80,255,0.20) 0px 0px 24px 0px' }}
+                onMouseEnter={e => { if (!verifying && code.length >= 6) e.currentTarget.style.background = '#6E63FF'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#5B50FF'; }}
+              >
+                {verifying ? (<><Loader2 size={16} className="animate-spin" /> Verifying…</>) : (<>Verify & continue <ArrowRight size={15} /></>)}
+              </button>
+            </form>
+
+            <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
+              Didn't get it?{' '}
+              <button type="button" onClick={handleResend} className="underline" style={{ color: '#5B50FF' }}>Resend code</button>
+              {' · '}
+              <button
+                type="button"
+                onClick={() => { setPendingEmail(''); setCode(''); setError(''); setResendNote(''); }}
+                className="underline"
+                style={{ color: '#6b6490' }}
+              >
+                Use a different email
+              </button>
+            </p>
+          </>
+        ) : (
+        <>
         <h1
           className="text-center mb-1"
           style={{
@@ -361,6 +475,8 @@ export default function Login() {
             {' '}and{' '}
             <Link to="/privacy" className="underline" style={{ color: '#5B50FF' }}>Privacy Policy</Link>
           </p>
+        )}
+        </>
         )}
       </motion.div>
       </div>

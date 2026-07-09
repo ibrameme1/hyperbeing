@@ -94,8 +94,19 @@ export function AuthProvider({ children }) {
     return data.user;
   }, []);
 
+  // Step 1 of email signup: does NOT log the user in. The backend holds the
+  // registration pending until the emailed code is confirmed via verifyEmail.
+  // Returns { pendingVerification, email, devCode? } — devCode only appears when
+  // email delivery isn't configured (local/mock mode) so signup stays testable.
   const register = useCallback(async (name, email, password) => {
     const { data } = await api.post('/auth/register', { name, email, password });
+    return data;
+  }, []);
+
+  // Step 2: confirm the emailed code. On success this is the point the account
+  // actually exists and the session is established.
+  const verifyEmail = useCallback(async (email, code) => {
+    const { data } = await api.post('/auth/verify-email', { email, code });
     localStorage.setItem('hb_token', data.token);
     localStorage.setItem('hb_refresh_token', data.refreshToken);
     localStorage.setItem('hb_user', JSON.stringify(data.user));
@@ -104,6 +115,11 @@ export function AuthProvider({ children }) {
     identifyUser(data.user);
     capture('user_signed_up', { method: 'email' });
     return data.user;
+  }, []);
+
+  const resendCode = useCallback(async (email) => {
+    const { data } = await api.post('/auth/resend-code', { email });
+    return data;
   }, []);
 
   const logout = useCallback(() => {
@@ -143,7 +159,7 @@ export function AuthProvider({ children }) {
   }, [user?.id, logout]);
 
   return (
-    <AuthContext.Provider value={{ user, subscription, loading, login, register, logout, deleteAccount, setAuthUser, refreshSubscription: fetchSubscription }}>
+    <AuthContext.Provider value={{ user, subscription, loading, login, register, verifyEmail, resendCode, logout, deleteAccount, setAuthUser, refreshSubscription: fetchSubscription }}>
       {children}
     </AuthContext.Provider>
   );

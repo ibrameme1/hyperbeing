@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Briefcase, Zap, Building2, ArrowLeft, CheckCircle2, Loader2, Crown, CreditCard, Calendar, Trash2, AlertTriangle } from 'lucide-react';
+import { User, Briefcase, Zap, Building2, ArrowLeft, CheckCircle2, Loader2, Crown, CreditCard, Calendar, Trash2, AlertTriangle, KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
@@ -41,9 +41,6 @@ export default function Profile() {
 
   const [email, setEmail] = useState('');
   const [nameError,  setNameError]  = useState('');
-  const [emailError, setEmailError] = useState('');
-
-  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   const [sub, setSub]     = useState(null);
   const [plan, setPlan]   = useState(null);
@@ -53,6 +50,53 @@ export default function Profile() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
+
+  // Change-password flow: 'closed' → 'verify' (confirm current) → 'new' (set new)
+  const [pwStep, setPwStep] = useState('closed');
+  const [currentPw, setCurrentPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [pwError, setPwError] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwSaved, setPwSaved] = useState(false);
+
+  function resetPwFlow() {
+    setPwStep('closed');
+    setCurrentPw(''); setNewPw(''); setConfirmPw('');
+    setPwError(''); setPwBusy(false);
+  }
+
+  async function handleVerifyCurrentPw(e) {
+    e.preventDefault();
+    setPwError('');
+    setPwBusy(true);
+    try {
+      await api.post('/auth/verify-password', { password: currentPw });
+      setPwStep('new');
+    } catch (err) {
+      setPwError(err.response?.data?.error || 'Could not verify your password. Please try again.');
+    } finally {
+      setPwBusy(false);
+    }
+  }
+
+  async function handleChangePw(e) {
+    e.preventDefault();
+    setPwError('');
+    if (newPw.length < 8) { setPwError('New password must be at least 8 characters.'); return; }
+    if (newPw !== confirmPw) { setPwError('New passwords do not match.'); return; }
+    setPwBusy(true);
+    try {
+      await api.post('/auth/change-password', { currentPassword: currentPw, newPassword: newPw });
+      resetPwFlow();
+      setPwSaved(true);
+      setTimeout(() => setPwSaved(false), 3000);
+    } catch (err) {
+      setPwError(err.response?.data?.error || 'Could not change your password. Please try again.');
+    } finally {
+      setPwBusy(false);
+    }
+  }
 
   useEffect(() => {
     Promise.all([
@@ -93,7 +137,7 @@ export default function Profile() {
     setAuthUser?.({ ...user, name });
     setSaved(true);
     try {
-      await api.put('/auth/profile', { name, email, bio, company, jobTitle, useCase, industry });
+      await api.put('/auth/profile', { name, bio, company, jobTitle, useCase, industry });
       try { localStorage.setItem('hb_user', JSON.stringify({ ...user, name })); } catch {}
       setTimeout(() => setSaved(false), 3000);
     } catch {
@@ -279,7 +323,7 @@ export default function Profile() {
             </div>
 
             {/* Right — profile form */}
-            <div className="md:col-span-2">
+            <div className="md:col-span-2 space-y-6">
               <div className="rounded-2xl p-6" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white flex-shrink-0"
@@ -310,18 +354,19 @@ export default function Profile() {
 
                   <div>
                     <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Email</label>
+                    {/* Email is the account identifier and is intentionally not editable here. */}
                     <input
                       type="email"
-                      value={email} onChange={e => setEmail(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none transition-all"
-                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                      value={email}
+                      readOnly
+                      disabled
+                      className="w-full px-4 py-2.5 rounded-xl text-sm outline-none transition-all cursor-not-allowed"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.4)' }}
                       placeholder="your@email.com"
-                      onFocus={() => setEmailError('')}
-                      onBlur={() => { if (email && !EMAIL_RE.test(email)) setEmailError('Enter a valid email address.'); }}
                     />
-                    {emailError && (
-                      <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#ef4444', marginTop: 4 }}>{emailError}</p>
-                    )}
+                    <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>
+                      Your email is used to sign in and can't be changed.
+                    </p>
                   </div>
 
                   <div>
@@ -384,7 +429,7 @@ export default function Profile() {
                   <div className="flex items-center gap-3 pt-2">
                     <button
                       type="submit"
-                      disabled={saving || !!(nameError || emailError)}
+                      disabled={saving || !!nameError}
                       className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-80 disabled:opacity-50 flex items-center gap-2"
                       style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
                     >
@@ -402,6 +447,130 @@ export default function Profile() {
                     )}
                   </div>
                 </form>
+              </div>
+
+              {/* Change password */}
+              <div className="rounded-2xl p-6" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                       style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.2)' }}>
+                    <KeyRound size={16} style={{ color: '#C4B5FD' }} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-white text-sm">Password</p>
+                    <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>Change the password you use to sign in</p>
+                  </div>
+                </div>
+
+                {pwStep === 'closed' && (
+                  <div className="flex items-center gap-3 mt-4">
+                    <button
+                      onClick={() => { setPwSaved(false); setPwStep('verify'); }}
+                      className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-80"
+                      style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.2)' }}
+                    >
+                      Change password
+                    </button>
+                    {pwSaved && (
+                      <motion.span
+                        initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                        className="flex items-center gap-1.5 text-sm font-medium"
+                        style={{ color: '#34D399' }}
+                      >
+                        <CheckCircle2 size={14} /> Password updated
+                      </motion.span>
+                    )}
+                  </div>
+                )}
+
+                {pwStep === 'verify' && (
+                  <form onSubmit={handleVerifyCurrentPw} className="space-y-4 mt-4">
+                    <div>
+                      <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Current password</label>
+                      <input
+                        type="password"
+                        autoComplete="current-password"
+                        value={currentPw} onChange={e => setCurrentPw(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none transition-all"
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                        placeholder="Enter your current password"
+                        autoFocus
+                      />
+                    </div>
+                    {pwError && (
+                      <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#ef4444' }}>{pwError}</p>
+                    )}
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="submit"
+                        disabled={pwBusy || !currentPw}
+                        className="px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-80 disabled:opacity-50 flex items-center gap-2"
+                        style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+                      >
+                        {pwBusy ? <Loader2 size={14} className="animate-spin" /> : null}
+                        Continue
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetPwFlow}
+                        className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-70"
+                        style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {pwStep === 'new' && (
+                  <form onSubmit={handleChangePw} className="space-y-4 mt-4">
+                    <div>
+                      <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>New password</label>
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={newPw} onChange={e => setNewPw(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none transition-all"
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                        placeholder="At least 8 characters"
+                        autoFocus
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Confirm new password</label>
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none transition-all"
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                        placeholder="Re-enter your new password"
+                      />
+                    </div>
+                    {pwError && (
+                      <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#ef4444' }}>{pwError}</p>
+                    )}
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="submit"
+                        disabled={pwBusy || !newPw || !confirmPw}
+                        className="px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-80 disabled:opacity-50 flex items-center gap-2"
+                        style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+                      >
+                        {pwBusy ? <Loader2 size={14} className="animate-spin" /> : null}
+                        Update password
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetPwFlow}
+                        className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-70"
+                        style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             </div>
           </div>
