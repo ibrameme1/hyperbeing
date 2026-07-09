@@ -82,20 +82,55 @@ export function AuthProvider({ children }) {
     else setSubscription(null);
   }, [user?.id]);
 
-  const login = useCallback(async (email, password) => {
-    const { data } = await api.post('/auth/login', { email, password });
+  // Establishes the session from a successful auth response. Shared by login
+  // and the one-time login-verification step.
+  const establishSession = useCallback((data) => {
     localStorage.setItem('hb_token', data.token);
     localStorage.setItem('hb_refresh_token', data.refreshToken);
     localStorage.setItem('hb_user', JSON.stringify(data.user));
     markActive();
     setUser(data.user);
     identifyUser(data.user);
-    capture('user_logged_in', { method: 'email' });
     return data.user;
   }, []);
 
+  const login = useCallback(async (email, password) => {
+    const { data } = await api.post('/auth/login', { email, password });
+    // Legacy accounts that never verified their email get a one-time code
+    // challenge instead of a session. The caller shows the code step and
+    // finishes via verifyLogin. Returns the raw response so the flag is visible.
+    if (data.requiresVerification) return data;
+    establishSession(data);
+    capture('user_logged_in', { method: 'email' });
+    return data;
+  }, [establishSession]);
+
+  // Completes the one-time login verification and establishes the session.
+  const verifyLogin = useCallback(async (email, code) => {
+    const { data } = await api.post('/auth/verify-login', { email, code });
+    establishSession(data);
+    capture('user_logged_in', { method: 'email' });
+    return data.user;
+  }, [establishSession]);
+
+  const resendLoginCode = useCallback(async (email) => {
+    const { data } = await api.post('/auth/resend-login-code', { email });
+    return data;
+  }, []);
+
+  // Step 1 of email signup: does NOT log the user in. The backend holds the
+  // registration pending until the emailed code is confirmed via verifyEmail.
+  // Returns { pendingVerification, email, devCode? } — devCode only appears when
+  // email delivery isn't configured (local/mock mode) so signup stays testable.
   const register = useCallback(async (name, email, password) => {
     const { data } = await api.post('/auth/register', { name, email, password });
+    return data;
+  }, []);
+
+  // Step 2: confirm the emailed code. On success this is the point the account
+  // actually exists and the session is established.
+  const verifyEmail = useCallback(async (email, code) => {
+    const { data } = await api.post('/auth/verify-email', { email, code });
     localStorage.setItem('hb_token', data.token);
     localStorage.setItem('hb_refresh_token', data.refreshToken);
     localStorage.setItem('hb_user', JSON.stringify(data.user));
@@ -104,6 +139,11 @@ export function AuthProvider({ children }) {
     identifyUser(data.user);
     capture('user_signed_up', { method: 'email' });
     return data.user;
+  }, []);
+
+  const resendCode = useCallback(async (email) => {
+    const { data } = await api.post('/auth/resend-code', { email });
+    return data;
   }, []);
 
   const logout = useCallback(() => {
@@ -143,7 +183,7 @@ export function AuthProvider({ children }) {
   }, [user?.id, logout]);
 
   return (
-    <AuthContext.Provider value={{ user, subscription, loading, login, register, logout, deleteAccount, setAuthUser, refreshSubscription: fetchSubscription }}>
+    <AuthContext.Provider value={{ user, subscription, loading, login, verifyLogin, resendLoginCode, register, verifyEmail, resendCode, logout, deleteAccount, setAuthUser, refreshSubscription: fetchSubscription }}>
       {children}
     </AuthContext.Provider>
   );

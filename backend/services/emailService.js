@@ -13,6 +13,13 @@ function getResend() {
 
 const FROM = process.env.EMAIL_FROM || 'HyperBeing <onboarding@resend.dev>';
 
+// True when Resend is configured. Callers gate on this to know whether a
+// verification code was actually delivered — when email degrades silently
+// (no RESEND_API_KEY) the signup flow surfaces the code another way in dev.
+export function isEmailConfigured() {
+  return !!getResend();
+}
+
 function appUrl() {
   return process.env.FRONTEND_URL || 'https://hyperbeing.co';
 }
@@ -101,6 +108,24 @@ export async function sendWelcomeEmail(name, email) {
     <p style="margin:0;font-size:13px;color:#a1a1aa;">Questions? Just reply to this email — we actually read them.</p>
   `);
   await send(email, 'Your HyperBeing account is ready ✨', html);
+}
+
+// ── 1b. Email verification code ───────────────────────────────────────────────
+
+export async function sendVerificationCode(name, email, code) {
+  const html = base(`
+    <p style="margin:0 0 4px;font-size:13px;color:#7c3aed;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Confirm your email 📧</p>
+    <h1 style="margin:0 0 16px;font-size:26px;font-weight:800;color:#18181b;line-height:1.2;">Hey ${escapeHtml(name)}, one quick step.</h1>
+    <p style="margin:0 0 20px;font-size:15px;color:#52525b;line-height:1.6;">
+      Enter this code back in HyperBeing to finish creating your account:
+    </p>
+    <div style="text-align:center;margin:8px 0 4px;">
+      <span style="display:inline-block;padding:16px 28px;background:#f9f8ff;border:1px solid #ece9ff;border-radius:12px;font-size:32px;font-weight:800;letter-spacing:10px;color:#18181b;">${escapeHtml(code)}</span>
+    </div>
+    ${divider()}
+    <p style="margin:0;font-size:13px;color:#a1a1aa;">This code expires in 10 minutes. If you didn't try to sign up, you can safely ignore this email.</p>
+  `);
+  await send(email, `${code} is your HyperBeing verification code`, html);
 }
 
 // ── 2. Purchase confirmation ──────────────────────────────────────────────────
