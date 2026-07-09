@@ -23,7 +23,7 @@ import { requestLogger } from './middleware/requestLogger.js';
 import { logger } from './services/logger.js';
 import { getPostHog } from './services/posthogClient.js';
 import { clearStaleTestSubscriptions } from './services/stripeService.js';
-import { sweepStaleWork } from './services/recovery.js';
+import { sweepStaleWork, sweepOrphanImages } from './services/recovery.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -175,6 +175,9 @@ initDatabase();
 // Anything still marked in-flight at boot was killed mid-run — mark it errored
 // and refund so users aren't stuck with charged, never-finishing generations.
 try { sweepStaleWork(); } catch (err) { logger.error('startup sweep failed', { errorMessage: err.message }); }
+// Delete image files no row references anymore (crash-looped migration leftovers,
+// generations killed mid-flight). Age-guarded so it never touches in-flight work.
+try { sweepOrphanImages(); } catch (err) { logger.error('orphan image sweep failed', { errorMessage: err.message }); }
 clearStaleTestSubscriptions().catch(() => {}); // best-effort cleanup on startup
 app.listen(PORT, '0.0.0.0', () => {
   logger.info('server started', { port: PORT, env: process.env.NODE_ENV || 'development' });
