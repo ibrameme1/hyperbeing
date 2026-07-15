@@ -64,9 +64,22 @@ export default function Login() {
   const [resendNote, setResendNote] = useState('');
   const [verifyContext, setVerifyContext] = useState('signup'); // 'signup' | 'login'
 
+  // Forgot-password flow (independent of the sign-up/login verification above).
+  // 'request' → enter email & send code; 'reset' → enter code + new password.
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotStep, setForgotStep] = useState('request'); // 'request' | 'reset' | 'done'
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotCode, setForgotCode] = useState('');
+  const [forgotNewPw, setForgotNewPw] = useState('');
+  const [forgotConfirmPw, setForgotConfirmPw] = useState('');
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const [forgotError, setForgotError] = useState('');
+  const [forgotNote, setForgotNote] = useState('');
+  const [showForgotPw, setShowForgotPw] = useState(false);
+
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  const { login, verifyLogin, resendLoginCode, register, verifyEmail, resendCode } = useAuth();
+  const { login, verifyLogin, resendLoginCode, register, verifyEmail, resendCode, forgotPassword, resetPassword } = useAuth();
   const [searchParams] = useSearchParams();
 
   // Show error if OAuth failed
@@ -162,6 +175,79 @@ export default function Login() {
     }
   }
 
+  function openForgot() {
+    setForgotOpen(true);
+    setForgotStep('request');
+    setForgotEmail(email);
+    setForgotCode('');
+    setForgotNewPw('');
+    setForgotConfirmPw('');
+    setForgotError('');
+    setForgotNote('');
+  }
+
+  function closeForgot() {
+    setForgotOpen(false);
+    setForgotError('');
+    setForgotNote('');
+  }
+
+  async function handleForgotRequest(e) {
+    e.preventDefault();
+    setForgotError('');
+    if (!EMAIL_RE.test(forgotEmail.trim())) { setForgotError('Enter a valid email address.'); return; }
+    setForgotBusy(true);
+    try {
+      const data = await forgotPassword(forgotEmail.trim());
+      setForgotStep('reset');
+      setForgotNote(
+        data.devCode
+          ? `Email delivery isn't configured — your code is ${data.devCode}`
+          : "If an account exists for that email, a reset code is on its way. Enter it below."
+      );
+    } catch (err) {
+      const status = err.response?.status;
+      setForgotError(
+        err.response?.data?.error ||
+        (status === 429 ? `Too many attempts. Please wait ${err.response?.data?.retryAfter ?? 'a moment'} seconds and try again.` :
+         'Could not send a reset code. Please try again.')
+      );
+    } finally {
+      setForgotBusy(false);
+    }
+  }
+
+  async function handleForgotReset(e) {
+    e.preventDefault();
+    setForgotError('');
+    if (forgotNewPw.length < 8) { setForgotError('New password must be at least 8 characters.'); return; }
+    if (forgotNewPw !== forgotConfirmPw) { setForgotError('Passwords do not match.'); return; }
+    setForgotBusy(true);
+    try {
+      await resetPassword(forgotEmail.trim(), forgotCode.trim(), forgotNewPw);
+      setForgotStep('done');
+    } catch (err) {
+      setForgotError(err.response?.data?.error || 'Could not reset your password. Please try again.');
+    } finally {
+      setForgotBusy(false);
+    }
+  }
+
+  async function handleForgotResend() {
+    setForgotError('');
+    setForgotNote('');
+    try {
+      const data = await forgotPassword(forgotEmail.trim());
+      setForgotNote(
+        data.devCode
+          ? `Email delivery isn't configured — your code is ${data.devCode}`
+          : 'A new code is on its way to your inbox.'
+      );
+    } catch (err) {
+      setForgotError(err.response?.data?.error || 'Could not resend the code. Please try again.');
+    }
+  }
+
   const inputStyle = {
     fontFamily: 'Inter, sans-serif',
     background: '#ffffff',
@@ -242,7 +328,176 @@ export default function Login() {
           </Link>
         </div>
 
-        {pendingEmail ? (
+        {forgotOpen ? (
+          <>
+            <h1
+              className="text-center mb-1"
+              style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '32px', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.1, color: '#0d0b1a' }}
+            >
+              {forgotStep === 'done' ? 'Password reset' : 'Reset your password'}
+            </h1>
+
+            {forgotStep === 'request' && (
+              <>
+                <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
+                  Enter your email and we'll send you a code to set a new password.
+                </p>
+                <form onSubmit={handleForgotRequest} className="space-y-3">
+                  <input
+                    type="email"
+                    placeholder="Email address"
+                    value={forgotEmail}
+                    onChange={e => setForgotEmail(e.target.value)}
+                    required
+                    autoFocus
+                    className="w-full px-4 py-3 text-sm focus:outline-none transition-all duration-200"
+                    style={{ ...inputStyle, borderRadius: '6px' }}
+                    onFocus={e => { e.target.style.borderColor = '#5B50FF'; e.target.style.boxShadow = '0 0 0 3px rgba(91,80,255,0.35)'; }}
+                    onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
+                  />
+
+                  <AnimatePresence>
+                    {forgotError && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                        className="py-2.5 px-4 text-xs text-center"
+                        style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', fontFamily: 'Inter, sans-serif' }}
+                      >
+                        <span style={{ color: '#ef4444' }}>{forgotError}</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <button
+                    type="submit"
+                    disabled={forgotBusy}
+                    className="w-full py-3 font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
+                    style={{ fontFamily: 'Inter, sans-serif', background: '#5B50FF', borderRadius: '6px', boxShadow: 'rgba(91,80,255,0.20) 0px 0px 24px 0px' }}
+                    onMouseEnter={e => { if (!forgotBusy) e.currentTarget.style.background = '#6E63FF'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#5B50FF'; }}
+                  >
+                    {forgotBusy ? (<><Loader2 size={16} className="animate-spin" /> Sending…</>) : (<>Send reset code <ArrowRight size={15} /></>)}
+                  </button>
+                </form>
+              </>
+            )}
+
+            {forgotStep === 'reset' && (
+              <>
+                <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
+                  Enter the 6-digit code sent to <span style={{ color: '#0d0b1a', fontWeight: 600 }}>{forgotEmail}</span> and choose a new password.
+                </p>
+                <form onSubmit={handleForgotReset} className="space-y-3">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="Enter 6-digit code"
+                    value={forgotCode}
+                    onChange={e => setForgotCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    required
+                    className="w-full px-4 py-3 text-sm text-center tracking-[0.4em] focus:outline-none transition-all duration-200"
+                    style={{ ...inputStyle, borderRadius: '6px' }}
+                    onFocus={e => { e.target.style.borderColor = '#5B50FF'; e.target.style.boxShadow = '0 0 0 3px rgba(91,80,255,0.35)'; }}
+                    onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
+                  />
+                  <div className="relative">
+                    <input
+                      type={showForgotPw ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      placeholder="New password (min 8 characters)"
+                      value={forgotNewPw}
+                      onChange={e => setForgotNewPw(e.target.value)}
+                      required
+                      className="w-full px-4 py-3 pr-12 text-sm focus:outline-none transition-all duration-200"
+                      style={{ ...inputStyle, borderRadius: '6px' }}
+                      onFocus={e => { e.target.style.borderColor = '#5B50FF'; e.target.style.boxShadow = '0 0 0 3px rgba(91,80,255,0.35)'; }}
+                      onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotPw(v => !v)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors"
+                      style={{ color: '#6b6490' }}
+                    >
+                      {showForgotPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                  <input
+                    type={showForgotPw ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    placeholder="Confirm new password"
+                    value={forgotConfirmPw}
+                    onChange={e => setForgotConfirmPw(e.target.value)}
+                    required
+                    className="w-full px-4 py-3 text-sm focus:outline-none transition-all duration-200"
+                    style={{ ...inputStyle, borderRadius: '6px' }}
+                    onFocus={e => { e.target.style.borderColor = '#5B50FF'; e.target.style.boxShadow = '0 0 0 3px rgba(91,80,255,0.35)'; }}
+                    onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
+                  />
+
+                  <AnimatePresence>
+                    {forgotError && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                        className="py-2.5 px-4 text-xs text-center"
+                        style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', fontFamily: 'Inter, sans-serif' }}
+                      >
+                        <span style={{ color: '#ef4444' }}>{forgotError}</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {forgotNote && (
+                    <p className="text-center text-xs" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>{forgotNote}</p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={forgotBusy || forgotCode.length < 6 || !forgotNewPw || !forgotConfirmPw}
+                    className="w-full py-3 font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
+                    style={{ fontFamily: 'Inter, sans-serif', background: '#5B50FF', borderRadius: '6px', boxShadow: 'rgba(91,80,255,0.20) 0px 0px 24px 0px' }}
+                    onMouseEnter={e => { if (!forgotBusy) e.currentTarget.style.background = '#6E63FF'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#5B50FF'; }}
+                  >
+                    {forgotBusy ? (<><Loader2 size={16} className="animate-spin" /> Resetting…</>) : (<>Reset password <ArrowRight size={15} /></>)}
+                  </button>
+                </form>
+
+                <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
+                  Didn't get it?{' '}
+                  <button type="button" onClick={handleForgotResend} className="underline" style={{ color: '#5B50FF' }}>Resend code</button>
+                </p>
+              </>
+            )}
+
+            {forgotStep === 'done' && (
+              <>
+                <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
+                  Your password has been updated. You can now sign in with your new password.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { closeForgot(); setMode('login'); setPassword(''); if (forgotEmail) setEmail(forgotEmail.trim()); }}
+                  className="w-full py-3 font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98]"
+                  style={{ fontFamily: 'Inter, sans-serif', background: '#5B50FF', borderRadius: '6px', boxShadow: 'rgba(91,80,255,0.20) 0px 0px 24px 0px' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#6E63FF'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#5B50FF'; }}
+                >
+                  Back to sign in <ArrowRight size={15} />
+                </button>
+              </>
+            )}
+
+            {forgotStep !== 'done' && (
+              <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
+                <button type="button" onClick={closeForgot} className="underline" style={{ color: '#6b6490' }}>
+                  Back to sign in
+                </button>
+              </p>
+            )}
+          </>
+        ) : pendingEmail ? (
           <>
             <h1
               className="text-center mb-1"
@@ -425,6 +680,18 @@ export default function Login() {
             </div>
             {passwordError && (
               <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#ef4444', marginTop: 4 }}>{passwordError}</p>
+            )}
+            {mode === 'login' && (
+              <div className="text-right mt-2">
+                <button
+                  type="button"
+                  onClick={openForgot}
+                  className="text-xs underline"
+                  style={{ fontFamily: 'Inter, sans-serif', color: '#5B50FF' }}
+                >
+                  Forgot password?
+                </button>
+              </div>
             )}
           </div>
 

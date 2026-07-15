@@ -29,7 +29,7 @@ function PlanBadge({ plan }) {
 }
 
 export default function Profile() {
-  const { user, logout, deleteAccount, setAuthUser } = useAuth();
+  const { user, logout, deleteAccount, setAuthUser, forgotPassword, resetPassword } = useAuth();
   const navigate = useNavigate();
 
   const [name, setName]         = useState('');
@@ -51,7 +51,9 @@ export default function Profile() {
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
 
-  // Change-password flow: 'closed' → 'verify' (confirm current) → 'new' (set new)
+  // Change-password flow: 'closed' → 'verify' (confirm current) → 'new' (set new).
+  // Forgot branch (for users who don't remember their current password):
+  // 'verify' → 'forgot' (emailed code + new password, no current password needed).
   const [pwStep, setPwStep] = useState('closed');
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw] = useState('');
@@ -59,11 +61,54 @@ export default function Profile() {
   const [pwError, setPwError] = useState('');
   const [pwBusy, setPwBusy] = useState(false);
   const [pwSaved, setPwSaved] = useState(false);
+  const [pwCode, setPwCode] = useState('');
+  const [pwNote, setPwNote] = useState('');
 
   function resetPwFlow() {
     setPwStep('closed');
-    setCurrentPw(''); setNewPw(''); setConfirmPw('');
-    setPwError(''); setPwBusy(false);
+    setCurrentPw(''); setNewPw(''); setConfirmPw(''); setPwCode('');
+    setPwError(''); setPwNote(''); setPwBusy(false);
+  }
+
+  // Forgot-password branch: email a reset code to the signed-in user's own
+  // address, then let them set a new password with that code instead of their
+  // (forgotten) current one.
+  async function handleForgotCurrentPw() {
+    setPwError('');
+    setPwNote('');
+    setPwBusy(true);
+    try {
+      const data = await forgotPassword(user.email);
+      setPwStep('forgot');
+      setPwCode(''); setNewPw(''); setConfirmPw('');
+      setPwNote(
+        data.devCode
+          ? `Email delivery isn't configured — your code is ${data.devCode}`
+          : `We emailed a reset code to ${user.email}. Enter it below to set a new password.`
+      );
+    } catch (err) {
+      setPwError(err.response?.data?.error || 'Could not send a reset code. Please try again.');
+    } finally {
+      setPwBusy(false);
+    }
+  }
+
+  async function handleResetPw(e) {
+    e.preventDefault();
+    setPwError('');
+    if (newPw.length < 8) { setPwError('New password must be at least 8 characters.'); return; }
+    if (newPw !== confirmPw) { setPwError('New passwords do not match.'); return; }
+    setPwBusy(true);
+    try {
+      await resetPassword(user.email, pwCode.trim(), newPw);
+      resetPwFlow();
+      setPwSaved(true);
+      setTimeout(() => setPwSaved(false), 3000);
+    } catch (err) {
+      setPwError(err.response?.data?.error || 'Could not reset your password. Please try again.');
+    } finally {
+      setPwBusy(false);
+    }
   }
 
   async function handleVerifyCurrentPw(e) {
@@ -519,6 +564,90 @@ export default function Profile() {
                         Cancel
                       </button>
                     </div>
+                    <button
+                      type="button"
+                      onClick={handleForgotCurrentPw}
+                      disabled={pwBusy}
+                      className="text-xs underline transition-opacity hover:opacity-70 disabled:opacity-50"
+                      style={{ fontFamily: 'Inter, sans-serif', color: '#C4B5FD' }}
+                    >
+                      Forgot your password? Email me a reset code instead
+                    </button>
+                  </form>
+                )}
+
+                {pwStep === 'forgot' && (
+                  <form onSubmit={handleResetPw} className="space-y-4 mt-4">
+                    {pwNote && (
+                      <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>{pwNote}</p>
+                    )}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Reset code</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        value={pwCode}
+                        onChange={e => setPwCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none transition-all tracking-[0.3em]"
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                        placeholder="6-digit code"
+                        autoFocus
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>New password</label>
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={newPw} onChange={e => setNewPw(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none transition-all"
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                        placeholder="At least 8 characters"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold mb-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Confirm new password</label>
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none transition-all"
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                        placeholder="Re-enter your new password"
+                      />
+                    </div>
+                    {pwError && (
+                      <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#ef4444' }}>{pwError}</p>
+                    )}
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="submit"
+                        disabled={pwBusy || pwCode.length < 6 || !newPw || !confirmPw}
+                        className="px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-80 disabled:opacity-50 flex items-center gap-2"
+                        style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+                      >
+                        {pwBusy ? <Loader2 size={14} className="animate-spin" /> : null}
+                        Reset password
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetPwFlow}
+                        className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-70"
+                        style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleForgotCurrentPw}
+                      disabled={pwBusy}
+                      className="text-xs underline transition-opacity hover:opacity-70 disabled:opacity-50"
+                      style={{ fontFamily: 'Inter, sans-serif', color: '#C4B5FD' }}
+                    >
+                      Resend code
+                    </button>
                   </form>
                 )}
 

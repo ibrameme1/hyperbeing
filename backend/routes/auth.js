@@ -10,7 +10,7 @@ import { Strategy as FacebookStrategy } from 'passport-facebook';
 import axios from 'axios';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { sendWelcomeEmail, sendAccountDeleted, sendVerificationCode, isEmailConfigured } from '../services/emailService.js';
+import { sendWelcomeEmail, sendAccountDeleted, sendVerificationCode, sendPasswordResetCode, isEmailConfigured } from '../services/emailService.js';
 import { validate, isString, isEmail, isOptionalString } from '../middleware/validate.js';
 import { authLimiter, loginLimiter, authBackoff } from '../middleware/rateLimits.js';
 
@@ -27,6 +27,13 @@ const pendingRegistrations = new Map(); // email(lowercased) -> { name, password
 // This holds the in-flight challenge; it's only created after a correct password.
 const pendingLoginVerifications = new Map(); // email(lowercased) -> { userId, code, expiresAt, attempts }
 
+// Forgot-password challenges. A code is emailed to a KNOWN account (email/password
+// only) and, once confirmed with the correct code, lets the holder set a new
+// password without knowing the old one. Only created after we've confirmed an
+// account with a password exists — but the HTTP response is identical either way
+// so /forgot-password can't be used to enumerate registered emails.
+const pendingPasswordResets = new Map(); // email(lowercased) -> { userId, code, expiresAt, attempts }
+
 const CODE_TTL_MS = 10 * 60 * 1000;     // codes expire after 10 minutes
 const MAX_CODE_ATTEMPTS = 6;            // wrong-code guesses before the code is burned
 
@@ -38,7 +45,7 @@ function generateCode() {
 // Evict expired pending entries so the maps can't grow unbounded.
 setInterval(() => {
   const now = Date.now();
-  for (const map of [pendingRegistrations, pendingLoginVerifications]) {
+  for (const map of [pendingRegistrations, pendingLoginVerifications, pendingPasswordResets]) {
     for (const [key, entry] of map) {
       if (entry.expiresAt < now) map.delete(key);
     }
@@ -601,6 +608,104 @@ router.post('/change-password', authenticateToken,
     // NB: users has no updated_at column — don't write one here (GAPS #3).
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(password_hash, req.user.id);
     logger.info('password changed', { userId: req.user.id });
+    res.json({ message: 'Password updated' });
+  },
+);
+
+// ── Forgot password ─────────────────────────────────────────────────────────
+// Step 1: email a reset code to a known email/password account. Works whether or
+// not the caller is signed in — the Profile tab uses it for "I forgot my current
+// password", and the Login page uses it for the classic forgotten-password flow.
+router.post('/forgot-password',
+  authBackoff,
+  authLimiter,
+  validate({ email: isEmail() }),
+  (req, res) => {
+    const normalizedEmail = req.body.email.toLowerCase();
+    const db = getDb();
+    const user = db
+      .prepare('SELECT id, name, password_hash FROM users WHERE email = ?')
+      .get(normalizedEmail);
+
+    // Only issue a code for accounts that actually have a password to reset.
+    // Social-login-only accounts have no password_hash — nothing to reset.
+    // Either way we return the SAME generic response so this endpoint can't be
+    // used to discover which emails are registered.
+    if (user && user.password_hash) {
+      const code = generateCode();
+      pendingPasswordResets.set(normalizedEmail, {
+        userId: user.id,
+        code,
+        expiresAt: Date.now() + CODE_TTL_MS,
+        attempts: 0,
+      });
+      sendPasswordResetCode(user.name, normalizedEmail, code);
+      logger.info('password reset requested', { userId: user.id });
+
+      // Dev/mock mode (no Resend key): hand the code back so the flow stays
+      // exercisable. Never do this once email delivery is configured.
+      const payload = { ok: true };
+      if (!isEmailConfigured()) payload.devCode = code;
+      return res.json(payload);
+    }
+
+    // Unknown email or social-only account: pretend we sent something.
+    logger.info('password reset requested for unresettable account', { email: normalizedEmail });
+    res.json({ ok: true });
+  },
+);
+
+// Step 2: confirm the emailed code and set the new password. Possessing the code
+// proves the address is reachable, so no current password is required.
+router.post('/reset-password',
+  authBackoff,
+  authLimiter,
+  validate({
+    email:       isEmail(),
+    code:        isString(4, 8),
+    newPassword: isString(8, 128),
+  }),
+  async (req, res) => {
+    const normalizedEmail = req.body.email.toLowerCase();
+    const code = req.body.code.trim();
+    const { newPassword } = req.body;
+    const pending = pendingPasswordResets.get(normalizedEmail);
+
+    if (!pending || pending.expiresAt < Date.now()) {
+      pendingPasswordResets.delete(normalizedEmail);
+      return res.status(400).json({ error: 'Your reset code has expired. Please request a new one.' });
+    }
+
+    if (pending.code !== code) {
+      pending.attempts += 1;
+      if (pending.attempts >= MAX_CODE_ATTEMPTS) {
+        pendingPasswordResets.delete(normalizedEmail);
+        req.recordAuthFailure?.();
+        return res.status(400).json({ error: 'Too many incorrect codes. Please request a new reset code.' });
+      }
+      req.recordAuthFailure?.();
+      return res.status(400).json({ error: 'That code is incorrect. Please check your email and try again.' });
+    }
+
+    const db = getDb();
+    const user = db.prepare('SELECT id, password_hash FROM users WHERE id = ?').get(pending.userId);
+    if (!user) {
+      pendingPasswordResets.delete(normalizedEmail);
+      return res.status(400).json({ error: 'We could not find that account. Please sign up again.' });
+    }
+
+    // Reject reusing the existing password, matching /change-password.
+    if (user.password_hash && await bcrypt.compare(newPassword, user.password_hash)) {
+      return res.status(400).json({ error: 'Your new password must be different from your current one.' });
+    }
+
+    const password_hash = await bcrypt.hash(newPassword, 12);
+    // NB: users has no updated_at column — don't write one here (GAPS #3).
+    // Setting a verified password also clears any legacy one-time login gate.
+    db.prepare('UPDATE users SET password_hash = ?, email_verified = 1 WHERE id = ?').run(password_hash, pending.userId);
+    pendingPasswordResets.delete(normalizedEmail);
+    req.clearAuthBackoff?.();
+    logger.info('password reset via emailed code', { userId: pending.userId });
     res.json({ message: 'Password updated' });
   },
 );

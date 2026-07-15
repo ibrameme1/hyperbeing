@@ -128,6 +128,24 @@ export async function sendVerificationCode(name, email, code) {
   await send(email, `${code} is your HyperBeing verification code`, html);
 }
 
+// ── 1c. Password reset code ───────────────────────────────────────────────────
+
+export async function sendPasswordResetCode(name, email, code) {
+  const html = base(`
+    <p style="margin:0 0 4px;font-size:13px;color:#7c3aed;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Reset your password 🔑</p>
+    <h1 style="margin:0 0 16px;font-size:26px;font-weight:800;color:#18181b;line-height:1.2;">Hey ${escapeHtml(name)}, let's get you back in.</h1>
+    <p style="margin:0 0 20px;font-size:15px;color:#52525b;line-height:1.6;">
+      Enter this code back in HyperBeing to choose a new password:
+    </p>
+    <div style="text-align:center;margin:8px 0 4px;">
+      <span style="display:inline-block;padding:16px 28px;background:#f9f8ff;border:1px solid #ece9ff;border-radius:12px;font-size:32px;font-weight:800;letter-spacing:10px;color:#18181b;">${escapeHtml(code)}</span>
+    </div>
+    ${divider()}
+    <p style="margin:0;font-size:13px;color:#a1a1aa;">This code expires in 10 minutes. If you didn't ask to reset your password, you can safely ignore this email — your account is unchanged.</p>
+  `);
+  await send(email, `${code} is your HyperBeing password reset code`, html);
+}
+
 // ── 2. Purchase confirmation ──────────────────────────────────────────────────
 
 export async function sendPurchaseConfirmation(name, email, planName, credits) {
