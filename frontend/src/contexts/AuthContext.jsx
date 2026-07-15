@@ -146,6 +146,20 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
+  // Forgot-password step 1: email a reset code. Returns { ok, devCode? } — the
+  // response is intentionally generic (never reveals whether the email exists).
+  const forgotPassword = useCallback(async (email) => {
+    const { data } = await api.post('/auth/forgot-password', { email });
+    return data;
+  }, []);
+
+  // Forgot-password step 2: confirm the code and set the new password. Does not
+  // establish a session — the user signs in with their new password afterward.
+  const resetPassword = useCallback(async (email, code, newPassword) => {
+    const { data } = await api.post('/auth/reset-password', { email, code, newPassword });
+    return data;
+  }, []);
+
   const logout = useCallback(() => {
     capture('user_logged_out');
     clearAuthStorage();
@@ -183,7 +197,7 @@ export function AuthProvider({ children }) {
   }, [user?.id, logout]);
 
   return (
-    <AuthContext.Provider value={{ user, subscription, loading, login, verifyLogin, resendLoginCode, register, verifyEmail, resendCode, logout, deleteAccount, setAuthUser, refreshSubscription: fetchSubscription }}>
+    <AuthContext.Provider value={{ user, subscription, loading, login, verifyLogin, resendLoginCode, register, verifyEmail, resendCode, forgotPassword, resetPassword, logout, deleteAccount, setAuthUser, refreshSubscription: fetchSubscription }}>
       {children}
     </AuthContext.Provider>
   );
