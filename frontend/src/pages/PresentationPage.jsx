@@ -94,6 +94,7 @@ export default function PresentationPage() {
   const [loadError, setLoadError] = useState(false);
   const [loadRetry, setLoadRetry] = useState(0);
   const [sseError, setSseError] = useState('');
+  const [pptxEvent, setPptxEvent] = useState(null);
 
   // For completed presentations opened from dashboard, show skeleton wireframes immediately.
   // Use status:'complete' with null image_data so SlideRenderer shows a pulse skeleton
@@ -394,6 +395,13 @@ export default function PresentationPage() {
         );
       }
 
+      // The server rebuilds the editable .pptx whenever slides settle and
+      // reports progress here, so the export menu flips to "ready" the moment
+      // the deck is built rather than on the viewer's next poll.
+      if (event.type === 'pptx_status') {
+        setPptxEvent({ ...event, at: Date.now() });
+      }
+
       if (event.type === 'title_updated') {
         setPresentation(p => p ? { ...p, title: event.title } : p);
       }
@@ -554,6 +562,7 @@ export default function PresentationPage() {
             navigate('/dashboard');
           }}
           onSlidesUpdate={setGeneratedSlides}
+          pptxEvent={pptxEvent}
           onTitleChange={(t) => setPresentation(p => ({ ...p, title: t }))}
         />
       </>

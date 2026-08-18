@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Download, Loader2, ArrowLeft,
-  Sparkles, Send, Images, FileDown, Paperclip, X, Plus,
+  Sparkles, Send, Images, FileDown, Presentation, Paperclip, X, Plus,
   AlertTriangle, RefreshCw, Check, Pencil, Trash2, ImageIcon, Lock,
   History, RotateCcw,
 } from 'lucide-react';
@@ -10,6 +10,7 @@ import SlideRenderer from './SlideRenderer';
 import OutOfCreditsModal from './OutOfCreditsModal';
 import FeedbackButton from './FeedbackButton';
 import { exportToPDF, exportImages } from '../utils/pdfExport';
+import { exportToPPTX, fetchPptxStatus } from '../utils/pptxExport';
 import api from '../api/client';
 import { capture } from '../utils/posthog';
 import { fileToImageAttachment } from '../utils/imageAttachment';
@@ -105,7 +106,7 @@ function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDe
   );
 }
 
-export default function PresentationViewer({ slides, presentationId, title, onBack, onSlidesUpdate, onTitleChange, currentPlan = 'free', deckStyle = 'classic' }) {
+export default function PresentationViewer({ slides, presentationId, title, onBack, onSlidesUpdate, onTitleChange, currentPlan = 'free', deckStyle = 'classic', pptxEvent = null }) {
   const [current, setCurrent] = useState(0);
   const [outOfCredits, setOutOfCredits] = useState(null);
   const [unlockingSlides, setUnlockingSlides] = useState(new Set());
@@ -113,6 +114,10 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   const [editLoading, setEditLoading] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
   const [exportingImages, setExportingImages] = useState(false);
+  const [exportingPPTX, setExportingPPTX] = useState(false);
+  // Readiness of the server-built editable .pptx: 'ready' | 'building' | 'failed' | 'none'
+  const [pptxStatus, setPptxStatus] = useState(null);
+  const [pptxNote, setPptxNote] = useState('');
   const [updatingSlides, setUpdatingSlides] = useState(new Set());
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [localSlides, setLocalSlides] = useState(slides);
@@ -398,6 +403,58 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
     } finally { setExportingPDF(false); }
   }
 
+  // Readiness of the editable .pptx. The server starts building it as soon as a
+  // deck's slides settle, so this is usually 'ready' before anyone opens the
+  // menu; hitting the status endpoint also re-schedules a build if the deck went
+  // stale (a slide was edited since it was built), which is why it re-runs on
+  // every change to the slide images rather than only on mount.
+  const slideImageKey = localSlides.map(s => `${s.index}:${s.image_data || ''}`).join('|');
+  useEffect(() => {
+    if (!presentationId) return;
+    let cancelled = false;
+    let timer;
+
+    async function check() {
+      const status = await fetchPptxStatus(presentationId);
+      if (cancelled || !status) return;
+      setPptxStatus(status);
+      // Poll while it builds — a 10-slide deck takes roughly a minute, and the
+      // menu should flip from "preparing" to ready without a reload.
+      if (status.status === 'building') timer = setTimeout(check, 6000);
+    }
+    check();
+
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [presentationId, slideImageKey]);
+
+  // Live pptx_status events from the generation stream, merged over whatever the
+  // status endpoint last returned — the event carries the fields that changed.
+  useEffect(() => {
+    if (!pptxEvent) return;
+    const { type, at, ...status } = pptxEvent;
+    setPptxStatus(prev => ({ ...(prev || {}), ...status }));
+  }, [pptxEvent]);
+
+  async function handleExportPPTX() {
+    setExportingPPTX(true); setShowExportMenu(false); setPptxNote('');
+    try {
+      const { mode, editableSlides, totalSlides } = await exportToPPTX(presentationId, titleValue);
+      capture('presentation_exported', {
+        presentation_id: presentationId, format: 'pptx', mode,
+        editable_slides: editableSlides, slide_count: localSlides.length,
+      });
+      if (mode !== 'editable') {
+        setPptxNote('Downloaded a picture-only deck - the editable version is still being prepared. Export again in a minute for text and charts you can edit.');
+      } else if (editableSlides < totalSlides) {
+        setPptxNote(`${editableSlides} of ${totalSlides} slides came out fully editable; the rest are pictures.`);
+      }
+    } catch (err) {
+      setPptxNote(err.response?.status === 409
+        ? 'There are no finished slides to export yet.'
+        : 'PowerPoint export failed. Please try again.');
+    } finally { setExportingPPTX(false); }
+  }
+
   async function handleExportImages() {
     setExportingImages(true); setShowExportMenu(false);
     try {
@@ -605,7 +662,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
         <div className="relative flex-shrink-0" ref={exportMenuRef}>
           <button
             onClick={() => setShowExportMenu(v => !v)}
-            disabled={exportingPDF || exportingImages}
+            disabled={exportingPDF || exportingImages || exportingPPTX}
             className="export-cta-btn flex items-center gap-1.5 px-3 py-1.5 text-white transition-all duration-150 active:scale-95"
             style={{
               background: '#5B50FF',
@@ -617,7 +674,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               boxShadow: 'none',
             }}
           >
-            {(exportingPDF || exportingImages) ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            {(exportingPDF || exportingImages || exportingPPTX) ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             Export
           </button>
 
@@ -628,7 +685,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 top-10 bg-white dark:bg-[#141414] shadow-ios-xl border border-gray-100 dark:border-[#1e1e1e] py-2 w-48 z-50"
+                className="absolute right-0 top-10 bg-white dark:bg-[#141414] shadow-ios-xl border border-gray-100 dark:border-[#1e1e1e] py-2 w-64 z-50"
                 style={{ borderRadius: 12 }}
               >
                 <button onClick={handleExportImages} className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-sm text-gray-800 dark:text-[#f0f0ee]">
@@ -639,7 +696,45 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   <FileDown size={15} style={{ color: '#8B80FF' }} />
                   Export as PDF
                 </button>
+                <button
+                  onClick={handleExportPPTX}
+                  className="w-full flex items-start gap-2.5 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-sm text-gray-800 dark:text-[#f0f0ee] text-left"
+                >
+                  {pptxStatus?.status === 'building'
+                    ? <Loader2 size={15} className="animate-spin mt-0.5" style={{ color: '#8B80FF' }} />
+                    : <Presentation size={15} className="mt-0.5" style={{ color: '#8B80FF' }} />}
+                  <span className="flex flex-col">
+                    Export as PowerPoint
+                    {/* Say plainly which of the two decks they're about to get:
+                        the editable rebuild, or the picture-only stand-in that
+                        the server falls back to while the rebuild is running. */}
+                    <span className="text-[11px] leading-tight text-gray-500 dark:text-zinc-500">
+                      {pptxStatus?.status === 'ready'
+                        ? 'Editable text, shapes and charts'
+                        : pptxStatus?.status === 'building'
+                          ? 'Preparing editable version - downloads pictures for now'
+                          : 'Pictures only'}
+                    </span>
+                  </span>
+                </button>
               </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Result of the last PowerPoint export — which deck they got, or why
+              it failed. Dismissed by clicking it, and by the next export. */}
+          <AnimatePresence>
+            {pptxNote && (
+              <motion.button
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                onClick={() => setPptxNote('')}
+                className="absolute right-0 top-10 w-72 text-left px-3.5 py-2.5 text-[12px] leading-snug bg-white dark:bg-[#141414] text-gray-700 dark:text-zinc-300 border border-gray-100 dark:border-[#1e1e1e] shadow-ios-xl z-50"
+                style={{ borderRadius: 10 }}
+              >
+                {pptxNote}
+              </motion.button>
             )}
           </AnimatePresence>
         </div>

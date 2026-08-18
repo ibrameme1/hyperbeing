@@ -60,13 +60,18 @@ backend/
     emailService.js    Resend templates
     logger.js / metrics.js / tracer.js / posthogClient.js  Observability
     minimalisticExamples.js  Few-shot exemplar prompts for the minimalistic style
-  prompts/             Markdown system prompts loaded from disk (prompt generator, design mode)
+    imageStore.js      Slide images on disk (filenames in the DB, bytes on the volume)
+    pptxStore.js       Pre-built .pptx exports on disk (same pattern, cache semantics)
+    pptx/              Image -> editable PowerPoint pipeline (analyzer, plate, builder, orchestrator)
+  prompts/             Markdown system prompts loaded from disk (prompt generator, design mode, pptx triage)
+  tools/img2pptx/      The manual SOP the pptx pipeline automates (docs + the Python reference tools)
 frontend/
   src/pages/           Route-level components (Dashboard, PresentationPage, Homepage, Pricing…)
   src/components/      PresentationViewer, PlanRevealScreen, QuestionFlow, modals, etc.
   src/api/client.js    axios instance with token-refresh interceptor
   src/utils/sse.js     Auth-aware EventSource wrapper (token via query param)
   src/utils/pdfExport.js  Client-side PDF/PNG export (jsPDF), free-plan watermark
+  src/utils/pptxExport.js Server-built PowerPoint export (readiness check + blob download)
   public/              llms.txt, sitemap, robots.txt, generated markdown mirrors (index.md files)
 scripts/generate_markdown_mirrors.py  Renders each public route headlessly → markdown mirror (SEO for AI crawlers)
 .githooks/pre-commit   Auto-regenerates mirrors when frontend page content changes (never blocks commits)
@@ -107,6 +112,18 @@ Front-door flow (Dashboard → new presentation):
 7. **Finish** — status → `completed`, slide 0's image becomes the dashboard `thumbnail`, a "deck ready" email is sent.
 
 There is no alternate flow anymore: the in-presentation chat path (`POST /:id/messages` → `streamChat` → `POST /:id/generate` → `runGeneration()`, plus the frontend `ChatPhase`) was **removed in 2026-07** — it was unreachable in practice (no code path ever created a presentation with status `'chat'`) and its serial pipeline charged no credits. The Dashboard prompt is the only way decks are created. The `messages` table remains: it stores the initial brief (and its attachments, which the pipeline re-reads).
+
+### The export pipeline: images -> editable PowerPoint
+
+Slides are generated images, so PDF and PNG export are trivial (client-side, `pdfExport.js`) and PowerPoint export is not: a picture of a slide pasted into a .pptx is not an editable deck. `backend/services/pptx/` converts each render into real PowerPoint objects, following the SOP vendored at `backend/tools/img2pptx/WAYS_OF_WORKING.md` (a method that was developed by hand first — the Python tools there are its reference implementation, kept for debugging).
+
+1. **Measure** (`pptx/analyzer.js`) — one Claude vision call per slide, system prompt in `prompts/pptx_triage_system.md`, returns every region of the slide as JSON **in source-image pixels**: text blocks with their transcribed copy, shapes with sampled fills, charts with the real numbers read off them, and any raster object worth cutting out. Coordinates are pixels all the way through; inches appear only in the builder's `px()` helper.
+2. **Validate** (`pptx/spec.js`) — the model's output is untrusted input. Bad hex, off-canvas boxes, chartless charts, unknown kinds and duplicate stacked elements are dropped, never repaired into something plausible-looking in the wrong place.
+3. **Clean the plate** (`pptx/plate.js`) — everything about to be rebuilt is erased from the background image first, or it exists twice: once live, once baked into the picture underneath, and dragging either one reveals a torn fragment. This is a Node/sharp port of `clean_plate.py` (collar-sampled gradient fill plus a masked blur, since the deployed backend has no OpenCV).
+4. **Build** (`pptx/builder.js`) — pptxgenjs, stacking plate -> raster cutouts -> shapes -> native charts -> text. Charts are `addChart`, so double-clicking one in PowerPoint opens its data sheet.
+5. **Cache** (`pptx/index.js`) — the built file goes to `pptxStore`, and each slide's measurement is cached in `slide_pptx_specs` **keyed by the slide's image filename**. Editing one slide re-measures that slide and reuses every other.
+
+The whole thing runs in the background: `schedulePptxBuild()` fires whenever a deck's slides settle (generation completes, a slide is edited, regenerated, restored, added, unlocked, deleted, reordered). `GET /:id/export/pptx` then serves a finished file. If it isn't finished — the build is still running, or it failed — the route builds a flat one-image-per-slide deck on the spot (about a second) rather than blocking on vision calls, and says which one it returned in `X-Pptx-Mode`. In mock mode every export is that flat deck.
 
 ### SSE / real-time design
 

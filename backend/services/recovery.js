@@ -3,6 +3,7 @@ import path from 'path';
 import { getDb } from '../database.js';
 import { refundCredits, CREDIT_COSTS } from './stripeService.js';
 import { IMAGE_DIR } from './imageStore.js';
+import { EXPORT_DIR } from './pptxStore.js';
 import { logger } from './logger.js';
 
 // Startup crash recovery. Generation runs as detached in-process promises, so
@@ -120,5 +121,45 @@ export function sweepOrphanImages() {
 
   if (deleted > 0) {
     logger.info('swept orphan image files on startup', { deleted, freedMB: +(freedBytes / 1048576).toFixed(1) });
+  }
+}
+
+// Same sweep for built .pptx exports. These are a cache — a deleted file costs
+// one rebuild — but a deck is rebuilt on every slide change, so without this the
+// superseded files pile up on the volume.
+export function sweepOrphanExports() {
+  let files;
+  try {
+    files = fs.readdirSync(EXPORT_DIR);
+  } catch {
+    return; // export dir not created yet — nothing to sweep
+  }
+
+  const db = getDb();
+  const referenced = new Set();
+  try {
+    for (const row of db.prepare('SELECT pptx_file FROM presentations WHERE pptx_file IS NOT NULL').all()) {
+      if (row.pptx_file) referenced.add(path.basename(row.pptx_file));
+    }
+  } catch {
+    return; // column not migrated yet — never sweep blind
+  }
+
+  const cutoff = Date.now() - ORPHAN_MIN_AGE_MS;
+  let deleted = 0, freedBytes = 0;
+  for (const f of files) {
+    if (referenced.has(f)) continue;
+    const full = path.join(EXPORT_DIR, f);
+    try {
+      const st = fs.statSync(full);
+      if (!st.isFile() || st.mtimeMs > cutoff) continue; // too new — could be in-flight
+      freedBytes += st.size;
+      fs.unlinkSync(full);
+      deleted++;
+    } catch { /* concurrent delete / race — ignore */ }
+  }
+
+  if (deleted > 0) {
+    logger.info('swept orphan pptx exports on startup', { deleted, freedMB: +(freedBytes / 1048576).toFixed(1) });
   }
 }

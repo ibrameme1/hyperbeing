@@ -23,7 +23,7 @@ import { requestLogger } from './middleware/requestLogger.js';
 import { logger } from './services/logger.js';
 import { getPostHog } from './services/posthogClient.js';
 import { clearStaleTestSubscriptions } from './services/stripeService.js';
-import { sweepStaleWork, sweepOrphanImages } from './services/recovery.js';
+import { sweepStaleWork, sweepOrphanImages, sweepOrphanExports } from './services/recovery.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -59,6 +59,9 @@ app.use(cors({
     cb(new Error('Not allowed by CORS'));
   },
   credentials: true,
+  // The pptx export tells the browser whether it got the editable deck or the
+  // flat-image fallback; without this the header is invisible cross-origin.
+  exposedHeaders: ['X-Pptx-Mode', 'X-Pptx-Editable-Slides', 'X-Pptx-Total-Slides', 'Content-Disposition'],
 }));
 
 // Structured request logging + trace IDs (before auth so every request is covered)
@@ -178,6 +181,7 @@ try { sweepStaleWork(); } catch (err) { logger.error('startup sweep failed', { e
 // Delete image files no row references anymore (crash-looped migration leftovers,
 // generations killed mid-flight). Age-guarded so it never touches in-flight work.
 try { sweepOrphanImages(); } catch (err) { logger.error('orphan image sweep failed', { errorMessage: err.message }); }
+try { sweepOrphanExports(); } catch (err) { logger.error('orphan export sweep failed', { errorMessage: err.message }); }
 clearStaleTestSubscriptions().catch(() => {}); // best-effort cleanup on startup
 app.listen(PORT, '0.0.0.0', () => {
   logger.info('server started', { port: PORT, env: process.env.NODE_ENV || 'development' });

@@ -1,7 +1,7 @@
 {
   "name": "hyperbeing-backend",
   "version": "1.0.0",
-  "description": "AI Presentation Maker \u2014 Backend",
+  "description": "AI Presentation Maker — Backend",
   "type": "module",
   "main": "server.js",
   "scripts": {
@@ -30,11 +30,14 @@
     "passport-facebook": "^3.0.0",
     "passport-google-oauth20": "^2.0.0",
     "posthog-node": "^5.35.11",
+    "pptxgenjs": "^4.0.1",
     "resend": "^6.12.4",
+    "sharp": "^0.35.3",
     "stripe": "^22.1.1",
     "uuid": "^11.0.3"
   },
   "devDependencies": {
+    "jszip": "^3.10.1",
     "nodemon": "^3.1.7",
     "vitest": "^4.1.10"
   }

@@ -6,6 +6,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import { analyzePresentationStream, generateCompactPlan, streamSlidePrompts, generateSingleSlidePrompt, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
 import { generateSlideImage, editSlideImage, isPlaceholderImage } from '../services/imageGeneration.js';
 import * as imageStore from '../services/imageStore.js';
+import * as pptxService from '../services/pptx/index.js';
 import {
   deductCredits, refundCredits, deductCreditsForEdit, computeAffordableSlides,
   updateLedgerMetadata, getOrCreateSubscription, CREDIT_COSTS, checkTokenBudget,
@@ -105,6 +106,32 @@ function broadcastDashboardUpdate(db, userId, presentationId) {
   clients.forEach(res => {
     try { res.write(payload); } catch {}
   });
+}
+
+// ── Editable PowerPoint export ───────────────────────────────────────────────
+// Converting a slide render into live PowerPoint objects costs a vision call per
+// slide, so it never happens on the export click: it's kicked off in the
+// background whenever a deck's slides settle (generation finishes, a slide is
+// edited, regenerated, restored, added, unlocked, deleted or reordered), and the
+// export route serves the finished file. Callers are fire-and-forget — a failed
+// export cache must never fail the request that touched the slides.
+function schedulePptxBuild(presentationId, userId) {
+  try {
+    pptxService.scheduleDeckBuild(presentationId, {
+      userId,
+      watermark: isFreePlan(userId),
+      onStatus: (status) => broadcast(presentationId, { type: 'pptx_status', ...status }),
+    });
+  } catch (err) {
+    logger.warn('pptx build could not be scheduled', { presentationId, errorMessage: err.message });
+  }
+}
+
+// Free-plan exports carry the same "Made with HyperBeing" mark the PDF and image
+// exports add client-side.
+function isFreePlan(userId) {
+  if (!userId) return true;
+  try { return getOrCreateSubscription(userId).plan === 'free'; } catch { return false; }
 }
 
 // ─── Fetch URL content for use as brief context ───────────────────────────────
@@ -299,6 +326,60 @@ router.get('/:id/slides/:index/versions/:versionId/image', (req, res) => {
   res.setHeader('Content-Type', imageStore.mimeFor(v.image_file));
   res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
   res.sendFile(filePath);
+});
+
+// ─── Editable .pptx export: readiness ─────────────────────────────────────────
+// The frontend polls/listens for this so the Export menu can say whether the
+// editable deck is ready or still being built. Also (re)schedules the build if
+// the deck is stale, which makes this the self-healing path for anything that
+// changed slides without scheduling a rebuild.
+router.get('/:id/export/pptx/status', authenticateToken, (req, res) => {
+  const db = getDb();
+  const owned = db.prepare('SELECT id FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!owned) return res.status(404).json({ error: 'Presentation not found' });
+
+  const status = pptxService.getDeckStatus(req.params.id, { watermark: isFreePlan(req.user.id) });
+  if (!status) return res.status(404).json({ error: 'Presentation not found' });
+  if (status.status !== 'ready' && status.status !== 'building' && status.exportable_slides > 0) {
+    schedulePptxBuild(req.params.id, req.user.id);
+    return res.json({ ...status, status: 'building' });
+  }
+  res.json(status);
+});
+
+// ─── Editable .pptx export: download ──────────────────────────────────────────
+// Serves the pre-built editable deck when it's ready. When it isn't (the build
+// is still running, or it failed), it builds a flat one-image-per-slide deck on
+// the spot rather than making the user wait on vision calls, and says so in
+// X-Pptx-Mode so the UI can offer to try again once the editable deck lands.
+router.get('/:id/export/pptx', authenticateToken, async (req, res) => {
+  const db = getDb();
+  const pres = db.prepare('SELECT title FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!pres) return res.status(404).json({ error: 'Presentation not found' });
+
+  try {
+    const result = await pptxService.getDeckForDownload(req.params.id, {
+      userId: req.user.id,
+      watermark: isFreePlan(req.user.id),
+      onStatus: (status) => broadcast(req.params.id, { type: 'pptx_status', ...status }),
+    });
+    if (!result) return res.status(404).json({ error: 'Presentation not found' });
+    if (result.error) return res.status(409).json({ error: result.error });
+
+    const safeName = (pres.title || 'presentation').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').slice(0, 80) || 'presentation';
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}.pptx"`);
+    res.setHeader('X-Pptx-Mode', result.mode);
+    res.setHeader('X-Pptx-Editable-Slides', String(result.editable_slides));
+    res.setHeader('X-Pptx-Total-Slides', String(result.total_slides));
+    res.setHeader('Cache-Control', 'private, no-store');
+
+    if (result.path) return res.sendFile(result.path);
+    res.send(result.buffer);
+  } catch (err) {
+    logger.error('pptx export failed', { presentationId: req.params.id, errorMessage: err.message });
+    res.status(500).json({ error: 'We could not build the PowerPoint file. Please try again.' });
+  }
 });
 
 // ─── Analyze brief and return contextual questions ─────────────────────────
@@ -663,6 +744,11 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
 
   tracer.recordStep(traceId, 'full_flow', 'completed', Date.now() - _t);
   broadcast(presentationId, { type: 'complete', total_slides: allSlides.length });
+
+  // The deck is final — start converting its slides into an editable .pptx now,
+  // in the background, so "Export to PowerPoint" is a download by the time
+  // anyone clicks it.
+  schedulePptxBuild(presentationId, userId);
 }
 
 // ─── Get single presentation with messages ────────────────────────────────
@@ -895,6 +981,7 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
       db.prepare(thumbSql).run(...thumbArgs);
 
       broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
+      schedulePptxBuild(req.params.id, req.user.id);
     } catch (err) {
       logger.error('slide edit failed', { errorMessage: err.message });
       refundCredits(req.user.id, editResult.cost, 'slide_edit_refund', 'Slide edit failed — refunded', req.params.id, { slide_index: targetIndex });
@@ -975,6 +1062,7 @@ router.post('/:id/slides/:index/versions/:versionId/restore', authenticateToken,
   db.prepare(thumbSql).run(...thumbArgs);
 
   broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
+  schedulePptxBuild(req.params.id, req.user.id);
   res.json({ slide: updatedSlide });
 });
 
@@ -1110,6 +1198,7 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
         broadcast(req.params.id, { type: 'slide_error', index: targetIndex, message: 'Image generation failed' });
       } else {
         broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
+        schedulePptxBuild(req.params.id, req.user.id);
       }
     } catch (err) {
       logger.error('slide retry failed', { errorMessage: err.message });
@@ -1155,6 +1244,7 @@ router.post('/:id/reorder', authenticateToken, (req, res) => {
       .run(JSON.stringify(reordered), req.params.id);
   }
 
+  schedulePptxBuild(req.params.id, req.user.id);
   res.json({ message: 'Reordered' });
 });
 
@@ -1519,6 +1609,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
 
       await Promise.all(imagePromises);
       broadcast(req.params.id, { type: 'slides_added', count: affordableDefs.length, locked: lockedDefs.length });
+      schedulePptxBuild(req.params.id, req.user.id);
     } catch (err) {
       logger.error('add slides failed', { errorMessage: err.message });
       // Don't leave placeholders from this request stuck in 'generating'
@@ -1667,6 +1758,7 @@ router.post('/:id/unlock-slides', authenticateToken,
 
     broadcastDashboardUpdate(db, req.user.id, req.params.id);
     broadcast(req.params.id, { type: 'slides_unlocked', slide_indexes: generated.map(s => s.index) });
+    schedulePptxBuild(req.params.id, req.user.id);
 
     res.json({ message: 'Slides unlocked', slides: generated });
   },
@@ -1707,6 +1799,8 @@ router.delete('/:id/slides/:index', authenticateToken, (req, res) => {
       .run(JSON.stringify(filtered), req.params.id);
   }
 
+  pptxService.pruneSpecs(req.params.id, filtered);
+  schedulePptxBuild(req.params.id, req.user.id);
   res.json({ message: 'Slide deleted', slides: filtered });
 });
 
@@ -1715,7 +1809,7 @@ router.delete('/:id', authenticateToken, (req, res) => {
   const db = getDb();
   // Gather every stored image file before the rows cascade away, so nothing is
   // orphaned on the volume.
-  const pres = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  const pres = db.prepare('SELECT slides_data, pptx_file FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have permission to delete it.' });
   let slides = [];
   try { slides = JSON.parse(pres.slides_data || '[]'); } catch {}
@@ -1726,6 +1820,8 @@ router.delete('/:id', authenticateToken, (req, res) => {
 
   for (const s of slides) imageStore.remove(s.image_file);
   for (const v of verFiles) imageStore.remove(v.image_file);
+  // The built .pptx and its cached slide measurements go with it.
+  pptxService.deleteDeckArtifacts(req.params.id, pres.pptx_file);
   res.json({ message: 'Deleted' });
 });
 

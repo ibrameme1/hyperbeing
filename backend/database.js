@@ -182,6 +182,19 @@ export function initDatabase() {
     db.exec("ALTER TABLE presentations ADD COLUMN style TEXT DEFAULT 'classic'");
   } catch { /* already exists */ }
 
+  // Migrate: pre-built PowerPoint export. The .pptx lives on disk (pptxStore),
+  // pptx_signature records which slide images it was built from so a stale deck
+  // is detectable without opening the file, and pptx_meta carries the build
+  // result (how many slides came out editable, when, how long it took).
+  for (const col of [
+    'ALTER TABLE presentations ADD COLUMN pptx_file TEXT',
+    "ALTER TABLE presentations ADD COLUMN pptx_status TEXT DEFAULT 'none'",
+    'ALTER TABLE presentations ADD COLUMN pptx_signature TEXT',
+    "ALTER TABLE presentations ADD COLUMN pptx_meta TEXT DEFAULT '{}'",
+  ]) {
+    try { db.exec(col); } catch { /* already exists */ }
+  }
+
   // Migrate: extend credit_transactions into a full ledger
   for (const col of [
     "ALTER TABLE credit_transactions ADD COLUMN credits_before INTEGER",
@@ -232,6 +245,24 @@ export function initDatabase() {
   // disk (GAPS #7) and this column holds the filename instead. Add image_file
   // and make image_data nullable-in-practice (kept for the migration window).
   try { db.exec('ALTER TABLE slide_versions ADD COLUMN image_file TEXT'); } catch { /* exists */ }
+
+  // Cached slide measurements for the image → editable pptx pipeline. Keyed by
+  // the slide's IMAGE filename, not by (presentation, index): a regenerate or an
+  // edit produces a new image and therefore a new key, so rebuilding a deck
+  // after one slide changed re-measures that one slide and reuses the rest.
+  // An empty spec string means "measured, nothing usable" — cached so a slide
+  // the analyzer can't read isn't re-sent to Claude on every rebuild.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS slide_pptx_specs (
+      image_file TEXT PRIMARY KEY,
+      presentation_id TEXT NOT NULL,
+      slide_index INTEGER NOT NULL,
+      spec TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (presentation_id) REFERENCES presentations(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_slide_pptx_specs_pres ON slide_pptx_specs(presentation_id);
+  `);
 
   // One-time migration (guarded by PRAGMA user_version): move version images
   // embedded in slides_data into slide_versions, leaving metadata stubs behind.

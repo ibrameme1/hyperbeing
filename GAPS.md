@@ -191,6 +191,16 @@
 - **Why it matters:** New devs configure the wrong things; missing env vars fail silently (Stripe/emails just don't work).
 - **Fix (single task):** Rewrite `backend/.env.example` with every `process.env.*` referenced in the backend (grep for them), correct the README stack table, delete `.vade-report`.
 
+## 22. PPTX export: known fidelity ceilings and costs (added 2026-08-18)
+
+Not defects to fix in a pass, but the honest limits of the image → editable PowerPoint pipeline (`backend/services/pptx/`), stated once so nobody re-discovers them as bugs:
+
+- **The pipeline's accuracy is a model's accuracy.** Each slide is measured by one Claude vision call. Sizes, colours and boxes are close, not exact; type that used a condensed display face in the render is rebuilt in Arial and will not wrap identically. A slide the analyzer can't parse falls back to a full-bleed picture — correct, just not editable — and that fallback is cached as "measured, nothing usable" so it isn't retried on every rebuild.
+- **The clean plate is plausible, not recovered.** Pixels under a rebuilt card were never captured. `plate.js` fills them with a collar-sampled gradient and a masked blur (the Python original used OpenCV inpainting, which the backend can't run). Move a live object in the exported deck and you see soft background, which is the intended trade against seeing a torn duplicate.
+- **Cost.** A build is one vision call per slide, billed to the deck owner's token budget via `recordTokenUsage` but **not** charged in credits. A 10-slide deck is ~10 calls; edits re-measure one slide. If exports ever need to be metered, that's the hook.
+- **Single-process, like everything else here.** In-flight builds live in a `Map` in `pptx/index.js`, and the built files live on the local volume (`EXPORT_STORAGE_DIR`). Multi-instance would double-build and serve 404s from the wrong machine.
+- **Free-plan watermarking is server-side here** (unlike `pdfExport.js`, noted in #21) — the mark is added at build time from the owner's plan, so it can't be bypassed client-side. A cached deck built under the other plan counts as stale, so upgrading triggers a rebuild rather than handing the user a watermarked file they now pay not to have.
+
 ## 21. Minor fragilities worth a line each
 
 - **`suggestPlanForCost` compares monthly allocation to incremental need** — FIXED by documentation: the semantics are intentional and now stated in a comment in `config/credits.js`.
