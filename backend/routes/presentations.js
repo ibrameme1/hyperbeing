@@ -3,8 +3,10 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { analyzePresentationStream, generateCompactPlan, streamSlidePrompts, generateSingleSlidePrompt, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
-import { generateSlideImage, editSlideImage, isPlaceholderImage } from '../services/imageGeneration.js';
+import { analyzePresentationStream, generateCompactPlan, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
+import { editSlideImage } from '../services/imageGeneration.js';
+import { buildLayeredSlide, slideFiles } from '../services/layeredSlide.js';
+import { designDeckSystem } from '../services/layoutAgent.js';
 import * as imageStore from '../services/imageStore.js';
 import {
   deductCredits, refundCredits, deductCreditsForEdit, computeAffordableSlides,
@@ -31,6 +33,72 @@ function storeSlideImage(presentationId, slideIndex, imageData) {
   const file = imageStore.saveDataUrl(imageData);
   if (!file) return { image_data: imageData ?? null, image_file: null };
   return { image_data: slideImageUrl(presentationId, slideIndex, file), image_file: file };
+}
+
+// ─── Layered slides: shared deck context ────────────────────────────────────
+// Every layered-slide build needs the same context: outline header, the deck's
+// design system (shared style block / fonts / palette — the consistency
+// anchor across slides), the original brief (exact copy + art direction) and
+// the user's uploaded images (references). Decks created before layered
+// slides have no design system yet; one is generated on first use and saved
+// into slide_plan.design so every later slide matches.
+const FALLBACK_DECK_DESIGN = {
+  style_block: '',
+  fonts: { display: 'Inter', body: 'Inter' },
+  palette: { background: '#000000', text: '#FFFFFF', accent: '#FF2E74' },
+};
+
+async function ensureDeckDesign({ db, presentationId, header, slides, brief, uploads, style, userId, pending = null }) {
+  if (header?.design) return header.design;
+  let design;
+  try {
+    // `pending` = a design call already started (runFullFlow kicks it off the
+    // moment the outline header streams in, overlapping the rest of the plan).
+    design = (pending && await pending.catch(() => null)) || await designDeckSystem({ header, slides, brief, uploads, style, userId });
+  } catch (err) {
+    logger.error('deck design failed — using fallback design system', { presentationId, errorMessage: err.message });
+    design = FALLBACK_DECK_DESIGN;
+  }
+  // Persist into slide_plan so later slides (retry/add/unlock) reuse it.
+  const row = db.prepare('SELECT slide_plan FROM presentations WHERE id = ?').get(presentationId);
+  let plan = {};
+  try { plan = JSON.parse(row?.slide_plan || '{}'); } catch {}
+  db.prepare('UPDATE presentations SET slide_plan = ? WHERE id = ?').run(JSON.stringify({ ...plan, design }), presentationId);
+  return design;
+}
+
+async function loadDeckContext(db, pres, userId) {
+  let plan = {};
+  try { plan = JSON.parse(pres.slide_plan || '{}'); } catch {}
+  let slides = [];
+  try { slides = JSON.parse(pres.slides_data || '[]'); } catch {}
+  const firstUserMsg = db
+    .prepare(`SELECT content, attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
+    .get(pres.id);
+  let uploads = [];
+  try { uploads = JSON.parse(firstUserMsg?.attachments || '[]').filter(a => a?.data); } catch {}
+  const header = {
+    presentation_title: plan.presentation_title || pres.title,
+    theme: plan.theme,
+    color_palette: plan.color_palette || {},
+    design: plan.design,
+  };
+  const brief = firstUserMsg?.content || header.presentation_title || '';
+  const style = pres.style || 'classic';
+  const deckDesign = await ensureDeckDesign({ db, presentationId: pres.id, header, slides, brief, uploads, style, userId });
+  return {
+    header, deckDesign, brief, uploads, style,
+    aspectRatio: pres.aspect_ratio || '16:9',
+    siblingTitles: [...slides].sort((a, b) => a.index - b.index).map(s => s.title).filter(Boolean),
+  };
+}
+
+// The outline fields a locked slide keeps server-side so it can be built later.
+function outlineOf(slide) {
+  return {
+    slide_index: slide.index, type: slide.type, title: slide.title,
+    subtitle: slide.subtitle ?? null, key_points: slide.key_points || [], speaker_note: slide.speaker_note || '',
+  };
 }
 
 function slideImageUrl(presentationId, slideIndex, file) {
@@ -246,6 +314,29 @@ router.get('/:id/thumbnail', (req, res) => {
 });
 
 // ─── Slide image (authed, ?token= like the thumbnail — <img> can't send headers) ─
+// ─── A layered slide's layer image (authed) ───────────────────────────────────
+// Backgrounds, elements, icons and logos of layered slides. JWT via ?token=
+// like the other image routes (<img> can't send headers). A file is served
+// only if this presentation's slides_data actually references it.
+router.get('/:id/assets/:file', (req, res) => {
+  const token = req.query.token || req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).end();
+  let userId;
+  try { ({ userId } = jwt.verify(token, process.env.JWT_SECRET)); } catch { return res.status(401).end(); }
+  const { file } = req.params;
+  if (!imageStore.isStoredFilename(file)) return res.status(404).end();
+  const db = getDb();
+  const pres = isAdmin(userId)
+    ? db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id)
+    : db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, userId);
+  if (!pres?.slides_data || !pres.slides_data.includes(`"${file}"`)) return res.status(404).end();
+  const filePath = imageStore.pathFor(file);
+  if (!filePath) return res.status(404).end();
+  res.setHeader('Content-Type', imageStore.mimeFor(file));
+  res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+  res.sendFile(filePath);
+});
+
 router.get('/:id/slides/:index/image', (req, res) => {
   const token = req.query.token || req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).end();
@@ -447,12 +538,18 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
   // ── Phase 1: streaming outline — each slide row appears as it arrives ─────────
   let headerBroadcast = false;
   const slides = [];
+  let pendingDeckDesign = null;
 
   const { header } = await generateCompactPlan(message, attachments, userId, {
     onHeader(h) {
       // As soon as we know the total count, switch the frontend to plan_reveal
       broadcast(presentationId, { type: 'plan_started', total_slides: h.total_slides || 0 });
       headerBroadcast = true;
+      // Start the deck design system now, in parallel with the rest of the
+      // outline streaming — it only needs the header + brief, and it is on the
+      // critical path of every slide.
+      pendingDeckDesign = designDeckSystem({ header: h, slides: [], brief: message, uploads: allImages, style: deckStyle, userId });
+      pendingDeckDesign.catch(() => {}); // awaited (and failure-handled) in ensureDeckDesign
 
       // Persist header message and update status to generating
       db.prepare(`INSERT INTO messages (id, presentation_id, role, content, metadata) VALUES (?, ?, 'assistant', ?, ?)`)
@@ -515,21 +612,23 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
 
   const lockedSlidesStore = [];
 
-  // ── Phase 2: stream image prompts, start generation per slide as each arrives ─
-  const promptedIndices = new Set();
+  // ── Phase 2: deck design system ─────────────────────────────────────────────
+  // One short Claude call defines the shared style block, fonts and palette
+  // that every layer of every slide is generated against — the consistency
+  // anchor that makes separately generated layers look like one designer's.
+  const deckDesign = await ensureDeckDesign({
+    db, presentationId, header, slides, brief: message, uploads: allImages, style: deckStyle, userId, pending: pendingDeckDesign,
+  });
+  const siblingTitles = [...slides].sort((a, b) => a.index - b.index).map(s => s.title);
 
-  function startSlideGeneration(slide) {
-    promptedIndices.add(slide.index);
-
+  // ── Phase 3: build every affordable slide as layers, all in parallel ────────
+  // Per slide: Claude designs the layout → native text appears immediately
+  // (slide_layout) → image layers stream in (slide_layer_ready) → visual
+  // self-review → slide_ready. Locked slides keep only their outline
+  // server-side; their layout is designed when they're unlocked.
+  for (const slide of sortedByIndex) {
     if (lockedIndexSet.has(slide.index)) {
-      // Store the prompt server-side only — never sent to the frontend —
-      // so the slide can be unlocked later without re-running Claude.
-      lockedSlidesStore.push({
-        slide_index: slide.index,
-        prompt: slide.nano_banana_prompt || slide.title,
-        type: slide.type,
-        title: slide.title,
-      });
+      lockedSlidesStore.push(outlineOf(slide));
       const lockedSlide = {
         index: slide.index,
         type: slide.type,
@@ -545,42 +644,32 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
       completedSlides.set(slide.index, lockedSlide);
       persistProgress();
       // Persist locked_slides immediately so /unlock-slides works as soon as
-      // the frontend shows the unlock button, without waiting for the rest
-      // of the slides to finish generating.
+      // the frontend shows the unlock button.
       db.prepare('UPDATE presentations SET locked_slides = ? WHERE id = ?')
         .run(JSON.stringify(lockedSlidesStore), presentationId);
       broadcast(presentationId, { type: 'slide_locked', slide: lockedSlide });
-      return;
+      continue;
     }
 
     broadcast(presentationId, { type: 'slide_generating', index: slide.index });
 
-    const attachedImages = allImages.slice(0, 3);
-
-    const promise = generateSlideImage(
-      slide.nano_banana_prompt || slide.title,
-      slide.type,
-      header?.theme        || 'modern-minimal',
-      header?.color_palette || {},
-      slide.index,
-      attachedImages,
-      aspectRatio,
-      deckStyle
-    ).then(imageData => {
-      // generateSlideImage falls back to a generic gradient placeholder rather
-      // than throwing on persistent NB2 failure — treat that the same as an
-      // error so the user sees a regenerate option instead of a blank slide,
-      // and refund the credit.
-      if (isPlaceholderImage(imageData)) {
+    const promise = buildLayeredSlide({
+      presentationId, slide, header, deckDesign, brief: message, uploads: allImages, userId,
+      aspectRatio, style: deckStyle, siblingTitles,
+      onLayout: (layout) => broadcast(presentationId, { type: 'slide_layout', index: slide.index, layout }),
+      onLayer: (layer) => broadcast(presentationId, { type: 'slide_layer_ready', index: slide.index, layer }),
+    }).then(result => {
+      // null = a critical layer (background/hero) or the layout failed —
+      // surface a regenerate option and refund, exactly like a failed image.
+      if (!result) {
         const errSlide = { ...slide, image_data: null, status: 'error' };
         completedSlides.set(slide.index, errSlide);
         persistProgress();
-        refundCredits(userId, CREDIT_COSTS.PER_SLIDE, 'generation_refund', 'Slide image generation failed — refunded', presentationId, { slide_index: slide.index });
-        logger.error('slide image generation returned placeholder', { presentationId, slideIndex: slide.index });
-        broadcast(presentationId, { type: 'slide_error', index: slide.index, message: 'Image generation failed' });
+        refundCredits(userId, CREDIT_COSTS.PER_SLIDE, 'generation_refund', 'Slide generation failed — refunded', presentationId, { slide_index: slide.index });
+        broadcast(presentationId, { type: 'slide_error', index: slide.index, message: 'Slide generation failed' });
         return;
       }
-      const done = { ...slide, ...storeSlideImage(presentationId, slide.index, imageData), status: 'complete' };
+      const done = { ...slide, ...result, status: 'complete' };
       completedSlides.set(slide.index, done);
       persistProgress();
       if (slide.index === 0) {
@@ -589,37 +678,18 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
       }
       broadcast(presentationId, { type: 'slide_ready', slide: done });
     }).catch(err => {
-      logger.error('slide image failed', { slideIndex: slide.index, errorMessage: err.message });
+      logger.error('layered slide failed', { slideIndex: slide.index, errorMessage: err.message });
       const errSlide = { ...slide, image_data: null, status: 'error' };
       completedSlides.set(slide.index, errSlide);
       persistProgress();
-      refundCredits(userId, CREDIT_COSTS.PER_SLIDE, 'generation_refund', 'Slide image generation failed — refunded', presentationId, { slide_index: slide.index });
+      refundCredits(userId, CREDIT_COSTS.PER_SLIDE, 'generation_refund', 'Slide generation failed — refunded', presentationId, { slide_index: slide.index });
       broadcast(presentationId, { type: 'slide_error', index: slide.index, message: err.message });
     });
 
     slidePromises.push(promise);
   }
 
-  await streamSlidePrompts(slides, header, message, attachments, {
-    onPrompt(slide) { startSlideGeneration(slide); },
-  }, userId, deckStyle);
-
-  // Fallback: if any slide was missed by the stream, generate a proper prompt via a targeted call
-  const missingSlides = slides.filter(s => !promptedIndices.has(s.index));
-  if (missingSlides.length > 0) {
-    logger.warn('slide prompts missing — generating targeted fallback prompts', { missing: missingSlides.map(s => s.index) });
-    await Promise.all(missingSlides.map(async (slide) => {
-      try {
-        const singlePrompt = await generateSingleSlidePrompt(slide, header, message, allImages.slice(0, 3), userId, deckStyle);
-        startSlideGeneration({ ...slide, ...singlePrompt });
-      } catch (err) {
-        logger.error('targeted prompt fallback failed, using title', { slideIndex: slide.index, errorMessage: err.message });
-        startSlideGeneration(slide);
-      }
-    }));
-  }
-
-  // Wait for all image generations to finish
+  // Wait for every slide to finish
   await Promise.all(slidePromises);
 
   // Persist locked-slide prompts server-side (never sent to the frontend) so
@@ -649,7 +719,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
 
   // Persist final slide_plan with full outline data
   db.prepare(`UPDATE presentations SET slide_plan = ? WHERE id = ?`)
-    .run(JSON.stringify({ ...header, slides: allSlides.map(({ image_data, ...rest }) => rest) }), presentationId);
+    .run(JSON.stringify({ ...header, design: deckDesign, slides: allSlides.map(({ image_data, layout, gen_stats, ...rest }) => rest) }), presentationId);
 
   db.prepare(`UPDATE presentations SET status = 'completed', slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
     .run(JSON.stringify(allSlides), presentationId);
@@ -800,6 +870,12 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
   const slidesAtRequest = JSON.parse(pres.slides_data);
   const slideForPrompt = slidesAtRequest.find(s => s.index === targetIndex);
   if (!slideForPrompt) return res.status(404).json({ error: 'Slide not found. It may have been removed or the index is out of range.' });
+  // Layered slides are edited layer-by-layer (layout edits + single-element
+  // regeneration). A flat image edit here would flatten the slide and throw
+  // away every editable layer, so refuse it — before any credits are charged.
+  if (slideForPrompt.layout) {
+    return res.status(409).json({ error: 'This slide is built from editable layers. Click any text or element to edit it directly; describing edits for layered slides is coming in the next update.' });
+  }
 
   // pic1 = current rendered slide; pic2, pic3… = anything the user uploaded in the edit bar
   const hasCurrentImage = slideForPrompt.image_data && !slideForPrompt.image_data.startsWith('data:image/svg');
@@ -1011,8 +1087,6 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
     return res.json({ message: 'Slide is still generating', index: targetIndex, alreadyGenerating: true });
   }
 
-  const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
-
   let editResult;
   try {
     editResult = deductCreditsForEdit(req.user.id, req.params.id, false, `Retry slide ${targetIndex}`);
@@ -1030,90 +1104,82 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
     throw err;
   }
 
+  // Mark the slide generating BEFORE responding, so a second click (or an
+  // add-slides catch-up) sees it and no-ops via the guard above instead of
+  // racing a second build.
+  {
+    const row = db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id);
+    const cur = JSON.parse(row?.slides_data || '[]');
+    const pos = cur.findIndex(s => s.index === targetIndex);
+    if (pos !== -1) {
+      cur[pos] = { ...cur[pos], status: 'generating' };
+      db.prepare('UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(JSON.stringify(cur), req.params.id);
+    }
+  }
   res.json({ message: 'Retrying…', index: targetIndex });
-
-  const regenAspectRatio = pres.aspect_ratio || '16:9';
+  broadcast(req.params.id, { type: 'slide_generating', index: targetIndex });
 
   (async () => {
     try {
-      let prompt = slide.nano_banana_prompt || slide.image_prompt;
-      if (!prompt) {
-        // This slide never got a real visual prompt — e.g. a placeholder from
-        // add-slides that errored before prompt generation finished. Falling
-        // back to slide.title (e.g. "New Slide 3") gives NB2 nothing to work
-        // with and it comes back near-instantly with a blank gradient
-        // placeholder. Generate a proper prompt first instead.
-        const header = {
-          presentation_title: slidePlan.presentation_title || pres.title,
-          theme: slidePlan.theme || 'modern-minimal',
-          color_palette: slidePlan.color_palette || {},
-        };
-        const firstUserMsg = db
-          .prepare(`SELECT content, attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
-          .get(req.params.id);
-        let briefAttachments = [];
-        try { briefAttachments = JSON.parse(firstUserMsg?.attachments || '[]').filter(a => a.data); } catch {}
-        try {
-          const generated = await generateSingleSlidePrompt(
-            slide, header, firstUserMsg?.content || header.presentation_title, briefAttachments, req.user.id, pres.style || 'classic',
-          );
-          prompt = generated.nano_banana_prompt;
-        } catch (err) {
-          logger.error('targeted prompt fallback failed during retry', { slideIndex: targetIndex, errorMessage: err.message });
-          prompt = slide.title;
-        }
+      const ctx = await loadDeckContext(db, pres, req.user.id);
+      const result = await buildLayeredSlide({
+        presentationId: req.params.id,
+        slide: { index: slide.index, type: slide.type, title: slide.title, subtitle: slide.subtitle, key_points: slide.key_points, speaker_note: slide.speaker_note },
+        ...ctx,
+        userId: req.user.id,
+        onLayout: (layout) => broadcast(req.params.id, { type: 'slide_layout', index: targetIndex, layout }),
+        onLayer: (layer) => broadcast(req.params.id, { type: 'slide_layer_ready', index: targetIndex, layer }),
+      });
+
+      // Re-read fresh right before writing — other slides may have changed
+      // concurrently, and this slide may have been deleted or rebuilt by
+      // another actor while we were generating (status no longer
+      // 'generating' ⇒ someone else won: discard our result and refund).
+      const freshRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+      const freshSlides = JSON.parse(freshRow?.slides_data || '[]');
+      const freshPos = freshSlides.findIndex(s => s.index === targetIndex);
+      if (freshPos === -1 || freshSlides[freshPos].status !== 'generating') {
+        logger.info('retry: discarding stale result — slide changed meanwhile', { presentationId: req.params.id, slideIndex: targetIndex });
+        if (result) for (const f of slideFiles(result)) imageStore.remove(f);
+        refundCredits(req.user.id, editResult.cost, 'slide_edit_refund', 'Slide changed before retry finished — refunded', req.params.id, { slide_index: targetIndex });
+        return;
       }
 
-      const imageData = await generateSlideImage(
-        prompt,
-        slide.type,
-        slidePlan.theme,
-        slidePlan.color_palette,
-        slide.index,
-        [],
-        regenAspectRatio,
-        pres.style || 'classic'
-      );
+      if (!result) {
+        freshSlides[freshPos] = { ...freshSlides[freshPos], status: 'error' };
+        db.prepare('UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(JSON.stringify(freshSlides), req.params.id);
+        refundCredits(req.user.id, editResult.cost, 'slide_edit_refund', 'Slide retry failed — refunded', req.params.id, { slide_index: targetIndex });
+        broadcast(req.params.id, { type: 'slide_error', index: targetIndex, message: 'Slide generation failed' });
+        return;
+      }
 
-      // generateSlideImage falls back to a generic gradient placeholder rather
-      // than throwing on persistent NB2 failure — treat that as an error so
-      // the slide keeps showing the regenerate option instead of a blank image.
-      const failed = isPlaceholderImage(imageData);
-      const oldFile = slide.image_file;
-      const updatedSlide = failed
-        ? { ...slide, nano_banana_prompt: prompt, image_data: null, image_file: null, status: 'error' }
-        : { ...slide, nano_banana_prompt: prompt, ...storeSlideImage(req.params.id, targetIndex, imageData), status: 'complete' };
-      // Re-read fresh right before writing — other slides in this deck may
-      // have been added or updated concurrently (e.g. an add-slides run still
-      // finishing its other slides). Writing back the `slides` array captured
-      // at the start of the request would clobber those concurrent changes.
-      const freshRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-      if (!freshRow?.slides_data) return;
-      const freshSlides = JSON.parse(freshRow.slides_data);
-      const freshPos = freshSlides.findIndex(s => s.index === targetIndex);
-      if (freshPos === -1) return;
+      const oldFiles = slideFiles(freshSlides[freshPos]);
+      // Version history still holds the old flattened image file — keep it.
+      const versionFiles = new Set(db.prepare('SELECT image_file FROM slide_versions WHERE presentation_id = ? AND slide_index = ?').all(req.params.id, targetIndex).map(v => v.image_file));
+      const updatedSlide = { ...freshSlides[freshPos], ...result, status: 'complete', _edited: false };
+      delete updatedSlide.nano_banana_prompt;
       freshSlides[freshPos] = updatedSlide;
 
       let thumbSql = `UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
       const thumbArgs = [JSON.stringify(freshSlides), req.params.id];
-      if (freshPos === 0 && !failed) {
+      if (freshPos === 0) {
         thumbSql = `UPDATE presentations SET slides_data = ?, thumbnail = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
         thumbArgs.splice(1, 0, updatedSlide.image_file);
       }
       db.prepare(thumbSql).run(...thumbArgs);
-      // Retry replaces the image outright (no version kept) — drop the old file.
-      if (!failed && oldFile && oldFile !== updatedSlide.image_file) imageStore.remove(oldFile);
-
-      if (failed) {
-        refundCredits(req.user.id, editResult.cost, 'slide_edit_refund', 'Slide retry failed — refunded', req.params.id, { slide_index: targetIndex });
-        logger.error('slide retry returned placeholder', { presentationId: req.params.id, slideIndex: targetIndex });
-        broadcast(req.params.id, { type: 'slide_error', index: targetIndex, message: 'Image generation failed' });
-      } else {
-        broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
-      }
+      // Retry replaces the slide outright — drop the old files.
+      for (const f of oldFiles) if (!versionFiles.has(f)) imageStore.remove(f);
+      broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
     } catch (err) {
       logger.error('slide retry failed', { errorMessage: err.message });
       refundCredits(req.user.id, editResult.cost, 'slide_edit_refund', 'Slide retry failed — refunded', req.params.id, { slide_index: targetIndex });
+      const row = db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id);
+      const cur = JSON.parse(row?.slides_data || '[]');
+      const pos = cur.findIndex(s => s.index === targetIndex);
+      if (pos !== -1 && cur[pos].status === 'generating') {
+        cur[pos] = { ...cur[pos], status: 'error' };
+        db.prepare('UPDATE presentations SET slides_data = ? WHERE id = ?').run(JSON.stringify(cur), req.params.id);
+      }
       broadcast(req.params.id, { type: 'slide_error', index: targetIndex, message: err.message });
     }
   })();
@@ -1296,25 +1362,19 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
   // Run async
   (async () => {
     try {
-      const firstUserMsg = db
-        .prepare(`SELECT attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
-        .get(req.params.id);
-      let userAttachments = [];
-      try { userAttachments = JSON.parse(firstUserMsg?.attachments || '[]'); } catch {}
-      const allUserImages = userAttachments.filter(a => a.data);
-      // Merge user's original images + any images attached to this add-slides request
+      // Images attached to this add-slides request (the brief's own uploads
+      // are added from the deck context below).
       const extraImages = (reqAttachments || []).filter(a => a.data);
-      const combinedImages = [...extraImages, ...allUserImages].slice(0, 3);
 
-      // Give Claude the actual visual prompts used for ALL existing slides so
-      // new slides continue the same visual language and understand the full
-      // context of the deck — not just the title/key_points, which lose all
-      // the art-direction detail.
+      // Give the planner the established visual language of the deck: the
+      // design system plus a one-line visual summary of every existing slide
+      // (legacy flat slides still carry their full image prompt).
       const allSlideVisuals = slides.map(s => ({
         index: s.index,
         type: s.type,
         title: s.title,
-        nano_banana_prompt: s.nano_banana_prompt || null,
+        nano_banana_prompt: s.nano_banana_prompt
+          || (s.layout ? `${s.layout.composition} layout; background: ${s.layout.background?.prompt || s.layout.background?.color || ''}; elements: ${(s.layout.layers || []).filter(l => l.kind === 'image').map(l => l.name || l.id).join(', ')}` : null),
       }));
 
       const presentationContext = {
@@ -1323,6 +1383,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
         color_palette: slidePlan.color_palette,
         existing_slides: slides.map(s => ({ index: s.index, type: s.type, title: s.title, key_points: s.key_points })),
         recent_slide_visuals: allSlideVisuals,
+        design_system: slidePlan.design || null,
       };
 
       const newSlideDefs = [];
@@ -1331,41 +1392,13 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       }, req.user.id);
       newSlideDefs.sort((a, b) => a.index - b.index);
 
-      // Phase 2: generate the full 5-layer nano_banana_prompt for every new
-      // slide. We do this with one targeted single-slide call per slide, all in
-      // parallel — NOT the monolithic streamSlidePrompts pass used by the main
-      // generation flow. That streaming pass regularly emitted one fewer SLIDE:
-      // line than requested (always dropping the last new slide), which then
-      // forced a slow serial targeted fallback AFTER the ~60s stream had already
-      // finished — so a single add-slides run could spend ~90s in prompt
-      // generation alone. Per-slide calls can't drop a slide and run
-      // concurrently, so this phase now costs roughly one prompt's latency.
-      const promptHeader = {
-        presentation_title: slidePlan.presentation_title || pres.title,
-        theme: slidePlan.theme || 'modern-minimal',
-        color_palette: slidePlan.color_palette || {},
-      };
-      // Append visual continuity context so each prompt matches the established
-      // look of the deck — the existing-deck prompts are the consistency anchor
-      // that matters most for added slides.
-      const continuityContext = allSlideVisuals.some(s => s.nano_banana_prompt)
-        ? `\n\nEXISTING DECK CONTEXT — for visual continuity, here are all the slides already in this deck and the prompts used to generate them. Match their established color usage, typography, and design language:\n${allSlideVisuals
-            .filter(s => s.nano_banana_prompt)
-            .map(s => `Slide ${s.index} (${s.type}) "${s.title}":\n${s.nano_banana_prompt}`)
-            .join('\n\n')}`
-        : '';
-      const promptedSlideDefs = await Promise.all(newSlideDefs.map(async (slide) => {
-        try {
-          const single = await generateSingleSlidePrompt(slide, promptHeader, description + continuityContext, combinedImages, req.user.id, addStyle);
-          return { ...slide, ...single };
-        } catch (err) {
-          // Leave this slide without a prompt — image gen falls back to the
-          // title and, failing that, surfaces a regenerate option that
-          // generates a proper prompt on demand.
-          logger.error('add-slides: targeted prompt generation failed', { slideIndex: slide.index, errorMessage: err.message });
-          return slide;
-        }
-      }));
+      // New slides are built as layers against the deck's existing design
+      // system (generated now for decks that predate layered slides), so they
+      // match the rest of the deck.
+      const promptedSlideDefs = newSlideDefs;
+      const deckCtx = await loadDeckContext(db, pres, req.user.id);
+      const addUploads = [...extraImages, ...deckCtx.uploads].slice(0, 8);
+      const addSiblings = [...deckCtx.siblingTitles, ...newSlideDefs.map(d => d.title)];
 
       // For 'auto' mode the slide count is only known now — check affordability
       // and deduct credits before generating any images.
@@ -1403,12 +1436,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       let existingLocked = [];
       try { existingLocked = JSON.parse(presRow0.locked_slides || '[]'); } catch {}
 
-      const newLockedEntries = lockedDefs.map(d => ({
-        slide_index: d.index,
-        prompt: d.nano_banana_prompt || d.title,
-        type: d.type,
-        title: d.title,
-      }));
+      const newLockedEntries = lockedDefs.map(outlineOf);
       const lockedPlaceholders = lockedDefs.map(d => ({
         index: d.index,
         type: d.type,
@@ -1423,7 +1451,11 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       }));
 
       const keepIndices = new Set(promptedSlideDefs.map(d => d.index));
-      const trimmed = current0.filter(s => s.status !== 'generating' || keepIndices.has(s.index));
+      // Only trim THIS request's optimistic placeholders (index >= startIndex).
+      // Other slides can legitimately be 'generating' right now (a retry in
+      // flight marks its slide 'generating') — removing those would silently
+      // delete a user's slide.
+      const trimmed = current0.filter(s => s.index < startIndex || s.status !== 'generating' || keepIndices.has(s.index));
       for (const lp of lockedPlaceholders) {
         const idx = trimmed.findIndex(s => s.index === lp.index);
         if (idx !== -1) trimmed[idx] = lp; else trimmed.push(lp);
@@ -1440,58 +1472,55 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
         updateLedgerMetadata(ledgerId, { locked_slides: newLockedEntries });
       }
 
-      // Generate images only for affordable slides, with stagger
-      const imagePromises = affordableDefs.map((slideDef, i) =>
+      // Build affordable slides as layers, in parallel
+      const imagePromises = affordableDefs.map((slideDef) =>
         (async () => {
-          await new Promise(r => setTimeout(r, i * 800));
           try {
-            const prompt = slideDef.nano_banana_prompt || slideDef.title;
-            let imageData = await generateSlideImage(
-              prompt, slideDef.type, slidePlan.theme, slidePlan.color_palette,
-              slideDef.index, combinedImages, aspectRatio, addStyle
-            );
-
-            // generateSlideImage retries NB2 internally but falls back to a
-            // generic gradient placeholder rather than throwing on persistent
-            // failure. Before surfacing a failure to the user, automatically
-            // resubmit the same prompt once — most placeholder results are
-            // transient NB2 hiccups that succeed on a fresh attempt, so the
-            // user never has to click regenerate. Only if this second attempt
-            // also fails do we mark the slide 'error' and show that button.
-            if (isPlaceholderImage(imageData)) {
-              logger.warn('add-slides image returned placeholder — auto-retrying once with same prompt', { presentationId: req.params.id, slideIndex: slideDef.index });
-              imageData = await generateSlideImage(
-                prompt, slideDef.type, slidePlan.theme, slidePlan.color_palette,
-                slideDef.index, combinedImages, aspectRatio, addStyle
-              );
+            const buildArgs = {
+              presentationId: req.params.id,
+              slide: slideDef,
+              header: deckCtx.header, deckDesign: deckCtx.deckDesign,
+              // The add-slides request is the most specific direction for these slides.
+              brief: `${deckCtx.brief}\n\nADD-SLIDES REQUEST: ${description}`,
+              uploads: addUploads, userId: req.user.id,
+              aspectRatio, style: addStyle, siblingTitles: addSiblings,
+              onLayout: (layout) => broadcast(req.params.id, { type: 'slide_layout', index: slideDef.index, layout }),
+              onLayer: (layer) => broadcast(req.params.id, { type: 'slide_layer_ready', index: slideDef.index, layer }),
+            };
+            let result = await buildLayeredSlide(buildArgs);
+            // Most failures are transient (rate limits, a flaky generation) —
+            // resubmit once before surfacing an error the user has to act on.
+            if (!result) {
+              logger.warn('add-slides layered build failed — auto-retrying once', { presentationId: req.params.id, slideIndex: slideDef.index });
+              result = await buildLayeredSlide(buildArgs);
             }
 
-            const failed = isPlaceholderImage(imageData);
+            const failed = !result;
             const done = failed
               ? { ...slideDef, image_data: null, image_file: null, status: 'error' }
-              : { ...slideDef, ...storeSlideImage(req.params.id, slideDef.index, imageData), status: 'complete' };
+              : { ...slideDef, ...result, status: 'complete' };
             // Persist: replace placeholder with done slide
             const currentRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-            if (!currentRow?.slides_data) return;
+            if (!currentRow?.slides_data) { if (result) for (const f of slideFiles(result)) imageStore.remove(f); return; }
             const current = JSON.parse(currentRow.slides_data);
             const idx = current.findIndex(s => s.index === done.index);
 
-            // If the user already retried/edited this slide directly while this
-            // generation was still in flight, its status will no longer be
-            // 'generating' — don't clobber their result with this stale attempt.
-            if (idx !== -1 && current[idx].status !== 'generating') {
-              logger.info('add-slides: discarding stale image result — slide already updated', { presentationId: req.params.id, slideIndex: done.index, currentStatus: current[idx].status });
+            // If the user already retried/edited/deleted this slide while this
+            // build was still in flight, don't clobber their result.
+            if (idx === -1 || current[idx].status !== 'generating') {
+              logger.info('add-slides: discarding stale result — slide already updated', { presentationId: req.params.id, slideIndex: done.index, currentStatus: current[idx]?.status });
+              if (result) for (const f of slideFiles(result)) imageStore.remove(f);
               refundCredits(req.user.id, CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'generation_refund', 'Slide updated before generation finished — refunded', req.params.id, { slide_index: slideDef.index });
               return;
             }
 
-            if (idx !== -1) current[idx] = done; else current.push(done);
+            current[idx] = done;
             db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
               .run(JSON.stringify(current), req.params.id);
             if (failed) {
-              refundCredits(req.user.id, CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'generation_refund', 'Slide image generation failed — refunded', req.params.id, { slide_index: slideDef.index });
-              logger.error('add-slides image generation returned placeholder after auto-retry', { presentationId: req.params.id, slideIndex: slideDef.index });
-              broadcast(req.params.id, { type: 'slide_error', index: done.index, message: 'Image generation failed' });
+              refundCredits(req.user.id, CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'generation_refund', 'Slide generation failed — refunded', req.params.id, { slide_index: slideDef.index });
+              logger.error('add-slides layered build failed after auto-retry', { presentationId: req.params.id, slideIndex: slideDef.index });
+              broadcast(req.params.id, { type: 'slide_error', index: done.index, message: 'Slide generation failed' });
             } else {
               broadcast(req.params.id, { type: 'slide_ready', slide: done });
             }
@@ -1503,7 +1532,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
             const idx = current.findIndex(s => s.index === errSlide.index);
 
             if (idx !== -1 && current[idx].status !== 'generating') {
-              logger.info('add-slides: discarding stale image error — slide already updated', { presentationId: req.params.id, slideIndex: errSlide.index, currentStatus: current[idx].status });
+              logger.info('add-slides: discarding stale error — slide already updated', { presentationId: req.params.id, slideIndex: errSlide.index, currentStatus: current[idx].status });
               refundCredits(req.user.id, CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'generation_refund', 'Slide updated before generation finished — refunded', req.params.id, { slide_index: slideDef.index });
               return;
             }
@@ -1511,7 +1540,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
             if (idx !== -1) current[idx] = errSlide;
             db.prepare(`UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
               .run(JSON.stringify(current), req.params.id);
-            refundCredits(req.user.id, CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'generation_refund', 'Slide image generation failed — refunded', req.params.id, { slide_index: slideDef.index });
+            refundCredits(req.user.id, CREDIT_COSTS.SLIDES_ADD_PER_SLIDE, 'generation_refund', 'Slide generation failed — refunded', req.params.id, { slide_index: slideDef.index });
             broadcast(req.params.id, { type: 'slide_error', index: errSlide.index, message: err.message });
           }
         })()
@@ -1600,50 +1629,40 @@ router.post('/:id/unlock-slides', authenticateToken,
       throw err;
     }
 
-    const aspectRatio = pres.aspect_ratio || '16:9';
-    const slidePlanData = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
-
+    // Build every unlocked slide as layers, in parallel. (Legacy locked
+    // entries from flat decks carry a `prompt` instead of an outline — the
+    // title + original brief are enough for the layout agent.)
+    const ctx = await loadDeckContext(db, pres, req.user.id);
     const generated = [];
-    for (const lockedSlide of toUnlock) {
+    await Promise.all(toUnlock.map(async (lockedSlide) => {
+      const outline = {
+        index: lockedSlide.slide_index, type: lockedSlide.type, title: lockedSlide.title,
+        subtitle: lockedSlide.subtitle ?? null, key_points: lockedSlide.key_points || [], speaker_note: lockedSlide.speaker_note || '',
+      };
       try {
-        const imageData = await generateSlideImage(
-          lockedSlide.prompt,
-          lockedSlide.type,
-          slidePlanData.theme || 'modern-minimal',
-          slidePlanData.color_palette || {},
-          lockedSlide.slide_index,
-          [],
-          aspectRatio,
-          pres.style || 'classic'
-        );
-
-        const failed = isPlaceholderImage(imageData);
-        const stored = failed
-          ? { image_data: null, image_file: null }
-          : storeSlideImage(req.params.id, lockedSlide.slide_index, imageData);
-        const done = {
-          index: lockedSlide.slide_index,
-          type: lockedSlide.type,
-          title: lockedSlide.title,
-          nano_banana_prompt: lockedSlide.prompt,
-          ...stored,
-          status: failed ? 'error' : 'complete',
-        };
-
+        broadcast(req.params.id, { type: 'slide_generating', index: outline.index });
+        const result = await buildLayeredSlide({
+          presentationId: req.params.id, slide: outline, ...ctx, userId: req.user.id,
+          onLayout: (layout) => broadcast(req.params.id, { type: 'slide_layout', index: outline.index, layout }),
+          onLayer: (layer) => broadcast(req.params.id, { type: 'slide_layer_ready', index: outline.index, layer }),
+        });
+        const done = result
+          ? { ...outline, ...result, status: 'complete' }
+          : { ...outline, image_data: null, image_file: null, status: 'error' };
         generated.push(done);
-        if (failed) {
-          refundCredits(req.user.id, CREDIT_COSTS.PER_SLIDE, 'unlock_slides_refund', 'Slide unlock failed — refunded', req.params.id, { slide_index: lockedSlide.slide_index });
-          logger.error('slide unlock returned placeholder', { presentationId: req.params.id, slideIndex: lockedSlide.slide_index });
-          broadcast(req.params.id, { type: 'slide_error', index: done.index, message: 'Image generation failed' });
+        if (!result) {
+          refundCredits(req.user.id, CREDIT_COSTS.PER_SLIDE, 'unlock_slides_refund', 'Slide unlock failed — refunded', req.params.id, { slide_index: outline.index });
+          broadcast(req.params.id, { type: 'slide_error', index: done.index, message: 'Slide generation failed' });
         } else {
           broadcast(req.params.id, { type: 'slide_ready', slide: done });
         }
       } catch (err) {
-        logger.error('slide unlock failed', { slideIndex: lockedSlide.slide_index, errorMessage: err.message });
-        refundCredits(req.user.id, CREDIT_COSTS.PER_SLIDE, 'unlock_slides_refund', 'Slide unlock failed — refunded', req.params.id, { slide_index: lockedSlide.slide_index });
-        broadcast(req.params.id, { type: 'slide_error', index: lockedSlide.slide_index, message: err.message });
+        logger.error('slide unlock failed', { slideIndex: outline.index, errorMessage: err.message });
+        refundCredits(req.user.id, CREDIT_COSTS.PER_SLIDE, 'unlock_slides_refund', 'Slide unlock failed — refunded', req.params.id, { slide_index: outline.index });
+        broadcast(req.params.id, { type: 'slide_error', index: outline.index, message: err.message });
       }
-    }
+    }));
+    generated.sort((a, b) => a.index - b.index);
 
     // Merge generated slides into slides_data
     const currentRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id);
@@ -1690,7 +1709,7 @@ router.delete('/:id/slides/:index', authenticateToken, (req, res) => {
   const removed = slides.find(s => s.index === targetIndex);
   const verFiles = db.prepare('SELECT image_file FROM slide_versions WHERE presentation_id = ? AND slide_index = ?').all(req.params.id, targetIndex);
   db.prepare('DELETE FROM slide_versions WHERE presentation_id = ? AND slide_index = ?').run(req.params.id, targetIndex);
-  imageStore.remove(removed?.image_file);
+  for (const f of slideFiles(removed)) imageStore.remove(f);
   for (const v of verFiles) imageStore.remove(v.image_file);
 
   const newFirst = filtered[0];
@@ -1724,7 +1743,7 @@ router.delete('/:id', authenticateToken, (req, res) => {
   const result = db.prepare('DELETE FROM presentations WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Presentation not found or you don\'t have permission to delete it.' });
 
-  for (const s of slides) imageStore.remove(s.image_file);
+  for (const s of slides) for (const f of slideFiles(s)) imageStore.remove(f);
   for (const v of verFiles) imageStore.remove(v.image_file);
   res.json({ message: 'Deleted' });
 });

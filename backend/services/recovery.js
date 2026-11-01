@@ -4,6 +4,7 @@ import { getDb } from '../database.js';
 import { refundCredits, CREDIT_COSTS } from './stripeService.js';
 import { IMAGE_DIR } from './imageStore.js';
 import { logger } from './logger.js';
+import { layoutFiles } from './slideLayout.js';
 
 // Startup crash recovery. Generation runs as detached in-process promises, so
 // anything still marked in-flight when the process boots was killed mid-run
@@ -96,7 +97,11 @@ export function sweepOrphanImages() {
     if (row.thumbnail) referenced.add(path.basename(row.thumbnail));
     let slides = [];
     try { slides = JSON.parse(row.slides_data || '[]'); } catch { continue; }
-    for (const s of slides) if (s.image_file) referenced.add(path.basename(s.image_file));
+    for (const s of slides) {
+      if (s.image_file) referenced.add(path.basename(s.image_file));
+      // Layered slides: background / element / icon / logo files live in the layout.
+      for (const f of layoutFiles(s.layout)) referenced.add(path.basename(f));
+    }
   }
   try {
     for (const v of db.prepare('SELECT image_file FROM slide_versions').all()) {

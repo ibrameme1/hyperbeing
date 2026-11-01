@@ -1,7 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { logger, requestContext } from './logger.js';
 import { tracer } from './tracer.js';
-import { generateDesignImage } from './gptImageGeneration.js';
 
 const MOCK_MODE = !process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY === 'demo';
 
@@ -67,59 +66,13 @@ function imagesToParts(attachedImages) {
   return parts;
 }
 
-// True when generateSlideImage fell back to the generic gradient placeholder
+// True when an image generator fell back to the generic gradient placeholder
 // rather than returning a real NB2-generated image — callers should treat
 // this as a failure (status 'error', show regenerate) rather than 'complete'.
 export function isPlaceholderImage(imageData) {
   return !imageData || imageData.startsWith('data:image/svg');
 }
 
-export async function generateSlideImage(nanaBananaPrompt, slideType, theme, colorPalette, slideIndex = 0, attachedImages = [], aspectRatio = '16:9', style = 'classic') {
-  // Minimalistic style is rendered by OpenAI GPT Image 2.0 (medium quality,
-  // 16:9, ~1K resolution) rather than Nano Banana / Gemini. Its prompts are
-  // already fully art-directed and self-contained, so they're sent nearly
-  // verbatim — no classic "premium/theme" wrapping that would fight the
-  // restrained look. generateDesignImage handles its own mock mode + retries
-  // and returns null on persistent failure, which we map to the same gradient
-  // placeholder the Gemini path uses.
-  if (style === 'minimalistic') {
-    const minimalPrompt = buildMinimalPrompt(nanaBananaPrompt);
-    logger.debug('gpt image (minimalistic) slide gen start', { slideIndex, slideType, attachedImages: attachedImages.length });
-    const gptImage = await generateDesignImage(minimalPrompt, attachedImages.slice(0, 4), '16:9', slideIndex);
-    if (!gptImage) {
-      logger.error('gpt image (minimalistic) generation failed — falling back to placeholder', {
-        slideIndex, slideType, promptPreview: nanaBananaPrompt?.slice(0, 300),
-      });
-      return generateRichPlaceholder(slideType, theme, slideIndex);
-    }
-    return gptImage;
-  }
-
-  if (MOCK_MODE) {
-    const delay = 700 + Math.random() * 900;
-    await new Promise(r => setTimeout(r, delay));
-    return generateRichPlaceholder(slideType, theme, slideIndex);
-  }
-
-  const fullPrompt = buildFullPrompt(nanaBananaPrompt, slideType, theme, colorPalette);
-
-  // All slides use Nano Banana (Gemini Flash Image) — supports both text-only and reference image input
-  const parts = [{ text: fullPrompt }, ...imagesToParts(attachedImages)];
-  if (attachedImages.length > 0) {
-    parts.push({ text: 'Use the reference images above to match the visual style, layout energy, brand colours, and design language. Generate a premium presentation-ready slide image.' });
-  }
-
-  logger.debug('nano banana image gen start', { slideIndex, slideType, attachedImages: attachedImages.length });
-
-  const imageData = await callNanoBanana(parts, aspectRatio, slideIndex, `nanobanana_slide_${slideIndex}`);
-  if (!imageData) {
-    logger.error('nano banana image generation failed after retries — falling back to placeholder', {
-      slideIndex, slideType, promptPreview: nanaBananaPrompt?.slice(0, 300),
-    });
-    return generateRichPlaceholder(slideType, theme, slideIndex);
-  }
-  return imageData;
-}
 
 // Edit an existing slide image: sends only the user's instruction + reference
 // image(s) — no generation directives — so the model makes a targeted edit
@@ -138,52 +91,7 @@ export async function editSlideImage(instruction, attachedImages = [], aspectRat
   return callNanoBanana(parts, aspectRatio, slideIndex, `nanobanana_edit_${slideIndex}`);
 }
 
-// Lean wrapper for minimalistic GPT Image prompts. The base prompt is already
-// fully directed (medium, palette, typography, finish), so we only add neutral
-// rendering guardrails — never the classic premium/theme directives that would
-// pull the image away from the restrained, cinematic look.
-function buildMinimalPrompt(basePrompt) {
-  const parts = [
-    basePrompt,
-    '16:9 widescreen composition. Render exactly as described, with no additional decoration.',
-    'No watermarks, no UI chrome, no captions or text beyond what the brief specifies.',
-  ];
-  return parts.filter(Boolean).join(' ');
-}
 
-function buildFullPrompt(basePrompt, slideType, theme, colorPalette) {
-  const typeGuidance = {
-    cover: 'hero full-bleed atmospheric powerful impactful opening slide',
-    section: 'bold graphic section divider, strong typographic energy',
-    content: 'clean airy presentation background, not distracting, supports text readability',
-    quote: 'atmospheric moody editorial background, inspiring and cinematic',
-    data: 'analytical structured background, implies data and insight, subtle grid or chart elements',
-    image: 'full-bleed cinematic hero image, high production value',
-    conclusion: 'forward-looking hopeful inspiring bright energy, strong closing feel',
-  };
-
-  const themeGuidance = {
-    'modern-minimal': 'ultra-clean minimalist design, geometric shapes, ample white space, refined typography feel',
-    'bold-gradient': 'bold vibrant colour gradients, dynamic energetic composition, high contrast',
-    'corporate': 'professional corporate aesthetic, trustworthy polished elegant',
-    'creative': 'creative artistic expressive composition, unique visual style',
-    'tech': 'futuristic technology aesthetic, digital data streams, cutting-edge, dark moody',
-  };
-
-  const parts = [
-    basePrompt,
-    'Create a highly engaging, premium, presentation-ready slide image.',
-    'The image should be polished, visually rich, clear, and easy to present.',
-    typeGuidance[slideType] || typeGuidance.content,
-    themeGuidance[theme] || '',
-    colorPalette?.primary ? `Primary colour palette: ${colorPalette.primary}, secondary: ${colorPalette.secondary || ''}` : '',
-    'Professional presentation background, 16:9 widescreen aspect ratio.',
-    'No visible UI elements, no watermarks, no random text overlays.',
-    'Ultra high resolution, photorealistic or premium illustration quality.',
-  ];
-
-  return parts.filter(Boolean).join('. ');
-}
 
 // ─── Edit-failure overlay (keeps original slide image, stamps a retry banner) ──
 

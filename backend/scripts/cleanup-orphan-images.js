@@ -2,6 +2,7 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
+import { layoutFiles } from '../services/slideLayout.js';
 
 // Deletes image files in the image store that no DB row references anymore.
 // Orphans accumulate when a generation/migration writes a file to disk but the
@@ -38,7 +39,11 @@ for (const row of db.prepare('SELECT slides_data, thumbnail FROM presentations')
   if (row.thumbnail) referenced.add(path.basename(row.thumbnail));
   let slides = [];
   try { slides = JSON.parse(row.slides_data || '[]'); } catch { continue; }
-  for (const s of slides) if (s.image_file) referenced.add(path.basename(s.image_file));
+  for (const s of slides) {
+    if (s.image_file) referenced.add(path.basename(s.image_file));
+    // Layered slides: background / element / icon / logo files live in the layout.
+    for (const f of layoutFiles(s.layout)) referenced.add(path.basename(f));
+  }
 }
 
 // Version images.

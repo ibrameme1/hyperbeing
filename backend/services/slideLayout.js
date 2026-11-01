@@ -1,0 +1,749 @@
+// ─── Layered slide layout model ─────────────────────────────────────────────
+// A layered slide is a small scene graph stored as JSON on the slide
+// (`slides_data[].layout`). Images (background, elements, icons, logos) live
+// on disk via imageStore and are referenced by filename; everything else —
+// text, shapes/cards, charts, vector icons — is rendered natively by the web
+// app and the PPTX exporter, which is what makes every piece editable.
+//
+// Claude writes the layout (see designSlideLayout in claudeAgent.js). Its
+// output is untrusted-ish structured data, so EVERYTHING goes through
+// normalizeLayout() before it is stored or rendered: unknown kinds are dropped,
+// numbers are clamped, colors/fonts are validated, ids are made unique, and the
+// number of image generations is capped (cost ceiling).
+//
+// Coordinates are canvas pixels (16:9 → 1920×1080). z-order = array order
+// (index 0 is drawn first, right above the background).
+
+import { jsonrepair } from 'jsonrepair';
+
+export const LAYOUT_VERSION = 1;
+
+export const CANVAS_FOR_ASPECT = {
+  '16:9': { w: 1920, h: 1080 },
+  '9:16': { w: 1080, h: 1920 },
+  '1:1':  { w: 1080, h: 1080 },
+  '4:3':  { w: 1440, h: 1080 },
+};
+
+export function canvasFor(aspectRatio) {
+  return CANVAS_FOR_ASPECT[aspectRatio] || CANVAS_FOR_ASPECT['16:9'];
+}
+
+// Hard ceiling on image generations per slide (background + image layers +
+// one icon sheet). Bounds cost and rate-limit pressure; Claude is told the same.
+export const MAX_GENERATIONS_PER_SLIDE = 7;
+export const MAX_LAYERS = 60;
+export const MAX_SHEET_ICONS = 8;
+
+// Curated Google Fonts the renderer loads. Claude picks the font that does the
+// slide justice from this list; anything else falls back to the role default.
+// `cw` = average glyph advance as a fraction of font size for mixed-case text
+// (used by the overflow estimator); `cwCaps` for ALL-CAPS. Deliberately a
+// touch generous so the estimate errs towards "it might overflow".
+export const FONTS = {
+  'Inter':              { cw: 0.54, cwCaps: 0.68, category: 'sans' },
+  'Lato':               { cw: 0.52, cwCaps: 0.66, category: 'sans' },
+  'Poppins':            { cw: 0.58, cwCaps: 0.72, category: 'sans' },
+  'Montserrat':         { cw: 0.59, cwCaps: 0.75, category: 'sans' },
+  'DM Sans':            { cw: 0.53, cwCaps: 0.67, category: 'sans' },
+  'Manrope':            { cw: 0.55, cwCaps: 0.69, category: 'sans' },
+  'Sora':               { cw: 0.58, cwCaps: 0.72, category: 'sans' },
+  'Outfit':             { cw: 0.52, cwCaps: 0.65, category: 'sans' },
+  'Space Grotesk':      { cw: 0.56, cwCaps: 0.68, category: 'sans' },
+  'Archivo Black':      { cw: 0.66, cwCaps: 0.80, category: 'display' },
+  'Anton':              { cw: 0.42, cwCaps: 0.46, category: 'condensed' },
+  'Bebas Neue':         { cw: 0.38, cwCaps: 0.40, category: 'condensed' },
+  'Oswald':             { cw: 0.44, cwCaps: 0.50, category: 'condensed' },
+  'Barlow Condensed':   { cw: 0.42, cwCaps: 0.48, category: 'condensed' },
+  'Big Shoulders Display': { cw: 0.40, cwCaps: 0.45, category: 'condensed' },
+  'Playfair Display':   { cw: 0.53, cwCaps: 0.70, category: 'serif' },
+  'DM Serif Display':   { cw: 0.50, cwCaps: 0.68, category: 'serif' },
+  'Instrument Serif':   { cw: 0.44, cwCaps: 0.60, category: 'serif' },
+  'IBM Plex Mono':      { cw: 0.60, cwCaps: 0.60, category: 'mono' },
+};
+export const FONT_NAMES = Object.keys(FONTS);
+const DEFAULT_FONT = 'Inter';
+
+const LAYER_KINDS = ['image', 'text', 'shape', 'chart', 'icon', 'logo'];
+const IMAGE_ROLES = ['hero', 'element', 'effect', 'screen_image'];
+const CHART_TYPES = ['bar', 'column', 'line', 'area', 'pie', 'donut'];
+const SHAPES = ['rect', 'ellipse', 'line'];
+
+// ── primitive sanitizers ────────────────────────────────────────────────────
+
+function num(v, min, max, dflt) {
+  const n = typeof v === 'string' ? parseFloat(v) : v;
+  if (typeof n !== 'number' || !Number.isFinite(n)) return dflt;
+  return Math.min(max, Math.max(min, n));
+}
+
+function str(v, max = 2000, dflt = '') {
+  if (typeof v !== 'string') return dflt;
+  return v.slice(0, max);
+}
+
+const HEX_RE = /^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+const RGBA_RE = /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(,\s*(0|1|0?\.\d+)\s*)?\)$/i;
+
+export function color(v, dflt = null) {
+  if (typeof v !== 'string') return dflt;
+  const s = v.trim();
+  if (HEX_RE.test(s) || RGBA_RE.test(s) || s === 'transparent') return s;
+  return dflt;
+}
+
+function gradient(g) {
+  if (!g || typeof g !== 'object' || !Array.isArray(g.stops)) return null;
+  const stops = g.stops
+    .map(s => ({ color: color(s?.color), pos: num(s?.pos, 0, 100, null) }))
+    .filter(s => s.color);
+  if (stops.length < 2) return null;
+  stops.forEach((s, i) => { if (s.pos === null) s.pos = Math.round((i / (stops.length - 1)) * 100); });
+  return { angle: num(g.angle, 0, 360, 90), stops: stops.slice(0, 6) };
+}
+
+function shadow(s) {
+  if (!s || typeof s !== 'object') return null;
+  return {
+    color: color(s.color, 'rgba(0,0,0,0.5)'),
+    blur: num(s.blur, 0, 200, 24),
+    dx: num(s.dx, -200, 200, 0),
+    dy: num(s.dy, -200, 200, 8),
+  };
+}
+
+function font(f, dflt) {
+  return FONT_NAMES.includes(f) ? f : (FONT_NAMES.includes(dflt) ? dflt : DEFAULT_FONT);
+}
+
+// Image reference tokens: "upload:N" (user's brief attachments) or
+// "brand:<Name>" (a brand logo fetched online / declared in layout.brands).
+function refs(v) {
+  if (!Array.isArray(v)) return [];
+  return v.filter(r => typeof r === 'string' && /^(upload:\d{1,2}|brand:.{1,80})$/.test(r)).slice(0, 4);
+}
+
+// ── layer normalizers ───────────────────────────────────────────────────────
+
+function baseLayer(l, canvas, id) {
+  // Screen children are authored in normalized 0-1 screen coordinates; they
+  // become canvas pixels once the device's screen rect is known.
+  if (typeof l.in_screen === 'string') {
+    return {
+      id, kind: l.kind, name: str(l.name, 60, '') || undefined,
+      x: num(l.x, 0, 1, 0), y: num(l.y, 0, 1, 0), w: num(l.w, 0.01, 1, 1), h: num(l.h, 0.01, 1, 1),
+      rotation: num(l.rotation, -180, 180, 0), opacity: num(l.opacity, 0, 1, 1),
+    };
+  }
+  const w = num(l.w, 4, canvas.w * 2, canvas.w * 0.3);
+  const h = num(l.h, 4, canvas.h * 2, canvas.h * 0.2);
+  return {
+    id,
+    kind: l.kind,
+    name: str(l.name, 60, '') || undefined,
+    x: num(l.x, -canvas.w, canvas.w * 2, 0),
+    y: num(l.y, -canvas.h, canvas.h * 2, 0),
+    w,
+    h,
+    rotation: num(l.rotation, -180, 180, 0),
+    opacity: num(l.opacity, 0, 1, 1),
+  };
+}
+
+function normalizeText(l, base, fonts) {
+  const runs = Array.isArray(l.runs)
+    ? l.runs
+      .map(r => ({
+        text: str(r?.text, 2000),
+        color: color(r?.color) || undefined,
+        gradient: gradient(r?.gradient) || undefined,
+        weight: r?.weight !== undefined ? num(r.weight, 100, 900, undefined) : undefined,
+        italic: typeof r?.italic === 'boolean' ? r.italic : undefined,
+      }))
+      .filter(r => r.text)
+      .slice(0, 30)
+    : null;
+  const text = str(l.text, 4000) || (runs ? runs.map(r => r.text).join('') : '');
+  if (!text.trim()) return null;
+  const isDisplay = l.role === 'headline' || l.role === 'display';
+  return {
+    ...base,
+    role: str(l.role, 30, 'body'),
+    text,
+    runs: runs && runs.length ? runs : undefined,
+    font: font(l.font, isDisplay ? fonts.display : fonts.body),
+    size: num(l.size, 8, 400, 28),
+    weight: num(l.weight, 100, 900, isDisplay ? 700 : 400),
+    italic: !!l.italic,
+    uppercase: !!l.uppercase,
+    color: color(l.color, '#FFFFFF'),
+    gradient: gradient(l.gradient) || undefined,
+    align: ['left', 'center', 'right'].includes(l.align) ? l.align : 'left',
+    valign: ['top', 'middle', 'bottom'].includes(l.valign) ? l.valign : 'top',
+    line_height: num(l.line_height, 0.8, 2.5, 1.15),
+    // em units. Claude sometimes gives px (e.g. 4) — anything > 0.5 can't be
+    // a sane em value, so treat it as px and convert using the font size.
+    letter_spacing: letterSpacing(l.letter_spacing, num(l.size, 8, 400, 28)),
+    shadow: shadow(l.shadow) || undefined,
+  };
+}
+
+function letterSpacing(v, size) {
+  const n = num(v, -50, 200, 0);
+  const em = Math.abs(n) > 0.5 ? n / size : n;
+  return Math.round(Math.min(0.3, Math.max(-0.08, em)) * 1000) / 1000;
+}
+
+function normalizeShape(l, base) {
+  return {
+    ...base,
+    shape: SHAPES.includes(l.shape) ? l.shape : 'rect',
+    fill: color(l.fill, l.frosted ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.1)'),
+    gradient: gradient(l.gradient) || undefined,
+    radius: num(l.radius, 0, 2000, 0),
+    border: l.border && typeof l.border === 'object'
+      ? { color: color(l.border.color, 'rgba(255,255,255,0.2)'), width: num(l.border.width, 0, 40, 1) }
+      : undefined,
+    // Frosted glass = blurred crop of whatever is underneath + tint + border.
+    // Rendered natively on web (backdrop-filter) and baked to an image for PPTX.
+    frosted: l.frosted ? { blur: num(l.frosted?.blur ?? l.blur, 0, 80, 24) } : undefined,
+    shadow: shadow(l.shadow) || undefined,
+  };
+}
+
+function normalizeChart(l, base, fonts) {
+  const type = CHART_TYPES.includes(l.chart_type) ? l.chart_type : 'column';
+  const categories = Array.isArray(l.categories) ? l.categories.map(c => str(String(c ?? ''), 60)).slice(0, 24) : [];
+  const series = Array.isArray(l.series)
+    ? l.series.slice(0, 6).map(s => ({
+      name: str(s?.name, 60, 'Series'),
+      values: Array.isArray(s?.values)
+        ? s.values.slice(0, categories.length || 24).map(v => (v === null ? null : num(v, -1e12, 1e12, 0)))
+        : [],
+      color: color(s?.color) || undefined,
+    })).filter(s => s.values.length)
+    : [];
+  if (!series.length) return null;
+  const cats = categories.length ? categories : series[0].values.map((_, i) => String(i + 1));
+  return {
+    ...base,
+    chart_type: type,
+    categories: cats,
+    series,
+    options: {
+      show_values: !!l.options?.show_values,
+      show_legend: !!l.options?.show_legend,
+      show_grid: l.options?.show_grid !== false,
+      value_prefix: str(l.options?.value_prefix, 8),
+      value_suffix: str(l.options?.value_suffix, 8),
+      axis_color: color(l.options?.axis_color, 'rgba(255,255,255,0.5)'),
+      label_color: color(l.options?.label_color, '#FFFFFF'),
+      font: font(l.options?.font, fonts.body),
+      font_size: num(l.options?.font_size, 10, 48, 18),
+      y_min: l.options?.y_min !== undefined ? num(l.options.y_min, -1e12, 1e12, undefined) : undefined,
+      y_max: l.options?.y_max !== undefined ? num(l.options.y_max, -1e12, 1e12, undefined) : undefined,
+      line_width: num(l.options?.line_width, 1, 16, 4),
+      // Per-point colors (bars) — e.g. highlight one bar.
+      point_colors: Array.isArray(l.options?.point_colors) ? l.options.point_colors.map(c => color(c) || null).slice(0, 24) : undefined,
+    },
+  };
+}
+
+function normalizeImage(l, base) {
+  const prompt = str(l.prompt, 3000).trim();
+  if (!prompt && !l.file) return null;
+  const role = IMAGE_ROLES.includes(l.role) ? l.role : 'element';
+  return {
+    ...base,
+    role,
+    prompt,
+    refs: refs(l.refs),
+    // Device with a native screen: the element is generated with a flat
+    // chroma-green screen that is detected after generation; layers whose
+    // `in_screen` points at this id are positioned inside that rect.
+    screen: l.screen ? { fill: color(l.screen?.fill, '#000000') } : undefined,
+    shadow: shadow(l.shadow) || undefined,
+    glow: l.glow ? { color: color(l.glow?.color, 'rgba(255,255,255,0.6)'), blur: num(l.glow?.blur, 0, 200, 40) } : undefined,
+    flip: !!l.flip,
+    file: typeof l.file === 'string' ? l.file : undefined,
+    src: typeof l.src === 'string' ? l.src : undefined,
+  };
+}
+
+function normalizeIcon(l, base) {
+  const source = l.source === 'sheet' ? 'sheet' : 'lucide';
+  if (source === 'lucide') {
+    const name = str(l.name, 60).trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+    if (!name) return null;
+    return { ...base, source, name, color: color(l.color, '#FFFFFF'), stroke: num(l.stroke, 0.5, 4, 2) };
+  }
+  const prompt = str(l.prompt, 400).trim();
+  if (!prompt && !l.file) return null;
+  return { ...base, source, prompt, file: typeof l.file === 'string' ? l.file : undefined, src: typeof l.src === 'string' ? l.src : undefined };
+}
+
+function normalizeLogo(l, base) {
+  if (l.source === 'upload') {
+    const upload = num(l.upload, 0, 20, null);
+    if (upload === null) return null;
+    return { ...base, source: 'upload', upload, file: typeof l.file === 'string' ? l.file : undefined, src: typeof l.src === 'string' ? l.src : undefined };
+  }
+  const brand = str(l.brand, 80).trim();
+  if (!brand) return null;
+  return {
+    ...base,
+    source: 'brand',
+    brand,
+    file: typeof l.file === 'string' ? l.file : undefined,
+    src: typeof l.src === 'string' ? l.src : undefined,
+    // Fallback styling when no logo can be fetched: render the brand name as a wordmark.
+    color: color(l.color, '#FFFFFF'),
+  };
+}
+
+function normalizeBackground(b) {
+  if (!b || typeof b !== 'object') return { type: 'color', color: '#000000' };
+  if (b.type === 'image' && (str(b.prompt, 3000).trim() || b.file)) {
+    return {
+      type: 'image',
+      prompt: str(b.prompt, 3000).trim(),
+      refs: refs(b.refs),
+      color: color(b.color, '#000000'), // shown until the image arrives
+      file: typeof b.file === 'string' ? b.file : undefined,
+      src: typeof b.src === 'string' ? b.src : undefined,
+    };
+  }
+  if (b.type === 'gradient' && gradient(b.gradient)) {
+    return { type: 'gradient', gradient: gradient(b.gradient), color: color(b.color, gradient(b.gradient).stops[0].color) };
+  }
+  return { type: 'color', color: color(b.color, '#000000') };
+}
+
+// ── normalizeLayout ─────────────────────────────────────────────────────────
+// Returns a clean layout or throws if it's unusable (no layers and no
+// background). `opts.uploadCount` bounds upload refs.
+// Tool-call quirk: with long arrays the model sometimes returns a field as a
+// JSON-encoded string ("layers": "[{...}]") instead of the value itself.
+function unstring(v) {
+  if (typeof v !== 'string') return v;
+  const t = v.trim();
+  if (!t.startsWith('[') && !t.startsWith('{')) return v;
+  try { return JSON.parse(t); } catch {
+    try { return JSON.parse(jsonrepair(t)); } catch { return v; }
+  }
+}
+
+export function normalizeLayout(raw, { aspectRatio = '16:9', uploadCount = 0 } = {}) {
+  if (!raw || typeof raw !== 'object') throw new Error('layout is not an object');
+  raw = { ...raw, layers: unstring(raw.layers), background: unstring(raw.background), brands: unstring(raw.brands), fonts: unstring(raw.fonts) };
+  const canvas = canvasFor(aspectRatio);
+  const fonts = {
+    display: font(raw.fonts?.display, 'Inter'),
+    body: font(raw.fonts?.body, 'Inter'),
+  };
+
+  const usedIds = new Set();
+  const uniqueId = (wanted, kind) => {
+    let id = typeof wanted === 'string' ? wanted.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40) : '';
+    if (!id) id = kind;
+    let candidate = id;
+    for (let i = 2; usedIds.has(candidate); i++) candidate = `${id}_${i}`;
+    usedIds.add(candidate);
+    return candidate;
+  };
+
+  const background = normalizeBackground(raw.background);
+  let generations = background.type === 'image' && !background.file ? 1 : 0;
+  let sheetIcons = 0;
+
+  const idMap = new Map(); // Claude id → normalized id (for in_screen references)
+  const layers = [];
+  for (const l of (Array.isArray(raw.layers) ? raw.layers : []).slice(0, MAX_LAYERS * 2)) {
+    if (!l || typeof l !== 'object' || !LAYER_KINDS.includes(l.kind)) continue;
+    if (layers.length >= MAX_LAYERS) break;
+    const id = uniqueId(l.id, l.kind);
+    if (typeof l.id === 'string') idMap.set(l.id, id);
+    const base = baseLayer(l, canvas, id);
+    let layer = null;
+    switch (l.kind) {
+      case 'text': layer = normalizeText(l, base, fonts); break;
+      case 'shape': layer = normalizeShape(l, base); break;
+      case 'chart': layer = normalizeChart(l, base, fonts); break;
+      case 'image': {
+        layer = normalizeImage(l, base);
+        if (layer && !layer.file) {
+          if (generations >= MAX_GENERATIONS_PER_SLIDE) layer = null;
+          else generations++;
+        }
+        break;
+      }
+      case 'icon': {
+        layer = normalizeIcon(l, base);
+        if (layer?.source === 'sheet' && !layer.file) {
+          if (sheetIcons >= MAX_SHEET_ICONS) layer = null;
+          else sheetIcons++;
+        }
+        break;
+      }
+      case 'logo': layer = normalizeLogo(l, base); break;
+    }
+    if (!layer) continue;
+    if (layer.kind === 'logo' && layer.source === 'upload' && layer.upload >= uploadCount && !layer.file) continue;
+    if (typeof l.in_screen === 'string') layer._in_screen_raw = l.in_screen;
+    layers.push(layer);
+  }
+
+  // The icon sheet costs one generation. If it would exceed the cap, demote
+  // sheet icons to nothing rather than silently blowing the budget.
+  if (sheetIcons > 0 && !layers.some(l => l.kind === 'icon' && l.source === 'sheet' && l.file)) {
+    if (generations >= MAX_GENERATIONS_PER_SLIDE) {
+      for (let i = layers.length - 1; i >= 0; i--) {
+        if (layers[i].kind === 'icon' && layers[i].source === 'sheet') layers.splice(i, 1);
+      }
+    }
+  }
+
+  // Resolve in_screen references to normalized ids; children of a device are
+  // positioned in normalized (0-1) screen coordinates until the screen rect is
+  // known (see placeScreenChildren in layerGeneration.js).
+  for (const layer of layers) {
+    if (layer._in_screen_raw) {
+      const target = idMap.get(layer._in_screen_raw);
+      const device = layers.find(d => d.id === target && d.kind === 'image' && d.screen);
+      if (device) layer.in_screen = device.id;
+      delete layer._in_screen_raw;
+    }
+  }
+
+  if (!layers.length && background.type === 'color' && !raw.background) {
+    throw new Error('layout has no layers');
+  }
+
+  const brands = Array.isArray(raw.brands)
+    ? raw.brands.slice(0, 8).map(b => ({
+      name: str(b?.name, 80).trim(),
+      domain: str(b?.domain, 120).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''),
+      famous: !!b?.famous,
+    })).filter(b => b.name)
+    : [];
+
+  return {
+    version: LAYOUT_VERSION,
+    canvas,
+    composition: ['scene', 'objects', 'native'].includes(raw.composition) ? raw.composition : 'objects',
+    style_block: str(raw.style_block, 1500),
+    fonts,
+    background,
+    layers,
+    brands,
+  };
+}
+
+// ── text fitting / readability checks ──────────────────────────────────────
+
+// Minimum readable font size, in canvas px, scaled to the canvas height
+// (1080 → 16px). Below this, text is unreadable when projected.
+export function minFontSize(canvas) {
+  return Math.round(16 * (Math.min(canvas.w, canvas.h) / 1080));
+}
+
+function charWidth(layer, ch) {
+  const f = FONTS[layer.font] || FONTS[DEFAULT_FONT];
+  const upper = layer.uppercase || (ch >= 'A' && ch <= 'Z');
+  let w = upper ? f.cwCaps : f.cw;
+  if (ch === ' ') w *= 0.55;
+  else if ('il.,:;\'|!'.includes(ch)) w *= 0.45;
+  else if ('mwMW@'.includes(ch)) w *= 1.35;
+  if (layer.weight >= 700) w *= 1.06;
+  return w * layer.size + layer.letter_spacing * layer.size;
+}
+
+// Real-font measurement is injected by services/fonts.js (opentype.js over the
+// bundled TTFs). Without it (tests, missing font) the estimator is used.
+let textMeasurer = null;
+export function setTextMeasurer(fn) { textMeasurer = fn; }
+
+function measure(layer, text) {
+  if (textMeasurer) {
+    const w = textMeasurer(layer, text);
+    if (w !== null && w !== undefined) return w;
+  }
+  let w = 0;
+  for (const ch of text) w += charWidth(layer, ch);
+  return w;
+}
+
+// Greedy word wrap using the estimator. Returns the wrapped lines.
+export function wrapText(layer, text = layer.text) {
+  const out = [];
+  for (const para of String(text).split('\n')) {
+    const words = para.split(/\s+/).filter(Boolean);
+    if (!words.length) { out.push(''); continue; }
+    let line = '';
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (!line || measure(layer, candidate) <= layer.w) line = candidate;
+      else { out.push(line); line = word; }
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+// Same wrap as wrapText but returns character ranges into layer.text, so
+// renderers can color sub-ranges (runs) across wrapped lines.
+export function wrapTextRanges(layer) {
+  const text = String(layer.text);
+  const lines = [];
+  let paraStart = 0;
+  for (const para of text.split('\n')) {
+    const words = [];
+    const re = /\S+/g;
+    let m;
+    while ((m = re.exec(para))) words.push({ start: paraStart + m.index, end: paraStart + m.index + m[0].length });
+    if (!words.length) lines.push({ start: paraStart, end: paraStart });
+    let cur = null;
+    for (const w of words) {
+      if (!cur) { cur = { start: w.start, end: w.end }; continue; }
+      if (measure(layer, text.slice(cur.start, w.end)) <= layer.w) cur.end = w.end;
+      else { lines.push(cur); cur = { start: w.start, end: w.end }; }
+    }
+    if (cur) lines.push(cur);
+    paraStart += para.length + 1;
+  }
+  return lines;
+}
+
+export function measureText(layer, text) {
+  return measure(layer, text);
+}
+
+export function estimateTextHeight(layer) {
+  const lines = wrapText(layer);
+  const widest = Math.max(0, ...lines.map(l => measure(layer, l)));
+  return { lines: lines.length, height: lines.length * layer.size * layer.line_height, widest };
+}
+
+function overlaps(a, b) {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+// Makes every text layer fit its box: shrink the font (never below 70% of the
+// designed size or the readability floor), then grow the box downward if
+// there's room on the canvas. Also pulls boxes inside the safe area. Returns
+// a list of human-readable warnings that feed the visual review pass.
+// Mutates and returns the layout.
+export function fitLayout(layout) {
+  const { canvas } = layout;
+  const warnings = [];
+  const floor = minFontSize(canvas);
+  const margin = Math.round(canvas.w * 0.02);
+
+  for (const l of layout.layers) {
+    if (l.kind !== 'text' || l.in_screen) continue;
+
+    // Keep text inside the canvas (with a small safe margin).
+    if (l.w > canvas.w - margin * 2) l.w = canvas.w - margin * 2;
+    l.x = Math.min(Math.max(l.x, margin), canvas.w - margin - l.w);
+    l.y = Math.min(Math.max(l.y, margin * 0.5), canvas.h - margin * 0.5 - Math.min(l.h, canvas.h));
+
+    if (l.size < floor) {
+      warnings.push(`text "${l.id}" was ${l.size}px — raised to the ${floor}px readability floor`);
+      l.size = floor;
+    }
+
+    const designed = l.size;
+    const minSize = Math.max(floor, Math.round(designed * 0.7));
+    let est = estimateTextHeight(l);
+    while ((est.height > l.h || est.widest > l.w * 1.02) && l.size > minSize) {
+      l.size = Math.max(minSize, Math.floor(l.size * 0.95));
+      est = estimateTextHeight(l);
+    }
+    if (l.size !== designed) warnings.push(`text "${l.id}" shrunk ${designed}px → ${l.size}px to fit`);
+
+    if (est.height > l.h) {
+      const room = canvas.h - margin * 0.5 - l.y;
+      const needed = Math.ceil(est.height * 1.04);
+      if (needed <= room) {
+        l.h = needed;
+      } else {
+        l.h = room;
+        warnings.push(`text "${l.id}" still overflows its box (needs ${needed}px, has ${room}px) — shorten copy or restructure`);
+      }
+    }
+  }
+
+  // Text-on-text collisions are almost always a layout bug.
+  const texts = layout.layers.filter(l => l.kind === 'text' && !l.in_screen && !l.rotation);
+  for (let i = 0; i < texts.length; i++) {
+    for (let j = i + 1; j < texts.length; j++) {
+      if (overlaps(texts[i], texts[j])) warnings.push(`text "${texts[i].id}" overlaps text "${texts[j].id}"`);
+    }
+  }
+  // Generated elements covering text (devices, heroes) — usually a layout bug.
+  // Layers drawn BELOW the text are fine only if they're backgrounds of it,
+  // which images on a designed slide rarely are.
+  for (const t of texts) {
+    for (const im of layout.layers.filter(l => l.kind === 'image' && l.role !== 'effect' && l.role !== 'screen_image')) {
+      if (t.screen_of === im.id) continue; // text on its own device's screen is the point
+      if (overlaps(t, im)) {
+        const ix = Math.min(t.x + t.w, im.x + im.w) - Math.max(t.x, im.x);
+        const iy = Math.min(t.y + t.h, im.y + im.h) - Math.max(t.y, im.y);
+        if (ix * iy > 0.1 * t.w * t.h) warnings.push(`image "${im.id}" covers part of text "${t.id}"`);
+      }
+    }
+  }
+  // Elements running off the canvas by a lot (not a deliberate small bleed).
+  for (const im of layout.layers.filter(l => l.kind === 'image')) {
+    const outside = Math.max(0, im.x + im.w - canvas.w) + Math.max(0, -im.x) + Math.max(0, im.y + im.h - canvas.h) + Math.max(0, -im.y);
+    if (outside > 0.25 * Math.min(im.w, im.h)) warnings.push(`image "${im.id}" runs well outside the canvas`);
+  }
+  // Text over a chart is unreadable on both.
+  for (const t of texts) {
+    for (const c of layout.layers.filter(l => l.kind === 'chart')) {
+      if (overlaps(t, c)) warnings.push(`text "${t.id}" overlaps chart "${c.id}"`);
+    }
+  }
+  return { layout, warnings };
+}
+
+// Every on-disk file a layout references (for cleanup on delete/replace).
+export function layoutFiles(layout) {
+  if (!layout || typeof layout !== 'object') return [];
+  const files = [];
+  if (layout.background?.file) files.push(layout.background.file);
+  if (layout.background?.frosted_file) files.push(layout.background.frosted_file);
+  for (const l of layout.layers || []) {
+    if (l.file) files.push(l.file);
+    if (l.frosted_file) files.push(l.frosted_file);
+  }
+  return files;
+}
+
+// Count of image generations the layout still needs (used for stats/logging).
+export function pendingGenerations(layout) {
+  let n = layout.background?.type === 'image' && !layout.background.file ? 1 : 0;
+  for (const l of layout.layers) if (l.kind === 'image' && !l.file) n++;
+  if (layout.layers.some(l => l.kind === 'icon' && l.source === 'sheet' && !l.file)) n++;
+  return n;
+}
+
+// ── streaming support ───────────────────────────────────────────────────────
+// Claude streams the layout tool call as JSON text. To start generating image
+// layers before the whole layout is written, we pull out the parts that are
+// already COMPLETE: the top-level style_block string, the background object,
+// the brands array, and each fully closed object inside "layers". Bracket
+// counting with string/escape awareness — the same idea as
+// extractPrefixedObjects in claudeAgent.js.
+function scanValueEnd(text, start) {
+  // start points at '{', '[' or '"'. Returns index just past the value, or -1 if incomplete.
+  const open = text[start];
+  if (open === '"') {
+    for (let i = start + 1; i < text.length; i++) {
+      if (text[i] === '\\') { i++; continue; }
+      if (text[i] === '"') return i + 1;
+    }
+    return -1;
+  }
+  let depth = 0; let inStr = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (c === '\\') { i++; continue; }
+      if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '{' || c === '[') depth++;
+    else if (c === '}' || c === ']') { depth--; if (depth === 0) return i + 1; }
+  }
+  return -1;
+}
+
+// Finds `"key":` at nesting depth 1 of the top-level object; returns the index
+// of the value's first char, or -1.
+function findTopLevelKey(text, key) {
+  let depth = 0; let inStr = false; let strStart = -1;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (c === '\\') { i++; continue; }
+      if (c === '"') {
+        inStr = false;
+        if (depth === 1 && text.slice(strStart + 1, i) === key) {
+          let j = i + 1;
+          while (j < text.length && /\s/.test(text[j])) j++;
+          if (text[j] !== ':') continue;
+          j++;
+          while (j < text.length && /\s/.test(text[j])) j++;
+          return j < text.length ? j : -1;
+        }
+      }
+      continue;
+    }
+    if (c === '"') { inStr = true; strStart = i; }
+    else if (c === '{' || c === '[') depth++;
+    else if (c === '}' || c === ']') depth--;
+  }
+  return -1;
+}
+
+function tryParse(s) {
+  try { return JSON.parse(s); } catch { return undefined; }
+}
+
+// Decodes the (possibly still streaming) body of a JSON string literal that
+// starts at text[start] === '"'. Stops cleanly before an incomplete escape.
+function decodePartialString(text, start) {
+  let out = '';
+  for (let i = start + 1; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') break;
+    if (c !== '\\') { out += c; continue; }
+    const n = text[i + 1];
+    if (n === undefined) break;
+    if (n === 'u') {
+      const hex = text.slice(i + 2, i + 6);
+      if (hex.length < 4) break;
+      out += String.fromCharCode(parseInt(hex, 16));
+      i += 5;
+      continue;
+    }
+    out += { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f' }[n] ?? n;
+    i++;
+  }
+  return out;
+}
+
+export function extractCompletedLayoutParts(text) {
+  const out = { layers: [] };
+  for (const key of ['style_block', 'background', 'brands', 'composition']) {
+    const at = findTopLevelKey(text, key);
+    if (at === -1) continue;
+    const end = scanValueEnd(text, at);
+    if (end !== -1) {
+      let v = tryParse(text.slice(at, end));
+      if (key !== 'style_block' && key !== 'composition') v = unstring(v);
+      if (v !== undefined) out[key] = v;
+    }
+  }
+  let la = findTopLevelKey(text, 'layers');
+  if (la !== -1 && text[la] === '"') {
+    // String-encoded array: scan the decoded string body instead.
+    text = decodePartialString(text, la);
+    la = text.indexOf('[');
+  }
+  if (la !== -1 && text[la] === '[') {
+    let i = la + 1;
+    while (i < text.length) {
+      while (i < text.length && /[\s,]/.test(text[i])) i++;
+      if (text[i] !== '{') break;
+      const end = scanValueEnd(text, i);
+      if (end === -1) break;
+      const v = tryParse(text.slice(i, end));
+      if (v) out.layers.push(v);
+      i = end;
+    }
+  }
+  return out;
+}

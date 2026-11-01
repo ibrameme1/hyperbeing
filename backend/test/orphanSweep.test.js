@@ -21,7 +21,7 @@ function writeImg(name, old = true) {
   return name;
 }
 
-let referencedSlide, referencedVersion, oldOrphan, freshOrphan;
+let referencedSlide, referencedVersion, oldOrphan, freshOrphan, layerBg, layerEl;
 
 beforeAll(() => {
   initDatabase();
@@ -32,17 +32,21 @@ beforeAll(() => {
   referencedVersion = `${uuid()}.png`;
   oldOrphan = `${uuid()}.png`;
   freshOrphan = `${uuid()}.png`;
+  layerBg = `${uuid()}.png`;
+  layerEl = `${uuid()}.png`;
 
   writeImg(referencedSlide);
   writeImg(referencedVersion);
   writeImg(oldOrphan);          // old + unreferenced → should be swept
   writeImg(freshOrphan, false); // unreferenced but < 1h old → must be kept
+  writeImg(layerBg);            // layered slide: referenced only from layout
+  writeImg(layerEl);
 
   const userId = uuid();
   const presId = uuid();
   db.prepare("INSERT INTO users (id, name, email) VALUES (?, 'U', ?)").run(userId, `${uuid()}@t`);
   db.prepare('INSERT INTO presentations (id, user_id, slides_data, thumbnail) VALUES (?, ?, ?, ?)')
-    .run(presId, userId, JSON.stringify([{ index: 0, image_file: referencedSlide }]), referencedSlide);
+    .run(presId, userId, JSON.stringify([{ index: 0, image_file: referencedSlide, layout: { background: { type: 'image', file: layerBg }, layers: [{ kind: 'image', id: 'phone', file: layerEl }] } }]), referencedSlide);
   db.prepare("INSERT INTO slide_versions (id, presentation_id, slide_index, image_file, image_data) VALUES (?, ?, 0, ?, '')")
     .run(uuid(), presId, referencedVersion);
 
@@ -52,6 +56,10 @@ beforeAll(() => {
 describe('sweepOrphanImages', () => {
   it('deletes old, unreferenced files', () => {
     expect(existsSync(path.join(IMAGE_DIR, oldOrphan))).toBe(false);
+  });
+  it('keeps layered-slide layer files referenced only from the layout', () => {
+    expect(existsSync(path.join(IMAGE_DIR, layerBg))).toBe(true);
+    expect(existsSync(path.join(IMAGE_DIR, layerEl))).toBe(true);
   });
   it('keeps referenced files', () => {
     expect(existsSync(path.join(IMAGE_DIR, referencedSlide))).toBe(true);
