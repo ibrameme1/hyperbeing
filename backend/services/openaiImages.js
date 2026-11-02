@@ -114,8 +114,11 @@ export async function generateLayerImage({ prompt, size = '1024x1024', transpare
 
       if (!response.ok) {
         const errBody = await response.text().catch(() => '');
-        const isTransient = response.status === 429 || response.status >= 500;
-        const ctx = { label, attempt, status: response.status, errBody: errBody.slice(0, 500), model: LAYER_IMAGE_MODEL, size, transparent, refs: refs.length };
+        // 429 is usually a rate limit (retry), but "out of credits / quota"
+        // is permanent — retrying only wastes time.
+        const quotaExhausted = /insufficient_quota|no credits remaining|billing/i.test(errBody);
+        const isTransient = !quotaExhausted && (response.status === 429 || response.status >= 500);
+        const ctx = { label, attempt, status: response.status, errBody: errBody.slice(0, 500), model: LAYER_IMAGE_MODEL, size, transparent, refs: refs.length, quotaExhausted };
         if (attempt < maxAttempts && isTransient) {
           logger.warn('layer image gen failed, retrying', ctx);
           await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1500));
@@ -163,7 +166,11 @@ async function mockLayerImage(size, transparent, spec) {
   const [w, h] = size.split('x').map(Number);
   const hue = MOCK_HUES[Math.abs(hashCode(spec.label || '')) % MOCK_HUES.length];
   let svg;
-  if (spec.kind === 'sheet') {
+  if (spec.kind === 'cluster') {
+    // One shape per item at its declared position, so splitting is exercised in mock mode.
+    const shapes = spec.items.map((it, i) => `<rect x="${it.box.x * w + 6}" y="${it.box.y * h + 6}" width="${Math.max(4, it.box.w * w - 12)}" height="${Math.max(4, it.box.h * h - 12)}" rx="${Math.min(it.box.w * w, it.box.h * h) * 0.15}" fill="${MOCK_HUES[i % MOCK_HUES.length]}"/>`).join('');
+    svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${shapes}</svg>`;
+  } else if (spec.kind === 'sheet') {
     const { cols, rows } = spec;
     const cw = w / cols; const ch = h / rows;
     let cells = '';

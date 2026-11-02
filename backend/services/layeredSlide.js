@@ -7,7 +7,7 @@ import { normalizeLayout, fitLayout, layoutFiles, canvasFor, MAX_GENERATIONS_PER
 import { generateLayerImage, scheduleImageJob, sizeForAspect, IMAGE_MOCK_MODE } from './openaiImages.js';
 import {
   coverToAspect, ensureTransparent, unscreen, trimTransparent, extractScreen,
-  sliceSheet, containRect, normalizeReference,
+  sliceSheet, containRect, normalizeReference, splitCluster,
 } from './layerImaging.js';
 import { renderLayoutPreview } from './layoutPreview.js';
 import { fetchBrandLogo } from './brandAssets.js';
@@ -42,6 +42,7 @@ const SCREEN_SUFFIX = 'The device faces the camera perfectly straight-on and fla
 const SCREEN_IMAGE_SUFFIX = 'Flat, full-frame screen content exactly as it would appear on the display itself (like a screenshot or a video frame): no phone, no device, no bezel, no hands holding a phone, no frame, no border, no UI chrome unless described.';
 const CONNECTOR_OBJECTS_SUFFIX = 'On a transparent background: only the stream itself, nothing else in frame, no source or destination objects, no background, no surface, no text.';
 const HERO_REF_NOTE = 'The attached reference image shows the slide\'s main object. Use it ONLY to match lighting direction, materials, colour palette and render style so this object belongs in the same scene. Do NOT draw the reference object or any part of it.';
+const CLUSTER_SUFFIX = 'Objects that interact physically connect (for example a stream flowing from one object into another). Apart from those physical connections, leave a thin gap of empty transparent space between separate objects so each can be lifted out cleanly. Isolated on a transparent background: no background, no floor, no surface, no cast shadow, no text, no letters, no frame or border.';
 const EMPTY_BG_SUFFIX = 'This is an EMPTY backdrop: absolutely no objects of any kind (no devices, phones, products, coins, glass panels, cards, people, shapes or props). Only light, colour, atmosphere and texture. No text, no letters, no logos, no UI.';
 const BG_SUFFIX = 'No overlaid text, no captions, no letters or numbers, no logos, no watermarks, no UI, no cards, no panels, no buttons, no frames, no borders. Leave the described negative space genuinely clean.';
 
@@ -92,6 +93,31 @@ export function connectorGeometry(layout, l) {
     sentence = `It begins exactly at the point ${pct(f1.x)}% from the left edge and ${pct(f1.y)}% from the top edge of the frame, and flows continuously to end exactly at the point ${pct(f2.x)}% from the left and ${pct(f2.y)}% from the top. Nothing extends beyond those two endpoints.`;
   }
   return { box, size, sentence };
+}
+
+// Cluster geometry: the frame around all items (small margin), grown to the
+// generation aspect so the image maps onto the canvas without distortion;
+// each item's region as fractions of that frame; and the single prompt.
+export function clusterPlan(l, deckDesign, styleBlock) {
+  const items = l.items;
+  const x0 = Math.min(...items.map(i => i.x)); const y0 = Math.min(...items.map(i => i.y));
+  const x1 = Math.max(...items.map(i => i.x + i.w)); const y1 = Math.max(...items.map(i => i.y + i.h));
+  const m = Math.max(x1 - x0, y1 - y0) * 0.03;
+  let box = { x: x0 - m, y: y0 - m, w: x1 - x0 + 2 * m, h: y1 - y0 + 2 * m };
+  const size = sizeForAspect(box.w, box.h);
+  const [gw, gh] = SIZE_DIMS[size];
+  const cx = box.x + box.w / 2; const cy = box.y + box.h / 2;
+  if (box.w / box.h > gw / gh) box.h = box.w * (gh / gw); else box.w = box.h * (gw / gh);
+  box = { x: Math.round(cx - box.w / 2), y: Math.round(cy - box.h / 2), w: Math.round(box.w), h: Math.round(box.h) };
+  const frac = items.map(it => ({ id: it.id, box: { x: (it.x - box.x) / box.w, y: (it.y - box.y) / box.h, w: it.w / box.w, h: it.h / box.h } }));
+  const pct = (v) => Math.round(Math.min(1, Math.max(0, v)) * 100);
+  const lines = items.map((it, i) => {
+    const f = frac[i].box;
+    return `${i + 1}. ${it.name || it.id}: ${it.prompt} Occupies ${pct(f.x)}%-${pct(f.x + f.w)}% of the frame width and ${pct(f.y)}%-${pct(f.y + f.h)}% of its height.`;
+  }).join('\n');
+  const body = `ONE cohesive composition containing exactly these ${items.length} objects, all lit by the same light, sharing one perspective and one colour grade, arranged in the frame as follows (positions measured from the top-left of the frame):\n${lines}${l.prompt ? `\n\nHow they relate: ${l.prompt}` : ''}`;
+  const prompt = composePrompt(deckDesign, { style_block: styleBlock }, body, CLUSTER_SUFFIX);
+  return { box, size, frac, prompt };
 }
 
 export async function loadStoredFile(file) {
@@ -313,6 +339,36 @@ export async function buildLayeredSlide({
     return promise;
   }
 
+  // ONE generation for all items of a cluster, split into per-item cut-outs.
+  function startCluster(l) {
+    const key = `cluster|${l.id}|${JSON.stringify(l.items.map(i => [i.id, i.prompt, Math.round(i.x), Math.round(i.y), Math.round(i.w), Math.round(i.h)]))}|${l.prompt}`;
+    if (assets.has(key)) return { key, promise: assets.get(key) };
+    if (generationsStarted >= MAX_GENERATIONS_PER_SLIDE) return { key, promise: Promise.resolve(null) };
+    generationsStarted++; noteStart();
+    const plan = clusterPlan(l, deckDesign, styleBlock);
+    const promise = scheduleImageJob(1, async () => {
+      const res = await generateLayerImage({
+        prompt: plan.prompt, size: plan.size, transparent: true, references: await resolveRefs(l.refs),
+        label: `s${slide.index}_${l.id}`, mockSpec: { kind: 'cluster', items: plan.frac, label: l.id },
+      });
+      stats.images.push({ id: l.id, ms: res?.ms ?? null, usage: res?.usage ?? null, ok: !!res, size: plan.size, role: 'cluster', items: l.items.length });
+      if (!res) return null;
+      const buf = await ensureTransparent(res.buffer);
+      const meta = await sharp(buf).metadata();
+      const parts = await splitCluster(buf, plan.frac);
+      const stored = [];
+      for (const part of parts) {
+        const file = await storeBuffer(part.buffer);
+        created.push(file);
+        stored.push({ ...part, buffer: undefined, file });
+      }
+      logger.info('cluster split', { slideIndex: slide.index, cluster: l.id, items: l.items.length, found: stored.map(p => `${p.id}:${p.components}`) });
+      return { box: plan.box, genW: meta.width, genH: meta.height, parts: stored };
+    }).catch(err => { logger.warn('cluster job failed', { id: l.id, errorMessage: err.message }); return null; });
+    assets.set(key, promise);
+    return { key, promise };
+  }
+
   // While the layout streams: start every image whose JSON is complete.
   const onPartial = (parts) => {
     if (typeof parts.style_block === 'string' && !styleBlock) styleBlock = parts.style_block;
@@ -328,6 +384,7 @@ export async function buildLayeredSlide({
         // Connectors need their endpoints' final boxes; secondary elements
         // want the hero as a reference — both wait for the final layout
         // unless the hero has already started.
+        if (l.role === 'cluster') { startCluster(l); continue; }
         if (l.role === 'connector') continue;
         if (l.role === 'element' && !heroAssetPromise) continue;
         // A brand ref whose brand isn't declared yet can't resolve — wait for the final layout.
@@ -386,10 +443,48 @@ export async function buildLayeredSlide({
       })());
     }
 
-    // Hero first, so secondary elements can reference it.
-    const imageLayers = layout.layers.filter(x => x.kind === 'image' && !x.file);
-    imageLayers.sort((x, y) => (x.role === 'hero' ? -1 : 0) - (y.role === 'hero' ? -1 : 0));
     const applied = new Map(); // layer id → promise that resolves once placed
+    // Clusters: one image → per-item layers, inserted where the cluster sat
+    // in the z-order. The first item is the hero.
+    for (const l of layout.layers.filter(x => x.kind === 'image' && x.role === 'cluster' && !x.file)) {
+      const { key, promise } = startCluster(l);
+      usedKeys.add(key);
+      const p = (async () => {
+        const asset = await promise;
+        if (!asset || !asset.parts.length) { failures.push({ id: l.id, critical: true, layer: l }); return; }
+        const sx = asset.box.w / asset.genW; const sy = asset.box.h / asset.genH;
+        const itemLayers = [];
+        l.items.forEach((it, i) => {
+          const part = asset.parts.find(pp => pp.id === it.id);
+          if (!part) return;
+          itemLayers.push({
+            id: it.id, kind: 'image', name: it.name, role: i === 0 ? 'hero' : 'element', prompt: it.prompt, refs: [],
+            cluster: l.id, file: part.file, src: assetUrl(presentationId, part.file),
+            x: Math.round(asset.box.x + part.x * sx), y: Math.round(asset.box.y + part.y * sy),
+            w: Math.round(part.w * sx), h: Math.round(part.h * sy), rotation: 0, opacity: 1,
+          });
+        });
+        const missing = l.items.filter(it => !asset.parts.some(pp => pp.id === it.id));
+        if (missing.length) {
+          layout.dropped = [...(layout.dropped || []), ...missing.map(it => ({ id: it.id, name: it.name, kind: 'image', prompt: it.prompt, reason: 'not found in cluster image' }))];
+        }
+        // Keep z-order: replace the cluster layer in place (ids stay unique —
+        // item ids are namespaced if they collide with an existing layer).
+        const taken = new Set(layout.layers.filter(x => x !== l).map(x => x.id));
+        for (const il of itemLayers) { if (taken.has(il.id)) il.id = `${l.id}_${il.id}`; taken.add(il.id); }
+        const at = layout.layers.indexOf(l);
+        layout.layers.splice(at, 1, ...itemLayers);
+        for (const il of itemLayers) onLayer(il);
+      })();
+      applied.set(l.id, p);
+      // Connectors may anchor on individual cluster items.
+      for (const it of l.items) applied.set(it.id, p);
+      waits.push(p);
+    }
+
+    // Hero first, so secondary elements can reference it.
+    const imageLayers = layout.layers.filter(x => x.kind === 'image' && !x.file && x.role !== 'cluster');
+    imageLayers.sort((x, y) => (x.role === 'hero' ? -1 : 0) - (y.role === 'hero' ? -1 : 0));
     for (const l of imageLayers.filter(x => x.role !== 'connector')) {
       usedKeys.add(imageKey(l));
       const p = (async () => {

@@ -205,3 +205,122 @@ export function hexToRgb(hex) {
   if (!Number.isFinite(n)) return [0, 0, 0];
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
+
+// ─── Cluster splitting ──────────────────────────────────────────────────────
+// A "cluster" is ONE generated image (transparent background) containing all
+// the objects of a slide's visual zone, so they share light and physically
+// connect. Because the background is transparent, objects are separated by
+// empty pixels: we label connected components of the alpha mask and assign
+// each component to the declared item whose region it falls in. Each item
+// becomes its own cut-out layer — no holes or inpainting, unlike splitting a
+// full-slide image (prototype finding).
+//
+// items: [{ id, box: {x,y,w,h} as 0-1 fractions of the cluster image }]
+// Returns [{ id, buffer, x, y, w, h (pixels in the cluster image), pixels }]
+// for every item that received at least one component.
+export async function splitCluster(buffer, items, { minAlpha = 4, seedAlpha = 160, seedCore = 0.5 } = {}) {
+  const { data, width, height } = await raw(buffer);
+  const N = width * height;
+  const A = (k) => data[k * 4 + 3];
+  const label = new Int16Array(N).fill(-1); // item index, -1 = unassigned
+
+  // 1. Seeds: solid pixels in the central part of each item's declared
+  //    region. Smaller items seed first so a large region (the hero) can't
+  //    claim a small item's centre.
+  const order = items.map((it, i) => i).sort((i, j) => items[i].box.w * items[i].box.h - items[j].box.w * items[j].box.h);
+  const buckets = Array.from({ length: 256 }, () => []);
+  for (const i of order) {
+    const b = items[i].box;
+    const mx = (b.w * (1 - seedCore)) / 2; const my = (b.h * (1 - seedCore)) / 2;
+    const x0 = Math.max(0, Math.floor((b.x + mx) * width)); const x1 = Math.min(width - 1, Math.ceil((b.x + b.w - mx) * width));
+    const y0 = Math.max(0, Math.floor((b.y + my) * height)); const y1 = Math.min(height - 1, Math.ceil((b.y + b.h - my) * height));
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const k = y * width + x;
+        if (label[k] !== -1 || A(k) < seedAlpha) continue;
+        label[k] = i;
+        buckets[0].push(k);
+      }
+    }
+  }
+
+  // 2. Minimax flood (watershed on transparency): a pixel joins the seed
+  //    reachable with the smallest "most transparent pixel crossed". Regions
+  //    therefore meet at the faintest junction — the thin trail or glow
+  //    between two objects — instead of cutting through solid objects.
+  for (let level = 0; level < 256; level++) {
+    const bucket = buckets[level];
+    for (let qi = 0; qi < bucket.length; qi++) {
+      const k = bucket[qi];
+      const x = k % width; const y = (k - x) / width;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const nx = x + dx; const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const n = ny * width + nx;
+          if (label[n] !== -1 || A(n) < minAlpha) continue;
+          label[n] = label[k];
+          buckets[Math.max(level, 255 - A(n))].push(n);
+        }
+      }
+    }
+    buckets[level] = null;
+  }
+
+  // 3. Pixels no seed could reach (an object the model drew away from its
+  //    declared spot, unconnected to anything): group into connected pieces
+  //    and give each piece to the item whose region holds its centroid
+  //    (smallest such region), else the nearest region.
+  const stack = [];
+  for (let s0 = 0; s0 < N; s0++) {
+    if (label[s0] !== -1 || A(s0) < minAlpha) continue;
+    const piece = [s0]; label[s0] = -2; stack.push(s0);
+    let sx = 0; let sy = 0;
+    while (stack.length) {
+      const k = stack.pop(); const x = k % width; const y = (k - x) / width;
+      sx += x; sy += y;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx; const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const n = ny * width + nx;
+        if (label[n] !== -1 || A(n) < minAlpha) continue;
+        label[n] = -2; piece.push(n); stack.push(n);
+      }
+    }
+    const cx = sx / piece.length / width; const cy = sy / piece.length / height;
+    const containing = items.map((it, i) => i).filter(i => {
+      const b = items[i].box; return cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h;
+    });
+    const dist = (i) => { const b = items[i].box; return (b.x + b.w / 2 - cx) ** 2 + (b.y + b.h / 2 - cy) ** 2; };
+    const best = containing.length
+      ? containing.reduce((p, q) => (items[p].box.w * items[p].box.h <= items[q].box.w * items[q].box.h ? p : q))
+      : items.map((it, i) => i).reduce((p, q) => (dist(p) <= dist(q) ? p : q));
+    for (const k of piece) label[k] = best;
+  }
+
+  // 4. Cut out each item.
+  const out = [];
+  for (let i = 0; i < items.length; i++) {
+    let minX = width; let minY = height; let maxX = -1; let maxY = -1; let pixels = 0;
+    for (let k = 0; k < N; k++) {
+      if (label[k] !== i) continue;
+      const x = k % width; const y = (k - x) / width;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      pixels++;
+    }
+    // Ignore crumbs (a few stray halo pixels) — not a real object.
+    if (maxX < 0 || pixels < N * 0.0004) continue;
+    const w = maxX - minX + 1; const h = maxY - minY + 1;
+    const cut = Buffer.alloc(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const k = (minY + y) * width + (minX + x);
+        if (label[k] === i) data.copy(cut, (y * w + x) * 4, k * 4, k * 4 + 4);
+      }
+    }
+    out.push({ id: items[i].id, buffer: await fromRaw(cut, w, h), x: minX, y: minY, w, h, pixels });
+  }
+  return out;
+}

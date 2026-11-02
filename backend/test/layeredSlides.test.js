@@ -290,3 +290,46 @@ describe('fit heuristics', () => {
     expect(pill.w).toBe(lbl.w);
   });
 });
+
+import { splitCluster } from '../services/layerImaging.js';
+describe('splitCluster', () => {
+  it('splits a transparent cluster into items by region, keeping halos with their object', async () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200">
+      <defs><radialGradient id="g"><stop offset="0" stop-color="#f0f" stop-opacity="0.2"/><stop offset="1" stop-color="#f0f" stop-opacity="0"/></radialGradient></defs>
+      <circle cx="60" cy="100" r="70" fill="url(#g)"/>
+      <rect x="30" y="20" width="60" height="160" fill="#333"/>
+      <circle cx="110" cy="140" r="6" fill="#fc0"/><circle cx="140" cy="130" r="7" fill="#fc0"/><circle cx="175" cy="125" r="8" fill="#fc0"/>
+      <rect x="220" y="110" width="60" height="60" fill="#602"/></svg>`;
+    const buf = await svgPng(svg);
+    const parts = await splitCluster(buf, [
+      { id: 'phone', box: { x: 0.05, y: 0.05, w: 0.3, h: 0.9 } },
+      { id: 'coins', box: { x: 0.33, y: 0.55, w: 0.33, h: 0.2 } },
+      { id: 'wallet', box: { x: 0.7, y: 0.5, w: 0.3, h: 0.4 } },
+    ]);
+    const byId = Object.fromEntries(parts.map(p => [p.id, p]));
+    expect(Object.keys(byId).sort()).toEqual(['coins', 'phone', 'wallet']);
+    expect(byId.wallet.x).toBeGreaterThanOrEqual(215);
+    // The phone's soft glow travels with the phone (wider than the 60px body).
+    expect(byId.phone.w).toBeGreaterThan(70);
+  });
+
+  it('separates TOUCHING objects at their faintest junction', async () => {
+    // Two solid blocks joined by a faint (low-alpha) bridge — one connected
+    // shape, but the cut must happen in the bridge, not through a block.
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="100">
+      <rect x="10" y="20" width="100" height="60" fill="#0af"/>
+      <rect x="110" y="45" width="80" height="10" fill="#fff" fill-opacity="0.15"/>
+      <rect x="190" y="20" width="100" height="60" fill="#f60"/></svg>`;
+    const parts = await splitCluster(await svgPng(svg), [
+      { id: 'left', box: { x: 0, y: 0.1, w: 0.4, h: 0.8 } },
+      { id: 'right', box: { x: 0.6, y: 0.1, w: 0.4, h: 0.8 } },
+    ]);
+    const byId = Object.fromEntries(parts.map(p => [p.id, p]));
+    // Each side keeps its whole solid block (100px) plus part of the bridge, never the other block.
+    expect(byId.left.x).toBeLessThanOrEqual(10);
+    expect(byId.left.x + byId.left.w).toBeGreaterThanOrEqual(110);
+    expect(byId.left.x + byId.left.w).toBeLessThanOrEqual(191);
+    expect(byId.right.x).toBeGreaterThanOrEqual(109);
+    expect(byId.right.x).toBeLessThanOrEqual(190);
+  });
+});

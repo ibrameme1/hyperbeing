@@ -65,7 +65,7 @@ export const FONT_NAMES = Object.keys(FONTS);
 const DEFAULT_FONT = 'Inter';
 
 const LAYER_KINDS = ['image', 'text', 'shape', 'chart', 'icon', 'logo'];
-const IMAGE_ROLES = ['hero', 'element', 'effect', 'screen_image', 'connector'];
+const IMAGE_ROLES = ['hero', 'element', 'effect', 'screen_image', 'connector', 'cluster'];
 const ANCHORS = {
   center: [0.5, 0.5], top: [0.5, 0], bottom: [0.5, 1], left: [0, 0.5], right: [1, 0.5],
   'top-left': [0, 0], 'top-right': [1, 0], 'bottom-left': [0, 1], 'bottom-right': [1, 1],
@@ -269,10 +269,39 @@ function normalizeChart(l, base, fonts) {
   };
 }
 
-function normalizeImage(l, base) {
+// A cluster = every object of the visual zone generated together in ONE
+// image, then split into per-item layers. Items carry where each object
+// should sit (canvas px) and what it is.
+function clusterItems(v, canvas) {
+  if (!Array.isArray(v)) return [];
+  const seen = new Set();
+  return v.slice(0, 10).map((it, i) => {
+    let id = typeof it?.id === 'string' ? it.id.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40) : '';
+    if (!id || seen.has(id)) id = `item${i + 1}`;
+    seen.add(id);
+    return {
+      id,
+      name: str(it?.name, 60, '') || undefined,
+      prompt: str(it?.prompt, 1200).trim(),
+      x: num(it?.x, -canvas.w, canvas.w * 2, 0), y: num(it?.y, -canvas.h, canvas.h * 2, 0),
+      w: num(it?.w, 8, canvas.w * 2, 200), h: num(it?.h, 8, canvas.h * 2, 200),
+      rotation: num(it?.rotation, -180, 180, 0),
+    };
+  }).filter(it => it.prompt);
+}
+
+function normalizeImage(l, base, canvas) {
   const prompt = str(l.prompt, 3000).trim();
-  if (!prompt && !l.file) return null;
   const role = IMAGE_ROLES.includes(l.role) ? l.role : 'element';
+  if (role === 'cluster') {
+    const items = clusterItems(l.items, canvas);
+    if (!items.length) return null;
+    // The cluster's box is the union of its items (recomputed at generation).
+    const x0 = Math.min(...items.map(i => i.x)); const y0 = Math.min(...items.map(i => i.y));
+    const x1 = Math.max(...items.map(i => i.x + i.w)); const y1 = Math.max(...items.map(i => i.y + i.h));
+    return { ...base, x: x0, y: y0, w: x1 - x0, h: y1 - y0, role, prompt, refs: refs(l.refs), items };
+  }
+  if (!prompt && !l.file) return null;
   return {
     ...base,
     role,
@@ -398,7 +427,7 @@ export function normalizeLayout(raw, { aspectRatio = '16:9', uploadCount = 0 } =
       case 'shape': layer = normalizeShape(l, base); break;
       case 'chart': layer = normalizeChart(l, base, fonts); break;
       case 'image': {
-        layer = normalizeImage(l, base);
+        layer = normalizeImage(l, base, canvas);
         if (layer && !layer.file) {
           if (generations >= MAX_GENERATIONS_PER_SLIDE) layer = null;
           else generations++;
