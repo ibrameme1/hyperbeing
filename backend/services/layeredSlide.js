@@ -4,7 +4,7 @@ import * as imageStore from './imageStore.js';
 import { logger } from './logger.js';
 import { designSlideLayout, reviewSlideLayout } from './layoutAgent.js';
 import { normalizeLayout, fitLayout, layoutFiles, canvasFor, MAX_GENERATIONS_PER_SLIDE } from './slideLayout.js';
-import { generateLayerImage, scheduleImageJob, sizeForAspect, IMAGE_MOCK_MODE } from './openaiImages.js';
+import { generateLayerImage, scheduleImageJob, sizeForAspect, IMAGE_MOCK_MODE, LONG_SIDE } from './openaiImages.js';
 import {
   coverToAspect, ensureTransparent, unscreen, trimTransparent, extractScreen,
   sliceSheet, containRect, normalizeReference, splitCluster,
@@ -59,7 +59,7 @@ async function storeBuffer(buffer) {
 // Exact box + endpoint sentence for a connector. The box gets the aspect of
 // the generation size so the image is placed without distortion or cropping,
 // and the endpoints are described as positions inside that exact frame.
-const SIZE_DIMS = { '1536x1024': [1536, 1024], '1024x1536': [1024, 1536], '1024x1024': [1024, 1024] };
+const dimsOf = (size) => size.split('x').map(Number);
 export function connectorGeometry(layout, l) {
   const byId = (id) => layout.layers.find(x => x.id === id);
   const pct = (v) => Math.round(Math.min(1, Math.max(0, v)) * 100);
@@ -79,7 +79,7 @@ export function connectorGeometry(layout, l) {
     box = { x: x0, y: y0, w: Math.abs(p1.x - p2.x) + half * 2, h: Math.abs(p1.y - p2.y) + half * 2 };
   }
   const size = sizeForAspect(box.w, box.h);
-  const [gw, gh] = SIZE_DIMS[size];
+  const [gw, gh] = dimsOf(size);
   // Grow the short side around the centre to match the generation aspect.
   const cx = box.x + box.w / 2; const cy = box.y + box.h / 2;
   if (box.w / box.h > gw / gh) box.h = box.w * (gh / gw); else box.w = box.h * (gw / gh);
@@ -104,8 +104,8 @@ export function clusterPlan(l, deckDesign, styleBlock) {
   const x1 = Math.max(...items.map(i => i.x + i.w)); const y1 = Math.max(...items.map(i => i.y + i.h));
   const m = Math.max(x1 - x0, y1 - y0) * 0.03;
   let box = { x: x0 - m, y: y0 - m, w: x1 - x0 + 2 * m, h: y1 - y0 + 2 * m };
-  const size = sizeForAspect(box.w, box.h);
-  const [gw, gh] = SIZE_DIMS[size];
+  const size = sizeForAspect(box.w, box.h, LONG_SIDE.cluster);
+  const [gw, gh] = dimsOf(size);
   const cx = box.x + box.w / 2; const cy = box.y + box.h / 2;
   if (box.w / box.h > gw / gh) box.h = box.w * (gh / gw); else box.w = box.h * (gw / gh);
   box = { x: Math.round(cx - box.w / 2), y: Math.round(cy - box.h / 2), w: Math.round(box.w), h: Math.round(box.h) };
@@ -250,7 +250,7 @@ export async function buildLayeredSlide({
     if (assets.has(key)) return assets.get(key);
     if (generationsStarted >= MAX_GENERATIONS_PER_SLIDE) return null;
     generationsStarted++; noteStart();
-    const size = sizeForAspect(canvas.w, canvas.h);
+    const size = sizeForAspect(canvas.w, canvas.h, LONG_SIDE.background);
     const promise = scheduleImageJob(0, async () => {
       const res = await generateLayerImage({
         prompt: composePrompt(deckDesign, { style_block: styleBlock }, bg.prompt, composition === 'scene' ? BG_SUFFIX : EMPTY_BG_SUFFIX), size, transparent: false,

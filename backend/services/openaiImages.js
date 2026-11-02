@@ -45,14 +45,18 @@ export function limiterStats() {
 }
 
 // ── sizes ───────────────────────────────────────────────────────────────────
-// The three sizes every GPT Image model accepts. Backgrounds are generated at
-// the closest one and cropped to the canvas aspect (see layerImaging.js), so
-// we never depend on a model accepting arbitrary sizes.
-export function sizeForAspect(w, h) {
-  const r = w / h;
-  if (r >= 1.25) return '1536x1024';
-  if (r <= 0.8) return '1024x1536';
-  return '1024x1024';
+// gpt-image-2.5-flare accepts arbitrary WIDTHxHEIGHT (multiples of 16, aspect
+// up to 3:1 — probed 2026-11-02). So every layer is generated at the EXACT
+// aspect of its box: no crop, no distortion, no upscaling. Cost barely tracks
+// resolution (measured, high quality: 1536x1024 = 1372 output tokens,
+// 2048x1152 = 1413, 1024x1024 = 1756), so the long side is set by what the
+// layer needs to look crisp on a 1920x1080 slide.
+export const LONG_SIDE = { background: 2048, cluster: 2048, element: 1536 };
+
+export function sizeForAspect(w, h, longSide = LONG_SIDE.element) {
+  const r = Math.min(3, Math.max(1 / 3, w / h));
+  const snap = (v) => Math.max(256, Math.round(v / 16) * 16);
+  return r >= 1 ? `${snap(longSide)}x${snap(longSide / r)}` : `${snap(longSide * r)}x${snap(longSide)}`;
 }
 
 function dataUrlToBlob(dataUrl) {

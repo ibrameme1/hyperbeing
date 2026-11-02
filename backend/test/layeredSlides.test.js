@@ -171,9 +171,11 @@ describe('layer imaging', () => {
   });
 
   it('sizes requests from box aspect', () => {
-    expect(sizeForAspect(1920, 1080)).toBe('1536x1024');
-    expect(sizeForAspect(400, 900)).toBe('1024x1536');
-    expect(sizeForAspect(500, 480)).toBe('1024x1024');
+    // Exact box aspect, multiples of 16, long side as requested, aspect clamped to 3:1.
+    expect(sizeForAspect(1920, 1080, 2048)).toBe('2048x1152');
+    expect(sizeForAspect(400, 900)).toBe('688x1536');
+    expect(sizeForAspect(500, 480)).toBe('1536x1472');
+    expect(sizeForAspect(2000, 100)).toBe('1536x512');
   });
 });
 

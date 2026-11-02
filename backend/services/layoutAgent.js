@@ -1,9 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { recordTokenUsage } from './stripeService.js';
 import { logger, requestContext } from './logger.js';
 import { metrics } from './metrics.js';
 import { tracer } from './tracer.js';
 import { CLASSIC_ART_DIRECTION, MINIMALISTIC_STYLE_REFERENCE, sanitizeDeep } from './claudeAgent.js';
+import { MINIMALISTIC_EXAMPLE_PROMPTS } from './minimalisticExamples.js';
 import { FONT_NAMES, MAX_GENERATIONS_PER_SLIDE, MAX_SHEET_ICONS, canvasFor, extractCompletedLayoutParts } from './slideLayout.js';
 
 // ─── Layered-slide agent ────────────────────────────────────────────────────
@@ -19,6 +23,27 @@ import { FONT_NAMES, MAX_GENERATIONS_PER_SLIDE, MAX_SHEET_ICONS, canvasFor, extr
 // output goes through sanitizeDeep (em-dash policy) + token accounting.
 
 const MODEL = 'claude-sonnet-4-6';
+
+// ── The team's quality reference library ────────────────────────────────────
+// Every ideal slide prompt the team supplied (prompts/layered_quality_examples.md
+// + the 12 minimalistic exemplars), sent VERBATIM to the deck-design and
+// layout calls so Claude knows the quality, specificity and voice expected.
+// ~12k tokens: it is the FIRST system block and marked for prompt caching, so
+// after the first call it is billed at the cached rate and adds little latency.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const QUALITY_LIBRARY = `${fs.readFileSync(path.join(__dirname, '../prompts/layered_quality_examples.md'), 'utf8')}
+
+---
+
+## Minimalistic exemplars (verbatim)
+${MINIMALISTIC_EXAMPLE_PROMPTS.map((p, i) => `### Minimalistic ${i + 1}\n${p}`).join('\n\n')}`;
+
+function systemBlocks(text) {
+  return [
+    { type: 'text', text: QUALITY_LIBRARY, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text },
+  ];
+}
 const MOCK_MODE = !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'demo';
 let client;
 function getClient() {
@@ -117,7 +142,7 @@ export async function designDeckSystem({ header, slides, brief, uploads = [], st
   const response = await getClient().messages.create({
     model: MODEL,
     max_tokens: 2000,
-    system: DECK_SYSTEM_PROMPT.replace('{ART_DIRECTION}', artDirectionFor(style)),
+    system: systemBlocks(DECK_SYSTEM_PROMPT.replace('{ART_DIRECTION}', artDirectionFor(style))),
     tools: [DECK_SYSTEM_TOOL],
     tool_choice: { type: 'tool', name: DECK_SYSTEM_TOOL.name },
     messages: [{ role: 'user', content }],
@@ -246,7 +271,7 @@ STEP 3 — IMAGE PROMPTS (the quality of the slide lives here)
 ══════════════════════════════════════════
 STEP 4 — DESIGN QUALITY BAR (the slide must look like a top keynote designer made it)
 ══════════════════════════════════════════
-- CONNECTED, NOT FLOATING. Generate the visual zone as ONE "cluster" (see role "cluster") so it is literally one composed image, never separate stickers: every secondary object relates physically to the hero — linked by a connector (stream, beam, orbit), touching it, or overlapping its edge. Put an "effect" glow behind the hero cluster so everything shares one light. Floating callout cards sit close to / slightly overlapping the cluster, with a glow shadow in the accent colour. Objects in the cluster share one light direction (the deck style's key light).
+- CONNECTED, NOT FLOATING. Generate the visual zone as ONE "cluster" (see role "cluster") so it is literally one composed image, never separate stickers: every secondary object relates physically to the hero — linked by a connector (stream, beam, orbit), touching it, or overlapping its edge. The background's glow is placed behind the cluster so everything shares one light. Floating callout cards sit close to / slightly overlapping the cluster, with a glow shadow in the accent colour. Objects in the cluster share one light direction (the deck style's key light).
 - SCALE. The hero fills 60-85% of the canvas height in its zone (a phone ~550x850, a controller ~800x600), often tilted 8-15 degrees for energy (describe the angle in its prompt). Secondary objects are substantial (at least ~15% of canvas height; a wallet ~280x260), never tiny props. Callout cards ~340x240.
 - TYPE SCALE (1080p canvas): kicker/label 20-24px caps, letter_spacing 0.18-0.3 (em), accent colour or gradient · headline 76-110px weight 800, 2-4 lines, line_height 1.02-1.1 · big stat numbers 96-130px weight 800 filled with the deck's signature gradient · row titles 30-34px weight 700 · body 26-30px · footnotes 22-24px muted · slide number 64-80px weight 300 muted grey.
 - ROW / CARD ANATOMY (use for lists of 2-4 items): frosted card 820-840 wide, 125-150 tall, radius 26-32, "highlight":true, subtle gradient border. Inside, left to right with ≥28px padding: an icon badge (ellipse 76x76, transparent fill, 2px accent/gradient border, a Lucide icon 36px centred in it) → bold title → a 2px vertical divider (rect, 55% card height, rgba(255,255,255,0.18)) → body text. Stat rows use a big gradient number instead of badge+title.
@@ -255,14 +280,14 @@ STEP 4 — DESIGN QUALITY BAR (the slide must look like a top keynote designer m
 - PALETTE DISCIPLINE: every colour on the slide comes from the DECK DESIGN SYSTEM palette/gradient (tints and alpha variations of them are fine). Never introduce a colour the deck doesn't use (e.g. a dark-green strip on an aubergine/orange deck).
 - COMPANIONS: small objects that accompany a hero (game tiles, icons, badges, products) are real elements at ≥ 150px, placed ON an orbit/arc around the hero (add a "light" connector with "around":"<hero id>" so they visibly orbit it), slightly overlapping its silhouette — never scattered tiny in empty corners.
 - BACKGROUND for objects/native slides is an EMPTY atmosphere (light, colour, texture). Never describe objects, devices, products or shapes in a background prompt — every object is its own layer.
+- GLOWS LIVE IN THE BACKGROUND. Aurora ribbons, blooms, haze and the glow behind the hero are part of the ONE background image: describe exactly where the bloom sits so it lands behind the cluster (e.g. "brightest bloom centred at ~68% from the left and ~55% from the top, behind where the phone stands"). Do NOT add separate "effect" glow layers behind objects; use an "effect" layer only for light that must sit IN FRONT of objects or cards (rare).
 
 ══════════════════════════════════════════
 WORKED EXAMPLE (objects composition) — the quality bar. Brief: Simosa Door 6, aubergine-black + orange/pink aurora, Lato, logo uploaded as UPLOAD 0.
 ══════════════════════════════════════════
 {"composition":"objects","style_block":"Key light from upper-left, warm orange-pink rim light from the right","brands":[{"name":"Simosa","domain":"simosa.pk","famous":false}],
-"background":{"type":"image","prompt":"Deep aubergine-black (#100812) field. A sweeping soft orange (#FF8A1F) to hot pink (#FF2E74) aurora ribbon curves through the right 55%, brightest behind the centre-right, with faint dust particles; the left 45% falls off into clean near-black for text.","color":"#100812"},
+"background":{"type":"image","prompt":"Deep aubergine-black (#100812) field. A sweeping soft orange (#FF8A1F) to hot pink (#FF2E74) aurora ribbon curves through the right 55%, with its brightest warm bloom centred at ~66% from the left and ~50% from the top (behind where the phone stands) and a second softer pink bloom low at ~85% from the left (behind the wallet); faint dust particles; the left 45% falls off into clean near-black for text.","color":"#100812"},
 "layers":[
-{"kind":"image","id":"glow","role":"effect","name":"Back glow","prompt":"A large soft bloom of warm orange and hot pink light, brightest at the centre, fading smoothly to black","x":860,"y":60,"w":1060,"h":980},
 {"kind":"image","id":"visual","role":"cluster","name":"Phone, coins and wallet","prompt":"Gold coins pour out of the ad banner at the bottom of the phone's screen in a rising-then-falling arc, trailed by a ribbon of pink-orange light, and drop into the open wallet; the wallet glows where the coins land","refs":["upload:0"],"items":[
   {"id":"phone","name":"Game phone","prompt":"A sleek modern smartphone in a dark graphite frame, tilted about 12 degrees to the right in a three-quarter 3D view, screen showing a bright, colourful mobile platformer game: a cute fox pilot with goggles jumping between floating grassy islands, gold coins in mid-air, a score bar at the top, and at the bottom of the screen a clean white native ad banner with a pink sneaker photo and a pink 'Shop now' button.","x":930,"y":60,"w":560,"h":880},
   {"id":"coins","name":"Coin stream","prompt":"Nine glossy gold-orange coins with dollar marks tumbling and spinning, small near the phone and larger towards the wallet, with a ribbon of hot-pink and orange light and tiny sparks running through them","x":1300,"y":600,"w":330,"h":200},
@@ -289,7 +314,7 @@ WORKED EXAMPLE (objects composition) — the quality bar. Brief: Simosa Door 6, 
 {"kind":"icon","id":"kpi_icon","source":"lucide","name":"chart-line","color":"#FF6A3D","x":1006,"y":982,"w":44,"h":44},
 {"kind":"text","id":"kpi","role":"caption","text":"KPI: ad revenue paid out to developers.","runs":[{"text":"KPI:","color":"#FF6A3D","weight":700}],"font":"Lato","size":28,"color":"#FFFFFF","valign":"middle","x":1070,"y":980,"w":760,"h":48}
 ]}
-Notice: the phone, coin stream and wallet are ONE cluster (one image, perfectly connected, split into three editable layers); hero tilted and large; wallet substantial and logo-branded; a glow effect sits behind the cluster; the earnings card glows and sits by the cluster; rows have badge + title + divider + body; gradient stat; logo, proof line and KPI line anchor the corners. Apply the same standard to every composition (scene slides: the scene background carries the visual, cards and text are native; native slides: charts and type carry it).
+Notice: the phone, coin stream and wallet are ONE cluster (one image, perfectly connected, split into three editable layers); hero tilted and large; wallet substantial and logo-branded; the background's blooms are placed behind the phone and the wallet; the earnings card glows and sits by the cluster; rows have badge + title + divider + body; gradient stat; logo, proof line and KPI line anchor the corners. Apply the same standard to every composition (scene slides: the scene background carries the visual, cards and text are native; native slides: charts and type carry it).
 
 ══════════════════════════════════════════
 STEP 5 — LAYOUT, HIERARCHY, READABILITY
@@ -350,7 +375,7 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
   const stream = getClient().messages.stream({
     model: MODEL,
     max_tokens: 12000,
-    system,
+    system: systemBlocks(system),
     tools: [LAYOUT_TOOL],
     tool_choice: { type: 'tool', name: LAYOUT_TOOL.name },
     messages: [{ role: 'user', content: [{ type: 'text', text }, ...uploadsContent(uploads)] }],

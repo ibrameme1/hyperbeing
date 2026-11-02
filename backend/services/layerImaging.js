@@ -6,7 +6,7 @@ import sharp from 'sharp';
 
 // Crop/resize a background to exactly the canvas aspect (stored at a fixed
 // pixel width — the renderer scales it to the stage).
-export async function coverToAspect(buffer, canvas, outWidth = 1920) {
+export async function coverToAspect(buffer, canvas, outWidth = 2048) {
   const outHeight = Math.round(outWidth * (canvas.h / canvas.w));
   return sharp(buffer).resize(outWidth, outHeight, { fit: 'cover', position: 'centre' }).png().toBuffer();
 }
