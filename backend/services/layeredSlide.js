@@ -4,7 +4,7 @@ import * as imageStore from './imageStore.js';
 import { logger } from './logger.js';
 import { designSlideLayout, reviewSlideLayout } from './layoutAgent.js';
 import { normalizeLayout, fitLayout, layoutFiles, canvasFor, MAX_GENERATIONS_PER_SLIDE, resolveCollisions, resolveImageOverlaps } from './slideLayout.js';
-import { generateLayerImage, scheduleImageJob, sizeForAspect, IMAGE_MOCK_MODE, LONG_SIDE } from './openaiImages.js';
+import { generateLayerImage, scheduleImageJob, sizeForAspect, IMAGE_MOCK_MODE, LONG_SIDE, LAYER_IMAGE_QUALITY } from './openaiImages.js';
 import {
   coverToAspect, ensureTransparent, unscreen, trimTransparent, extractScreen,
   sliceSheet, containRect, normalizeReference, splitCluster,
@@ -258,7 +258,7 @@ export async function buildLayeredSlide({
     const promise = scheduleImageJob(0, async () => {
       const res = await generateLayerImage({
         prompt: composePrompt(deckDesign, { style_block: styleBlock }, bg.prompt, composition === 'scene' ? BG_SUFFIX : EMPTY_BG_SUFFIX), size, transparent: false,
-        references: await resolveRefs(bg.refs), label: `s${slide.index}_bg`, mockSpec: { label: `bg${slide.index}` },
+        references: await resolveRefs(bg.refs), label: `s${slide.index}_bg`, mockSpec: { label: `bg${slide.index}` }, quality: LAYER_IMAGE_QUALITY.background,
       });
       stats.images.push({ id: 'background', ms: res?.ms ?? null, usage: res?.usage ?? null, ok: !!res, size });
       if (!res) return null;

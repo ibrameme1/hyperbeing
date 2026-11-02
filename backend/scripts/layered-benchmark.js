@@ -65,7 +65,7 @@ const style = spec.style || 'classic';
 const slides = spec.slides.map((s, i) => ({ index: i, type: s.type || 'content', title: s.title, key_points: [], brief: s.brief }));
 const claudeMock = !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'demo';
 
-console.log(`layered benchmark: ${slides.length} slide(s), style=${style}, images=${IMAGE_MOCK_MODE ? 'MOCK' : `${LAYER_IMAGE_MODEL} (${LAYER_IMAGE_QUALITY})`}, claude=${claudeMock ? 'MOCK' : 'real'}`);
+console.log(`layered benchmark: ${slides.length} slide(s), style=${style}, images=${IMAGE_MOCK_MODE ? 'MOCK' : `${LAYER_IMAGE_MODEL} (backgrounds ${LAYER_IMAGE_QUALITY.background}, objects ${LAYER_IMAGE_QUALITY.objects})`}, claude=${claudeMock ? 'MOCK' : 'real'}`);
 
 const t0 = Date.now();
 const header = { presentation_title: spec.title || 'Benchmark deck' };

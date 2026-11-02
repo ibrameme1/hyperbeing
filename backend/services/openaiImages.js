@@ -8,7 +8,14 @@ import { tracer } from './tracer.js';
 // variant, which supports transparent backgrounds and reference images.
 // Env-overridable like every other model id in the codebase.
 export const LAYER_IMAGE_MODEL = process.env.OPENAI_LAYER_IMAGE_MODEL || 'gpt-image-2.5-flare';
-export const LAYER_IMAGE_QUALITY = process.env.OPENAI_LAYER_IMAGE_QUALITY || 'high';
+// Quality per layer type (measured 2026-11-02, same layouts replayed):
+// backgrounds/scenes look the same at medium for ~1/4 of the cost, while the
+// object (cluster/element) images keep high — at medium they followed the
+// requested placement less reliably. OPENAI_LAYER_IMAGE_QUALITY overrides both.
+export const LAYER_IMAGE_QUALITY = {
+  background: process.env.OPENAI_LAYER_IMAGE_QUALITY || process.env.OPENAI_LAYER_QUALITY_BACKGROUND || 'medium',
+  objects: process.env.OPENAI_LAYER_IMAGE_QUALITY || process.env.OPENAI_LAYER_QUALITY_OBJECTS || 'high',
+};
 
 const MOCK_MODE = !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'demo';
 const OPENAI_BASE_URL = 'https://api.openai.com/v1';
@@ -72,7 +79,7 @@ function dataUrlToBlob(dataUrl) {
 // (whole-slide failure + refund for background/hero, drop for minor elements).
 //
 // opts: { prompt, size, transparent, references: [dataUrl], label, quality }
-export async function generateLayerImage({ prompt, size = '1024x1024', transparent = false, references = [], label = 'layer', quality = LAYER_IMAGE_QUALITY, mockSpec = null }) {
+export async function generateLayerImage({ prompt, size = '1024x1024', transparent = false, references = [], label = 'layer', quality = LAYER_IMAGE_QUALITY.objects, mockSpec = null }) {
   const _tid = requestContext.getStore()?.requestId;
   const _t = Date.now();
   const stepName = `layer_image_${label}`;
