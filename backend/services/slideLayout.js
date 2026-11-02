@@ -547,13 +547,18 @@ export function fitLayout(layout) {
     l.x = Math.min(Math.max(l.x, margin), canvas.w - margin - l.w);
     l.y = Math.min(Math.max(l.y, margin * 0.5), canvas.h - margin * 0.5 - Math.min(l.h, canvas.h));
 
-    if (l.size < floor) {
-      warnings.push(`text "${l.id}" was ${l.size}px — raised to the ${floor}px readability floor`);
-      l.size = floor;
+    // Text inside a device screen is mock UI (chat bubbles, captions) — it
+    // must look like real phone UI, so it gets a lower floor and may shrink
+    // further than slide text.
+    const onScreen = !!l.screen_of;
+    const textFloor = onScreen ? Math.round(floor * 0.7) : floor;
+    if (l.size < textFloor) {
+      warnings.push(`text "${l.id}" was ${l.size}px — raised to the ${textFloor}px readability floor`);
+      l.size = textFloor;
     }
 
     const designed = l.size;
-    const minSize = Math.max(floor, Math.round(designed * 0.7));
+    const minSize = Math.max(textFloor, Math.round(designed * (onScreen ? 0.6 : 0.7)));
     let est = estimateTextHeight(l);
     while ((est.height > l.h || est.widest > l.w * 1.02) && l.size > minSize) {
       l.size = Math.max(minSize, Math.floor(l.size * 0.95));

@@ -39,6 +39,7 @@ export function assetUrl(presentationId, file) {
 const ELEMENT_SUFFIX = 'Isolated on a transparent background, nothing else in frame: no background, no surface, no floor, no shadow, no reflection, no text, no letters, no watermark, no frame or border. The whole subject is fully visible with a small empty margin around it, never cropped.';
 const EFFECT_SUFFIX = 'Rendered purely as light on a completely black (#000000) background. Nothing else in frame: no objects, no surface, no text. Smooth, soft, luminous falloff.';
 const SCREEN_SUFFIX = 'The device faces the camera perfectly straight-on and flat: no tilt, no perspective, no rotation. Its entire screen is one flat, uniform, pure chroma-green (#00FF00) rectangle with no UI, no reflections and no glare.';
+const SCREEN_IMAGE_SUFFIX = 'Flat, full-frame screen content exactly as it would appear on the display itself (like a screenshot or a video frame): no phone, no device, no bezel, no hands holding a phone, no frame, no border, no UI chrome unless described.';
 const BG_SUFFIX = 'No overlaid text, no captions, no letters or numbers, no logos, no watermarks, no UI, no cards, no panels, no buttons, no frames, no borders. Leave the described negative space genuinely clean.';
 
 function composePrompt(deckDesign, layout, body, suffix) {
@@ -202,7 +203,7 @@ export async function buildLayeredSlide({
     const effect = l.role === 'effect';
     const screenImage = l.role === 'screen_image';
     const size = sizeForAspect(l.w, l.h);
-    const suffix = effect ? EFFECT_SUFFIX : screenImage ? '' : `${l.screen ? `${SCREEN_SUFFIX} ` : ''}${ELEMENT_SUFFIX}`;
+    const suffix = effect ? EFFECT_SUFFIX : screenImage ? SCREEN_IMAGE_SUFFIX : `${l.screen ? `${SCREEN_SUFFIX} ` : ''}${ELEMENT_SUFFIX}`;
     const promise = scheduleImageJob(l.role === 'hero' ? 1 : 2, async () => {
       const res = await generateLayerImage({
         prompt: composePrompt(deckDesign, { style_block: styleBlock }, l.prompt, suffix), size,

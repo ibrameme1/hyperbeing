@@ -80,6 +80,20 @@ export async function unscreen(buffer) {
     data[i + 2] = Math.min(255, Math.round((b * 255) / a));
     data[i + 3] = Math.round(a * (data[i + 3] / 255));
   }
+  // Feather the borders to zero. Models rarely fade a glow completely to
+  // black at the frame edge, which otherwise leaves a hard rectangular seam
+  // where the effect layer ends (seen in real gpt-image-2.5-flare output).
+  const fx = Math.max(1, Math.round(width * 0.12)); const fy = Math.max(1, Math.round(height * 0.12));
+  for (let y = 0; y < height; y++) {
+    const ky = Math.min(1, y / fy, (height - 1 - y) / fy);
+    for (let x = 0; x < width; x++) {
+      const k = Math.min(ky, x / fx, (width - 1 - x) / fx);
+      if (k >= 1) continue;
+      const i = (y * width + x) * 4 + 3;
+      const e = Math.max(0, k);
+      data[i] = Math.round(data[i] * e * e * (3 - 2 * e)); // smoothstep falloff
+    }
+  }
   return fromRaw(data, width, height);
 }
 

@@ -246,7 +246,7 @@ export async function renderLayoutPreview(layout, loadFile, { width = 1920 } = {
         return ` filter="url(#is${id})"`;
       })() : '';
       const flip = l.flip ? ` transform="translate(${2 * l.x + l.w} 0) scale(-1 1)"` : '';
-      body.push(`<g opacity="${l.opacity}"${rotateAttr(l)}><image href="${href}" x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" preserveAspectRatio="xMidYMid meet"${filter}${flip}/></g>`);
+      body.push(`<g opacity="${l.opacity}"${rotateAttr(l)}><image href="${href}" x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" preserveAspectRatio="xMidYMid ${l.fit === 'cover' ? 'slice' : 'meet'}"${filter}${flip}/></g>`);
     }
   }
 

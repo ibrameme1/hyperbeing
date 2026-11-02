@@ -120,6 +120,14 @@ describe('layer imaging', () => {
     expect(g).toBeGreaterThan(120);
   });
 
+  it('unscreen feathers effect edges to zero so no rectangular seam survives', async () => {
+    const buf = await svgPng('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#ff8000"/></svg>');
+    const out = await unscreen(buf);
+    expect((await pixel(out, 0, 50))[3]).toBe(0);
+    expect((await pixel(out, 99, 50))[3]).toBe(0);
+    expect((await pixel(out, 50, 50))[3]).toBe(255);
+  });
+
   it('trims transparent margins and reports offset', async () => {
     const buf = await svgPng('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect x="40" y="30" width="20" height="10" fill="#f00"/></svg>');
     const t = await trimTransparent(buf);
