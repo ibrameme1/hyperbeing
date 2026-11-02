@@ -7,6 +7,7 @@ import { analyzePresentationStream, generateCompactPlan, suggestTitle, streamNew
 import { editSlideImage } from '../services/imageGeneration.js';
 import { buildLayeredSlide, slideFiles } from '../services/layeredSlide.js';
 import { designDeckSystem } from '../services/layoutAgent.js';
+import { buildPptx } from '../services/pptxExport.js';
 import * as imageStore from '../services/imageStore.js';
 import {
   deductCredits, refundCredits, deductCreditsForEdit, computeAffordableSlides,
@@ -335,6 +336,30 @@ router.get('/:id/assets/:file', (req, res) => {
   res.setHeader('Content-Type', imageStore.mimeFor(file));
   res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
   res.sendFile(filePath);
+});
+
+// ─── Export as PowerPoint (.pptx) ──────────────────────────────────────────
+// Layered slides become native, editable PowerPoint objects (text boxes,
+// pictures per element, shapes, real charts); legacy flat slides become a
+// full-slide picture. Free-plan exports carry the same "Made with
+// HyperBeing" watermark as PDF/PNG exports. Exporting is free (CREDIT_COSTS.EXPORT).
+router.get('/:id/export/pptx', authenticateToken, async (req, res) => {
+  const db = getDb();
+  const pres = db.prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
+  const plan = isAdmin(req.user.id) ? 'admin' : getOrCreateSubscription(req.user.id)?.plan;
+  try {
+    const { buffer, slides, ms } = await buildPptx(pres, { watermark: plan === 'free' });
+    if (!slides) return res.status(400).json({ error: 'There are no finished slides to export yet.' });
+    logger.info('pptx exported', { presentationId: pres.id, slides, ms, bytes: buffer.length });
+    const name = (pres.title || 'Presentation').replace(/[^\w\s.-]+/g, '').trim().slice(0, 80) || 'Presentation';
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    res.setHeader('Content-Disposition', `attachment; filename="${name}.pptx"`);
+    res.send(buffer);
+  } catch (err) {
+    logger.error('pptx export failed', { presentationId: pres.id, errorMessage: err.message });
+    res.status(500).json({ error: 'We couldn\'t build the PowerPoint file. Please try again.' });
+  }
 });
 
 router.get('/:id/slides/:index/image', (req, res) => {

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Download, Loader2, ArrowLeft,
-  Sparkles, Send, Images, FileDown, Paperclip, X, Plus,
+  Sparkles, Send, Images, FileDown, Presentation, Paperclip, X, Plus,
   AlertTriangle, RefreshCw, Check, Pencil, Trash2, ImageIcon, Lock,
   History, RotateCcw,
 } from 'lucide-react';
@@ -113,6 +113,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   const [editLoading, setEditLoading] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
   const [exportingImages, setExportingImages] = useState(false);
+  const [exportingPPTX, setExportingPPTX] = useState(false);
+  const [exportError, setExportError] = useState(null);
   const [updatingSlides, setUpdatingSlides] = useState(new Set());
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [localSlides, setLocalSlides] = useState(slides);
@@ -398,6 +400,30 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
     } finally { setExportingPDF(false); }
   }
 
+  // PowerPoint is built server-side (layered slides become native text boxes,
+  // pictures, shapes and charts). Downloaded through the axios client so an
+  // expired access token is refreshed instead of failing the download.
+  async function handleExportPPTX() {
+    setExportingPPTX(true); setShowExportMenu(false); setExportError(null);
+    try {
+      const res = await api.get(`/presentations/${presentationId}/export/pptx`, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(titleValue || 'Presentation').replace(/[^\w\s.-]+/g, '').trim() || 'Presentation'}.pptx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      capture('presentation_exported', { presentation_id: presentationId, format: 'pptx', slide_count: localSlides.length });
+    } catch (err) {
+      // Blob responses carry the JSON error as a Blob — read it for the message.
+      let message = 'We couldn\'t build the PowerPoint file. Please try again.';
+      try { message = JSON.parse(await err?.response?.data?.text?.())?.error || message; } catch { /* keep default */ }
+      setExportError(message);
+    } finally { setExportingPPTX(false); }
+  }
+
   async function handleExportImages() {
     setExportingImages(true); setShowExportMenu(false);
     try {
@@ -604,8 +630,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
         {/* Export */}
         <div className="relative flex-shrink-0" ref={exportMenuRef}>
           <button
-            onClick={() => setShowExportMenu(v => !v)}
-            disabled={exportingPDF || exportingImages}
+            onClick={() => { setExportError(null); setShowExportMenu(v => !v); }}
+            disabled={exportingPDF || exportingImages || exportingPPTX}
             className="export-cta-btn flex items-center gap-1.5 px-3 py-1.5 text-white transition-all duration-150 active:scale-95"
             style={{
               background: '#5B50FF',
@@ -617,7 +643,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               boxShadow: 'none',
             }}
           >
-            {(exportingPDF || exportingImages) ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            {(exportingPDF || exportingImages || exportingPPTX) ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             Export
           </button>
 
@@ -628,7 +654,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 top-10 bg-white dark:bg-[#141414] shadow-ios-xl border border-gray-100 dark:border-[#1e1e1e] py-2 w-48 z-50"
+                className="absolute right-0 top-10 bg-white dark:bg-[#141414] shadow-ios-xl border border-gray-100 dark:border-[#1e1e1e] py-2 w-56 z-50"
                 style={{ borderRadius: 12 }}
               >
                 <button onClick={handleExportImages} className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-sm text-gray-800 dark:text-[#f0f0ee]">
@@ -639,9 +665,18 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   <FileDown size={15} style={{ color: '#8B80FF' }} />
                   Export as PDF
                 </button>
+                <button onClick={handleExportPPTX} className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-sm text-gray-800 dark:text-[#f0f0ee]">
+                  <Presentation size={15} style={{ color: '#8B80FF' }} />
+                  Export as PowerPoint
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
+          {exportError && (
+            <p role="alert" className="absolute right-0 top-10 w-64 text-xs px-3 py-2 bg-white dark:bg-[#141414] border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 z-40" style={{ borderRadius: 8 }}>
+              {exportError}
+            </p>
+          )}
         </div>
       </div>
 

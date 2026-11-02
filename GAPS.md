@@ -209,4 +209,4 @@
 - **Natural-language edits on layered slides are refused (409)** until Stage 4 (layout ops + single-element regeneration); legacy flat slides still edit via Gemini.
 - **`POST /:id/unlock-slides` still awaits the builds before responding** (now parallel, ~1-2 min worst case vs the 5-min axios timeout). **Fix:** respond immediately + SSE, once the frontend handles it (Stage 2).
 - **Layout latency dominates**: Claude takes ~32-64s to write a dense layout (measured 2026-11-01). Image generation now starts while it streams; further cuts (smaller prompts, splitting dense layouts) are open.
-- **PPTX export** not built yet (Stage 5).
+- **PPTX export** — DONE (2026-11-02): `GET /:id/export/pptx`, measured ~2 s / ~4 MB for 9 real layered slides. Gradient text exports as the gradient's middle colour (pptxgenjs has no gradient text); frosted-glass blur exports as a translucent fill.
