@@ -126,35 +126,44 @@ export async function trimTransparent(buffer) {
 export async function extractScreen(buffer, fill = '#000000') {
   const { data, width, height } = await raw(buffer);
   const [fr, fg, fb] = hexToRgb(fill);
-  const isGreen = (i) => data[i + 3] > 200 && data[i + 1] > 150 && data[i] < 120 && data[i + 2] < 120 && data[i + 1] - Math.max(data[i], data[i + 2]) > 80;
-  const isSpill = (i) => data[i + 3] > 40 && data[i + 1] > Math.max(data[i], data[i + 2]) + 30;
+  // Tolerant "green-dominant" test: real renders shade the chroma screen
+  // (vignettes, reflections, darker edges), so test dominance, not a fixed
+  // value. Devices are graphite/black/metal — no legitimate strong green.
+  const greenness = (i) => data[i + 1] - Math.max(data[i], data[i + 2]);
+  const isGreen = (i) => data[i + 3] > 40 && data[i + 1] > 70 && greenness(i) > 45;
 
-  let minX = width; let minY = height; let maxX = -1; let maxY = -1; let count = 0;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      if (isGreen(i)) {
-        count++;
-        if (x < minX) minX = x; if (x > maxX) maxX = x;
-        if (y < minY) minY = y; if (y > maxY) maxY = y;
+  // Largest connected green region = the screen.
+  const N = width * height;
+  const seen = new Uint8Array(N);
+  let best = null;
+  const stack = [];
+  for (let s0 = 0; s0 < N; s0++) {
+    if (seen[s0] || !isGreen(s0 * 4)) continue;
+    let minX = width; let minY = height; let maxX = -1; let maxY = -1; let count = 0;
+    seen[s0] = 1; stack.push(s0);
+    while (stack.length) {
+      const k = stack.pop(); const x = k % width; const y = (k - x) / width;
+      count++;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx; const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const n = ny * width + nx;
+        if (seen[n] || !isGreen(n * 4)) continue;
+        seen[n] = 1; stack.push(n);
       }
     }
+    if (!best || count > best.count) best = { minX, minY, maxX, maxY, count };
   }
-  const boxArea = (maxX - minX + 1) * (maxY - minY + 1);
-  // Require a reasonably solid, reasonably large rectangle — otherwise it's
-  // just green detail in the render, not a screen.
-  if (maxX < 0 || count < width * height * 0.03 || count / boxArea < 0.75) {
-    return { buffer, rect: null };
-  }
-  const grow = 3;
-  for (let y = Math.max(0, minY - grow); y <= Math.min(height - 1, maxY + grow); y++) {
-    for (let x = Math.max(0, minX - grow); x <= Math.min(width - 1, maxX + grow); x++) {
-      const i = (y * width + x) * 4;
-      if (isGreen(i) || isSpill(i)) { data[i] = fr; data[i + 1] = fg; data[i + 2] = fb; data[i + 3] = 255; }
-    }
+  // Recolour EVERY green-dominant pixel (screen, spill, reflections of it on
+  // the frame) to the screen fill so no green survives anywhere.
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] > 20 && greenness(i) > 30) { data[i] = fr; data[i + 1] = fg; data[i + 2] = fb; }
   }
   const out = await fromRaw(data, width, height);
-  return { buffer: out, rect: { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 } };
+  if (!best || best.count < N * 0.03) return { buffer: out, rect: null };
+  return { buffer: out, rect: { x: best.minX, y: best.minY, w: best.maxX - best.minX + 1, h: best.maxY - best.minY + 1 } };
 }
 
 // Cuts an icon sheet generated as a strict cols×rows grid into individual

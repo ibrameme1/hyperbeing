@@ -834,3 +834,69 @@ export function extractCompletedLayoutParts(text) {
   }
   return out;
 }
+
+// ── deterministic collision resolution ──────────────────────────────────────
+// Last line of defence after the visual review: text must never sit on other
+// text. When a lower-priority text box overlaps a higher-priority one, the
+// lower one moves — together with everything that belongs to it (the card
+// shape containing it, and the icons/badges/text inside that card) — to the
+// nearest clear position (below, then above, then right, then left).
+const PRIORITY = { headline: 0, display: 0, subhead: 1, stat: 2, label: 3, body: 4, quote: 4, caption: 5 };
+
+function contains(outer, inner, pad = 6) {
+  return inner.x >= outer.x - pad && inner.y >= outer.y - pad
+    && inner.x + inner.w <= outer.x + outer.w + pad && inner.y + inner.h <= outer.y + outer.h + pad;
+}
+
+export function resolveCollisions(layout) {
+  const { canvas } = layout;
+  const moved = [];
+  const texts = () => layout.layers.filter(l => l.kind === 'text' && !l.screen_of && !l.in_screen && !l.rotation);
+  const rank = (l) => (PRIORITY[l.role] ?? 4) * 10000 + l.y; // ties: higher on the slide wins
+
+  const groupOf = (t) => {
+    const cards = layout.layers.filter(s => s.kind === 'shape' && s.shape === 'rect' && contains(s, t) && s.w < canvas.w * 0.95 && s.h < canvas.h * 0.6);
+    const card = cards.sort((a, b) => a.w * a.h - b.w * b.h)[0];
+    if (!card) return [t];
+    return layout.layers.filter(l => l === card || (l !== card && !l.screen_of && contains(card, l) && l.kind !== 'image'));
+  };
+  const bbox = (g) => {
+    const x = Math.min(...g.map(l => l.x)); const y = Math.min(...g.map(l => l.y));
+    return { x, y, w: Math.max(...g.map(l => l.x + l.w)) - x, h: Math.max(...g.map(l => l.y + l.h)) - y };
+  };
+
+  for (let pass = 0; pass < 3; pass++) {
+    let changed = false;
+    const list = texts().sort((a, b) => rank(a) - rank(b));
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const hi = list[i]; const lo = list[j];
+        if (!overlaps(hi, lo)) continue;
+        const group = groupOf(lo);
+        if (group.includes(hi)) continue; // same card — a fit problem, not a collision
+        const g = bbox(group);
+        const gap = 20;
+        const others = layout.layers.filter(l => !group.includes(l) && (l.kind === 'text' || (l.kind === 'shape' && l.shape === 'rect' && l.w < canvas.w * 0.95)) && !l.screen_of);
+        const candidates = [
+          { dx: 0, dy: hi.y + hi.h + gap - g.y },
+          { dx: 0, dy: hi.y - gap - (g.y + g.h) },
+          { dx: hi.x + hi.w + gap - g.x, dy: 0 },
+          { dx: hi.x - gap - (g.x + g.w), dy: 0 },
+        ].sort((a, b) => Math.abs(a.dx) + Math.abs(a.dy) - (Math.abs(b.dx) + Math.abs(b.dy)));
+        const margin = Math.round(canvas.w * 0.02);
+        const fits = (c) => {
+          const nb = { x: g.x + c.dx, y: g.y + c.dy, w: g.w, h: g.h };
+          if (nb.x < margin * 0.5 || nb.y < margin * 0.5 || nb.x + nb.w > canvas.w - margin * 0.5 || nb.y + nb.h > canvas.h - margin * 0.5) return false;
+          return !others.some(o => overlaps(nb, o) && !contains(o, nb));
+        };
+        const c = candidates.find(fits);
+        if (!c) continue;
+        for (const l of group) { l.x += c.dx; l.y += c.dy; }
+        moved.push(`${lo.id} moved off ${hi.id}`);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return moved;
+}

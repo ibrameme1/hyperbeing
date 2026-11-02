@@ -3,7 +3,7 @@ import sharp from 'sharp';
 import * as imageStore from './imageStore.js';
 import { logger } from './logger.js';
 import { designSlideLayout, reviewSlideLayout } from './layoutAgent.js';
-import { normalizeLayout, fitLayout, layoutFiles, canvasFor, MAX_GENERATIONS_PER_SLIDE } from './slideLayout.js';
+import { normalizeLayout, fitLayout, layoutFiles, canvasFor, MAX_GENERATIONS_PER_SLIDE, resolveCollisions } from './slideLayout.js';
 import { generateLayerImage, scheduleImageJob, sizeForAspect, IMAGE_MOCK_MODE, LONG_SIDE } from './openaiImages.js';
 import {
   coverToAspect, ensureTransparent, unscreen, trimTransparent, extractScreen,
@@ -597,6 +597,9 @@ export async function buildLayeredSlide({
       }
       stats.review_ms = Date.now() - tr;
     }
+    // Deterministic last line of defence: no text on text.
+    const moved = resolveCollisions(layout);
+    if (moved.length) ({ warnings } = fitLayout(layout));
     if (warnings.length) layout.warnings = warnings.slice(0, 20);
 
     // ── 5. flattened preview ───────────────────────────────────────────────

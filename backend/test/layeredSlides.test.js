@@ -145,6 +145,18 @@ describe('layer imaging', () => {
     expect([r, g, b]).toEqual([11, 20, 26]);
   });
 
+  it('handles a SHADED chroma screen (vignette/reflection) and leaves no green behind', async () => {
+    const buf = await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><defs><radialGradient id="v"><stop offset="0" stop-color="#22ee33"/><stop offset="1" stop-color="#119922"/></radialGradient></defs>
+      <rect x="20" y="20" width="160" height="260" rx="20" fill="#222"/><rect x="40" y="50" width="120" height="200" fill="url(#v)"/></svg>`);
+    const { buffer, rect } = await extractScreen(buf, '#0B141A');
+    expect(rect.w).toBeGreaterThan(110);
+    expect(rect.h).toBeGreaterThan(190);
+    const { data } = await sharp(buffer).raw().toBuffer({ resolveWithObject: true });
+    let green = 0;
+    for (let i = 0; i < data.length; i += 4) if (data[i + 1] - Math.max(data[i], data[i + 2]) > 30) green++;
+    expect(green).toBe(0);
+  });
+
   it('returns no screen when there is no solid green rectangle', async () => {
     const buf = await svgPng('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><circle cx="50" cy="50" r="5" fill="#00FF00"/></svg>');
     expect((await extractScreen(buf)).rect).toBeNull();
@@ -333,5 +345,21 @@ describe('splitCluster', () => {
     expect(byId.left.x + byId.left.w).toBeLessThanOrEqual(191);
     expect(byId.right.x).toBeGreaterThanOrEqual(109);
     expect(byId.right.x).toBeLessThanOrEqual(190);
+  });
+});
+
+import { resolveCollisions } from '../services/slideLayout.js';
+describe('resolveCollisions', () => {
+  it('moves a card (with its text) off the headline', () => {
+    const l = normalizeLayout({ layers: [
+      { kind: 'text', id: 'headline', role: 'headline', text: 'PSO has 60% share', size: 60, x: 66, y: 50, w: 1100, h: 140 },
+      { kind: 'shape', id: 'card', shape: 'rect', x: 600, y: 60, w: 470, h: 110 },
+      { kind: 'text', id: 'card_title', role: 'label', text: 'Government = Old', size: 26, x: 620, y: 70, w: 420, h: 40 },
+    ] });
+    const moved = resolveCollisions(l);
+    const [h, card, title] = l.layers;
+    expect(moved.length).toBeGreaterThan(0);
+    expect(card.y).toBeGreaterThanOrEqual(h.y + h.h);
+    expect(title.y - card.y).toBe(10); // moved together
   });
 });

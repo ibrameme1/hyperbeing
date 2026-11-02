@@ -324,6 +324,7 @@ STEP 5 — LAYOUT, HIERARCHY, READABILITY
 - Text never sits on a busy part of an image: place it on negative space, a card, or a gradient strip.
 - Cards behind text: the text box sits inside the card with ≥24px padding on every side.
 - No two text boxes may overlap. Nothing important outside the canvas (bleeding decorative elements off-canvas is fine).
+- Copy belongs to THIS slide only: never reuse another slide's title or lines (the slide list is context, not copy). If the brief gives no line for a strip/caption, write one for this slide's own point.
 - Honor every explicit placement in the brief ("bottom-right corner empty", "logo small top-left", "slide number '09' grey bottom-right").
 - Image elements never cover text boxes (connectors and glows may pass BEHIND cards). Keep image boxes inside the canvas (a small deliberate bleed off an edge is fine; a phone half off-screen is not). Stacked/fanned devices overlap each other by at most ~20%.
 - Before submitting, check every box: x ≥ 0, y ≥ 0, x + w ≤ {W}, y + h ≤ {H} for text and cards; no text box intersects another text box or an image element.
