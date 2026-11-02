@@ -29,6 +29,12 @@ const { designDeckSystem } = await import('../services/layoutAgent.js');
 const { IMAGE_MOCK_MODE, LAYER_IMAGE_MODEL, LAYER_IMAGE_QUALITY } = await import('../services/openaiImages.js');
 
 const spec = JSON.parse(fs.readFileSync(briefsPath, 'utf8'));
+// Optional brief attachments, like the Dashboard's uploads:
+// "uploads": [{ "path": "logo.png", "category": "branding" }]
+const uploads = (spec.uploads || []).map(u => ({
+  type: 'image', category: u.category || 'branding', name: path.basename(u.path), mimeType: 'image/png',
+  data: `data:image/png;base64,${fs.readFileSync(path.resolve(path.dirname(briefsPath), u.path)).toString('base64')}`,
+}));
 const style = spec.style || 'classic';
 const slides = spec.slides.map((s, i) => ({ index: i, type: s.type || 'content', title: s.title, key_points: [], brief: s.brief }));
 const claudeMock = !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'demo';
@@ -39,13 +45,13 @@ const t0 = Date.now();
 const header = { presentation_title: spec.title || 'Benchmark deck' };
 const deckBrief = slides.map(s => `SLIDE ${s.index}: ${s.brief}`).join('\n\n');
 const tDeck = Date.now();
-const deckDesign = await designDeckSystem({ header, slides, brief: deckBrief, style });
+const deckDesign = await designDeckSystem({ header, slides, brief: deckBrief, style, uploads });
 const deckMs = Date.now() - tDeck;
 console.log(`deck design: ${deckMs} ms — fonts ${JSON.stringify(deckDesign.fonts)}`);
 
 const results = await Promise.all(slides.map(async (slide) => {
   const r = await buildLayeredSlide({
-    presentationId: 'benchmark', slide, header, deckDesign, brief: slide.brief, style,
+    presentationId: 'benchmark', slide, header, deckDesign, brief: slide.brief, style, uploads,
     siblingTitles: slides.map(s => s.title),
   });
   if (!r) return { index: slide.index, title: slide.title, ok: false };

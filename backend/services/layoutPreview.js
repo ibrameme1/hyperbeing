@@ -185,10 +185,27 @@ export async function renderLayoutPreview(layout, loadFile, { width = 1920 } = {
   const defs = [];
   const body = [];
   let uid = 0;
-  const imgHref = async (file) => {
+  // Images are embedded as data URIs, so keep the SVG small (librsvg refuses
+  // documents with a >10MB attribute): each image is downscaled to the size
+  // it's displayed at in this render, and the background is embedded ONCE as a
+  // JPEG (it's opaque) and referenced via <use> by frosted cards.
+  const scale = width / canvas.w;
+  const hrefCache = new Map();
+  const imgHref = async (file, w, h, { jpeg = false } = {}) => {
     if (!file) return null;
-    const buf = await loadFile(file);
-    return buf ? `data:image/png;base64,${buf.toString('base64')}` : null;
+    const key = `${file}|${Math.round(w)}|${Math.round(h)}|${jpeg}`;
+    if (!hrefCache.has(key)) {
+      hrefCache.set(key, (async () => {
+        const buf = await loadFile(file);
+        if (!buf) return null;
+        const tw = Math.max(8, Math.min(2400, Math.ceil(w * scale * 1.1)));
+        const th = Math.max(8, Math.min(2400, Math.ceil(h * scale * 1.1)));
+        const img = sharp(buf).resize(tw, th, { fit: 'inside', withoutEnlargement: true });
+        const out = jpeg ? await img.jpeg({ quality: 88 }).toBuffer() : await img.png({ compressionLevel: 9 }).toBuffer();
+        return `data:image/${jpeg ? 'jpeg' : 'png'};base64,${out.toString('base64')}`;
+      })());
+    }
+    return hrefCache.get(key);
   };
 
   // Background
@@ -200,8 +217,11 @@ export async function renderLayoutPreview(layout, loadFile, { width = 1920 } = {
   } else {
     body.push(`<rect width="${canvas.w}" height="${canvas.h}" fill="${esc(bg.color || '#000')}"/>`);
     if (bg.type === 'image' && bg.file) {
-      bgHref = await imgHref(bg.file);
-      if (bgHref) body.push(`<image href="${bgHref}" x="0" y="0" width="${canvas.w}" height="${canvas.h}" preserveAspectRatio="xMidYMid slice"/>`);
+      bgHref = await imgHref(bg.file, canvas.w, canvas.h, { jpeg: true });
+      if (bgHref) {
+        defs.push(`<image id="bgimg" href="${bgHref}" x="0" y="0" width="${canvas.w}" height="${canvas.h}" preserveAspectRatio="xMidYMid slice"/>`);
+        body.push('<use href="#bgimg"/>');
+      }
     }
   }
 
@@ -211,7 +231,11 @@ export async function renderLayoutPreview(layout, loadFile, { width = 1920 } = {
     if (l.kind === 'shape') {
       const fill = l.gradient ? (() => { defs.push(gradientDef(`sg${id}`, l.gradient)); return `url(#sg${id})`; })() : esc(l.fill);
       const filter = l.shadow ? (() => { defs.push(shadowFilter(`ss${id}`, l.shadow)); return ` filter="url(#ss${id})"`; })() : '';
-      const stroke = l.border ? ` stroke="${esc(l.border.color)}" stroke-width="${l.border.width}"` : '';
+      let stroke = '';
+      if (l.border) {
+        const sc = l.border.gradient ? (() => { defs.push(gradientDef(`sb${id}`, l.border.gradient)); return `url(#sb${id})`; })() : esc(l.border.color);
+        stroke = ` stroke="${sc}" stroke-width="${l.border.width}"`;
+      }
       const geom = l.shape === 'ellipse'
         ? `<ellipse cx="${l.x + l.w / 2}" cy="${l.y + l.h / 2}" rx="${l.w / 2}" ry="${l.h / 2}"`
         : l.shape === 'line'
@@ -221,9 +245,14 @@ export async function renderLayoutPreview(layout, loadFile, { width = 1920 } = {
       let frost = '';
       if (l.frosted && bgHref) {
         defs.push(`<clipPath id="fc${id}">${geom}/></clipPath><filter id="fb${id}"><feGaussianBlur stdDeviation="${l.frosted.blur / 2}"/></filter>`);
-        frost = `<g clip-path="url(#fc${id})"><image href="${bgHref}" x="0" y="0" width="${canvas.w}" height="${canvas.h}" preserveAspectRatio="xMidYMid slice" filter="url(#fb${id})"/></g>`;
+        frost = `<g clip-path="url(#fc${id})"><use href="#bgimg" filter="url(#fb${id})"/></g>`;
       }
-      body.push(`<g opacity="${l.opacity}"${rotateAttr(l)}>${frost}${geom} fill="${fill}"${stroke}${filter}/></g>`);
+      let hl = '';
+      if (l.highlight && l.shape === 'rect') {
+        defs.push(`<linearGradient id="hl${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.55"/><stop offset="0.35" stop-color="#fff" stop-opacity="0"/></linearGradient>`);
+        hl = `${geom} fill="none" stroke="url(#hl${id})" stroke-width="${Math.max(1.5, (l.border?.width || 1) + 0.5)}"/>`;
+      }
+      body.push(`<g opacity="${l.opacity}"${rotateAttr(l)}>${frost}${geom} fill="${fill}"${stroke}${filter}/>${hl}</g>`);
     } else if (l.kind === 'text') {
       body.push(textLayerSvg(l, defs, id));
     } else if (l.kind === 'chart') {
@@ -238,7 +267,7 @@ export async function renderLayoutPreview(layout, loadFile, { width = 1920 } = {
       const size = Math.min(l.h * 0.8, (l.w / Math.max(1, l.brand?.length || 1)) * 1.6);
       body.push(`<text x="${l.x}" y="${l.y + l.h * 0.75}" font-family="'${esc(layout.fonts.display)}', Inter, sans-serif" font-weight="800" font-size="${size}" fill="${esc(l.color || '#fff')}">${esc(l.brand || '')}</text>`);
     } else if (l.file) {
-      const href = await imgHref(l.file);
+      const href = await imgHref(l.file, l.w, l.h);
       if (!href) continue;
       const filter = (l.shadow || l.glow) ? (() => {
         const s = l.shadow || { dx: 0, dy: 0, blur: l.glow.blur, color: l.glow.color };
@@ -246,7 +275,7 @@ export async function renderLayoutPreview(layout, loadFile, { width = 1920 } = {
         return ` filter="url(#is${id})"`;
       })() : '';
       const flip = l.flip ? ` transform="translate(${2 * l.x + l.w} 0) scale(-1 1)"` : '';
-      body.push(`<g opacity="${l.opacity}"${rotateAttr(l)}><image href="${href}" x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" preserveAspectRatio="xMidYMid ${l.fit === 'cover' ? 'slice' : 'meet'}"${filter}${flip}/></g>`);
+      body.push(`<g opacity="${l.opacity}"${rotateAttr(l)}><image href="${href}" x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" preserveAspectRatio="${l.fit === 'fill' ? 'none' : `xMidYMid ${l.fit === 'cover' ? 'slice' : 'meet'}`}"${filter}${flip}/></g>`);
     }
   }
 

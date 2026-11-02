@@ -94,7 +94,7 @@ const DECK_SYSTEM_PROMPT = `You are Nova, the art director of a premium presenta
 
 Your job now: define the deck's shared design system so every layer of every slide looks like it came from one designer.
 
-- style_block: 60-120 words of rendering style that will be prepended to EVERY image prompt in the deck: medium (3D render / photograph / illustration and its finish), lighting direction and quality (state ONE consistent key-light direction, e.g. "soft key light from upper-left"), color grade, material language, palette with hex values, level of detail, grain. It must make backgrounds and isolated elements match each other. Never put text, logos, layout or composition instructions in it.
+- style_block: 60-120 words of rendering style that will be prepended to EVERY image prompt in the deck (backgrounds included — so it must never imply subjects, products or objects to depict): medium (3D render / photograph / illustration and its finish), lighting direction and quality (state ONE consistent key-light direction, e.g. "soft key light from upper-left"), color grade, material language, palette with hex values, level of detail, grain. It must make backgrounds and isolated elements match each other. Never put text, logos, layout or composition instructions in it.
 - fonts: choose the display and body fonts that do this deck justice, from the allowed list only.
 - palette: hex colors (or rgba for panel tints) for background, text, muted text, accent, accent2, and panel fill.
 - gradient: optional signature gradient used for key words.
@@ -182,6 +182,11 @@ background (top-level object, not a layer), one of:
 image — a generated visual element:
   {"kind":"image","id":"phone","role":"hero|element|effect","prompt":"...","refs":[],"x":..,"y":..,"w":..,"h":..,"shadow":{"color":"rgba(0,0,0,0.55)","blur":60,"dx":0,"dy":30},"glow":{"color":"rgba(255,46,116,0.5)","blur":80}}
   - role "hero": the main visual of the slide (at most one). "element": any other object, illustration, product, person cut-out on a designed slide, sticker, prop. "effect": light-based effects ONLY (glows, light trails, sparks, aurora wisps, lens flares, luminous particles) — these are rendered on pure black and converted to transparency, so describe them as light on black.
+  - role "connector": the thing that PHYSICALLY LINKS elements so the slide reads as one connected scene — coins pouring from a phone's ad banner into a wallet, a light trail from a product to a card, an energy beam, a data stream, an orbit ring around a hero. Give
+      "from":{"layer":"<id>","anchor":"top|bottom|left|right|center|top-left|top-right|bottom-left|bottom-right" or {"x":0.8,"y":0.85}} and "to":{...}  (anchor = a point of that layer's box; {"x","y"} are fractions of it — aim at the exact spot, e.g. the ad banner or the wallet's opening)
+      or "around":"<id>" for an orbit ring encircling that layer,
+      plus "medium":"objects" (solid things: coins, cubes, petals, icons in motion — rendered on transparent) or "light" (glowing trails, beams, sparks, energy — rendered on black), and "spread": thickness in px (default 200).
+    Do NOT give a connector x/y/w/h — the app computes its exact box from the anchors and tells the image model precisely where the stream enters and exits. Its prompt describes the stream itself ("a cascade of 9 glossy gold coins tumbling and spinning, small at the start and growing larger, with orange light streaks between them").
   - The box (x,y,w,h) is where the element sits; the generated image is fitted inside it preserving aspect, so give the box the element's natural proportions.
   - Contact shadows / reflections / glows that ground an element: use the native "shadow"/"glow" fields, or a separate "effect" layer under it. Never ask the element itself to include a shadow.
   - Devices whose SCREEN should show editable UI (chat messages, captions, dashboards): add "screen":{"fill":"#0B141A"} and describe the device as PERFECTLY FRONT-FACING and flat-on (no tilt, no perspective). Then put the screen contents as separate native layers with "in_screen":"<device id>" and x,y,w,h in NORMALIZED 0-1 coordinates of the screen (0,0 = screen top-left, 1,1 = bottom-right). A tilted/3D-angled device must instead have its screen content described in its prompt.
@@ -204,7 +209,7 @@ text — real, editable text:
 
 shape — native panels, cards, pills, strips, dividers, glass:
   {"kind":"shape","id":"card_1","shape":"rect|ellipse|line","fill":"rgba(255,255,255,0.08)","gradient":{...optional},"radius":24,"border":{"color":"rgba(255,255,255,0.18)","width":1.5},"frosted":{"blur":24},"shadow":{...optional},"x":..,"y":..,"w":..,"h":..}
-  - Frosted glass cards = "frosted" + a translucent fill + thin light border. Pills = rect with radius = h/2. Full-width strips = rect spanning the canvas. Hairline dividers = shape "line" with h 2.
+  - Frosted glass cards = "frosted" + a translucent fill + thin light border; add "highlight":true for the glass bevel (light catching the top edge) and a gradient border for a lit/accent edge: "border":{"width":1.5,"gradient":{"angle":90,"stops":[{"color":"rgba(255,255,255,0.35)","pos":0},{"color":"rgba(255,46,116,0.6)","pos":100}]}}. A glowing card = "shadow":{"color":"rgba(255,46,116,0.45)","blur":60,"dx":0,"dy":0}. Pills = rect with radius = h/2. Full-width strips = rect spanning the canvas. Horizontal hairlines = shape "line" with h 2; vertical dividers = a rect 2px wide.
   - Cards, panels, screens-as-UI, tables, pills and strips are ALWAYS native shapes with native text on top — never generated images (they must stay editable and crisp).
 
 chart — real, editable data:
@@ -233,7 +238,54 @@ STEP 3 — IMAGE PROMPTS (the quality of the slide lives here)
 - Image generations are expensive: background image + image layers + one icon sheet ≤ ${MAX_GENERATIONS_PER_SLIDE} per slide. Most slides need 1-5. Repeated identical devices count once.
 
 ══════════════════════════════════════════
-STEP 4 — LAYOUT, HIERARCHY, READABILITY
+STEP 4 — DESIGN QUALITY BAR (the slide must look like a top keynote designer made it)
+══════════════════════════════════════════
+- CONNECTED, NOT FLOATING. The visual zone is ONE composed scene, never separate stickers: every secondary object relates physically to the hero — linked by a connector (stream, beam, orbit), touching it, or overlapping its edge. Put an "effect" glow behind the hero cluster so everything shares one light. Floating callout cards sit close to / slightly overlapping the cluster, with a glow shadow in the accent colour. Objects in the cluster share one light direction (the deck style's key light).
+- SCALE. The hero fills 60-85% of the canvas height in its zone (a phone ~550x850, a controller ~800x600), often tilted 8-15 degrees for energy (describe the angle in its prompt). Secondary objects are substantial (at least ~15% of canvas height; a wallet ~280x260), never tiny props. Callout cards ~340x240.
+- TYPE SCALE (1080p canvas): kicker/label 20-24px caps, letter_spacing 0.18-0.3 (em), accent colour or gradient · headline 76-110px weight 800, 2-4 lines, line_height 1.02-1.1 · big stat numbers 96-130px weight 800 filled with the deck's signature gradient · row titles 30-34px weight 700 · body 26-30px · footnotes 22-24px muted · slide number 64-80px weight 300 muted grey.
+- ROW / CARD ANATOMY (use for lists of 2-4 items): frosted card 820-840 wide, 125-150 tall, radius 26-32, "highlight":true, subtle gradient border. Inside, left to right with ≥28px padding: an icon badge (ellipse 76x76, transparent fill, 2px accent/gradient border, a Lucide icon 36px centred in it) → bold title → a 2px vertical divider (rect, 55% card height, rgba(255,255,255,0.18)) → body text. Stat rows use a big gradient number instead of badge+title.
+- FILL THE CANVAS WITH INTENT. Content column ~45% / visual zone ~55% unless briefed otherwise; no dead zone larger than ~15% of the canvas; small supporting lines (proof line with a shield-check icon, KPI line with a chart-line icon) anchor the bottom.
+- Logo top-left at the margin (height 56-72px). If the user uploaded a logo, use it (source "upload").
+- PALETTE DISCIPLINE: every colour on the slide comes from the DECK DESIGN SYSTEM palette/gradient (tints and alpha variations of them are fine). Never introduce a colour the deck doesn't use (e.g. a dark-green strip on an aubergine/orange deck).
+- COMPANIONS: small objects that accompany a hero (game tiles, icons, badges, products) are real elements at ≥ 150px, placed ON an orbit/arc around the hero (add a "light" connector with "around":"<hero id>" so they visibly orbit it), slightly overlapping its silhouette — never scattered tiny in empty corners.
+- BACKGROUND for objects/native slides is an EMPTY atmosphere (light, colour, texture). Never describe objects, devices, products or shapes in a background prompt — every object is its own layer.
+
+══════════════════════════════════════════
+WORKED EXAMPLE (objects composition) — the quality bar. Brief: Simosa Door 6, aubergine-black + orange/pink aurora, Lato, logo uploaded as UPLOAD 0.
+══════════════════════════════════════════
+{"composition":"objects","style_block":"Key light from upper-left, warm orange-pink rim light from the right","brands":[{"name":"Simosa","domain":"simosa.pk","famous":false}],
+"background":{"type":"image","prompt":"Deep aubergine-black (#100812) field. A sweeping soft orange (#FF8A1F) to hot pink (#FF2E74) aurora ribbon curves through the right 55%, brightest behind the centre-right, with faint dust particles; the left 45% falls off into clean near-black for text.","color":"#100812"},
+"layers":[
+{"kind":"image","id":"phone","role":"hero","name":"Game phone","prompt":"A sleek modern smartphone in a dark graphite frame, tilted about 12 degrees to the right in a three-quarter 3D view, screen showing a bright, colourful mobile platformer game: a cute fox pilot character with goggles jumping between floating grassy islands, gold coins in mid-air, a score bar at the top, and at the bottom of the screen a clean white native ad banner with a pink sneaker photo and a pink 'Shop now' button. Glossy glass, crisp detail.","x":930,"y":60,"w":560,"h":880},
+{"kind":"image","id":"wallet","role":"element","name":"Wallet","prompt":"A premium dark plum leather wallet standing slightly open towards the viewer, a glowing pink Simosa logo embossed on its front, warm light spilling from inside it","refs":["brand:Simosa"],"x":1500,"y":690,"w":290,"h":270},
+{"kind":"image","id":"coins","role":"connector","medium":"objects","name":"Coin stream","prompt":"A cascade of nine glossy gold-orange coins with dollar marks, tumbling and spinning in an arc, small at the start and larger towards the end, with soft orange motion streaks between them","from":{"layer":"phone","anchor":{"x":0.72,"y":0.78}},"to":{"layer":"wallet","anchor":{"x":0.5,"y":0.12}},"spread":220},
+{"kind":"image","id":"trail","role":"connector","medium":"light","name":"Light trail","prompt":"A single flowing ribbon of hot pink and orange light with tiny sparks, smooth and luminous","from":{"layer":"phone","anchor":{"x":0.7,"y":0.75}},"to":{"layer":"wallet","anchor":{"x":0.45,"y":0.3}},"spread":160},
+{"kind":"logo","id":"logo","source":"upload","upload":0,"x":44,"y":44,"w":300,"h":70},
+{"kind":"shape","id":"pill","shape":"rect","fill":"rgba(255,46,116,0.08)","border":{"color":"rgba(255,90,90,0.75)","width":2},"radius":28,"x":66,"y":176,"w":226,"h":56},
+{"kind":"text","id":"pill_text","role":"label","text":"DOOR 6 OF 6","font":"Lato","size":22,"weight":700,"uppercase":true,"letter_spacing":0.2,"color":"#FF8A5B","align":"center","valign":"middle","x":66,"y":176,"w":226,"h":56},
+{"kind":"text","id":"headline","role":"headline","text":"Door 6: any mini-app\ndeveloper can earn from\nads shown inside their app.","font":"Lato","size":76,"weight":800,"line_height":1.06,"color":"#FFFFFF","x":66,"y":252,"w":840,"h":250},
+{"kind":"shape","id":"row1","shape":"rect","fill":"rgba(255,255,255,0.05)","frosted":{"blur":24},"highlight":true,"border":{"width":1.5,"gradient":{"angle":90,"stops":[{"color":"rgba(255,255,255,0.28)","pos":0},{"color":"rgba(255,255,255,0.08)","pos":100}]}},"radius":28,"x":58,"y":494,"w":826,"h":132},
+{"kind":"shape","id":"row1_badge","shape":"ellipse","fill":"transparent","border":{"color":"#FF6A3D","width":2},"x":90,"y":522,"w":76,"h":76},
+{"kind":"icon","id":"row1_icon","source":"lucide","name":"smartphone","color":"#FF6A3D","stroke":2,"x":110,"y":542,"w":36,"h":36},
+{"kind":"text","id":"row1_title","role":"label","text":"How it works","font":"Lato","size":32,"weight":700,"color":"#FFFFFF","valign":"middle","x":196,"y":530,"w":210,"h":60},
+{"kind":"shape","id":"row1_div","shape":"rect","fill":"rgba(255,255,255,0.18)","x":424,"y":524,"w":2,"h":72},
+{"kind":"text","id":"row1_body","role":"body","text":"We place ads inside the\nmini app through our ad stack","font":"Lato","size":27,"color":"#E9E3EE","valign":"middle","x":456,"y":514,"w":410,"h":92},
+… row2 ("The split", icon "chart-pie", y 640) and row3 ("Payout", icon "wallet", y 786) repeat row1 exactly with y offsets …
+{"kind":"icon","id":"proof_icon","source":"lucide","name":"shield-check","color":"#9A93A3","x":62,"y":944,"w":34,"h":34},
+{"kind":"text","id":"proof","role":"caption","text":"WeChat pays developers 70% of ad revenue until RMB 1M, then 50%.","font":"Lato","size":24,"color":"#9A93A3","valign":"middle","x":112,"y":940,"w":800,"h":42},
+{"kind":"shape","id":"earn_card","shape":"rect","fill":"rgba(30,12,28,0.55)","frosted":{"blur":28},"highlight":true,"border":{"width":2,"gradient":{"angle":135,"stops":[{"color":"rgba(255,255,255,0.3)","pos":0},{"color":"#FF2E74","pos":100}]}},"shadow":{"color":"rgba(255,46,116,0.45)","blur":60,"dx":0,"dy":0},"radius":30,"x":1544,"y":220,"w":340,"h":256},
+{"kind":"text","id":"earn_label","role":"label","text":"This month:","font":"Lato","size":32,"color":"#FFFFFF","x":1576,"y":262,"w":290,"h":44},
+{"kind":"text","id":"earn_value","role":"stat","text":"PKR 84,300","font":"Lato","size":60,"weight":800,"gradient":{"angle":90,"stops":[{"color":"#FF8A1F","pos":0},{"color":"#FF2E74","pos":100}]},"x":1576,"y":312,"w":300,"h":76},
+{"kind":"shape","id":"tag","shape":"rect","fill":"rgba(255,255,255,0.08)","border":{"color":"rgba(255,255,255,0.18)","width":1},"radius":20,"x":1576,"y":402,"w":118,"h":40},
+{"kind":"text","id":"tag_text","role":"caption","text":"Illustrative","font":"Lato","size":20,"color":"#CFC8D6","align":"center","valign":"middle","x":1576,"y":402,"w":118,"h":40},
+{"kind":"text","id":"wallet_label","role":"label","text":"Developer\nearnings","font":"Lato","size":32,"weight":500,"color":"#FFFFFF","align":"center","x":1630,"y":556,"w":210,"h":84},
+{"kind":"icon","id":"kpi_icon","source":"lucide","name":"chart-line","color":"#FF6A3D","x":1006,"y":982,"w":44,"h":44},
+{"kind":"text","id":"kpi","role":"caption","text":"KPI: ad revenue paid out to developers.","runs":[{"text":"KPI:","color":"#FF6A3D","weight":700}],"font":"Lato","size":28,"color":"#FFFFFF","valign":"middle","x":1070,"y":980,"w":760,"h":48}
+]}
+Notice: hero tilted and large; wallet substantial and logo-branded; coins + light trail physically connect the ad banner to the wallet; the earnings card glows and sits by the cluster; rows have badge + title + divider + body; gradient stat; logo, proof line and KPI line anchor the corners. Apply the same standard to every composition (scene slides: the scene background carries the visual, cards and text are native; native slides: charts and type carry it).
+
+══════════════════════════════════════════
+STEP 5 — LAYOUT, HIERARCHY, READABILITY
 ══════════════════════════════════════════
 - One clear focal point, one reading order. Align to a grid (e.g. 12 columns, 24px gutters); align text edges with each other and with cards.
 - Dense slides (many cards/columns/pods): keep ALL the content the brief asks for, but structure it — consistent card sizes, consistent internal padding (≥24px), aligned baselines, repeated patterns. If it cannot fit at the readability floor, tighten copy inside cards rather than shrinking type.
@@ -241,7 +293,7 @@ STEP 4 — LAYOUT, HIERARCHY, READABILITY
 - Cards behind text: the text box sits inside the card with ≥24px padding on every side.
 - No two text boxes may overlap. Nothing important outside the canvas (bleeding decorative elements off-canvas is fine).
 - Honor every explicit placement in the brief ("bottom-right corner empty", "logo small top-left", "slide number '09' grey bottom-right").
-- Image elements never sit on top of text boxes. Keep image boxes inside the canvas (a small deliberate bleed off an edge is fine; a phone half off-screen is not). Stacked/fanned devices overlap each other by at most ~20%.
+- Image elements never cover text boxes (connectors and glows may pass BEHIND cards). Keep image boxes inside the canvas (a small deliberate bleed off an edge is fine; a phone half off-screen is not). Stacked/fanned devices overlap each other by at most ~20%.
 - Before submitting, check every box: x ≥ 0, y ≥ 0, x + w ≤ {W}, y + h ≤ {H} for text and cards; no text box intersects another text box or an image element.
 
 OUTPUT ORDER: write the tool input keys in this order — composition, style_block, brands, background, layers — and inside "layers" put the image layers (background-most first) as early as the z-order allows, because generation of each image starts the moment its JSON is complete.

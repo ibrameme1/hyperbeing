@@ -65,7 +65,21 @@ export const FONT_NAMES = Object.keys(FONTS);
 const DEFAULT_FONT = 'Inter';
 
 const LAYER_KINDS = ['image', 'text', 'shape', 'chart', 'icon', 'logo'];
-const IMAGE_ROLES = ['hero', 'element', 'effect', 'screen_image'];
+const IMAGE_ROLES = ['hero', 'element', 'effect', 'screen_image', 'connector'];
+const ANCHORS = {
+  center: [0.5, 0.5], top: [0.5, 0], bottom: [0.5, 1], left: [0, 0.5], right: [1, 0.5],
+  'top-left': [0, 0], 'top-right': [1, 0], 'bottom-left': [0, 1], 'bottom-right': [1, 1],
+};
+
+// Connector endpoint: {layer, anchor} where anchor is a named point of that
+// layer's box or {x,y} fractions of it.
+function anchorRef(a) {
+  if (!a || typeof a !== 'object' || typeof a.layer !== 'string') return undefined;
+  let pt = ANCHORS.center;
+  if (typeof a.anchor === 'string' && ANCHORS[a.anchor]) pt = ANCHORS[a.anchor];
+  else if (a.anchor && typeof a.anchor === 'object') pt = [num(a.anchor.x, -0.5, 1.5, 0.5), num(a.anchor.y, -0.5, 1.5, 0.5)];
+  return { layer: a.layer.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40), point: pt };
+}
 const CHART_TYPES = ['bar', 'column', 'line', 'area', 'pie', 'donut'];
 const SHAPES = ['rect', 'ellipse', 'line'];
 
@@ -202,8 +216,14 @@ function normalizeShape(l, base) {
     gradient: gradient(l.gradient) || undefined,
     radius: num(l.radius, 0, 2000, 0),
     border: l.border && typeof l.border === 'object'
-      ? { color: color(l.border.color, 'rgba(255,255,255,0.2)'), width: num(l.border.width, 0, 40, 1) }
+      ? {
+        color: color(l.border.color, 'rgba(255,255,255,0.2)'),
+        width: num(l.border.width, 0, 40, 1),
+        gradient: gradient(l.border.gradient) || undefined, // lit/accent borders
+      }
       : undefined,
+    // Glass bevel: a soft light catching the top edge of the card.
+    highlight: !!l.highlight,
     // Frosted glass = blurred crop of whatever is underneath + tint + border.
     // Rendered natively on web (backdrop-filter) and baked to an image for PPTX.
     frosted: l.frosted ? { blur: num(l.frosted?.blur ?? l.blur, 0, 80, 24) } : undefined,
@@ -265,6 +285,14 @@ function normalizeImage(l, base) {
     shadow: shadow(l.shadow) || undefined,
     glow: l.glow ? { color: color(l.glow?.color, 'rgba(255,255,255,0.6)'), blur: num(l.glow?.blur, 0, 200, 40) } : undefined,
     flip: !!l.flip,
+    // Connectors (coin streams, light trails, orbit rings) physically link
+    // other layers; their box is computed from the anchors at generation time.
+    from: role === 'connector' ? anchorRef(l.from) : undefined,
+    to: role === 'connector' ? anchorRef(l.to) : undefined,
+    around: role === 'connector' && typeof l.around === 'string' ? l.around.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40) : undefined,
+    medium: role === 'connector' ? (l.medium === 'objects' ? 'objects' : 'light') : undefined,
+    spread: role === 'connector' ? num(l.spread, 40, 1200, 200) : undefined,
+    fit: l.fit === 'fill' || l.fit === 'cover' ? l.fit : undefined,
     file: typeof l.file === 'string' ? l.file : undefined,
     src: typeof l.src === 'string' ? l.src : undefined,
   };
@@ -557,6 +585,13 @@ export function fitLayout(layout) {
       l.size = textFloor;
     }
 
+    // Body copy with hand-placed line breaks that ALSO wraps produces orphan
+    // lines ("moving / to 50:50") — let it flow naturally instead.
+    if (['body', 'caption', 'quote'].includes(l.role) && String(l.text).includes('\n') && !l.runs) {
+      const explicit = String(l.text).split('\n').length;
+      if (wrapText(l).length > explicit) l.text = String(l.text).replace(/\s*\n\s*/g, ' ');
+    }
+
     const designed = l.size;
     const minSize = Math.max(textFloor, Math.round(designed * (onScreen ? 0.6 : 0.7)));
     let est = estimateTextHeight(l);
@@ -565,6 +600,24 @@ export function fitLayout(layout) {
       est = estimateTextHeight(l);
     }
     if (l.size !== designed) warnings.push(`text "${l.id}" shrunk ${designed}px → ${l.size}px to fit`);
+
+    // Short labels/kickers/pill text that wrap should WIDEN (with their
+    // pill/badge shape, matched by identical box) rather than break lines.
+    const explicitLines = String(l.text).split('\n').length;
+    if (est.lines > explicitLines && ['label', 'caption', 'kicker'].includes(l.role) && String(l.text).length <= 60) {
+      const widest = Math.max(...String(l.text).split('\n').map(t => measure(l, t)));
+      const needed = Math.ceil(widest * 1.06 + (l.align === 'center' ? 32 : 4));
+      if (needed > l.w && l.x + needed <= canvas.w - margin) {
+        const old = { x: l.x, y: l.y, w: l.w, h: l.h };
+        const grow = needed - l.w;
+        l.w = needed;
+        for (const sh of layout.layers) {
+          if (sh.kind === 'shape' && Math.abs(sh.x - old.x) <= 4 && Math.abs(sh.y - old.y) <= 4 && Math.abs(sh.w - old.w) <= 8 && Math.abs(sh.h - old.h) <= 8) sh.w += grow;
+        }
+        est = estimateTextHeight(l);
+        warnings.push(`label "${l.id}" widened to fit on one line`);
+      }
+    }
 
     if (est.height > l.h) {
       const room = canvas.h - margin * 0.5 - l.y;

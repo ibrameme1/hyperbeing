@@ -241,3 +241,52 @@ describe('screen children', () => {
     expect(m.in_screen).toBe('p');
   });
 });
+
+import { connectorGeometry } from '../services/layeredSlide.js';
+describe('connectorGeometry', () => {
+  const layout = normalizeLayout({ layers: [
+    { kind: 'image', id: 'phone', role: 'hero', prompt: 'phone', x: 900, y: 100, w: 500, h: 800 },
+    { kind: 'image', id: 'wallet', role: 'element', prompt: 'wallet', x: 1500, y: 700, w: 300, h: 260 },
+    { kind: 'image', id: 'coins', role: 'connector', medium: 'objects', prompt: 'coins', from: { layer: 'phone', anchor: { x: 0.8, y: 0.85 } }, to: { layer: 'wallet', anchor: 'top' }, spread: 200 },
+  ] });
+  it('builds a box with the generation aspect and endpoints inside it', () => {
+    const c = layout.layers.find(l => l.id === 'coins');
+    expect(c.medium).toBe('objects');
+    const g = connectorGeometry(layout, c);
+    const [gw, gh] = g.size.split('x').map(Number);
+    expect(Math.abs(g.box.w / g.box.h - gw / gh)).toBeLessThan(0.01);
+    // From point (1300, 780) and to point (1650, 700) must both be inside the box.
+    for (const [x, y] of [[1300, 780], [1650, 700]]) {
+      expect(x).toBeGreaterThanOrEqual(g.box.x); expect(x).toBeLessThanOrEqual(g.box.x + g.box.w);
+      expect(y).toBeGreaterThanOrEqual(g.box.y); expect(y).toBeLessThanOrEqual(g.box.y + g.box.h);
+    }
+    expect(g.sentence).toMatch(/begins exactly at the point \d+% from the left/);
+  });
+  it('orbits around a layer', () => {
+    const l = normalizeLayout({ layers: [
+      { kind: 'image', id: 'pad', role: 'hero', prompt: 'controller', x: 1000, y: 300, w: 700, h: 500 },
+      { kind: 'image', id: 'orbit', role: 'connector', prompt: 'ring', around: 'pad' },
+    ] });
+    const g = connectorGeometry(l, l.layers[1]);
+    expect(g.box.w).toBeGreaterThan(700);
+    expect(g.sentence).toMatch(/orbit/);
+  });
+});
+
+describe('fit heuristics', () => {
+  it('reflows body text whose manual breaks cause orphan wraps', () => {
+    const l = normalizeLayout({ layers: [{ kind: 'text', id: 'b', role: 'body', text: '70:30 in the developer\'s favour, moving\nto 50:50 above PKR 5M monthly sales', size: 28, x: 100, y: 100, w: 420, h: 200 }] });
+    fitLayout(l);
+    expect(l.layers[0].text.includes('\n')).toBe(false);
+  });
+  it('widens a wrapping pill label together with its pill', () => {
+    const l = normalizeLayout({ layers: [
+      { kind: 'shape', id: 'pill', shape: 'rect', x: 66, y: 160, w: 200, h: 44, radius: 22 },
+      { kind: 'text', id: 'lbl', role: 'label', text: 'WHAT KEEPS USERS COMING BACK', size: 22, letter_spacing: 0.2, uppercase: true, align: 'center', x: 66, y: 160, w: 200, h: 44 },
+    ] });
+    fitLayout(l);
+    const [pill, lbl] = l.layers;
+    expect(lbl.w).toBeGreaterThan(200);
+    expect(pill.w).toBe(lbl.w);
+  });
+});

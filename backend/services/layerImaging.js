@@ -69,7 +69,7 @@ export async function ensureTransparent(buffer) {
 // fringes), but render them beautifully on black. The result composites over
 // a dark slide exactly like a "screen" blend, and works in PPTX too (which
 // has no blend modes).
-export async function unscreen(buffer) {
+export async function unscreen(buffer, { feather = true } = {}) {
   const { data, width, height } = await raw(buffer);
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i]; const g = data[i + 1]; const b = data[i + 2];
@@ -83,6 +83,8 @@ export async function unscreen(buffer) {
   // Feather the borders to zero. Models rarely fade a glow completely to
   // black at the frame edge, which otherwise leaves a hard rectangular seam
   // where the effect layer ends (seen in real gpt-image-2.5-flare output).
+  // Connectors skip this: their endpoints deliberately touch the frame edge.
+  if (!feather) return fromRaw(data, width, height);
   const fx = Math.max(1, Math.round(width * 0.12)); const fy = Math.max(1, Math.round(height * 0.12));
   for (let y = 0; y < height; y++) {
     const ky = Math.min(1, y / fy, (height - 1 - y) / fy);

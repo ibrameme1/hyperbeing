@@ -40,6 +40,9 @@ const ELEMENT_SUFFIX = 'Isolated on a transparent background, nothing else in fr
 const EFFECT_SUFFIX = 'Rendered purely as light on a completely black (#000000) background. Nothing else in frame: no objects, no surface, no text. Smooth, soft, luminous falloff.';
 const SCREEN_SUFFIX = 'The device faces the camera perfectly straight-on and flat: no tilt, no perspective, no rotation. Its entire screen is one flat, uniform, pure chroma-green (#00FF00) rectangle with no UI, no reflections and no glare.';
 const SCREEN_IMAGE_SUFFIX = 'Flat, full-frame screen content exactly as it would appear on the display itself (like a screenshot or a video frame): no phone, no device, no bezel, no hands holding a phone, no frame, no border, no UI chrome unless described.';
+const CONNECTOR_OBJECTS_SUFFIX = 'On a transparent background: only the stream itself, nothing else in frame, no source or destination objects, no background, no surface, no text.';
+const HERO_REF_NOTE = 'The attached reference image shows the slide\'s main object. Use it ONLY to match lighting direction, materials, colour palette and render style so this object belongs in the same scene. Do NOT draw the reference object or any part of it.';
+const EMPTY_BG_SUFFIX = 'This is an EMPTY backdrop: absolutely no objects of any kind (no devices, phones, products, coins, glass panels, cards, people, shapes or props). Only light, colour, atmosphere and texture. No text, no letters, no logos, no UI.';
 const BG_SUFFIX = 'No overlaid text, no captions, no letters or numbers, no logos, no watermarks, no UI, no cards, no panels, no buttons, no frames, no borders. Leave the described negative space genuinely clean.';
 
 function composePrompt(deckDesign, layout, body, suffix) {
@@ -50,6 +53,45 @@ async function storeBuffer(buffer) {
   const file = imageStore.saveDataUrl(`data:image/png;base64,${buffer.toString('base64')}`);
   if (!file) throw new Error('image store write failed');
   return file;
+}
+
+// Exact box + endpoint sentence for a connector. The box gets the aspect of
+// the generation size so the image is placed without distortion or cropping,
+// and the endpoints are described as positions inside that exact frame.
+const SIZE_DIMS = { '1536x1024': [1536, 1024], '1024x1536': [1024, 1536], '1024x1024': [1024, 1024] };
+export function connectorGeometry(layout, l) {
+  const byId = (id) => layout.layers.find(x => x.id === id);
+  const pct = (v) => Math.round(Math.min(1, Math.max(0, v)) * 100);
+  let box; let p1 = null; let p2 = null;
+  if (l.around) {
+    const t = byId(l.around);
+    if (!t) return null;
+    const cx = t.x + t.w / 2; const cy = t.y + t.h / 2;
+    box = { x: cx - t.w * 0.75, y: cy - t.h * 0.6, w: t.w * 1.5, h: t.h * 1.2 };
+  } else {
+    const a = l.from && byId(l.from.layer); const b = l.to && byId(l.to.layer);
+    if (!a || !b) return null;
+    p1 = { x: a.x + a.w * l.from.point[0], y: a.y + a.h * l.from.point[1] };
+    p2 = { x: b.x + b.w * l.to.point[0], y: b.y + b.h * l.to.point[1] };
+    const half = (l.spread || 200) / 2;
+    const x0 = Math.min(p1.x, p2.x) - half; const y0 = Math.min(p1.y, p2.y) - half;
+    box = { x: x0, y: y0, w: Math.abs(p1.x - p2.x) + half * 2, h: Math.abs(p1.y - p2.y) + half * 2 };
+  }
+  const size = sizeForAspect(box.w, box.h);
+  const [gw, gh] = SIZE_DIMS[size];
+  // Grow the short side around the centre to match the generation aspect.
+  const cx = box.x + box.w / 2; const cy = box.y + box.h / 2;
+  if (box.w / box.h > gw / gh) box.h = box.w * (gh / gw); else box.w = box.h * (gw / gh);
+  box = { x: Math.round(cx - box.w / 2), y: Math.round(cy - box.h / 2), w: Math.round(box.w), h: Math.round(box.h) };
+  let sentence;
+  if (l.around) {
+    sentence = 'It forms a single continuous elliptical orbit encircling the centre of the frame; the central 60% of the frame must stay completely empty.';
+  } else {
+    const f1 = { x: (p1.x - box.x) / box.w, y: (p1.y - box.y) / box.h };
+    const f2 = { x: (p2.x - box.x) / box.w, y: (p2.y - box.y) / box.h };
+    sentence = `It begins exactly at the point ${pct(f1.x)}% from the left edge and ${pct(f1.y)}% from the top edge of the frame, and flows continuously to end exactly at the point ${pct(f2.x)}% from the left and ${pct(f2.y)}% from the top. Nothing extends beyond those two endpoints.`;
+  }
+  return { box, size, sentence };
 }
 
 export async function loadStoredFile(file) {
@@ -168,6 +210,9 @@ export async function buildLayeredSlide({
   const assets = new Map(); // key → Promise<asset | null>
   let generationsStarted = 0;
   let styleBlock = '';
+  // Designed slides (objects/native) need an EMPTY backdrop — the elements
+  // are separate layers. Only scene slides put subjects in the background.
+  let composition = 'objects';
   const noteStart = () => { if (stats.first_image_start_ms === null) stats.first_image_start_ms = Date.now() - t0; };
 
   const bgKey = (bg) => `bg|${bg.prompt}|${bg.refs.join(',')}`;
@@ -182,7 +227,7 @@ export async function buildLayeredSlide({
     const size = sizeForAspect(canvas.w, canvas.h);
     const promise = scheduleImageJob(0, async () => {
       const res = await generateLayerImage({
-        prompt: composePrompt(deckDesign, { style_block: styleBlock }, bg.prompt, BG_SUFFIX), size, transparent: false,
+        prompt: composePrompt(deckDesign, { style_block: styleBlock }, bg.prompt, composition === 'scene' ? BG_SUFFIX : EMPTY_BG_SUFFIX), size, transparent: false,
         references: await resolveRefs(bg.refs), label: `s${slide.index}_bg`, mockSpec: { label: `bg${slide.index}` },
       });
       stats.images.push({ id: 'background', ms: res?.ms ?? null, usage: res?.usage ?? null, ok: !!res, size });
@@ -195,25 +240,54 @@ export async function buildLayeredSlide({
     return promise;
   }
 
-  function startImage(l) {
-    const key = imageKey(l);
+  // The hero's asset, once known. Secondary elements are generated with the
+  // hero as a reference image so lighting, materials and palette match — the
+  // difference between "one connected scene" and "stickers on a slide".
+  let heroAssetPromise = null;
+
+  function startImage(l, geometry = null) {
+    const key = geometry ? `connector|${l.id}|${l.prompt}` : imageKey(l);
     if (assets.has(key)) return assets.get(key);
     if (generationsStarted >= MAX_GENERATIONS_PER_SLIDE) return null;
     generationsStarted++; noteStart();
-    const effect = l.role === 'effect';
+    const connector = l.role === 'connector';
+    const lightConnector = connector && l.medium === 'light';
+    const effect = l.role === 'effect' || lightConnector;
     const screenImage = l.role === 'screen_image';
-    const size = sizeForAspect(l.w, l.h);
-    const suffix = effect ? EFFECT_SUFFIX : screenImage ? SCREEN_IMAGE_SUFFIX : `${l.screen ? `${SCREEN_SUFFIX} ` : ''}${ELEMENT_SUFFIX}`;
-    const promise = scheduleImageJob(l.role === 'hero' ? 1 : 2, async () => {
+    const size = geometry?.size || sizeForAspect(l.w, l.h);
+    let suffix;
+    if (connector) suffix = `${geometry.sentence} ${lightConnector ? EFFECT_SUFFIX : CONNECTOR_OBJECTS_SUFFIX}`;
+    else suffix = effect ? EFFECT_SUFFIX : screenImage ? SCREEN_IMAGE_SUFFIX : `${l.screen ? `${SCREEN_SUFFIX} ` : ''}${ELEMENT_SUFFIX}`;
+    const usesHeroRef = l.role === 'element' && !!heroAssetPromise;
+    const waitForHero = usesHeroRef ? heroAssetPromise : Promise.resolve(null);
+
+    const promise = waitForHero.then(heroAsset => scheduleImageJob(l.role === 'hero' ? 1 : 2, async () => {
+      const references = await resolveRefs(l.refs);
+      let prompt = composePrompt(deckDesign, { style_block: styleBlock }, l.prompt, suffix);
+      if (heroAsset?.file) {
+        const heroBuf = await loadStoredFile(heroAsset.file);
+        if (heroBuf) {
+          references.push(`data:image/png;base64,${heroBuf.toString('base64')}`);
+          prompt += `\n\n${HERO_REF_NOTE}`;
+        }
+      }
       const res = await generateLayerImage({
-        prompt: composePrompt(deckDesign, { style_block: styleBlock }, l.prompt, suffix), size,
-        transparent: !effect && !screenImage, references: await resolveRefs(l.refs),
+        prompt, size, transparent: !effect && !screenImage, references,
         label: `s${slide.index}_${l.id}`, mockSpec: { label: l.id, screen: !!l.screen, effect },
       });
-      stats.images.push({ id: l.id, ms: res?.ms ?? null, usage: res?.usage ?? null, ok: !!res, size, role: l.role });
+      stats.images.push({ id: l.id, ms: res?.ms ?? null, usage: res?.usage ?? null, ok: !!res, size, role: l.role, hero_ref: !!heroAsset?.file });
       if (!res) return null;
       let buf = res.buffer;
       let screenRect = null;
+      // Connectors are placed untrimmed and stretched to their computed box,
+      // so their endpoints land exactly on the anchors.
+      if (connector) {
+        buf = lightConnector ? await unscreen(buf, { feather: false }) : await ensureTransparent(buf);
+        const meta = await sharp(buf).metadata();
+        const file = await storeBuffer(buf);
+        created.push(file);
+        return { file, width: meta.width, height: meta.height, untrimmed: true };
+      }
       if (effect) buf = await unscreen(buf);
       else if (!screenImage) {
         buf = await ensureTransparent(buf);
@@ -233,20 +307,29 @@ export async function buildLayeredSlide({
         file, width: trimmed.width, height: trimmed.height,
         screenRect: screenRect ? { x: screenRect.x - trimmed.offset.x, y: screenRect.y - trimmed.offset.y, w: screenRect.w, h: screenRect.h } : null,
       };
-    }).catch(err => { logger.warn('image job failed', { id: l.id, errorMessage: err.message }); return null; });
+    })).catch(err => { logger.warn('image job failed', { id: l.id, errorMessage: err.message }); return null; });
     assets.set(key, promise);
+    if (l.role === 'hero' && !heroAssetPromise) heroAssetPromise = promise;
     return promise;
   }
 
   // While the layout streams: start every image whose JSON is complete.
   const onPartial = (parts) => {
     if (typeof parts.style_block === 'string' && !styleBlock) styleBlock = parts.style_block;
+    if (typeof parts.composition === 'string') composition = parts.composition;
+    // The background must not start before we know whether it's a scene.
+    if (parts.background && typeof parts.composition !== 'string') parts = { ...parts, background: undefined };
     if (Array.isArray(parts.brands)) parts.brands.forEach(ensureBrand);
     try {
       const early = normalizeLayout({ background: parts.background || { type: 'color' }, layers: parts.layers || [] }, { aspectRatio, uploadCount: uploads.length });
       if (parts.background && early.background.type === 'image') startBackground(early.background);
       for (const l of early.layers) {
         if (l.kind !== 'image') continue;
+        // Connectors need their endpoints' final boxes; secondary elements
+        // want the hero as a reference — both wait for the final layout
+        // unless the hero has already started.
+        if (l.role === 'connector') continue;
+        if (l.role === 'element' && !heroAssetPromise) continue;
         // A brand ref whose brand isn't declared yet can't resolve — wait for the final layout.
         if (l.refs.some(r => r.startsWith('brand:') && !brandFetches.has(r.slice(6).trim().toLowerCase()))) continue;
         startImage(l);
@@ -260,6 +343,7 @@ export async function buildLayeredSlide({
     const layout = normalizeLayout(raw, { aspectRatio, uploadCount: uploads.length });
     stats.layout_ms = Date.now() - t0;
     if (layout.style_block && !styleBlock) styleBlock = layout.style_block;
+    composition = layout.composition;
     layout.brands.forEach(ensureBrand);
 
     for (const device of layout.layers.filter(l => l.kind === 'image' && l.screen)) {
@@ -275,7 +359,9 @@ export async function buildLayeredSlide({
     for (const l of layout.layers.filter(x => x.kind === 'logo' && !x.file)) {
       const dataUrl = l.source === 'upload' ? await uploadRef(l.upload) : brandLogos.get(l.brand.toLowerCase());
       if (!dataUrl) continue;
-      const buf = Buffer.from(dataUrl.split(',')[1], 'base64');
+      // Logos uploaded on a solid background (JPEG, white box) get that
+      // background keyed out so they sit cleanly on the slide.
+      const buf = await ensureTransparent(Buffer.from(dataUrl.split(',')[1], 'base64'));
       const trimmed = await trimTransparent(buf) || { buffer: buf, width: l.w, height: l.h };
       l.file = await storeBuffer(trimmed.buffer); created.push(l.file);
       l.src = assetUrl(presentationId, l.file);
@@ -300,9 +386,13 @@ export async function buildLayeredSlide({
       })());
     }
 
-    for (const l of layout.layers.filter(x => x.kind === 'image' && !x.file)) {
+    // Hero first, so secondary elements can reference it.
+    const imageLayers = layout.layers.filter(x => x.kind === 'image' && !x.file);
+    imageLayers.sort((x, y) => (x.role === 'hero' ? -1 : 0) - (y.role === 'hero' ? -1 : 0));
+    const applied = new Map(); // layer id → promise that resolves once placed
+    for (const l of imageLayers.filter(x => x.role !== 'connector')) {
       usedKeys.add(imageKey(l));
-      waits.push((async () => {
+      const p = (async () => {
         const asset = await startImage(l);
         if (!asset) { failures.push({ id: l.id, critical: l.role === 'hero', layer: l }); return; }
         l.file = asset.file;
@@ -319,6 +409,27 @@ export async function buildLayeredSlide({
           placeScreenChildren(layout, l, rect);
           for (const c of layout.layers.filter(c => c.screen_of === l.id)) onLayer(c);
         }
+        onLayer(l);
+      })();
+      applied.set(l.id, p);
+      waits.push(p);
+    }
+
+    // Connectors: wait until the layers they link are placed (real, fitted
+    // boxes), then compute the exact box + endpoint instructions.
+    for (const l of imageLayers.filter(x => x.role === 'connector')) {
+      waits.push((async () => {
+        const refIds = [l.from?.layer, l.to?.layer, l.around].filter(Boolean);
+        await Promise.all(refIds.map(id => applied.get(id)).filter(Boolean));
+        const geometry = connectorGeometry(layout, l);
+        if (!geometry) { failures.push({ id: l.id, layer: l }); return; }
+        Object.assign(l, geometry.box);
+        const asset = await startImage(l, geometry);
+        if (!asset) { failures.push({ id: l.id, layer: l }); return; }
+        l.file = asset.file;
+        l.src = assetUrl(presentationId, asset.file);
+        l.fit = 'fill';
+        usedKeys.add(`connector|${l.id}|${l.prompt}`);
         onLayer(l);
       })());
     }
