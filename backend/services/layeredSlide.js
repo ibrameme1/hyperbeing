@@ -3,7 +3,7 @@ import sharp from 'sharp';
 import * as imageStore from './imageStore.js';
 import { logger } from './logger.js';
 import { designSlideLayout, reviewSlideLayout } from './layoutAgent.js';
-import { normalizeLayout, fitLayout, layoutFiles, canvasFor, MAX_GENERATIONS_PER_SLIDE, resolveCollisions } from './slideLayout.js';
+import { normalizeLayout, fitLayout, layoutFiles, canvasFor, MAX_GENERATIONS_PER_SLIDE, resolveCollisions, resolveImageOverlaps } from './slideLayout.js';
 import { generateLayerImage, scheduleImageJob, sizeForAspect, IMAGE_MOCK_MODE, LONG_SIDE } from './openaiImages.js';
 import {
   coverToAspect, ensureTransparent, unscreen, trimTransparent, extractScreen,
@@ -200,6 +200,10 @@ export async function buildLayeredSlide({
   presentationId, slide, header, deckDesign, brief, uploads = [], userId = null,
   aspectRatio = '16:9', style = 'classic', siblingTitles = [], instruction = null,
   onLayout = () => {}, onLayer = () => {}, review = true,
+  // layoutOverride: a raw layout to build instead of asking Claude (re-render
+  // an existing design, e.g. at another image quality). returnRaw: include the
+  // raw (pre-normalization) layout in the result so it can be replayed.
+  layoutOverride = null, returnRaw = false,
 }) {
   const t0 = Date.now();
   const stats = { layout_ms: 0, first_image_start_ms: null, images: [], review_ms: 0, total_ms: 0, mock: IMAGE_MOCK_MODE };
@@ -396,7 +400,10 @@ export async function buildLayeredSlide({
 
   try {
     // ── 1. layout (images start while it streams) ──────────────────────────
-    const raw = await designSlideLayout({ slide, header, deckDesign, brief, uploads, aspectRatio, style, siblingTitles, instruction, userId, onPartial });
+    const raw = layoutOverride
+      ? JSON.parse(JSON.stringify(layoutOverride))
+      : await designSlideLayout({ slide, header, deckDesign, brief, uploads, aspectRatio, style, siblingTitles, instruction, userId, onPartial });
+    const rawCopy = returnRaw ? JSON.parse(JSON.stringify(raw)) : undefined;
     const layout = normalizeLayout(raw, { aspectRatio, uploadCount: uploads.length });
     stats.layout_ms = Date.now() - t0;
     if (layout.style_block && !styleBlock) styleBlock = layout.style_block;
@@ -598,7 +605,7 @@ export async function buildLayeredSlide({
       stats.review_ms = Date.now() - tr;
     }
     // Deterministic last line of defence: no text on text.
-    const moved = resolveCollisions(layout);
+    const moved = [...resolveImageOverlaps(layout), ...resolveCollisions(layout)];
     if (moved.length) ({ warnings } = fitLayout(layout));
     if (warnings.length) layout.warnings = warnings.slice(0, 20);
 
@@ -615,6 +622,7 @@ export async function buildLayeredSlide({
       image_file,
       image_data: `/api/presentations/${presentationId}/slides/${slide.index}/image?f=${image_file}`,
       gen_stats: stats,
+      ...(returnRaw ? { raw_layout: rawCopy } : {}),
     };
   } catch (err) {
     logger.error('layered slide build errored', { presentationId, slideIndex: slide.index, errorMessage: err.message, stack: err.stack?.split('\n').slice(0, 3).join('\n') });

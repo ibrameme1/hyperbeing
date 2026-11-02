@@ -900,3 +900,65 @@ export function resolveCollisions(layout) {
   }
   return moved;
 }
+
+// Images (devices, heroes, cluster pieces) must not cover text either. When
+// one does, its group (the image + its on-screen children) first tries to
+// MOVE clear; failing that it SHRINKS (down to 55%) anchored at the side
+// farthest from the text — e.g. a hand-held phone stays on the bottom edge —
+// and moves if needed. On-screen text scales with it.
+export function resolveImageOverlaps(layout) {
+  const { canvas } = layout;
+  const margin = Math.round(canvas.w * 0.02);
+  const moved = [];
+  const isObstacleText = (t) => t.kind === 'text' && !t.screen_of && !t.in_screen;
+  const strips = layout.layers.filter(s => s.kind === 'shape' && s.w >= canvas.w * 0.9 && s.h < canvas.h * 0.25);
+  const area = (r) => Math.max(0, r.w) * Math.max(0, r.h);
+  const inter = (a, b) => ({ x: Math.max(a.x, b.x), y: Math.max(a.y, b.y), w: Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), h: Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) });
+
+  for (const img of layout.layers.filter(l => l.kind === 'image' && !['effect', 'screen_image', 'connector'].includes(l.role) && !l.screen_of)) {
+    const group = [img, ...layout.layers.filter(l => l.screen_of === img.id)];
+    const texts = layout.layers.filter(t => isObstacleText(t) && !group.includes(t));
+    const conflicts = texts.filter(t => overlaps(t, img) && area(inter(t, img)) > 0.05 * area(t));
+    if (!conflicts.length) continue;
+
+    const transform = (s, ox, oy, dx, dy) => group.map(l => ({ l, x: ox + (l.x - ox) * s + dx, y: oy + (l.y - oy) * s + dy, w: l.w * s, h: l.h * s }));
+    const ok = (placed) => {
+      const b = placed[0];
+      if (b.x < margin * 0.5 - 1 || b.y < -1 || b.x + b.w > canvas.w - margin * 0.5 + 1 || b.y + b.h > canvas.h + 1) {
+        // Images may sit on the bottom/side edge (hand-held devices) but not run off it.
+        if (b.y + b.h > canvas.h + 1 || b.x < -1 || b.x + b.w > canvas.w + 1) return false;
+      }
+      if (texts.some(t => overlaps(t, b) && area(inter(t, b)) > 0.02 * area(t))) return false;
+      return !strips.some(s => overlaps(s, b) && area(inter(s, b)) > 0.15 * area(b));
+    };
+    // Anchor: the image edge farthest from the conflicting text's centre.
+    const tc = conflicts.reduce((acc, t) => ({ x: acc.x + (t.x + t.w / 2) / conflicts.length, y: acc.y + (t.y + t.h / 2) / conflicts.length }), { x: 0, y: 0 });
+    const ox = tc.x < img.x + img.w / 2 ? img.x + img.w : img.x;
+    const oy = tc.y < img.y + img.h / 2 ? img.y + img.h : img.y;
+
+    let best = null;
+    for (let s = 1; s >= 0.549 && !best; s -= 0.05) {
+      const base = transform(s, ox, oy, 0, 0)[0];
+      const shifts = [[0, 0]];
+      for (const t of conflicts) {
+        shifts.push([0, t.y + t.h + 16 - base.y], [0, t.y - 16 - (base.y + base.h)], [t.x + t.w + 16 - base.x, 0], [t.x - 16 - (base.x + base.w), 0]);
+      }
+      shifts.sort((a, b) => Math.abs(a[0]) + Math.abs(a[1]) - Math.abs(b[0]) - Math.abs(b[1]));
+      for (const [dx, dy] of shifts) {
+        const placed = transform(s, ox, oy, dx, dy);
+        if (ok(placed)) { best = { placed, s }; break; }
+      }
+    }
+    if (!best) continue;
+    for (const p of best.placed) {
+      Object.assign(p.l, { x: Math.round(p.x), y: Math.round(p.y), w: Math.round(p.w), h: Math.round(p.h) });
+      if (p.l.kind === 'text' && best.s !== 1) p.l.size = Math.max(8, Math.round(p.l.size * best.s));
+      if (p.l.screen?.rect && best.s !== 1) {
+        const r = p.l.screen.rect;
+        Object.assign(r, { x: Math.round(ox + (r.x - ox) * best.s + (p.x - (ox + (p.l.x - ox)))), y: r.y, w: Math.round(r.w * best.s), h: Math.round(r.h * best.s) });
+      }
+    }
+    moved.push(`${img.id} ${best.s < 1 ? `scaled to ${Math.round(best.s * 100)}% and ` : ''}moved off ${conflicts.map(t => t.id).join(', ')}`);
+  }
+  return moved;
+}

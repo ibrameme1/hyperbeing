@@ -363,3 +363,24 @@ describe('resolveCollisions', () => {
     expect(title.y - card.y).toBe(10); // moved together
   });
 });
+
+import { resolveImageOverlaps } from '../services/slideLayout.js';
+describe('resolveImageOverlaps', () => {
+  it('shrinks/moves a phone (and its screen text) off the headline, keeping it on the bottom edge', () => {
+    const l = normalizeLayout({ layers: [
+      { kind: 'text', id: 'headline', role: 'headline', text: '50,000 PEOPLE ON THE WAITLIST', size: 90, x: 66, y: 60, w: 900, h: 330 },
+      { kind: 'image', id: 'phone', role: 'hero', prompt: 'phone', screen: { fill: '#000' }, x: 100, y: 200, w: 420, h: 880 },
+      { kind: 'text', id: 'msg', role: 'body', text: 'hello', in_screen: 'phone', x: 0.1, y: 0.1, w: 0.8, h: 0.1 },
+    ] });
+    // emulate placement of the screen child
+    const msg = l.layers[2]; msg.screen_of = 'phone'; delete msg.in_screen; Object.assign(msg, { x: 140, y: 290, w: 340, h: 60 });
+    const moved = resolveImageOverlaps(l);
+    const [h, phone, m] = l.layers;
+    expect(moved.length).toBe(1);
+    const clear = phone.y >= h.y + h.h || phone.x >= h.x + h.w || phone.x + phone.w <= h.x;
+    expect(clear).toBe(true);                                    // headline clear (below or beside)
+    expect(phone.y + phone.h).toBeLessThanOrEqual(1081);         // still on canvas
+    expect(m.x).toBeGreaterThanOrEqual(phone.x);                 // child travelled with it
+    expect(m.y).toBeGreaterThanOrEqual(phone.y);
+  });
+});

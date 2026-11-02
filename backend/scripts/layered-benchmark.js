@@ -15,7 +15,14 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 
-const [, , briefsPath, outArg] = process.argv;
+// --replay <dir>: re-render the exact layouts + deck design saved by an
+// earlier run (no Claude layout calls), e.g. to compare image quality:
+//   OPENAI_LAYER_IMAGE_QUALITY=medium node scripts/layered-benchmark.js briefs.json out-medium --replay out-high
+const argv = process.argv.slice(2);
+const replayAt = argv.indexOf('--replay');
+const replayDir = replayAt !== -1 ? path.resolve(argv[replayAt + 1]) : null;
+if (replayAt !== -1) argv.splice(replayAt, 2);
+const [briefsPath, outArg] = argv;
 if (!briefsPath) {
   console.error('usage: node scripts/layered-benchmark.js <briefs.json> [outDir]');
   process.exit(1);
@@ -64,19 +71,24 @@ const t0 = Date.now();
 const header = { presentation_title: spec.title || 'Benchmark deck' };
 const deckBrief = slides.map(s => `SLIDE ${s.index}: ${s.brief}`).join('\n\n');
 const tDeck = Date.now();
-const deckDesign = await designDeckSystem({ header, slides, brief: deckBrief, style, uploads });
+const deckDesign = replayDir
+  ? JSON.parse(fs.readFileSync(path.join(replayDir, 'deck.json'), 'utf8'))
+  : await designDeckSystem({ header, slides, brief: deckBrief, style, uploads });
 const deckMs = Date.now() - tDeck;
+fs.writeFileSync(path.join(outDir, 'deck.json'), JSON.stringify(deckDesign, null, 2));
 console.log(`deck design: ${deckMs} ms — fonts ${JSON.stringify(deckDesign.fonts)}`);
 
 const results = await Promise.all(slides.map(async (slide) => {
   const r = await buildLayeredSlide({
-    presentationId: 'benchmark', slide, header, deckDesign, brief: slide.brief, style, uploads,
+    presentationId: 'benchmark', slide, header, deckDesign, brief: slide.brief, style, uploads, returnRaw: true,
+    layoutOverride: replayDir ? JSON.parse(fs.readFileSync(path.join(replayDir, `slide_${slide.index}.raw.json`), 'utf8')) : null,
     siblingTitles: slides.map(s => s.title),
   });
   if (!r) return { index: slide.index, title: slide.title, ok: false };
   const preview = await loadStoredFile(r.image_file);
   fs.writeFileSync(path.join(outDir, `slide_${slide.index}.png`), preview);
   fs.writeFileSync(path.join(outDir, `slide_${slide.index}.layout.json`), JSON.stringify(r.layout, null, 2));
+  fs.writeFileSync(path.join(outDir, `slide_${slide.index}.raw.json`), JSON.stringify(r.raw_layout, null, 2));
   fs.writeFileSync(path.join(outDir, `slide_${slide.index}.breakdown.png`), await breakdown(preview, r.layout));
   const usage = r.gen_stats.images.reduce((acc, im) => {
     if (!im.usage) return acc;
