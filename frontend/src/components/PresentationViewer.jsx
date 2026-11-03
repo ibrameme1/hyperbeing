@@ -7,6 +7,7 @@ import {
   History, RotateCcw,
 } from 'lucide-react';
 import SlideRenderer from './SlideRenderer';
+import SlideEditor from './layered/SlideEditor';
 import OutOfCreditsModal from './OutOfCreditsModal';
 import FeedbackButton from './FeedbackButton';
 import { exportToPDF, exportImages } from '../utils/pdfExport';
@@ -121,6 +122,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   const [editAttachments, setEditAttachments] = useState([]);
   const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [showEditPrompt, setShowEditPrompt] = useState(false);
+  // Direct editor for layered slides (Stage 3).
+  const [editorOpen, setEditorOpen] = useState(false);
 
   // Version history panel
   const [showVersionsPanel, setShowVersionsPanel] = useState(false);
@@ -224,13 +227,14 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
 
   useEffect(() => {
     function onKey(e) {
+      if (editorOpen) return; // the editor uses arrows to nudge layers
       if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') goTo(current + 1);
       if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') goTo(current - 1);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [current, goTo]);
+  }, [current, goTo, editorOpen]);
 
   async function handleReorder(newOrder) {
     setLocalSlides(newOrder);
@@ -517,6 +521,31 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   const isUpdating = updatingSlides.has(current) || activeSlide?.status === 'generating';
   const isFailed = activeSlide?.status === 'error' && !updatingSlides.has(current);
   const isInitialLoading = activeSlide?.status === 'loading';
+  // Layered slides can be edited element by element.
+  const canEditLayers = !!activeSlide?.layout && activeSlide?.status === 'complete' && !isUpdating;
+
+  // The editor saved: keep the viewer (filmstrip thumbnail, exports) in sync.
+  const handleEditorSaved = useCallback((saved) => {
+    setLocalSlides(prev => {
+      const next = prev.map(s => (s.index === saved.index ? saved : s));
+      onSlidesUpdate(next);
+      return next;
+    });
+  }, [onSlidesUpdate]);
+
+  // "Change this element with AI" from the editor → describe-a-change bar,
+  // pre-filled with the element so Nova regenerates just that layer.
+  const handleAskAI = useCallback((layer) => {
+    setEditorOpen(false);
+    setShowEditConfirm(false);
+    setShowEditPrompt(true);
+    setEditInstruction(`Change the ${layer.name || layer.id}: `);
+  }, []);
+
+  function dismissEditNotice() {
+    setLocalSlides(prev => prev.map((s, i) => (i === current ? { ...s, edit_error: undefined, edit_summary: undefined } : s)));
+  }
+
   const isMissingImage = !isUpdating && !isFailed && !isLocked && !isInitialLoading && activeSlide &&
     (!activeSlide.image_data || activeSlide.image_data === '' ||
      activeSlide.image_data?.startsWith('data:image/svg+xml'));
@@ -710,6 +739,33 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 showWatermark={currentPlan === 'free'}
               />
 
+              {/* Edit layers — layered slides are edited element by element */}
+              {canEditLayers && (
+                <button
+                  onClick={e => { e.stopPropagation(); setShowEditConfirm(false); setEditorOpen(true); }}
+                  className="absolute top-3 z-10 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold text-white transition-colors hover:bg-black/80"
+                  // Top-right, next to History (top-left is where titles live).
+                  style={{ right: activeSlide?.versions?.length > 0 ? 108 : 12, background: 'rgba(20,20,28,0.65)', backdropFilter: 'blur(6px)' }}
+                  title="Edit text and elements on this slide"
+                >
+                  <Pencil size={13} />
+                  Edit
+                </button>
+              )}
+
+              {/* Result of the last AI edit (or why it failed) */}
+              {(activeSlide?.edit_error || activeSlide?.edit_summary) && !isUpdating && (
+                <div
+                  className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 max-w-[90%] px-3 py-2 rounded-xl text-xs font-medium"
+                  style={{ background: activeSlide.edit_error ? 'rgba(127,29,29,0.92)' : 'rgba(20,20,28,0.85)', color: '#fff', backdropFilter: 'blur(6px)' }}
+                  role="status"
+                >
+                  {activeSlide.edit_error ? <AlertTriangle size={13} className="shrink-0" /> : <Sparkles size={13} className="shrink-0" />}
+                  <span className="truncate">{activeSlide.edit_error || activeSlide.edit_summary}</span>
+                  <button onClick={e => { e.stopPropagation(); dismissEditNotice(); }} className="shrink-0 opacity-70 hover:opacity-100" aria-label="Dismiss"><X size={12} /></button>
+                </div>
+              )}
+
               {/* Version history button — shown once this slide has prior versions */}
               {!isUpdating && !isLocked && activeSlide?.versions?.length > 0 && (
                 <button
@@ -747,12 +803,21 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                       >
                         <Pencil size={14} />
                         Make edits to this slide?
+                        {canEditLayers && (
+                          <button
+                            onClick={() => { setShowEditConfirm(false); setEditorOpen(true); }}
+                            className="px-3 py-1.5 rounded-full text-xs font-bold text-white"
+                            style={{ background: '#5B50FF' }}
+                          >
+                            Edit layers
+                          </button>
+                        )}
                         <button
                           onClick={() => { setShowEditConfirm(false); setShowEditPrompt(true); }}
-                          className="px-3 py-1.5 rounded-full text-xs font-bold text-white"
-                          style={{ background: '#5B50FF' }}
+                          className={canEditLayers ? 'px-3 py-1.5 rounded-full text-xs font-bold text-[#1a1a2e] border border-gray-200 hover:bg-gray-50' : 'px-3 py-1.5 rounded-full text-xs font-bold text-white'}
+                          style={canEditLayers ? undefined : { background: '#5B50FF' }}
                         >
-                          Edit
+                          {canEditLayers ? 'Describe a change' : 'Edit'}
                         </button>
                         <button
                           onClick={() => setShowEditConfirm(false)}
@@ -1225,7 +1290,19 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
         )}
       </AnimatePresence>
 
-      <FeedbackButton />
+      {!editorOpen && <FeedbackButton />}
+      <AnimatePresence>
+        {editorOpen && activeSlide?.layout && (
+          <SlideEditor
+            key={activeSlide.index}
+            slide={activeSlide}
+            presentationId={presentationId}
+            onClose={() => setEditorOpen(false)}
+            onSaved={handleEditorSaved}
+            onAskAI={handleAskAI}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

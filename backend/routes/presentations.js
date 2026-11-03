@@ -5,8 +5,11 @@ import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { analyzePresentationStream, generateCompactPlan, suggestTitle, streamNewSlides } from '../services/claudeAgent.js';
 import { editSlideImage } from '../services/imageGeneration.js';
-import { buildLayeredSlide, slideFiles } from '../services/layeredSlide.js';
-import { designDeckSystem } from '../services/layoutAgent.js';
+import { buildLayeredSlide, slideFiles, loadStoredFile } from '../services/layeredSlide.js';
+import { applyLayoutEdit, applyEditOps } from '../services/layoutEdit.js';
+import { renderLayoutPreview } from '../services/layoutPreview.js';
+import { layoutFiles } from '../services/slideLayout.js';
+import { designDeckSystem, editSlideLayout } from '../services/layoutAgent.js';
 import { buildPptx } from '../services/pptxExport.js';
 import * as imageStore from '../services/imageStore.js';
 import {
@@ -111,28 +114,50 @@ function versionImageUrl(presentationId, slideIndex, versionId) {
 }
 
 // Moves the slide's outgoing image FILE into version history (most recent
-// first), pruned to MAX_SLIDE_VERSIONS — pruned files are deleted from disk.
-// The version reuses the same physical file the slide had, so nothing is
-// re-encoded or duplicated. Returns the metadata stubs for slides_data
+// first), pruned to MAX_SLIDE_VERSIONS. The version reuses the same physical
+// file the slide had, so nothing is re-encoded or duplicated. Layered slides
+// also store their outgoing LAYOUT, so a restore brings back every editable
+// layer; its layer files are shared with the slide / other versions, so pruning
+// only deletes files nothing else references (`keepFiles` = the slide's
+// current files). Returns the metadata stubs for slides_data
 // ({id, instruction, created_at} — never image bytes).
-function pushSlideVersion(db, presentationId, slideIndex, outgoingImageFile, instruction) {
+function pushSlideVersion(db, presentationId, slideIndex, outgoingImageFile, instruction, outgoingLayout = null, keepFiles = []) {
   if (imageStore.isStoredFilename(outgoingImageFile)) {
     // image_data '' (not omitted / NULL) — legacy tables declared it NOT NULL.
     db.prepare(
-      "INSERT INTO slide_versions (id, presentation_id, slide_index, image_file, image_data, instruction) VALUES (?, ?, ?, ?, '', ?)"
-    ).run(uuid(), presentationId, slideIndex, outgoingImageFile, instruction);
-    // Prune everything past the newest MAX_SLIDE_VERSIONS and unlink their files.
+      "INSERT INTO slide_versions (id, presentation_id, slide_index, image_file, image_data, instruction, layout) VALUES (?, ?, ?, ?, '', ?, ?)"
+    ).run(uuid(), presentationId, slideIndex, outgoingImageFile, instruction, outgoingLayout ? JSON.stringify(outgoingLayout) : null);
+    // Prune everything past the newest MAX_SLIDE_VERSIONS.
     const pruned = db.prepare(
-      `SELECT id, image_file FROM slide_versions
+      `SELECT id, image_file, layout FROM slide_versions
         WHERE presentation_id = ? AND slide_index = ?
         ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?`
     ).all(presentationId, slideIndex, MAX_SLIDE_VERSIONS);
-    for (const row of pruned) {
-      db.prepare('DELETE FROM slide_versions WHERE id = ?').run(row.id);
-      imageStore.remove(row.image_file);
+    for (const row of pruned) db.prepare('DELETE FROM slide_versions WHERE id = ?').run(row.id);
+    if (pruned.length) {
+      const stillUsed = new Set([...keepFiles, ...versionFiles(db, presentationId, slideIndex)]);
+      for (const row of pruned) {
+        for (const f of [row.image_file, ...layoutFilesOf(row.layout)]) if (f && !stillUsed.has(f)) imageStore.remove(f);
+      }
     }
   }
   return listSlideVersionMeta(db, presentationId, slideIndex);
+}
+
+function layoutFilesOf(json) {
+  if (!json) return [];
+  try { return layoutFiles(JSON.parse(json)); } catch { return []; }
+}
+
+// Every file the version history of a slide (or a whole deck when slideIndex
+// is null) still references.
+function versionFiles(db, presentationId, slideIndex = null) {
+  const rows = slideIndex === null
+    ? db.prepare('SELECT image_file, layout FROM slide_versions WHERE presentation_id = ?').all(presentationId)
+    : db.prepare('SELECT image_file, layout FROM slide_versions WHERE presentation_id = ? AND slide_index = ?').all(presentationId, slideIndex);
+  const out = new Set();
+  for (const r of rows) for (const f of [r.image_file, ...layoutFilesOf(r.layout)]) if (f) out.add(f);
+  return out;
 }
 
 function listSlideVersionMeta(db, presentationId, slideIndex) {
@@ -898,8 +923,8 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
   // Layered slides are edited layer-by-layer (layout edits + single-element
   // regeneration). A flat image edit here would flatten the slide and throw
   // away every editable layer, so refuse it — before any credits are charged.
-  if (slideForPrompt.layout) {
-    return res.status(409).json({ error: 'This slide is built from editable layers. Click any text or element to edit it directly; describing edits for layered slides is coming in the next update.' });
+  if (slideForPrompt.layout && slideForPrompt.status === 'generating') {
+    return res.status(409).json({ error: 'This slide is still being updated. Try again in a moment.' });
   }
 
   // pic1 = current rendered slide; pic2, pic3… = anything the user uploaded in the edit bar
@@ -927,6 +952,11 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
   }
 
   res.json({ message: 'Editing…', index: targetIndex });
+
+  if (slideForPrompt.layout) {
+    runLayeredEdit({ db, pres, req, targetIndex, instruction: instruction.trim(), attachments: userUploads, editResult });
+    return;
+  }
 
   const regenAspectRatio = pres.aspect_ratio || '16:9';
 
@@ -1004,6 +1034,171 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
   })();
 });
 
+// ─── AI edit of a layered slide ────────────────────────────────────────────
+// Claude turns the instruction into layer operations (layoutAgent.
+// editSlideLayout → layoutEdit.applyEditOps); the edited layout is rebuilt in
+// `prebuilt` mode, so only the image layers Claude regenerated or added are
+// generated — every other layer, file and position is kept. The outgoing
+// layout + preview move into version history (one click to undo).
+// On any failure the slide is left exactly as it was and the edit is refunded.
+async function runLayeredEdit({ db, pres, req, targetIndex, instruction, attachments, editResult }) {
+  const presId = req.params.id;
+  const userId = req.user.id;
+  const setStatus = (status) => {
+    const row = db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(presId);
+    const cur = JSON.parse(row?.slides_data || '[]');
+    const pos = cur.findIndex(s => s.index === targetIndex);
+    if (pos === -1) return null;
+    cur[pos] = { ...cur[pos], status };
+    db.prepare('UPDATE presentations SET slides_data = ? WHERE id = ?').run(JSON.stringify(cur), presId);
+    return cur[pos];
+  };
+  const fail = (message, userMessage) => {
+    logger.warn('layered edit failed', { presentationId: presId, slideIndex: targetIndex, errorMessage: message });
+    refundCredits(userId, editResult.cost, 'slide_edit_refund', 'Slide edit failed — refunded', presId, { slide_index: targetIndex });
+    const restored = setStatus('complete');
+    // The previous slide is untouched: the client shows it again + the message.
+    broadcast(presId, { type: 'slide_edit_failed', index: targetIndex, message: userMessage, slide: restored });
+  };
+
+  // Mark generating first (a concurrent editor save or second edit then
+  // refuses instead of racing this one).
+  const before = setStatus('generating');
+  if (!before) return fail('slide vanished', 'This slide no longer exists.');
+  broadcast(presId, { type: 'slide_generating', index: targetIndex });
+
+  try {
+    const ctx = await loadDeckContext(db, pres, userId);
+    const uploads = [...ctx.uploads, ...attachments.map(a => ({ type: 'image', category: 'edit reference', name: a.name, data: a.data, mimeType: a.mimeType }))];
+    const preview = await renderLayoutPreview(before.layout, loadStoredFile, { width: 1280 });
+    const plan = await editSlideLayout({
+      layout: before.layout, previewPng: preview, instruction, deckDesign: ctx.deckDesign,
+      uploads, userId, slideIndex: targetIndex,
+    });
+    const { layout: edited, regenerated, applied } = applyEditOps(before.layout, plan.ops, { uploadCount: uploads.length });
+    if (!applied.length) return fail('no ops', plan.summary || 'Nova couldn\'t find anything to change for that instruction. Try describing it differently.');
+
+    const result = await buildLayeredSlide({
+      presentationId: presId,
+      slide: { index: before.index, type: before.type, title: before.title, subtitle: before.subtitle, key_points: before.key_points, speaker_note: before.speaker_note },
+      ...ctx,
+      uploads,
+      userId,
+      layoutOverride: edited,
+      prebuilt: true,
+      onLayout: (layout) => broadcast(presId, { type: 'slide_layout', index: targetIndex, layout }),
+      onLayer: (layer) => broadcast(presId, { type: 'slide_layer_ready', index: targetIndex, layer }),
+    });
+    if (!result) return fail('rebuild failed', 'The new image for this edit couldn\'t be generated. Your slide is unchanged and the credits were refunded.');
+
+    // Re-read fresh: if someone else changed the slide meanwhile, drop ours.
+    const freshRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(presId);
+    const fresh = JSON.parse(freshRow?.slides_data || '[]');
+    const pos = fresh.findIndex(s => s.index === targetIndex);
+    if (pos === -1 || fresh[pos].status !== 'generating') {
+      const keep = new Set([...slideFiles(before), ...versionFiles(db, presId, targetIndex)]);
+      for (const f of slideFiles(result)) if (!keep.has(f)) imageStore.remove(f);
+      refundCredits(userId, editResult.cost, 'slide_edit_refund', 'Slide changed before the edit finished — refunded', presId, { slide_index: targetIndex });
+      return;
+    }
+    const updatedSlide = {
+      ...fresh[pos],
+      ...result,
+      status: 'complete',
+      _edited: true,
+      versions: pushSlideVersion(db, presId, targetIndex, fresh[pos].image_file, instruction, fresh[pos].layout, slideFiles(result)),
+    };
+    fresh[pos] = updatedSlide;
+    if (pos === 0) {
+      db.prepare('UPDATE presentations SET slides_data = ?, thumbnail = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(JSON.stringify(fresh), updatedSlide.image_file, presId);
+    } else {
+      db.prepare('UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(JSON.stringify(fresh), presId);
+    }
+    logger.info('layered edit applied', { presentationId: presId, slideIndex: targetIndex, applied, regenerated });
+    broadcast(presId, { type: 'slide_updated', slide: updatedSlide, source: 'ai_edit', summary: plan.summary || '' });
+  } catch (err) {
+    fail(err.message, 'This edit couldn\'t be applied. Your slide is unchanged and the credits were refunded.');
+  }
+}
+
+// ─── Save direct edits to a layered slide (the web editor) ─────────────────
+// Body: { layout, checkpoint?: boolean, client_id?: string }. The editor
+// autosaves its whole edited layout; applyLayoutEdit takes only whitelisted,
+// re-validated changes onto the stored layout (no new file references). The
+// flattened preview (thumbnail / PDF / legacy viewers) is re-rendered.
+// `checkpoint` (first save of an editing session) moves the outgoing state
+// into version history so the whole session can be undone from History.
+// Free: direct edits don't call any model.
+router.patch('/:id/slides/:index/layout', authenticateToken, async (req, res) => {
+  const { layout: edited, checkpoint = false, client_id: clientId = null } = req.body || {};
+  if (!edited || typeof edited !== 'object' || !Array.isArray(edited.layers)) {
+    return res.status(400).json({ error: 'Nothing to save: the slide layout is missing.' });
+  }
+  const db = getDb();
+  const pres = db.prepare('SELECT id, slides_data FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
+  const targetIndex = parseInt(req.params.index, 10);
+  const slides = JSON.parse(pres.slides_data || '[]');
+  const slide = slides.find(s => s.index === targetIndex);
+  if (!slide) return res.status(404).json({ error: 'Slide not found. It may have been removed.' });
+  if (!slide.layout) return res.status(409).json({ error: 'This slide is a single image, so it can\'t be edited layer by layer. Describe your change instead.' });
+  if (slide.status !== 'complete') return res.status(409).json({ error: 'This slide is still being generated. Try again once it\'s finished.' });
+
+  let nextLayout;
+  try {
+    nextLayout = applyLayoutEdit(slide.layout, edited);
+  } catch (err) {
+    return res.status(400).json({ error: 'That edit couldn\'t be saved. Please refresh and try again.' });
+  }
+
+  let previewFile;
+  try {
+    const png = await renderLayoutPreview(nextLayout, loadStoredFile, { width: 1920 });
+    previewFile = imageStore.saveDataUrl(`data:image/png;base64,${png.toString('base64')}`);
+    if (!previewFile) throw new Error('image store write failed');
+  } catch (err) {
+    logger.error('layout edit preview failed', { presentationId: req.params.id, slideIndex: targetIndex, errorMessage: err.message });
+    return res.status(500).json({ error: 'Your edit couldn\'t be saved right now. Please try again.' });
+  }
+
+  // Re-read fresh after the async render: another actor (an AI edit, a retry)
+  // may have replaced this slide meanwhile — then our edit is stale.
+  const freshRow = db.prepare('SELECT slides_data FROM presentations WHERE id = ?').get(req.params.id);
+  const fresh = JSON.parse(freshRow?.slides_data || '[]');
+  const pos = fresh.findIndex(s => s.index === targetIndex);
+  if (pos === -1 || fresh[pos].status !== 'complete' || !fresh[pos].layout) {
+    imageStore.remove(previewFile);
+    return res.status(409).json({ error: 'This slide changed while you were editing. Please reload it.' });
+  }
+  const outgoing = fresh[pos];
+  let versions = outgoing.versions;
+  if (checkpoint) {
+    versions = pushSlideVersion(db, req.params.id, targetIndex, outgoing.image_file, 'Manual edits', outgoing.layout,
+      [previewFile, ...layoutFiles(nextLayout)]);
+  } else {
+    // Autosaves replace the previous preview — unless history still uses it.
+    const keep = versionFiles(db, req.params.id, targetIndex);
+    if (outgoing.image_file && !keep.has(outgoing.image_file)) imageStore.remove(outgoing.image_file);
+  }
+  const updatedSlide = {
+    ...outgoing,
+    layout: nextLayout,
+    image_file: previewFile,
+    image_data: slideImageUrl(req.params.id, targetIndex, previewFile),
+    _edited: true,
+    versions,
+  };
+  fresh[pos] = updatedSlide;
+  if (pos === 0) {
+    db.prepare('UPDATE presentations SET slides_data = ?, thumbnail = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(JSON.stringify(fresh), previewFile, req.params.id);
+  } else {
+    db.prepare('UPDATE presentations SET slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(JSON.stringify(fresh), req.params.id);
+  }
+  // Other tabs get the update; the editing tab recognises its own client_id.
+  broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide, source: 'layout_edit', client_id: typeof clientId === 'string' ? clientId.slice(0, 64) : null });
+  res.json({ slide: updatedSlide });
+});
+
 // ─── List saved versions for a slide ──────────────────────────────────────────
 router.get('/:id/slides/:index/versions', authenticateToken, (req, res) => {
   const db = getDb();
@@ -1054,6 +1249,11 @@ router.post('/:id/slides/:index/versions/:versionId/restore', authenticateToken,
   db.prepare('DELETE FROM slide_versions WHERE id = ?').run(restoredVersion.id);
   const restoredFile = restoredVersion.image_file;
 
+  // Layered versions carry their layout: restoring brings every editable layer
+  // back. A flat version restored over a layered slide drops the layout (the
+  // slide becomes the flat image it was).
+  let restoredLayout = null;
+  if (restoredVersion.layout) { try { restoredLayout = JSON.parse(restoredVersion.layout); } catch { /* corrupt */ } }
   const updatedSlide = {
     ...slide,
     image_file: restoredFile || null,
@@ -1062,8 +1262,10 @@ router.post('/:id/slides/:index/versions/:versionId/restore', authenticateToken,
       : restoredVersion.image_data, // legacy pre-migration base64
     status: 'complete',
     _edited: true,
-    versions: pushSlideVersion(db, req.params.id, targetIndex, slide.image_file, 'Reverted to an earlier version'),
+    versions: pushSlideVersion(db, req.params.id, targetIndex, slide.image_file, 'Reverted to an earlier version',
+      slide.layout || null, [restoredFile, ...layoutFiles(restoredLayout)].filter(Boolean)),
   };
+  if (restoredLayout) updatedSlide.layout = restoredLayout; else delete updatedSlide.layout;
 
   slides[arrayPos] = updatedSlide;
 
@@ -1180,7 +1382,7 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
 
       const oldFiles = slideFiles(freshSlides[freshPos]);
       // Version history still holds the old flattened image file — keep it.
-      const versionFiles = new Set(db.prepare('SELECT image_file FROM slide_versions WHERE presentation_id = ? AND slide_index = ?').all(req.params.id, targetIndex).map(v => v.image_file));
+      const keepForVersions = versionFiles(db, req.params.id, targetIndex);
       const updatedSlide = { ...freshSlides[freshPos], ...result, status: 'complete', _edited: false };
       delete updatedSlide.nano_banana_prompt;
       freshSlides[freshPos] = updatedSlide;
@@ -1193,7 +1395,7 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
       }
       db.prepare(thumbSql).run(...thumbArgs);
       // Retry replaces the slide outright — drop the old files.
-      for (const f of oldFiles) if (!versionFiles.has(f)) imageStore.remove(f);
+      for (const f of oldFiles) if (!keepForVersions.has(f)) imageStore.remove(f);
       broadcast(req.params.id, { type: 'slide_updated', slide: updatedSlide });
     } catch (err) {
       logger.error('slide retry failed', { errorMessage: err.message });
@@ -1732,10 +1934,9 @@ router.delete('/:id/slides/:index', authenticateToken, (req, res) => {
   // Slide indices are never reused, so its version history can go too — delete
   // the rows and the underlying image files (the slide's own + its versions').
   const removed = slides.find(s => s.index === targetIndex);
-  const verFiles = db.prepare('SELECT image_file FROM slide_versions WHERE presentation_id = ? AND slide_index = ?').all(req.params.id, targetIndex);
+  const verFiles = versionFiles(db, req.params.id, targetIndex);
   db.prepare('DELETE FROM slide_versions WHERE presentation_id = ? AND slide_index = ?').run(req.params.id, targetIndex);
-  for (const f of slideFiles(removed)) imageStore.remove(f);
-  for (const v of verFiles) imageStore.remove(v.image_file);
+  for (const f of new Set([...slideFiles(removed), ...verFiles])) imageStore.remove(f);
 
   const newFirst = filtered[0];
   const newFirstFile = newFirst?.image_file || null;
@@ -1763,13 +1964,12 @@ router.delete('/:id', authenticateToken, (req, res) => {
   if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have permission to delete it.' });
   let slides = [];
   try { slides = JSON.parse(pres.slides_data || '[]'); } catch {}
-  const verFiles = db.prepare('SELECT image_file FROM slide_versions WHERE presentation_id = ?').all(req.params.id);
+  const verFiles = versionFiles(db, req.params.id);
 
   const result = db.prepare('DELETE FROM presentations WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Presentation not found or you don\'t have permission to delete it.' });
 
-  for (const s of slides) for (const f of slideFiles(s)) imageStore.remove(f);
-  for (const v of verFiles) imageStore.remove(v.image_file);
+  for (const f of new Set([...slides.flatMap(s => slideFiles(s)), ...verFiles])) imageStore.remove(f);
   res.json({ message: 'Deleted' });
 });
 

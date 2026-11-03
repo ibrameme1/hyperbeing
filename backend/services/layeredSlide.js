@@ -151,9 +151,10 @@ function provisionalScreenRect(device) {
   return { x: device.x + device.w * 0.1, y: device.y + device.h * 0.08, w: device.w * 0.8, h: device.h * 0.84 };
 }
 
-function placeScreenChildren(layout, device, rect) {
+function placeScreenChildren(layout, device, rect, { onlyNew = false } = {}) {
   for (const l of layout.layers) {
     if (l.screen_of !== device.id && l.in_screen !== device.id) continue;
+    if (onlyNew && !l.in_screen) continue; // keep children the user already placed
     if (l.in_screen) {
       // First placement: remember the normalized coords.
       l.screen_norm = { x: clamp01(l.x), y: clamp01(l.y), w: clamp01(l.w, 1), h: clamp01(l.h, 1) };
@@ -225,6 +226,11 @@ export async function buildLayeredSlide({
   // an existing design, e.g. at another image quality). returnRaw: include the
   // raw (pre-normalization) layout in the result so it can be replayed.
   layoutOverride = null, returnRaw = false,
+  // prebuilt: layoutOverride is an already-built, normalized layout being
+  // EDITED (AI edit). It is not re-normalized (that would reset detected
+  // screen rects and re-snap boxes): only layers without a file are
+  // generated, everything else is kept as is.
+  prebuilt = false,
 }) {
   const t0 = Date.now();
   const stats = { layout_ms: 0, first_image_start_ms: null, images: [], review_ms: 0, total_ms: 0, mock: IMAGE_MOCK_MODE };
@@ -449,14 +455,23 @@ export async function buildLayeredSlide({
       ? JSON.parse(JSON.stringify(layoutOverride))
       : await designSlideLayout({ slide, header, deckDesign, brief, uploads, aspectRatio, style, siblingTitles, instruction, userId, onPartial });
     const rawCopy = returnRaw ? JSON.parse(JSON.stringify(raw)) : undefined;
-    const layout = normalizeLayout(raw, { aspectRatio, uploadCount: uploads.length });
+    const layout = prebuilt ? raw : normalizeLayout(raw, { aspectRatio, uploadCount: uploads.length });
     stats.layout_ms = Date.now() - t0;
     if (layout.style_block && !styleBlock) styleBlock = layout.style_block;
     composition = layout.composition;
     layout.brands.forEach(ensureBrand);
 
     for (const device of layout.layers.filter(l => l.kind === 'image' && l.screen)) {
-      placeScreenChildren(layout, device, provisionalScreenRect(device));
+      // An existing device keeps its detected screen; only new children
+      // (in_screen) are placed into it.
+      const keep = prebuilt && device.file && device.screen.rect;
+      placeScreenChildren(layout, device, keep ? device.screen.rect : provisionalScreenRect(device), { onlyNew: keep });
+    }
+    // Edited slide: secondary elements that get regenerated still match the
+    // existing hero's lighting and materials.
+    if (prebuilt && !heroAssetPromise) {
+      const hero = layout.layers.find(l => l.kind === 'image' && l.role === 'hero' && l.file);
+      if (hero) heroAssetPromise = Promise.resolve({ file: hero.file });
     }
     // Children of devices that didn't survive normalization are dropped.
     layout.layers = layout.layers.filter(l => !l.in_screen);

@@ -85,7 +85,7 @@ const SHAPES = ['rect', 'ellipse', 'line'];
 
 // ── primitive sanitizers ────────────────────────────────────────────────────
 
-function num(v, min, max, dflt) {
+export function num(v, min, max, dflt) {
   const n = typeof v === 'string' ? parseFloat(v) : v;
   if (typeof n !== 'number' || !Number.isFinite(n)) return dflt;
   return Math.min(max, Math.max(min, n));
@@ -106,7 +106,7 @@ export function color(v, dflt = null) {
   return dflt;
 }
 
-function gradient(g) {
+export function gradient(g) {
   if (!g || typeof g !== 'object' || !Array.isArray(g.stops)) return null;
   const stops = g.stops
     .map(s => ({ color: color(s?.color), pos: num(s?.pos, 0, 100, null) }))
@@ -116,7 +116,7 @@ function gradient(g) {
   return { angle: num(g.angle, 0, 360, 90), stops: stops.slice(0, 6) };
 }
 
-function shadow(s) {
+export function shadow(s) {
   if (!s || typeof s !== 'object') return null;
   return {
     color: color(s.color, 'rgba(0,0,0,0.5)'),
@@ -747,11 +747,12 @@ export function layoutFiles(layout) {
   const files = [];
   if (layout.background?.file) files.push(layout.background.file);
   if (layout.background?.frosted_file) files.push(layout.background.frosted_file);
-  for (const l of layout.layers || []) {
+  // Trash = layers deleted in the editor, kept so undo can restore them.
+  for (const l of [...(layout.layers || []), ...(layout.trash || [])]) {
     if (l.file) files.push(l.file);
     if (l.frosted_file) files.push(l.frosted_file);
   }
-  return files;
+  return [...new Set(files)];
 }
 
 // Count of image generations the layout still needs (used for stats/logging).

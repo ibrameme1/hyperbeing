@@ -1,22 +1,34 @@
 import { Lock, Loader2 } from 'lucide-react';
 import { mediaUrl, isRealImage } from '../utils/mediaUrl';
+import LayeredSlide from './layered/LayeredSlide';
 
 const CREDIT_COST_PER_SLIDE = 18;
 
 export default function SlideRenderer({ slide, className = '', onUnlock, unlocking = false, showWatermark = false }) {
   if (!slide) return null;
 
-  const hasImage = isRealImage(slide.image_data);
+  // Layered slides render natively (real text, separate image layers). While a
+  // slide is still being built, `live_layout` (from slide_layout /
+  // slide_layer_ready SSE events) shows it assembling layer by layer.
+  const layout = slide.status === 'locked' ? null : (slide.status === 'generating' && slide.live_layout) || slide.layout || null;
+  const hasImage = isRealImage(slide.image_data) || !!layout;
 
   return (
     <div
+      data-slide-canvas
       className={`relative w-full aspect-[16/9] overflow-hidden ${className}`}
       style={{ background: '#1a1a2e' }}
     >
       {/* Skeleton always underneath — visible while image is absent or loading */}
       <div className="absolute inset-0 skeleton" />
 
-      {slide.image_data && (
+      {layout && (
+        <div className="absolute inset-0 animate-fadeIn">
+          <LayeredSlide layout={layout} />
+        </div>
+      )}
+
+      {!layout && slide.image_data && (
         <img
           key={slide.image_data}
           src={mediaUrl(slide.image_data)}

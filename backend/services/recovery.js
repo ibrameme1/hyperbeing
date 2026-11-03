@@ -104,8 +104,13 @@ export function sweepOrphanImages() {
     }
   }
   try {
-    for (const v of db.prepare('SELECT image_file FROM slide_versions').all()) {
+    // Layered versions also keep every layer file of the layout they restore.
+    let versions;
+    try { versions = db.prepare('SELECT image_file, layout FROM slide_versions').all(); }
+    catch { versions = db.prepare('SELECT image_file FROM slide_versions').all(); }
+    for (const v of versions) {
       if (v.image_file) referenced.add(path.basename(v.image_file));
+      if (v.layout) { try { for (const f of layoutFiles(JSON.parse(v.layout))) referenced.add(path.basename(f)); } catch { /* bad json */ } }
     }
   } catch { /* table may not exist */ }
 

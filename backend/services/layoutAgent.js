@@ -543,6 +543,110 @@ export async function reviewSlideLayout({ layout, previewPng, warnings = [], use
   return sanitizeDeep(out);
 }
 
+// ═══ 4. Natural-language edits of a built slide ═════════════════════════════
+// The user describes a change ("make the title shorter", "swap the phone for a
+// laptop", "darker background"). Claude sees the slide (rendered) and its
+// layers and answers with the SMALLEST set of operations on those layers.
+// Only image layers it explicitly regenerates (or adds) cost a new image —
+// everything else is restyled natively. Applied by layoutEdit.applyEditOps.
+
+const EDIT_TOOL = {
+  name: 'submit_slide_edits',
+  description: 'Submit the edit operations that carry out the user\'s instruction on this slide.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      summary: { type: 'string', description: 'One short sentence describing what you changed, for the user.' },
+      ops: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            op: { type: 'string', enum: ['update', 'remove', 'add', 'regenerate', 'reorder', 'background'] },
+            id: { type: 'string' },
+            set: { type: 'object', description: 'update: fields to change (geometry, text, runs, size, color, gradient, weight, italic, align, font, fill, radius, border, opacity, chart categories/series/options, icon name/color, hidden)' },
+            prompt: { type: 'string', description: 'regenerate / background: the full new image prompt' },
+            refs: { type: 'array', items: { type: 'string' } },
+            layer: { type: 'object', description: 'add: a new layer in the same format as the layout' },
+            after: { type: 'string', description: 'add: insert just above this layer id (z-order)' },
+            to: { type: 'string', enum: ['front', 'back', 'forward', 'backward'] },
+            color: { type: 'string' },
+            gradient: { type: 'object' },
+          },
+          required: ['op'],
+        },
+      },
+    },
+    required: ['summary', 'ops'],
+  },
+};
+
+const EDIT_SYSTEM_PROMPT = `You are Nova, editing ONE slide you already designed. The slide is built from layers (canvas pixel coordinates, z-order = array order): a background, generated image elements (each has the "prompt" it was generated from), native text, shapes, charts, icons and logos. You see the rendered slide and its layer JSON.
+
+Carry out the user's instruction with the SMALLEST set of operations:
+- Text, colours, sizes, fonts, positions, chart numbers, icons, card styles → "update" the existing layers natively. Never regenerate an image to change text or colour that is a native layer.
+- A different or changed OBJECT/PICTURE (e.g. "make the phone a laptop", "the coins should be gold", "add a rocket") → "regenerate" that image layer with a complete new prompt in the same rendering style as the other prompts (or "add" a new image layer with role "element" and a prompt). Prompts describe only the object, never text or UI copy (screen copy stays native layers with in_screen).
+- A different mood/scene → "background" with a full new prompt (keep its negative space where the text sits), or a native color/gradient.
+- Removing something → "remove". Layering → "reorder".
+- Keep the deck's palette and fonts unless the user asks otherwise. Keep everything readable (WCAG AA contrast) and inside the canvas; when you move or resize, keep alignment with the surrounding layers.
+- Use the user's exact wording for any new copy. Never invent statistics.
+- If the user attached reference images (UPLOAD N), pass "refs": ["upload:N"] on the image you regenerate or add from them.
+- If the instruction is impossible or already satisfied, return an empty ops list and say why in the summary.
+
+Return at most ${MAX_GENERATIONS_PER_SLIDE} image regenerations/additions.`;
+
+export async function editSlideLayout({ layout, previewPng, instruction, deckDesign = null, uploads = [], userId = null, slideIndex = 0 }) {
+  const compact = {
+    canvas: layout.canvas,
+    fonts: layout.fonts,
+    composition: layout.composition,
+    background: (({ file, src, frosted_file, ...b }) => b)(layout.background || {}),
+    layers: layout.layers.map(l => {
+      const { file, src, frosted_file, screen_norm, refs, runs, ...rest } = l;
+      if (rest.screen) rest.screen = { fill: rest.screen.fill };
+      return { ...rest, ...(runs?.length ? { runs } : {}) };
+    }),
+  };
+  if (MOCK_MODE) {
+    // Mock: regenerate the hero with the instruction folded into its prompt,
+    // so the whole edit pipeline (ops → partial rebuild → preview) runs.
+    const hero = layout.layers.find(l => l.kind === 'image' && l.role === 'hero') || layout.layers.find(l => l.kind === 'image');
+    const title = layout.layers.find(l => l.kind === 'text' && /head|title/.test(l.role || l.id));
+    const ops = [];
+    if (hero) ops.push({ op: 'regenerate', id: hero.id, prompt: `${hero.prompt || 'the main object'}. ${instruction}` });
+    else if (title) ops.push({ op: 'update', id: title.id, set: { color: '#FFD166' } });
+    return { summary: `Mock edit: ${instruction}`, ops };
+  }
+  if (FILES_MODE) {
+    const { key, response } = filesAgent('edit', { compact, instruction }, { instruction, deck: deckDesign, layout: compact, uploads: uploads.length }, { png: previewPng });
+    if (!response) throw new Error(`slide edit pending (files mode, key ${key})`);
+    return sanitizeDeep(response);
+  }
+  const _tid = requestContext.getStore()?.requestId;
+  const t0 = Date.now();
+  tracer.recordStep(_tid, `claude_edit_${slideIndex}`, 'started', 0);
+  const response = await getClient().messages.create({
+    model: MODEL,
+    max_tokens: 6000,
+    system: systemBlocks(EDIT_SYSTEM_PROMPT),
+    tools: [EDIT_TOOL],
+    tool_choice: { type: 'tool', name: EDIT_TOOL.name },
+    messages: [{
+      role: 'user',
+      content: [
+        imageBlock(`data:image/png;base64,${previewPng.toString('base64')}`, 'image/png'),
+        { type: 'text', text: `DECK DESIGN SYSTEM:\n${JSON.stringify(deckDesign || {})}\n\nCURRENT LAYERS:\n${JSON.stringify(compact)}\n\nUSER INSTRUCTION:\n${String(instruction).slice(0, 2000)}${uploads.length ? `\n\nThe user attached ${uploads.length} image(s), shown below as UPLOAD 0..${uploads.length - 1}.` : ''}` },
+        ...uploadsContent(uploads),
+      ],
+    }],
+  });
+  account(userId, 'editSlideLayout', response, t0);
+  const out = response.content.find(b => b.type === 'tool_use')?.input || { summary: 'no edit', ops: [] };
+  tracer.recordStep(_tid, `claude_edit_${slideIndex}`, 'completed', Date.now() - t0);
+  logger.info('slide edit planned', { slideIndex, ms: Date.now() - t0, ops: out.ops?.length || 0, summary: String(out.summary).slice(0, 200) });
+  return sanitizeDeep(out);
+}
+
 // ═══ mock mode ══════════════════════════════════════════════════════════════
 // A believable layered slide built from the outline, so the whole layered
 // pipeline (and the editor/exporter on top of it) runs with zero API keys.
