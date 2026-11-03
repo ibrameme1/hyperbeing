@@ -39,6 +39,9 @@ export function assetUrl(presentationId, file) {
 }
 
 const ELEMENT_SUFFIX = 'Isolated on a transparent background, nothing else in frame: no background, no surface, no floor, no shadow, no reflection, no text, no letters, no watermark, no frame or border. The whole subject is fully visible with a small empty margin around it, never cropped.';
+// A device whose screen UI is drawn by the image model ("ui": true): the
+// prompt quotes the on-screen copy, so the suffix must not forbid text.
+const UI_DEVICE_SUFFIX = 'Isolated on a transparent background, nothing else in frame: no background, no surface, no floor, no shadow, no reflection, no watermark, no frame or border. The only words anywhere are the on-screen interface copy quoted in the description, spelled exactly, crisp and legible; no other text. The whole device is fully visible with a small empty margin around it, never cropped.';
 const EFFECT_SUFFIX = 'Rendered purely as light on a completely black (#000000) background. Nothing else in frame: no objects, no surface, no text. Smooth, soft, luminous falloff.';
 const SCREEN_SUFFIX = 'The device faces the camera perfectly straight-on and flat: no tilt, no perspective, no skew. Its entire screen is one flat, uniform, pure chroma-green (#00FF00) rectangle with no UI, no reflections and no glare.';
 // The device's orientation must match its box, or a portrait phone gets
@@ -54,6 +57,7 @@ const SCREEN_IMAGE_SUFFIX = 'Flat, full-frame screen content exactly as it would
 const CONNECTOR_OBJECTS_SUFFIX = 'On a transparent background: only the stream itself, nothing else in frame, no source or destination objects, no background, no surface, no text.';
 const HERO_REF_NOTE = 'The attached reference image shows the slide\'s main object. Use it ONLY to match lighting direction, materials, colour palette and render style so this object belongs in the same scene. Do NOT draw the reference object or any part of it.';
 const CLUSTER_SUFFIX = 'Objects that interact physically connect (for example a stream flowing from one object into another). Apart from those physical connections, leave a thin gap of empty transparent space between separate objects so each can be lifted out cleanly. Isolated on a transparent background: no background, no floor, no surface, no cast shadow, no text, no letters, no frame or border.';
+const CLUSTER_UI_SUFFIX = 'Objects that interact physically connect (for example a stream flowing from one object into another). Apart from those physical connections, leave a thin gap of empty transparent space between separate objects so each can be lifted out cleanly. Isolated on a transparent background: no background, no floor, no surface, no cast shadow, no frame or border. The only words anywhere are the on-screen interface copy quoted for the devices, spelled exactly and legible; no other text or letters.';
 const EMPTY_BG_SUFFIX = 'This is an EMPTY backdrop: absolutely no objects of any kind (no devices, phones, products, coins, glass panels, cards, people, shapes or props). Only light, colour, atmosphere and texture. No text, no letters, no logos, no UI.';
 const BG_SUFFIX = 'No overlaid text, no captions, no letters or numbers, no logos, no watermarks, no UI, no cards, no panels, no buttons, no frames, no borders. Leave the described negative space genuinely clean.';
 
@@ -135,7 +139,7 @@ export function clusterPlan(l, deckDesign, styleBlock) {
     return `${i + 1}. ${it.name || it.id}: ${it.prompt} Occupies ${pct(f.x)}%-${pct(f.x + f.w)}% of the frame width and ${pct(f.y)}%-${pct(f.y + f.h)}% of its height.`;
   }).join('\n');
   const body = `ONE cohesive composition containing exactly these ${items.length} objects, all lit by the same light, sharing one perspective and one colour grade, arranged in the frame as follows (positions measured from the top-left of the frame):\n${lines}${l.prompt ? `\n\nHow they relate: ${l.prompt}` : ''}`;
-  const prompt = composePrompt(deckDesign, { style_block: styleBlock }, body, CLUSTER_SUFFIX, { objectOnly: true });
+  const prompt = composePrompt(deckDesign, { style_block: styleBlock }, body, items.some(it => it.ui) ? CLUSTER_UI_SUFFIX : CLUSTER_SUFFIX, { objectOnly: true });
   return { box, size, frac, prompt };
 }
 
@@ -326,7 +330,10 @@ async function buildLayeredSlideInner({
     const size = geometry?.size || sizeForAspect(l.w, l.h);
     let suffix;
     if (connector) suffix = `${geometry.sentence} ${lightConnector ? EFFECT_SUFFIX : CONNECTOR_OBJECTS_SUFFIX}`;
-    else suffix = effect ? EFFECT_SUFFIX : screenImage ? SCREEN_IMAGE_SUFFIX : `${l.screen ? `${deviceOrientation(l)}${SCREEN_SUFFIX} ` : ''}${ELEMENT_SUFFIX}`;
+    else if (effect) suffix = EFFECT_SUFFIX;
+    else if (screenImage) suffix = SCREEN_IMAGE_SUFFIX;
+    else if (l.ui) suffix = UI_DEVICE_SUFFIX;
+    else suffix = `${l.screen ? `${deviceOrientation(l)}${SCREEN_SUFFIX} ` : ''}${ELEMENT_SUFFIX}`;
     const usesHeroRef = l.role === 'element' && !!heroAssetPromise;
     const waitForHero = usesHeroRef ? heroAssetPromise : Promise.resolve(null);
 
@@ -537,7 +544,7 @@ async function buildLayeredSlideInner({
           const part = asset.parts.find(pp => pp.id === it.id);
           if (!part) return;
           itemLayers.push({
-            id: it.id, kind: 'image', name: it.name, role: i === 0 ? 'hero' : 'element', prompt: it.prompt, refs: [],
+            id: it.id, kind: 'image', name: it.name, role: i === 0 ? 'hero' : 'element', prompt: it.prompt, refs: [], ui: it.ui,
             cluster: l.id, file: part.file, src: assetUrl(presentationId, part.file),
             x: Math.round(asset.box.x + part.x * sx), y: Math.round(asset.box.y + part.y * sy),
             w: Math.round(part.w * sx), h: Math.round(part.h * sy), rotation: 0, opacity: 1,

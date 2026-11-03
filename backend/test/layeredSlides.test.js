@@ -468,3 +468,40 @@ describe('phone boxes and text contrast', () => {
     expect(requiredRatio({ size: 22, weight: 400 })).toBe(4.5);
   });
 });
+
+import { normalizeLayout as normalizeForScreens, MAX_SCREEN_LAYERS } from '../services/slideLayout.js';
+import { clusterPlan } from '../services/layeredSlide.js';
+describe('device screen UI: drawn by the image model unless a capped native hero screen', () => {
+  it('keeps "ui" on devices (dropped when the device has a native screen)', () => {
+    const l = normalizeForScreens({ layers: [
+      { kind: 'image', id: 'p1', ui: true, prompt: 'A smartphone showing a TikTok feed, caption "hi"', x: 100, y: 100, w: 300, h: 600 },
+      { kind: 'image', id: 'p2', ui: true, screen: { fill: '#000' }, prompt: 'A smartphone', x: 500, y: 100, w: 300, h: 600 },
+    ] });
+    expect(l.layers.find(x => x.id === 'p1').ui).toBe(true);
+    expect(l.layers.find(x => x.id === 'p2').ui).toBeUndefined();
+  });
+  it(`caps native in_screen layers at ${MAX_SCREEN_LAYERS} per slide (screen photos exempt)`, () => {
+    const kids = Array.from({ length: 14 }, (_, i) => ({ kind: 'text', id: `m${i}`, text: `msg ${i}`, in_screen: 'phone', x: 0.1, y: i * 0.06, w: 0.8, h: 0.05 }));
+    const l = normalizeForScreens({ layers: [
+      { kind: 'image', id: 'phone', role: 'hero', screen: { fill: '#0B141A' }, prompt: 'A smartphone', x: 100, y: 100, w: 380, h: 760 },
+      { kind: 'image', id: 'shot', role: 'screen_image', in_screen: 'phone', prompt: 'a selfie video frame', x: 0, y: 0, w: 1, h: 1 },
+      ...kids,
+      { kind: 'text', id: 'headline', text: 'Headline', x: 600, y: 100, w: 800, h: 120 },
+    ] });
+    expect(l.layers.filter(x => x.in_screen && x.role !== 'screen_image')).toHaveLength(MAX_SCREEN_LAYERS);
+    expect(l.layers.some(x => x.id === 'shot')).toBe(true);
+    expect(l.layers.some(x => x.id === 'headline')).toBe(true);
+    expect(l.layers.some(x => x.id === 'm13')).toBe(false);
+  });
+  it('lets a cluster with a UI device carry on-screen copy instead of forbidding text', () => {
+    const items = [
+      { id: 'phone', ui: true, prompt: 'A phone showing a chat, message "see you at 8"', x: 100, y: 100, w: 300, h: 600 },
+      { id: 'coins', prompt: 'gold coins', x: 450, y: 400, w: 200, h: 200 },
+    ];
+    const withUi = normalizeForScreens({ layers: [{ kind: 'image', id: 'v', role: 'cluster', items }] }).layers[0];
+    expect(withUi.items[0].ui).toBe(true);
+    expect(clusterPlan(withUi, {}, '').prompt).toMatch(/only words anywhere are the on-screen interface copy/);
+    const plain = normalizeForScreens({ layers: [{ kind: 'image', id: 'v', role: 'cluster', items: items.map(({ ui, ...it }) => it) }] }).layers[0];
+    expect(clusterPlan(plain, {}, '').prompt).toMatch(/no text, no letters/);
+  });
+});

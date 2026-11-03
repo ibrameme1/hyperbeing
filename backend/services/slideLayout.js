@@ -33,6 +33,12 @@ export function canvasFor(aspectRatio) {
 // one icon sheet). Bounds cost and rate-limit pressure; Claude is told the same.
 export const MAX_GENERATIONS_PER_SLIDE = 7;
 export const MAX_LAYERS = 60;
+// Native (editable) layers inside device screens, per slide. Screen UI is
+// normally drawn by the image model (a device layer with "ui": true); only a
+// hero device whose on-screen copy IS the point of the slide gets native
+// in_screen layers, and only this many — full native chat UIs cost ~30 layers
+// of Claude output (~$0.03 a slide) for detail nobody edits.
+export const MAX_SCREEN_LAYERS = 8;
 export const MAX_SHEET_ICONS = 8;
 
 // Curated Google Fonts the renderer loads. Claude picks the font that does the
@@ -286,6 +292,9 @@ function clusterItems(v, canvas) {
       x: num(it?.x, -canvas.w, canvas.w * 2, 0), y: num(it?.y, -canvas.h, canvas.h * 2, 0),
       w: num(it?.w, 8, canvas.w * 2, 200), h: num(it?.h, 8, canvas.h * 2, 200),
       rotation: num(it?.rotation, -180, 180, 0),
+      // The item is a device whose screen UI (with its copy) is drawn by the
+      // image model, so the cluster prompt must allow that text.
+      ui: it?.ui ? true : undefined,
     };
   }).filter(it => it.prompt);
 }
@@ -302,7 +311,7 @@ function normalizeImage(l, base, canvas) {
     return { ...base, x: x0, y: y0, w: x1 - x0, h: y1 - y0, role, prompt, refs: refs(l.refs), items };
   }
   if (!prompt && !l.file) return null;
-  if (l.screen) Object.assign(base, conformPhoneBox(base, prompt));
+  if (l.screen || l.ui) Object.assign(base, conformPhoneBox(base, prompt));
   return {
     ...base,
     role,
@@ -312,6 +321,9 @@ function normalizeImage(l, base, canvas) {
     // chroma-green screen that is detected after generation; layers whose
     // `in_screen` points at this id are positioned inside that rect.
     screen: l.screen ? { fill: color(l.screen?.fill, '#000000') } : undefined,
+    // Device whose screen UI is drawn by the image model (copy quoted in the
+    // prompt; edited by regenerating the image). A native screen wins.
+    ui: l.ui && !l.screen ? true : undefined,
     shadow: shadow(l.shadow) || undefined,
     glow: l.glow ? { color: color(l.glow?.color, 'rgba(255,255,255,0.6)'), blur: num(l.glow?.blur, 0, 200, 40) } : undefined,
     flip: !!l.flip,
@@ -493,6 +505,14 @@ export function normalizeLayout(raw, { aspectRatio = '16:9', uploadCount = 0 } =
       if (device) layer.in_screen = device.id;
       delete layer._in_screen_raw;
     }
+  }
+  // Cap native screen UI (photos inside a screen don't count). Children come
+  // right after their device, so the later ones (lower-priority detail) go.
+  let screenNative = 0;
+  for (let i = 0; i < layers.length; i++) {
+    const l = layers[i];
+    if (!l.in_screen || l.role === 'screen_image') continue;
+    if (++screenNative > MAX_SCREEN_LAYERS) { layers.splice(i, 1); i--; }
   }
 
   if (!layers.length && background.type === 'color' && !raw.background) {
@@ -966,7 +986,7 @@ export function resolveCollisions(layout) {
 // centred on its original span. Screen rects and screen children move with
 // their device. Returns a list of moved ids.
 export function tightenDeviceRows(layout, { gap = 40, maxGap = 64, maxScale = 1.6 } = {}) {
-  const devices = layout.layers.filter(l => l.kind === 'image' && l.screen && !l.screen_of)
+  const devices = layout.layers.filter(l => l.kind === 'image' && (l.screen || l.ui) && !l.screen_of)
     .sort((a, b) => a.x - b.x);
   const rows = [];
   for (const d of devices) {
