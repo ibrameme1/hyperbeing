@@ -474,7 +474,6 @@ export default function Dashboard() {
   const [pendingAttachments, setPendingAttachments] = useState([]);
   const [pendingInput, setPendingInput] = useState('');
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('16:9');
-  const [selectedStyle, setSelectedStyle] = useState('classic'); // 'classic' | 'minimalistic'
   const [webSearchEnabled, setWebSearchEnabled] = useState(() => {
     try { return localStorage.getItem('hb_websearch') === '1'; } catch { return false; }
   });
@@ -669,10 +668,9 @@ export default function Dashboard() {
         message: comprehensiveMessage,
         attachments: pendingAttachments,
         aspectRatio: selectedAspectRatio,
-        style: selectedStyle,
       });
-      track('presentation_created', { presentation_id: data.presentation.id, aspect_ratio: selectedAspectRatio, style: selectedStyle });
-      capture('presentation_created', { presentation_id: data.presentation.id, aspect_ratio: selectedAspectRatio, style: selectedStyle });
+      track('presentation_created', { presentation_id: data.presentation.id, aspect_ratio: selectedAspectRatio });
+      capture('presentation_created', { presentation_id: data.presentation.id, aspect_ratio: selectedAspectRatio });
       navigate(`/presentations/${data.presentation.id}`);
     } catch (err) {
       setCreatingPresentation(false);
@@ -875,37 +873,6 @@ export default function Dashboard() {
               <div style={{ padding: '4px 20px 20px', borderTop: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8' }}>
                 {/* Controls row */}
                 <div className="flex items-center gap-2 py-2 flex-wrap">
-                  {/* Style selector — Classic vs Minimalistic image-prompt aesthetic */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: isDark ? '#0f0f0f' : '#f0f0f0', borderRadius: 10, padding: 4, flexShrink: 0 }}>
-                    {[
-                      { value: 'classic', label: 'Classic' },
-                      { value: 'minimalistic', label: 'Minimalistic' },
-                    ].map(({ value, label }) => {
-                      const active = selectedStyle === value;
-                      return (
-                        <button
-                          key={value}
-                          onClick={() => setSelectedStyle(value)}
-                          aria-label={`${label} style`}
-                          aria-pressed={active}
-                          title={value === 'classic'
-                            ? 'Bold editorial slides — pure black, hot pink accents, photo collages'
-                            : 'Cinematic, restrained slides — one idea per slide, near-monochrome, film-still finish'}
-                          style={{
-                            padding: '8px 12px', borderRadius: 7, cursor: 'pointer', border: 'none',
-                            fontSize: 11, fontWeight: 600, fontFamily: 'Inter,sans-serif',
-                            background: active ? (isDark ? '#1e1e1e' : '#fff') : 'transparent',
-                            boxShadow: active ? (isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.1)') : 'none',
-                            color: active ? '#5B50FF' : (isDark ? '#555' : '#888'),
-                            transition: 'background 0.15s',
-                          }}
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-
                   {/* Web search toggle — when on, Nova researches the brief online */}
                   <button
                     type="button"

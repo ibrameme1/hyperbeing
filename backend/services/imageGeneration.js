@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { recordGeminiImageCall } from './aiCosts.js';
 import { logger, requestContext } from './logger.js';
 import { tracer } from './tracer.js';
 
@@ -32,6 +33,7 @@ async function callNanoBanana(parts, aspectRatio, slideIndex, stepName) {
       if (imagePart) {
         logger.debug('nano banana image gen success', { slideIndex });
         tracer.recordStep(_tid, stepName, 'completed', Date.now() - _t);
+        recordGeminiImageCall({ call: 'legacy_slide_edit', model: IMAGE_GEN_MULTIMODAL, durationMs: Date.now() - _t, slideIndex });
         return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
       }
       logger.warn('nano banana returned no image', { slideIndex, attempt });

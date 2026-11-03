@@ -7,6 +7,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import { isAdmin } from '../services/stripeService.js';
 import { metrics } from '../services/metrics.js';
 import { sendCreditsGranted } from '../services/emailService.js';
+import { buildCostReport, costRowsCsv, deckCostDetail } from '../services/costReport.js';
 
 const router = Router();
 
@@ -163,6 +164,26 @@ router.get('/logs', authenticateToken, requireAdmin, (req, res) => {
       return { id: r.id, level: r.level, message: r.message, context: ctx, ts: r.created_at };
     }),
   });
+});
+
+// ─── AI costs (ai_costs table) ───────────────────────────────────────────────
+// ?from=YYYY-MM-DD&to=YYYY-MM-DD (to exclusive; default: last 30 days)
+const isoDay = (v) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+router.get('/costs', authenticateToken, requireAdmin, (req, res) => {
+  res.json(buildCostReport(getDb(), { from: isoDay(req.query.from), to: isoDay(req.query.to) }));
+});
+
+router.get('/costs/deck/:id', authenticateToken, requireAdmin, (req, res) => {
+  res.json(deckCostDetail(getDb(), req.params.id));
+});
+
+// Raw rows as CSV for spreadsheets (whole range, or one deck with ?presentation_id=).
+router.get('/costs/export.csv', authenticateToken, requireAdmin, (req, res) => {
+  const presentationId = typeof req.query.presentation_id === 'string' ? req.query.presentation_id : null;
+  const csv = costRowsCsv(getDb(), { from: isoDay(req.query.from), to: isoDay(req.query.to), presentationId });
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="ai-costs-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.send(csv);
 });
 
 // ─── GET /api/admin/metrics ───────────────────────────────────────────────────

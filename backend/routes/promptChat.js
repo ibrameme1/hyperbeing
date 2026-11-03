@@ -1,4 +1,8 @@
 import { Router } from 'express';
+import { withCostContext } from '../services/aiCosts.js';
+
+// Attributes AI calls made for this request to the user (ai_costs).
+const costScope = (operation) => (req, res, next) => withCostContext({ userId: req.user?.id, operation }, next);
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
@@ -9,7 +13,7 @@ import { logger } from '../services/logger.js';
 const router = Router();
 
 // POST /api/prompt-chat/:sessionId
-router.post('/:sessionId', authenticateToken, async (req, res) => {
+router.post('/:sessionId', authenticateToken, costScope('prompt_generator'), async (req, res) => {
   const { sessionId } = req.params;
   const { message, images = [] } = req.body;
 

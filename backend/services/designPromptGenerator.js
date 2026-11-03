@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { recordClaudeCall } from './aiCosts.js';
 import { recordTokenUsage } from './stripeService.js';
 import { logger, requestContext } from './logger.js';
 import { tracer } from './tracer.js';
@@ -74,6 +75,7 @@ export async function craftDesignPrompts(userPrompt, attachedImages = [], count 
     });
 
     if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+    recordClaudeCall({ call: 'design_prompts', usage: response.usage, userId, operation: 'design_mode' });
 
     const toolUse = response.content.find(b => b.type === 'tool_use' && b.name === 'submit_design_prompts');
     const prompts = Array.isArray(toolUse?.input?.prompts)

@@ -1,4 +1,8 @@
 import { Router } from 'express';
+import { withCostContext } from '../services/aiCosts.js';
+
+// Attributes AI calls made for this request to the user (ai_costs).
+const costScope = (operation) => (req, res, next) => withCostContext({ userId: req.user?.id, operation }, next);
 import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
@@ -94,7 +98,7 @@ router.get('/events', (req, res) => {
 });
 
 // ─── POST /api/design/generate — start a new generation batch ─────────────
-router.post('/generate', authenticateToken, designGenerationLimiter, (req, res) => {
+router.post('/generate', authenticateToken, costScope('design_mode'), designGenerationLimiter, (req, res) => {
   const { prompt = '', mode = 'own', count = 1, attachments = [] } = req.body;
 
   if (!prompt?.trim() && attachments.length === 0) {
@@ -192,7 +196,7 @@ router.post('/generate', authenticateToken, designGenerationLimiter, (req, res) 
 
 // ─── POST /api/design/:id/retry — retry a single failed generation ────────
 // Re-sends the same final prompt + reference images that were used originally.
-router.post('/:id/retry', authenticateToken, designGenerationLimiter, (req, res) => {
+router.post('/:id/retry', authenticateToken, costScope('design_mode'), designGenerationLimiter, (req, res) => {
   const db = getDb();
   const row = db.prepare('SELECT * FROM design_generations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!row) return res.status(404).json({ error: 'Generation not found' });

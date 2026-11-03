@@ -13,7 +13,7 @@ cp backend/.env.example backend/.env
 Edit `backend/.env` and add (see the example file for the full list — Stripe, OAuth, email, and admin settings are all optional and degrade silently):
 - `ANTHROPIC_API_KEY` — from [console.anthropic.com](https://console.anthropic.com)
 - `GOOGLE_API_KEY` — from [aistudio.google.com](https://aistudio.google.com) (Gemini image generation access)
-- `OPENAI_API_KEY` — for the "minimalistic" deck style and Design Mode
+- `OPENAI_API_KEY` — slide image layers (`gpt-image-2.5-flare`) and Design Mode
 - `JWT_SECRET` — any long random string
 
 Leaving the AI keys unset (or set to `demo`) runs everything in **mock mode** with canned plans and placeholder images — the intended way to develop locally.
@@ -63,7 +63,7 @@ cd backend && npm test
 | Backend | Node.js, Express, SQLite (better-sqlite3) |
 | Auth | JWT (15-min access + 7-day refresh), Passport OAuth |
 | AI planning agent | Anthropic Claude (`claude-sonnet-4-6`) |
-| Image generation | Google Gemini (`gemini-3.1-flash-image-preview`, "Nano Banana") for classic decks; OpenAI `gpt-image-2` for minimalistic decks and Design Mode |
+| Image generation | OpenAI `gpt-image-2.5-flare` for every slide layer; `gpt-image-2` for Design Mode; Google Gemini (`gemini-3.1-flash-image-preview`) only for edits of legacy single-image slides |
 | Payments | Stripe subscriptions + credit ledger |
 | PDF export | jsPDF (client-side) |
 | Real-time | Server-Sent Events (SSE) |

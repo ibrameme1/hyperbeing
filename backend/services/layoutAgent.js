@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { recordClaudeCall } from './aiCosts.js';
 import Anthropic from '@anthropic-ai/sdk';
 import fs from 'fs';
 import path from 'path';
@@ -7,7 +8,7 @@ import { recordTokenUsage } from './stripeService.js';
 import { logger, requestContext } from './logger.js';
 import { metrics } from './metrics.js';
 import { tracer } from './tracer.js';
-import { CLASSIC_ART_DIRECTION, MINIMALISTIC_STYLE_REFERENCE, sanitizeDeep } from './claudeAgent.js';
+import { sanitizeDeep } from './claudeAgent.js';
 import { MINIMALISTIC_EXAMPLE_PROMPTS } from './minimalisticExamples.js';
 import { FONT_NAMES, MAX_GENERATIONS_PER_SLIDE, MAX_SHEET_ICONS, canvasFor, extractCompletedLayoutParts } from './slideLayout.js';
 
@@ -36,8 +37,8 @@ const QUALITY_LIBRARY = `${fs.readFileSync(path.join(__dirname, '../prompts/laye
 
 ---
 
-## Minimalistic exemplars (verbatim)
-${MINIMALISTIC_EXAMPLE_PROMPTS.map((p, i) => `### Minimalistic ${i + 1}\n${p}`).join('\n\n')}`;
+## Cinematic minimal exemplars (verbatim)
+${MINIMALISTIC_EXAMPLE_PROMPTS.map((p, i) => `### Cinematic minimal ${i + 1}\n${p}`).join('\n\n')}`;
 
 // Finished reference slides the team supplied (prompts/reference_slides/*.jpg),
 // shown to the layout call as IMAGES — the visual quality bar for hierarchy,
@@ -93,6 +94,7 @@ function getClient() {
 }
 
 function account(userId, fn, response, t0) {
+  recordClaudeCall({ call: fn, usage: response.usage, durationMs: Date.now() - t0, userId });
   if (!userId) return;
   try {
     recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
@@ -121,11 +123,40 @@ function uploadsContent(uploads) {
   return parts;
 }
 
-function artDirectionFor(style) {
-  return style === 'minimalistic'
-    ? `This deck uses the MINIMALISTIC style. The reference prompts below show the look as single images; translate that look into layers.\n\n${MINIMALISTIC_STYLE_REFERENCE}`
-    : `This deck uses the CLASSIC editorial style. The art direction below was written for single-image slides; translate it into layers (headline/subhead/strip/cards become native text and shapes, photographs and renders become image layers or a scene background). Wherever it asks for "on-screen text quoted verbatim" on phones or screens, that text becomes NATIVE in_screen layers on a front-facing device — never words inside an image prompt.\n\n${CLASSIC_ART_DIRECTION}`;
-}
+// ONE design system. There are no user-selectable style presets: Claude
+// chooses each deck's visual language from the brief, calibrated against the
+// quality library (every ideal output the team supplied — editorial campaign
+// keynotes, 3D infographic slides and cinematic minimal slides). The craft
+// rules below hold for every deck. (Replaces the old classic/minimalistic
+// split, whose classic half hard-coded one palette.)
+const ART_DIRECTION = `══════════════════════════════════════════
+ONE HYPERBEING DESIGN SYSTEM
+══════════════════════════════════════════
+
+There are no style presets. The quality library at the top of this prompt is the full range of ideal outputs the team has signed off:
+- EDITORIAL CAMPAIGN keynotes: bold condensed display headlines that land like a copywriter's punchline, culturally specific candid human moments, real phone and app UI, a verdict line.
+- 3D INFOGRAPHIC slides: premium isometric or product renders, frosted glass, floating cards, objects that physically connect (streams, pedestals, orbits), clean data.
+- CINEMATIC MINIMAL slides: one dramatic hero render or photograph, generous negative space, a single restrained headline.
+
+Choose the visual language for THIS deck from the brief: audience, brand, subject, tone, uploaded brand assets or moodboards, and any art direction the user wrote (that always wins). Then match the closest ideal outputs in quality, specificity and voice. Never their subjects, brands, copy or numbers. A deck may combine languages where the content calls for it (an editorial campaign deck with one 3D ecosystem slide), but one deck keeps ONE palette, ONE type pairing and ONE rendering language, set by the deck design system.
+
+Tendencies, not rules (the brief wins): marketing / insight / campaign / audience slides lean editorial; ecosystem / architecture / moat / platform / data slides lean 3D infographic; openings, vision, brand moments and emotional beats lean cinematic minimal.
+
+══════════════════════════════════════════
+CRAFT RULES FOR EVERY DECK
+══════════════════════════════════════════
+
+- Background: a specific colour or scene, chosen for a stated reason that serves the slide's mood.
+- Headline: the slide's takeaway, written like a punchline, at most 2-3 short lines; one accent colour from the deck palette may mark the decisive line.
+- ONE dominant visual idea per slide: a hero photograph, a collage of real candid moments, structured columns or a grid, an isometric 3D render, or a single cinematic hero. Never several competing ideas.
+- Callout cards: exact copy, border, tint and size relative to everything else.
+- When the slide argues something, end on a verdict line (a bottom strip or closing line): declarative, surprising, final.
+- Image prompts carry at least 3 sensory details (light, material, texture, expression), a named human emotional state when people appear, culturally specific markers for the audience (places, age groups, rituals, slang), and a moment of contrast or surprise where possible. Every stat is paired with what it means.
+- Typography: always specify weight, case, colour and placement through the native text layers; display type for headlines, a calm body face for everything else.
+- Text on phones, laptops and screens (chats, captions, view counts, timestamps, dashboards) is ALWAYS native in_screen layers on a front-facing device, never words inside an image prompt.
+- If the user uploaded moodboards or reference images, say explicitly which colours, materials and mood from them carry into the slide.
+- Never mention aspect ratio in an image prompt.
+- BANNED: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart", "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization". Always find a specific, real, directed visual concept.`;
 
 // ═══ 1. Deck design system ══════════════════════════════════════════════════
 
@@ -150,7 +181,7 @@ const DECK_SYSTEM_TOOL = {
         required: ['background', 'text', 'accent'],
       },
       gradient: { type: 'object', description: 'Optional signature gradient for key words/lines: {angle, stops:[{color,pos}]}' },
-      notes: { type: 'string', description: 'One or two sentences of layout/typography conventions every slide follows.' },
+      notes: { type: 'string', description: 'The chosen visual language and why, then the layout/typography conventions every slide follows.' },
     },
     required: ['style_block', 'fonts', 'palette'],
   },
@@ -164,18 +195,18 @@ Your job now: define the deck's shared design system so every layer of every sli
 - fonts: choose the display and body fonts that do this deck justice, from the allowed list only.
 - palette: hex colors (or rgba for panel tints) for background, text, muted text, accent, accent2, and panel fill.
 - gradient: optional signature gradient used for key words.
-- notes: conventions every slide follows (e.g. "logo small top-left at 64px margin; slide numbers grey bottom-right; headlines sentence case").
+- notes: first the visual language you chose for this deck from the brief (editorial campaign, 3D infographic, cinematic minimal, or a stated mix) and why in one sentence, then the conventions every slide follows (e.g. "logo small top-left at 64px margin; slide numbers grey bottom-right; headlines sentence case").
 
 If the user uploaded brand or moodboard images, the design system must follow them. If the brief names brand colors or fonts, use them (closest allowed font).
 
 ${'{ART_DIRECTION}'}`;
 
-export async function designDeckSystem({ header, slides, brief, uploads = [], style = 'classic', userId = null }) {
-  if (MOCK_MODE) return mockDeckDesign(style);
+export async function designDeckSystem({ header, slides, brief, uploads = [], userId = null }) {
+  if (MOCK_MODE) return mockDeckDesign();
   if (FILES_MODE) {
     const outline = slides.map(sl => `${sl.index}. [${sl.type}] ${sl.title}`).join('\n');
-    const { response } = filesAgent('deck', { outline, brief: String(brief || '').slice(0, 12000), style }, {
-      tool: DECK_SYSTEM_TOOL, style, header, outline, brief: String(brief || '').slice(0, 12000), uploads: uploads.length,
+    const { response } = filesAgent('deck', { outline, brief: String(brief || '').slice(0, 12000) }, {
+      tool: DECK_SYSTEM_TOOL, header, outline, brief: String(brief || '').slice(0, 12000), uploads: uploads.length,
     });
     if (!response) throw new Error('deck design pending (files mode)');
     return sanitizeDeep(response);
@@ -191,7 +222,7 @@ export async function designDeckSystem({ header, slides, brief, uploads = [], st
   const response = await getClient().messages.create({
     model: MODEL,
     max_tokens: 2000,
-    system: systemBlocks(DECK_SYSTEM_PROMPT.replace('{ART_DIRECTION}', artDirectionFor(style))),
+    system: systemBlocks(DECK_SYSTEM_PROMPT.replace('{ART_DIRECTION}', ART_DIRECTION)),
     tools: [DECK_SYSTEM_TOOL],
     tool_choice: { type: 'tool', name: DECK_SYSTEM_TOOL.name },
     messages: [{ role: 'user', content }],
@@ -283,7 +314,7 @@ image — a generated visual element:
 
 text — real, editable text:
   {"kind":"text","id":"headline","role":"headline|subhead|body|label|stat|caption|quote","text":"Line one\\nLine two","runs":[{"text":"Line two","color":"#FF2E74"}],"font":"<font>","size":96,"weight":800,"italic":false,"uppercase":true,"color":"#FFFFFF","gradient":{...optional},"align":"left|center|right","valign":"top|middle|bottom","line_height":1.0,"letter_spacing":0,"x":..,"y":..,"w":..,"h":..}
-  - Copy is VERBATIM: every word the brief/outline specifies, spelled exactly. Use \\n for intentional line breaks. "runs" recolors/restyles substrings (e.g. last headline line in hot pink, key words in the gradient) — each run's text must appear in "text" in order.
+  - Copy is VERBATIM: every word the brief/outline specifies, spelled exactly. Use \\n for intentional line breaks. "runs" recolors/restyles substrings (e.g. the decisive headline line in the accent colour, key words in the gradient) — each run's text must appear in "text" in order.
   - Size the box for the text: h ≈ lines × size × line_height (+10%), w wide enough for the longest line. The app shrinks text that doesn't fit, but design it to fit.
   - Readability floor at 1080p canvas height: captions/labels ≥ 18px, body ≥ 24px, card text ≥ 22px, subheads ≥ 30px, headlines 60-140px. Nothing below 16px ever.
 
@@ -390,10 +421,85 @@ ART DIRECTION FOR THIS DECK
 
 Submit the layout with the submit_slide_layout tool. Layers in back-to-front order.`;
 
+// ─── Shared layout prefix + cache pre-warm ─────────────────────────────────
+// Every slide-layout call starts with the same ~28k-token prefix: the tool,
+// the quality library, the layout rules for this canvas, and the 4 reference
+// slides (cache breakpoint on the last one). All slides of a deck are designed
+// at the same moment, so on a cold cache every one of them would pay the
+// cache WRITE price (1.25×) instead of the read price (0.1×). The flow starts
+// one warm-up request as soon as the outline header arrives (well before the
+// slides start), and layout calls wait for it if it is still running.
+//
+// The warm-up must render the identical prefix, including the forced
+// tool_choice (a different tool_choice is a different cache entry). Forced
+// tool use is rejected with max_tokens: 0, so it uses max_tokens: 1 — one
+// billed output token.
+const WARM_TTL_MS = 4 * 60 * 1000; // ephemeral cache lives 5 min; stay under it
+const layoutWarmth = new Map(); // key → { at, promise }
+
+function layoutPrefix(aspectRatio) {
+  const canvas = canvasFor(aspectRatio);
+  const system = LAYOUT_SYSTEM_PROMPT
+    .replaceAll('{W}', canvas.w).replaceAll('{H}', canvas.h).replace('{M}', Math.round(canvas.w * 0.035))
+    .replace('{ART_DIRECTION}', ART_DIRECTION);
+  return {
+    system: systemBlocks(system),
+    tools: [LAYOUT_TOOL],
+    tool_choice: { type: 'tool', name: LAYOUT_TOOL.name },
+  };
+}
+
+// One design system → the cached prefix depends only on the canvas.
+const warmKey = (aspectRatio) => aspectRatio;
+
+function noteLayoutCacheUse(aspectRatio) {
+  const k = warmKey(aspectRatio);
+  const cur = layoutWarmth.get(k);
+  layoutWarmth.set(k, { at: Date.now(), promise: cur?.promise || null });
+}
+
+async function awaitLayoutWarm(aspectRatio, timeoutMs = 10000) {
+  const cur = layoutWarmth.get(warmKey(aspectRatio));
+  if (!cur?.promise) return;
+  await Promise.race([cur.promise, new Promise(r => setTimeout(r, timeoutMs))]);
+}
+
+/**
+ * Warm the slide-layout cache for this canvas. Skipped when a layout
+ * call or warm-up used the same prefix within the last 4 minutes (the cache is
+ * already warm) or in mock/files mode. Never throws.
+ */
+export function prewarmLayoutCache({ aspectRatio = '16:9', userId = null } = {}) {
+  if (MOCK_MODE || FILES_MODE) return Promise.resolve(false);
+  const k = warmKey(aspectRatio);
+  const cur = layoutWarmth.get(k);
+  if (cur && Date.now() - cur.at < WARM_TTL_MS) return cur.promise || Promise.resolve(false);
+  const t0 = Date.now();
+  const promise = getClient().messages.create({
+    model: MODEL,
+    max_tokens: 1,
+    ...layoutPrefix(aspectRatio),
+    messages: [{ role: 'user', content: [...referenceSlideBlocks(), { type: 'text', text: 'Cache warm-up: no slide yet.' }] }],
+  }).then((response) => {
+    account(userId, 'prewarmLayoutCache', response, t0);
+    logger.info('layout cache warmed', { aspectRatio, ms: Date.now() - t0, cacheWrite: response.usage?.cache_creation_input_tokens, cacheRead: response.usage?.cache_read_input_tokens });
+    return true;
+  }).catch((err) => {
+    logger.warn('layout cache warm-up failed', { errorMessage: err.message });
+    layoutWarmth.delete(k); // let the next deck try again
+    return false;
+  }).finally(() => {
+    const now = layoutWarmth.get(k);
+    if (now) layoutWarmth.set(k, { at: now.at, promise: null });
+  });
+  layoutWarmth.set(k, { at: Date.now(), promise });
+  return promise;
+}
+
 // onPartial(parts) fires while the tool call streams, with every part of the
 // layout that is already complete (extractCompletedLayoutParts) — the caller
 // starts image generation for finished image layers before the layout is done.
-export async function designSlideLayout({ slide, header, deckDesign, brief, uploads = [], aspectRatio = '16:9', style = 'classic', siblingTitles = [], instruction = null, userId = null, onPartial = null }) {
+export async function designSlideLayout({ slide, header, deckDesign, brief, uploads = [], aspectRatio = '16:9', siblingTitles = [], instruction = null, userId = null, onPartial = null }) {
   if (MOCK_MODE) {
     await new Promise(r => setTimeout(r, 300 + Math.random() * 400));
     const layout = mockLayout(slide, header, deckDesign, aspectRatio, uploads);
@@ -404,10 +510,6 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
   const _tid = requestContext.getStore()?.requestId;
   const t0 = Date.now();
   tracer.recordStep(_tid, `claude_layout_${slide.index}`, 'started', 0);
-
-  const system = LAYOUT_SYSTEM_PROMPT
-    .replaceAll('{W}', canvas.w).replaceAll('{H}', canvas.h).replace('{M}', Math.round(canvas.w * 0.035))
-    .replace('{ART_DIRECTION}', artDirectionFor(style));
 
   const text = [
     `DECK DESIGN SYSTEM (shared by every slide):\n${JSON.stringify(deckDesign || {}, null, 2)}`,
@@ -427,19 +529,22 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
 
   if (FILES_MODE) {
     const { response } = filesAgent('layout', { title: slide.title, brief: String(brief || '').slice(0, 20000), instruction, deck: deckDesign }, {
-      tool: LAYOUT_TOOL.name, canvas, style, user_message: text, uploads: uploads.length,
+      tool: LAYOUT_TOOL.name, canvas, user_message: text, uploads: uploads.length,
     });
     if (!response) throw new Error('slide layout pending (files mode)');
     const out = sanitizeDeep(response);
     onPartial?.(out);
     return out;
   }
+  // A pre-warm for this exact prefix may be in flight (all slides of a deck
+  // start together): wait for it briefly so this call reads the cache
+  // instead of writing its own copy.
+  await awaitLayoutWarm(aspectRatio);
+  noteLayoutCacheUse(aspectRatio);
   const stream = getClient().messages.stream({
     model: MODEL,
     max_tokens: 12000,
-    system: systemBlocks(system),
-    tools: [LAYOUT_TOOL],
-    tool_choice: { type: 'tool', name: LAYOUT_TOOL.name },
+    ...layoutPrefix(aspectRatio),
     messages: [{ role: 'user', content: [...referenceSlideBlocks(), { type: 'text', text }, ...uploadsContent(uploads)] }],
   });
   let json = '';
@@ -651,8 +756,8 @@ export async function editSlideLayout({ layout, previewPng, instruction, deckDes
 // A believable layered slide built from the outline, so the whole layered
 // pipeline (and the editor/exporter on top of it) runs with zero API keys.
 
-function mockDeckDesign(style) {
-  const minimal = style === 'minimalistic';
+function mockDeckDesign() {
+  const minimal = false;
   return {
     style_block: minimal
       ? 'Cinematic photographic render, single soft key light from upper-left, crushed blacks, subtle film grain, restrained near-monochrome palette with one warm accent.'
@@ -666,7 +771,7 @@ function mockDeckDesign(style) {
 
 function mockLayout(slide, header, deck, aspectRatio, uploads) {
   const { w: W, h: H } = canvasFor(aspectRatio);
-  const d = deck || mockDeckDesign('classic');
+  const d = deck || mockDeckDesign();
   const m = Math.round(W * 0.05);
   const points = (slide.key_points || []).slice(0, 3);
   const layers = [];

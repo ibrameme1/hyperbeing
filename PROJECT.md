@@ -21,7 +21,7 @@ The single most important mental model (since 2026-11): **slides are layered doc
 | Auth | JWT (15-min access + 7-day refresh) + Passport for Google/Meta/TikTok OAuth | Stateless API auth; express-session exists **only** for the OAuth redirect dance (5-min cookie) |
 | Planning/copy AI | Anthropic Claude (`claude-sonnet-4-6`) | Nova's brain: brief analysis, slide plans, image-prompt writing |
 | Image AI (classic style) | Google `gemini-3.1-flash-image-preview` — called "Nano Banana"/"NB2" throughout the code | Multimodal: accepts reference images + text, returns slide bitmaps |
-| Image AI (minimalistic style) | OpenAI `gpt-image-2` (`gptImageGeneration.js`) | The restrained "minimalistic" deck style renders better here; also powers Design Mode |
+| Image AI (Design Mode) | OpenAI `gpt-image-2` (`gptImageGeneration.js`) | Design Mode images. Slide layers use `gpt-image-2.5-flare` (`openaiImages.js`) |
 | Payments | Stripe (subscriptions + webhook) | Credit economy defined in `backend/config/credits.js` |
 | Email | Resend (`emailService.js`) | Transactional email (welcome, receipts, "deck ready") |
 | Observability | Sentry (both ends), PostHog (both ends), plus a home-grown logger/metrics/tracer + admin dashboards | Belt and suspenders; the home-grown stack persists logs into SQLite |
@@ -53,13 +53,13 @@ backend/
   services/
     claudeAgent.js     All Claude calls + the giant Nova system prompts (~1160 lines)
     imageGeneration.js Gemini/NB2 slide image generation + retry + SVG placeholder fallback
-    gptImageGeneration.js  OpenAI image calls (minimalistic slides + Design Mode)
+    gptImageGeneration.js  OpenAI image calls (Design Mode)
     designPromptGenerator.js  Nova crafts Design Mode prompts (forced tool call)
     promptGenerator.js Prompt Generator conversation (system prompt in backend/prompts/)
     stripeService.js   Credit ledger, plans, deduct/refund/reset, admin checks
     emailService.js    Resend templates
     logger.js / metrics.js / tracer.js / posthogClient.js  Observability
-    minimalisticExamples.js  Few-shot exemplar prompts for the minimalistic style
+    minimalisticExamples.js  The team's cinematic-minimal exemplar prompts (part of the layout agent's quality library)
   prompts/             Markdown system prompts loaded from disk (prompt generator, design mode)
 frontend/
   src/pages/           Route-level components (Dashboard, PresentationPage, Homepage, Pricing…)
@@ -88,7 +88,7 @@ PRODUCT.md             Product positioning + design principles — read it befor
    │     prompt_sessions, feedback, analytics_events, app_logs
    ├── Anthropic API (claude-sonnet-4-6) — planning, prompts, web_search tool
    ├── Google Gemini image API ("Nano Banana") — classic-style slide images
-   ├── OpenAI images API (gpt-image-2) — minimalistic slides + Design Mode
+   ├── OpenAI images API (gpt-image-2.5-flare slide layers; gpt-image-2 Design Mode)
    ├── Stripe — checkout, webhook at /api/billing/webhook (raw body, sig-verified)
    ├── Resend — transactional email
    └── PostHog / Sentry
@@ -115,6 +115,12 @@ There is no alternate flow anymore: the in-presentation chat path (`POST /:id/me
 - **Saving** is a debounced autosave: `PATCH /:id/slides/:index/layout` with the whole edited layout. The server never trusts it — `services/layoutEdit.js#applyLayoutEdit` starts from its own copy and takes only whitelisted, re-normalized fields for known layer ids; new layers are plain text/shapes or `copy_of` duplicates (the only way a file can appear twice), so a client can't reference files it doesn't own. Removed layers move to `layout.trash` (undo after a save still works; `layoutFiles` counts trash, so the sweep keeps their files). The flattened preview is re-rendered; the first save of an editing session pushes a "Manual edits" version. Free (no model calls).
 - **AI edits** ("Describe a change", or "Change this element with AI" in the inspector) reuse `POST /:id/slides/:index/regenerate`: for a layered slide `runLayeredEdit` renders the current slide, `layoutAgent.editSlideLayout` returns layer operations (`update`/`remove`/`add`/`regenerate`/`reorder`/`background`, forced tool `submit_slide_edits`), `layoutEdit.applyEditOps` applies them (max 4 image regenerations), and `buildLayeredSlide({ prebuilt: true })` rebuilds — only layers whose file was cleared get a new image; everything else (including the user's manual edits) is kept, then fit → visual review → guards → preview. Same edit credits as before; failure ⇒ slide untouched, refund, `slide_edit_failed` SSE. The outgoing layout + preview go to version history.
 - **Versions of layered slides** store their layout (`slide_versions.layout`), so History → restore brings back every editable layer. Version pruning, slide/deck deletion, retry and both orphan sweeps treat layer files referenced by versions as in use.
+
+### Design system and AI cost tracking
+
+- **One design system.** There are no user-facing style presets. Deck design and slide layout prompts carry one art direction (`layoutAgent.ART_DIRECTION`): Claude chooses each deck's visual language from the brief and the user's uploads, calibrated against the quality library of the team's ideal outputs, and records the choice in the deck design `notes`.
+- **Actual cost per call.** `services/aiCosts.js` writes a row to `ai_costs` for every Claude call (input, cache write, cache read, output tokens, web searches) and every image call (text/image input and output tokens), priced from one table (`CLAUDE_PRICES`, `IMAGE_PRICES`; image models without a published price are flagged `estimated`). Attribution (user, deck, slide, operation) flows through AsyncLocalStorage: routes use `costScope(operation)`, `runFullFlow` adds the deck id, `buildLayeredSlide` adds the slide index. Reports: admin Analytics → **Costs** tab and `scripts/cost-report.js` (both built on `services/costReport.js`).
+- **Layout cache pre-warm.** All slides of a deck start their layout calls at once; without a warm cache each would pay the 1.25× cache-write price on the ~28k-token shared prefix. `prewarmLayoutCache` sends the identical prefix once when the outline header arrives (alongside deck design), and layout calls wait for it.
 
 ### SSE / real-time design
 
@@ -158,7 +164,7 @@ Safe to change casually: marketing pages (`Homepage`, `Pricing`, `ServicePage`, 
 
 ## Things that will trip you up
 
-- **"Nano Banana" / "NB2" = Gemini image generation.** The README's "Imagen 3" is stale. Minimalistic-style decks don't use Gemini at all — they go to OpenAI.
+- **"Nano Banana" / "NB2" = Gemini image generation.** The README's "Imagen 3" is stale. Layered decks don't use Gemini at all — their images come from OpenAI.
 - **Placeholder-as-error convention:** image generators return an SVG data-URL placeholder instead of throwing. Forgetting an `isPlaceholderImage()` check makes failures look like successes (blank gradient slides) and skips refunds.
 - **`slides_data` slide `index` ≠ array position.** Always `find(s => s.index === …)`, never index into the array.
 - **The apiLimiter's per-user keying never works** — it's mounted before auth, so it's always IP-keyed. Per-route limiters mounted after `authenticateToken` do key by user.

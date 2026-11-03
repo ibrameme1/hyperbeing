@@ -5,7 +5,7 @@
 //
 // Usage (from backend/):
 //   node scripts/layered-benchmark.js <briefs.json> [outDir]
-// briefs.json: { "style": "classic", "slides": [{ "title": "...", "brief": "full art-directed prompt" }, ...] }
+// briefs.json: { "slides": [{ "title": "...", "brief": "full art-directed prompt" }, ...] }  (one design system — no style)
 //
 // Needs ANTHROPIC_API_KEY (layouts) and OPENAI_API_KEY (images). With either
 // missing/"demo", that half runs in mock mode and its timings are not real.
@@ -61,11 +61,10 @@ const uploads = (spec.uploads || []).map(u => ({
   type: 'image', category: u.category || 'branding', name: path.basename(u.path), mimeType: 'image/png',
   data: `data:image/png;base64,${fs.readFileSync(path.resolve(path.dirname(briefsPath), u.path)).toString('base64')}`,
 }));
-const style = spec.style || 'classic';
 const slides = spec.slides.map((s, i) => ({ index: i, type: s.type || 'content', title: s.title, key_points: [], brief: s.brief }));
 const claudeMock = !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'demo';
 
-console.log(`layered benchmark: ${slides.length} slide(s), style=${style}, images=${IMAGE_MOCK_MODE ? 'MOCK' : `${LAYER_IMAGE_MODEL} (backgrounds ${LAYER_IMAGE_QUALITY.background}, objects ${LAYER_IMAGE_QUALITY.objects})`}, claude=${claudeMock ? 'MOCK' : 'real'}`);
+console.log(`layered benchmark: ${slides.length} slide(s), images=${IMAGE_MOCK_MODE ? 'MOCK' : `${LAYER_IMAGE_MODEL} (backgrounds ${LAYER_IMAGE_QUALITY.background}, objects ${LAYER_IMAGE_QUALITY.objects})`}, claude=${claudeMock ? 'MOCK' : 'real'}`);
 
 const t0 = Date.now();
 const header = { presentation_title: spec.title || 'Benchmark deck' };
@@ -73,14 +72,14 @@ const deckBrief = slides.map(s => `SLIDE ${s.index}: ${s.brief}`).join('\n\n');
 const tDeck = Date.now();
 const deckDesign = replayDir
   ? JSON.parse(fs.readFileSync(path.join(replayDir, 'deck.json'), 'utf8'))
-  : await designDeckSystem({ header, slides, brief: deckBrief, style, uploads });
+  : await designDeckSystem({ header, slides, brief: deckBrief, uploads });
 const deckMs = Date.now() - tDeck;
 fs.writeFileSync(path.join(outDir, 'deck.json'), JSON.stringify(deckDesign, null, 2));
 console.log(`deck design: ${deckMs} ms — fonts ${JSON.stringify(deckDesign.fonts)}`);
 
 const results = await Promise.all(slides.map(async (slide) => {
   const r = await buildLayeredSlide({
-    presentationId: 'benchmark', slide, header, deckDesign, brief: slide.brief, style, uploads, returnRaw: true,
+    presentationId: 'benchmark', slide, header, deckDesign, brief: slide.brief, uploads, returnRaw: true,
     layoutOverride: replayDir ? JSON.parse(fs.readFileSync(path.join(replayDir, `slide_${slide.index}.raw.json`), 'utf8')) : null,
     siblingTitles: slides.map(s => s.title),
   });
@@ -116,7 +115,7 @@ const results = await Promise.all(slides.map(async (slide) => {
 
 const summary = {
   when: new Date().toISOString(),
-  style, image_model: IMAGE_MOCK_MODE ? 'mock' : LAYER_IMAGE_MODEL, image_quality: LAYER_IMAGE_QUALITY,
+  image_model: IMAGE_MOCK_MODE ? 'mock' : LAYER_IMAGE_MODEL, image_quality: LAYER_IMAGE_QUALITY,
   claude: claudeMock ? 'mock' : 'claude-sonnet-4-6',
   deck_design_ms: deckMs, wall_ms: Date.now() - t0, slides: results,
 };

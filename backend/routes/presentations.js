@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { withCostContext } from '../services/aiCosts.js';
 import jwt from 'jsonwebtoken';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../database.js';
@@ -9,7 +10,7 @@ import { buildLayeredSlide, slideFiles, loadStoredFile } from '../services/layer
 import { applyLayoutEdit, applyEditOps } from '../services/layoutEdit.js';
 import { renderLayoutPreview } from '../services/layoutPreview.js';
 import { layoutFiles } from '../services/slideLayout.js';
-import { designDeckSystem, editSlideLayout } from '../services/layoutAgent.js';
+import { designDeckSystem, editSlideLayout, prewarmLayoutCache } from '../services/layoutAgent.js';
 import { buildPptx } from '../services/pptxExport.js';
 import * as imageStore from '../services/imageStore.js';
 import {
@@ -52,13 +53,13 @@ const FALLBACK_DECK_DESIGN = {
   palette: { background: '#000000', text: '#FFFFFF', accent: '#FF2E74' },
 };
 
-async function ensureDeckDesign({ db, presentationId, header, slides, brief, uploads, style, userId, pending = null }) {
+async function ensureDeckDesign({ db, presentationId, header, slides, brief, uploads, userId, pending = null }) {
   if (header?.design) return header.design;
   let design;
   try {
     // `pending` = a design call already started (runFullFlow kicks it off the
     // moment the outline header streams in, overlapping the rest of the plan).
-    design = (pending && await pending.catch(() => null)) || await designDeckSystem({ header, slides, brief, uploads, style, userId });
+    design = (pending && await pending.catch(() => null)) || await designDeckSystem({ header, slides, brief, uploads, userId });
   } catch (err) {
     logger.error('deck design failed — using fallback design system', { presentationId, errorMessage: err.message });
     design = FALLBACK_DECK_DESIGN;
@@ -88,10 +89,9 @@ async function loadDeckContext(db, pres, userId) {
     design: plan.design,
   };
   const brief = firstUserMsg?.content || header.presentation_title || '';
-  const style = pres.style || 'classic';
-  const deckDesign = await ensureDeckDesign({ db, presentationId: pres.id, header, slides, brief, uploads, style, userId });
+  const deckDesign = await ensureDeckDesign({ db, presentationId: pres.id, header, slides, brief, uploads, userId });
   return {
-    header, deckDesign, brief, uploads, style,
+    header, deckDesign, brief, uploads,
     aspectRatio: pres.aspect_ratio || '16:9',
     siblingTitles: [...slides].sort((a, b) => a.index - b.index).map(s => s.title).filter(Boolean),
   };
@@ -167,9 +167,15 @@ function listSlideVersionMeta(db, presentationId, slideIndex) {
 }
 
 const VALID_ASPECT_RATIOS = ['16:9', '9:16', '1:1', '4:3'];
-const VALID_STYLES = ['classic', 'minimalistic'];
 
 const router = Router();
+
+// Attributes every AI call made while handling this request — including the
+// detached background job it starts — to the user, deck and operation
+// (services/aiCosts.js → ai_costs table).
+function costScope(operation) {
+  return (req, res, next) => withCostContext({ userId: req.user?.id, presentationId: req.params.id, operation }, next);
+}
 
 // In-memory SSE client registry: presentationId → Set<res>
 const sseRegistry = new Map();
@@ -443,7 +449,7 @@ router.get('/:id/slides/:index/versions/:versionId/image', (req, res) => {
 });
 
 // ─── Analyze brief and return contextual questions ─────────────────────────
-router.post('/analyze', authenticateToken, analyzeLimiter, async (req, res) => {
+router.post('/analyze', authenticateToken, costScope('analyze'), analyzeLimiter, async (req, res) => {
   const { message, attachments = [] } = req.body;
   if (!message?.trim() && attachments.length === 0) {
     return res.status(400).json({ error: 'Message or attachment required' });
@@ -485,8 +491,11 @@ router.post('/analyze', authenticateToken, analyzeLimiter, async (req, res) => {
 });
 
 // ─── Create presentation + kick off async full flow ───────────────────────
-router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
-  const { message, attachments = [], aspectRatio = '16:9', style = 'classic' } = req.body;
+router.post('/', authenticateToken, costScope('deck_create'), createPresentationLimiter, (req, res) => {
+  // `style` (classic / minimalistic) is gone: one design system, where Claude
+  // picks each deck's look from the brief. Old clients may still send it; it
+  // is ignored.
+  const { message, attachments = [], aspectRatio = '16:9' } = req.body;
   if (!message?.trim() && attachments.length === 0) {
     return res.status(400).json({ error: 'Message or attachment required' });
   }
@@ -501,10 +510,6 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
   if (!VALID_ASPECT_RATIOS.includes(aspectRatio)) {
     return res.status(400).json({ error: `Invalid aspect ratio. Must be one of: ${VALID_ASPECT_RATIOS.join(', ')}` });
   }
-  if (!VALID_STYLES.includes(style)) {
-    return res.status(400).json({ error: `Invalid style. Must be one of: ${VALID_STYLES.join(', ')}` });
-  }
-
   try { checkTokenBudget(req.user.id); } catch (err) {
     if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
     throw err;
@@ -521,7 +526,7 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
   db.prepare(
     `INSERT INTO presentations (id, user_id, title, status, aspect_ratio, style)
      VALUES (?, ?, 'Untitled Presentation', 'processing', ?, ?)`
-  ).run(id, req.user.id, aspectRatio, style);
+  ).run(id, req.user.id, aspectRatio, 'auto'); // style column kept (append-only schema); always 'auto' now
 
   db.prepare(
     `INSERT INTO messages (id, presentation_id, role, content, attachments)
@@ -538,7 +543,7 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
 
   const userId = req.user.id;
   const _traceId = requestContext.getStore()?.requestId;
-  runFullFlow(id, message, attachments, userId, _traceId, style).catch(err => {
+  withCostContext({ presentationId: id }, () => runFullFlow(id, message, attachments, userId, _traceId)).catch(err => {
     logger.error('slide flow failed', { errorMessage: err.message, stack: err.stack?.split('\n').slice(0,4).join('\n') });
     broadcast(id, { type: 'error', message: err.message });
     const errDb = getDb();
@@ -547,17 +552,16 @@ router.post('/', authenticateToken, createPresentationLimiter, (req, res) => {
   });
 });
 
-async function runFullFlow(presentationId, message, attachments, userId = null, traceId = null, style = 'classic') {
+async function runFullFlow(presentationId, message, attachments, userId = null, traceId = null) {
   const db = getDb();
   const _t = Date.now();
   tracer.recordStep(traceId, 'full_flow', 'started', 0);
 
   broadcast(presentationId, { type: 'plan_generating' });
 
-  const presRow = db.prepare('SELECT aspect_ratio, style FROM presentations WHERE id = ?').get(presentationId);
+  const presRow = db.prepare('SELECT aspect_ratio FROM presentations WHERE id = ?').get(presentationId);
   const aspectRatio = presRow?.aspect_ratio || '16:9';
   // Prefer the persisted style (source of truth) but fall back to the argument.
-  const deckStyle = presRow?.style || style || 'classic';
 
   const firstUserMsg = db
     .prepare(`SELECT attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`)
@@ -598,7 +602,10 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
       // Start the deck design system now, in parallel with the rest of the
       // outline streaming — it only needs the header + brief, and it is on the
       // critical path of every slide.
-      pendingDeckDesign = designDeckSystem({ header: h, slides: [], brief: message, uploads: allImages, style: deckStyle, userId });
+      pendingDeckDesign = designDeckSystem({ header: h, slides: [], brief: message, uploads: allImages, userId });
+      // Warm the slide-layout prompt cache now, so the parallel slide layouts
+      // that start after the outline read it instead of each writing it.
+      if ((h.total_slides || 0) > 1) prewarmLayoutCache({ aspectRatio, userId });
       pendingDeckDesign.catch(() => {}); // awaited (and failure-handled) in ensureDeckDesign
 
       // Persist header message and update status to generating
@@ -667,7 +674,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
   // that every layer of every slide is generated against — the consistency
   // anchor that makes separately generated layers look like one designer's.
   const deckDesign = await ensureDeckDesign({
-    db, presentationId, header, slides, brief: message, uploads: allImages, style: deckStyle, userId, pending: pendingDeckDesign,
+    db, presentationId, header, slides, brief: message, uploads: allImages, userId, pending: pendingDeckDesign,
   });
   const siblingTitles = [...slides].sort((a, b) => a.index - b.index).map(s => s.title);
 
@@ -705,7 +712,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
 
     const promise = buildLayeredSlide({
       presentationId, slide, header, deckDesign, brief: message, uploads: allImages, userId,
-      aspectRatio, style: deckStyle, siblingTitles,
+      aspectRatio, siblingTitles,
       onLayout: (layout) => broadcast(presentationId, { type: 'slide_layout', index: slide.index, layout }),
       onLayer: (layer) => broadcast(presentationId, { type: 'slide_layer_ready', index: slide.index, layer }),
     }).then(result => {
@@ -895,7 +902,7 @@ router.get('/:id/events', (req, res) => {
 });
 
 // ─── Regenerate a single slide (user-described edit → direct to Gemini) ──────
-router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res) => {
+router.post('/:id/slides/:index/regenerate', authenticateToken, costScope('slide_edit'), async (req, res) => {
   const { instruction, attachments: reqBodyAttachments = [] } = req.body;
   if (!instruction?.trim()) return res.status(400).json({ error: 'Please describe what you\'d like to change about this slide.' });
   const attachmentsErr = validateAttachments(reqBodyAttachments);
@@ -954,7 +961,7 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, async (req, res)
   res.json({ message: 'Editing…', index: targetIndex });
 
   if (slideForPrompt.layout) {
-    runLayeredEdit({ db, pres, req, targetIndex, instruction: instruction.trim(), attachments: userUploads, editResult });
+    withCostContext({ operation: 'ai_edit', slideIndex: targetIndex }, () => runLayeredEdit({ db, pres, req, targetIndex, instruction: instruction.trim(), attachments: userUploads, editResult }));
     return;
   }
 
@@ -1282,7 +1289,7 @@ router.post('/:id/slides/:index/versions/:versionId/restore', authenticateToken,
 });
 
 // ─── Retry a failed slide (re-run original prompt, no changes) ───────────────
-router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
+router.post('/:id/slides/:index/retry', authenticateToken, costScope('retry'), async (req, res) => {
   const db = getDb();
   const pres = db
     .prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?')
@@ -1349,6 +1356,7 @@ router.post('/:id/slides/:index/retry', authenticateToken, async (req, res) => {
   (async () => {
     try {
       const ctx = await loadDeckContext(db, pres, req.user.id);
+    if (slide_indexes.length > 1) prewarmLayoutCache({ aspectRatio: ctx.aspectRatio, userId: req.user.id });
       const result = await buildLayeredSlide({
         presentationId: req.params.id,
         slide: { index: slide.index, type: slide.type, title: slide.title, subtitle: slide.subtitle, key_points: slide.key_points, speaker_note: slide.speaker_note },
@@ -1465,7 +1473,7 @@ router.patch('/:id/title', authenticateToken,
 );
 
 // ─── Suggest title via AI ─────────────────────────────────────────────────
-router.post('/:id/suggest-title', authenticateToken, async (req, res) => {
+router.post('/:id/suggest-title', authenticateToken, costScope('suggest_title'), async (req, res) => {
   const db = getDb();
   const pres = db.prepare('SELECT * FROM presentations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!pres) return res.status(404).json({ error: 'Presentation not found or you don\'t have access to it.' });
@@ -1487,13 +1495,10 @@ router.post('/:id/suggest-title', authenticateToken, async (req, res) => {
 });
 
 // ─── Add more slides ──────────────────────────────────────────────────────
-router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) => {
-  const { description, count = 1, attachments: reqAttachments = [], style } = req.body;
+router.post('/:id/add-slides', authenticateToken, costScope('add_slides'), addSlidesLimiter, (req, res) => {
+  const { description, count = 1, attachments: reqAttachments = [] } = req.body; // `style` ignored (one design system)
   if (!description?.trim() || typeof description !== 'string') {
     return res.status(400).json({ error: 'Please describe the slides you\'d like to add.' });
-  }
-  if (style !== undefined && !VALID_STYLES.includes(style)) {
-    return res.status(400).json({ error: `Invalid style. Must be one of: ${VALID_STYLES.join(', ')}` });
   }
   if (description.length > 10_000) {
     return res.status(400).json({ error: 'Description too long (max 10,000 characters)' });
@@ -1525,7 +1530,6 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
   const aspectRatio = pres.aspect_ratio || '16:9';
   // New slides default to the deck's existing style so added slides match the
   // look of the original deck; an explicit request body can still override it.
-  const addStyle = style || pres.style || 'classic';
   const slidePlan = pres.slide_plan ? JSON.parse(pres.slide_plan) : {};
 
   // For fixed counts we know the cost up front — check affordability and
@@ -1624,6 +1628,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
       // match the rest of the deck.
       const promptedSlideDefs = newSlideDefs;
       const deckCtx = await loadDeckContext(db, pres, req.user.id);
+      if (promptedSlideDefs.length > 1) prewarmLayoutCache({ aspectRatio: deckCtx.aspectRatio, userId: req.user.id });
       const addUploads = [...extraImages, ...deckCtx.uploads].slice(0, 8);
       const addSiblings = [...deckCtx.siblingTitles, ...newSlideDefs.map(d => d.title)];
 
@@ -1710,7 +1715,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
               // The add-slides request is the most specific direction for these slides.
               brief: `${deckCtx.brief}\n\nADD-SLIDES REQUEST: ${description}`,
               uploads: addUploads, userId: req.user.id,
-              aspectRatio, style: addStyle, siblingTitles: addSiblings,
+              aspectRatio, siblingTitles: addSiblings,
               onLayout: (layout) => broadcast(req.params.id, { type: 'slide_layout', index: slideDef.index, layout }),
               onLayer: (layer) => broadcast(req.params.id, { type: 'slide_layer_ready', index: slideDef.index, layer }),
             };
@@ -1814,7 +1819,7 @@ router.post('/:id/add-slides', authenticateToken, addSlidesLimiter, (req, res) =
 });
 
 // ─── Unlock previously-locked slides (generate images from stored prompts) ──
-router.post('/:id/unlock-slides', authenticateToken,
+router.post('/:id/unlock-slides', authenticateToken, costScope('unlock'),
   validate({ slide_indexes: isArray(50, (v) => Number.isInteger(v) ? null : 'Must be an integer') }),
   async (req, res) => {
     const { slide_indexes } = req.body;
