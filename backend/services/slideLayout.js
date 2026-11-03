@@ -604,6 +604,18 @@ export function estimateTextHeight(layer) {
   return { lines: lines.length, height: lines.length * layer.size * layer.line_height, widest };
 }
 
+// The area a text layer's glyphs actually cover (boxes are often far wider
+// than a short word like "Kiosk"). Respects align/valign.
+export function inkBox(t) {
+  if (t.kind !== 'text' || !t.text) return { x: t.x, y: t.y, w: t.w, h: t.h };
+  const { lines, widest } = estimateTextHeight(t);
+  const w = Math.min(t.w, Math.ceil(widest) + 4);
+  const h = Math.min(t.h, Math.ceil(lines * t.size * (t.line_height || 1.2)));
+  const x = t.align === 'center' ? t.x + (t.w - w) / 2 : t.align === 'right' ? t.x + t.w - w : t.x;
+  const y = t.valign === 'middle' ? t.y + (t.h - h) / 2 : t.valign === 'bottom' ? t.y + t.h - h : t.y;
+  return { id: t.id, x: Math.round(x), y: Math.round(y), w, h };
+}
+
 function overlaps(a, b) {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
@@ -663,12 +675,20 @@ export function fitLayout(layout) {
     if (est.lines > explicitLines && ['label', 'caption', 'kicker'].includes(l.role) && String(l.text).length <= 60) {
       const widest = Math.max(...String(l.text).split('\n').map(t => measure(l, t)));
       const needed = Math.ceil(widest * 1.06 + (l.align === 'center' ? 32 : 4));
-      if (needed > l.w && l.x + needed <= rightLimit) {
+      // Centred text grows around its centre; never widen into other text.
+      const grow0 = needed - l.w;
+      // (If growing around the centre would cross the margin, grow rightwards.)
+      let nx = l.align === 'center' ? Math.round(l.x - grow0 / 2) : l.x;
+      if (nx < (onScreen ? 0 : margin) || nx + needed > rightLimit) nx = l.x;
+      const wider = { x: nx, y: l.y, w: needed, h: l.h };
+      const blocked = layout.layers.some(o => o !== l && o.kind === 'text' && !o.in_screen && overlaps(wider, o) && !overlaps(l, o));
+      if (needed > l.w && nx >= (onScreen ? 0 : margin) && nx + needed <= rightLimit && !blocked) {
         const old = { x: l.x, y: l.y, w: l.w, h: l.h };
         const grow = needed - l.w;
+        l.x = nx;
         l.w = needed;
         for (const sh of layout.layers) {
-          if (sh.kind === 'shape' && Math.abs(sh.x - old.x) <= 4 && Math.abs(sh.y - old.y) <= 4 && Math.abs(sh.w - old.w) <= 8 && Math.abs(sh.h - old.h) <= 8) sh.w += grow;
+          if (sh.kind === 'shape' && Math.abs(sh.x - old.x) <= 4 && Math.abs(sh.y - old.y) <= 4 && Math.abs(sh.w - old.w) <= 8 && Math.abs(sh.h - old.h) <= 8) { sh.x += l.x - old.x; sh.w += grow; }
         }
         est = estimateTextHeight(l);
         warnings.push(`label "${l.id}" widened to fit on one line`);
@@ -879,7 +899,10 @@ export function resolveCollisions(layout) {
   const { canvas } = layout;
   const moved = [];
   const texts = () => layout.layers.filter(l => l.kind === 'text' && !l.screen_of && !l.in_screen && !l.rotation);
-  const rank = (l) => (PRIORITY[l.role] ?? 4) * 10000 + l.y; // ties: higher on the slide wins
+  // A bare page number ("01") is the least important text on any slide — it
+  // moves, not the footer line it brushes against.
+  const isPageNumber = (l) => /^\s*\d{1,3}\s*$/.test(String(l.text || ''));
+  const rank = (l) => (isPageNumber(l) ? 99 : (PRIORITY[l.role] ?? 4)) * 10000 + l.y; // ties: higher on the slide wins
 
   const groupOf = (t) => {
     const cards = layout.layers.filter(s => s.kind === 'shape' && s.shape === 'rect' && contains(s, t) && s.w < canvas.w * 0.95 && s.h < canvas.h * 0.6);
@@ -912,6 +935,9 @@ export function resolveCollisions(layout) {
         ].sort((a, b) => Math.abs(a.dx) + Math.abs(a.dy) - (Math.abs(b.dx) + Math.abs(b.dy)));
         const margin = Math.round(canvas.w * 0.02);
         const fits = (c) => {
+          // Bounded corrections — step aside by about its own size, never a
+          // long jump that lands the text on the artwork.
+          if (Math.abs(c.dy) > Math.max(canvas.h * 0.12, g.h + 60) || Math.abs(c.dx) > Math.max(canvas.w * 0.2, g.w + 60)) return false;
           const nb = { x: g.x + c.dx, y: g.y + c.dy, w: g.w, h: g.h };
           if (nb.x < margin * 0.5 || nb.y < margin * 0.5 || nb.x + nb.w > canvas.w - margin * 0.5 || nb.y + nb.h > canvas.h - margin * 0.5) return false;
           return !others.some(o => overlaps(nb, o) && !contains(o, nb));
@@ -1024,7 +1050,8 @@ export function resolveImageOverlaps(layout) {
   // apart (it used to push the rider/stream piece off the canvas). Leave them.
   for (const img of layout.layers.filter(l => l.kind === 'image' && !['effect', 'screen_image', 'connector'].includes(l.role) && !l.screen_of && !l.merged?.length)) {
     const group = [img, ...layout.layers.filter(l => l.screen_of === img.id)];
-    const texts = layout.layers.filter(t => isObstacleText(t) && !group.includes(t));
+    // Judge against the glyphs, not the (often much wider) text boxes.
+    const texts = layout.layers.filter(t => isObstacleText(t) && !group.includes(t)).map(inkBox);
     const conflicts = texts.filter(t => overlaps(t, img) && area(inter(t, img)) > 0.05 * area(t));
     if (!conflicts.length) continue;
 

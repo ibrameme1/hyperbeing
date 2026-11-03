@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import fs from 'fs';
 import path from 'path';
@@ -66,7 +67,25 @@ function systemBlocks(text) {
     { type: 'text', text },
   ];
 }
-const MOCK_MODE = !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'demo';
+// CLAUDE_PROVIDER=files (TEST/BENCHMARK ONLY): instead of calling the API,
+// every Claude request is written to $CLAUDE_FILES_DIR/requests/<kind>_<key>.*
+// and the response is read from $CLAUDE_FILES_DIR/<kind>_<key>.json once a
+// person (or another model) has written it. Lets the pipeline be exercised
+// without spending API credits; never enable in production.
+const FILES_MODE = process.env.CLAUDE_PROVIDER === 'files';
+const MOCK_MODE = !FILES_MODE && (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'demo');
+
+function filesAgent(kind, keyMaterial, request, { png = null } = {}) {
+  const dir = process.env.CLAUDE_FILES_DIR || 'claude-files';
+  const key = crypto.createHash('sha1').update(JSON.stringify(keyMaterial)).digest('hex').slice(0, 12);
+  const answer = path.join(dir, `${kind}_${key}.json`);
+  if (fs.existsSync(answer)) return { key, response: JSON.parse(fs.readFileSync(answer, 'utf8')) };
+  fs.mkdirSync(path.join(dir, 'requests'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'requests', `${kind}_${key}.json`), JSON.stringify(request, null, 2));
+  if (png) fs.writeFileSync(path.join(dir, 'requests', `${kind}_${key}.png`), png);
+  logger.warn('claude files mode: response missing', { kind, key, expected: answer });
+  return { key, response: null };
+}
 let client;
 function getClient() {
   if (!client) client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -153,6 +172,14 @@ ${'{ART_DIRECTION}'}`;
 
 export async function designDeckSystem({ header, slides, brief, uploads = [], style = 'classic', userId = null }) {
   if (MOCK_MODE) return mockDeckDesign(style);
+  if (FILES_MODE) {
+    const outline = slides.map(sl => `${sl.index}. [${sl.type}] ${sl.title}`).join('\n');
+    const { response } = filesAgent('deck', { outline, brief: String(brief || '').slice(0, 12000), style }, {
+      tool: DECK_SYSTEM_TOOL, style, header, outline, brief: String(brief || '').slice(0, 12000), uploads: uploads.length,
+    });
+    if (!response) throw new Error('deck design pending (files mode)');
+    return sanitizeDeep(response);
+  }
   const _tid = requestContext.getStore()?.requestId;
   const t0 = Date.now();
   tracer.recordStep(_tid, 'claude_deck_design', 'started', 0);
@@ -398,6 +425,15 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
     uploads.length ? `\nThe user uploaded ${uploads.length} image(s), shown below as UPLOAD 0..${uploads.length - 1}. Use them wherever applicable: place uploaded logos natively ("logo" with source "upload"), and attach uploads as refs to the layers they should guide.` : null,
   ].filter(v => v !== null).join('\n');
 
+  if (FILES_MODE) {
+    const { response } = filesAgent('layout', { title: slide.title, brief: String(brief || '').slice(0, 20000), instruction, deck: deckDesign }, {
+      tool: LAYOUT_TOOL.name, canvas, style, user_message: text, uploads: uploads.length,
+    });
+    if (!response) throw new Error('slide layout pending (files mode)');
+    const out = sanitizeDeep(response);
+    onPartial?.(out);
+    return out;
+  }
   const stream = getClient().messages.stream({
     model: MODEL,
     max_tokens: 12000,
@@ -481,6 +517,11 @@ export async function reviewSlideLayout({ layout, previewPng, warnings = [], use
       return rest;
     }),
   };
+  if (FILES_MODE) {
+    const { key, response } = filesAgent('review', compact, { layers: compact, warnings }, { png: previewPng });
+    if (!response) return { verdict: `review pending (files mode, key ${key})`, fixes: [] };
+    return sanitizeDeep(response);
+  }
   const response = await getClient().messages.create({
     model: MODEL,
     max_tokens: 3000,

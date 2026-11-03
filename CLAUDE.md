@@ -28,6 +28,8 @@ cd backend && npm test
 # One-off scripts
 node backend/scripts/topup-free-users.js
 node backend/scripts/layered-benchmark.js briefs.json out/   # real timings/usage for layered slides
+# Credit-free testing: CLAUDE_PROVIDER=files CLAUDE_FILES_DIR=dir (Claude requests → dir/requests, answers read from dir/<kind>_<key>.json)
+#                      LAYER_IMAGE_PROVIDER=files LAYER_IMAGE_FILES_DIR=dir (same for layer images). Test-only; never in prod.
 python3 scripts/generate_markdown_mirrors.py   # regenerates frontend/public/**/index.md
 ```
 

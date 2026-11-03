@@ -380,7 +380,7 @@ describe('resolveCollisions', () => {
   });
 });
 
-import { resolveImageOverlaps } from '../services/slideLayout.js';
+import { resolveImageOverlaps, inkBox } from '../services/slideLayout.js';
 describe('resolveImageOverlaps', () => {
   it('shrinks/moves a phone (and its screen text) off the headline, keeping it on the bottom edge', () => {
     const l = normalizeLayout({ layers: [
@@ -393,7 +393,8 @@ describe('resolveImageOverlaps', () => {
     const moved = resolveImageOverlaps(l);
     const [h, phone, m] = l.layers;
     expect(moved.length).toBe(1);
-    const clear = phone.y >= h.y + h.h || phone.x >= h.x + h.w || phone.x + phone.w <= h.x;
+    const ink = inkBox(h);                                       // the glyphs, not the wider box
+    const clear = phone.y >= ink.y + ink.h || phone.x >= ink.x + ink.w || phone.x + phone.w <= ink.x;
     expect(clear).toBe(true);                                    // headline clear (below or beside)
     expect(phone.y + phone.h).toBeLessThanOrEqual(1081);         // still on canvas
     expect(m.x).toBeGreaterThanOrEqual(phone.x);                 // child travelled with it
