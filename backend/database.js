@@ -175,9 +175,9 @@ export function initDatabase() {
     db.exec('ALTER TABLE presentations ADD COLUMN adding_slides INTEGER DEFAULT 0');
   } catch { /* already exists */ }
 
-  // Migrate: image-prompt style — "classic" (busy editorial 5-layer) vs
-  // "minimalistic" (cinematic, restrained, one-idea-per-slide). Drives which
-  // system prompt claudeAgent uses when generating nano_banana_prompts.
+  // Migrate: image-prompt style. Historically "classic" vs "minimalistic";
+  // since 2026-11 there is ONE design system (Claude picks each deck's look
+  // from the brief) and new decks store 'auto'. Column kept (append-only).
   try {
     db.exec("ALTER TABLE presentations ADD COLUMN style TEXT DEFAULT 'classic'");
   } catch { /* already exists */ }
@@ -278,6 +278,35 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_design_gen_user ON design_generations(user_id);
     CREATE INDEX IF NOT EXISTS idx_design_gen_batch ON design_generations(batch_id);
     CREATE INDEX IF NOT EXISTS idx_design_gen_status ON design_generations(status);
+  `);
+
+  // Actual AI spend: one row per Claude / image-model call (services/aiCosts.js).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ai_costs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      user_id TEXT,
+      presentation_id TEXT,
+      slide_index INTEGER,
+      operation TEXT NOT NULL DEFAULT 'other',
+      provider TEXT NOT NULL,
+      model TEXT NOT NULL,
+      call TEXT NOT NULL,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      image_input_tokens INTEGER NOT NULL DEFAULT 0,
+      web_searches INTEGER NOT NULL DEFAULT 0,
+      images INTEGER NOT NULL DEFAULT 0,
+      cost_usd REAL NOT NULL DEFAULT 0,
+      estimated INTEGER NOT NULL DEFAULT 0,
+      duration_ms INTEGER,
+      meta TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_costs_created ON ai_costs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_ai_costs_pres ON ai_costs(presentation_id, slide_index);
+    CREATE INDEX IF NOT EXISTS idx_ai_costs_user ON ai_costs(user_id);
   `);
 
   // Analytics events table for custom event tracking

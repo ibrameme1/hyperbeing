@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { recordClaudeCall } from './aiCosts.js';
 import { jsonrepair } from 'jsonrepair';
 import { recordTokenUsage } from './stripeService.js';
 import { logger, requestContext } from './logger.js';
@@ -352,6 +353,7 @@ export async function analyzePresentationStream(message, attachments = [], userI
   const response = await stream.finalMessage();
   const durationMs = Date.now() - t0;
   if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+  recordClaudeCall({ call: 'analyze_brief', usage: response.usage, durationMs, userId, operation: 'analyze' });
   metrics.recordAICall({ fn: 'analyzePresentationStream', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs });
   const searchCount = response.content.filter(b => b.type === 'server_tool_use' && b.name === 'web_search').length;
   logger.info('claude analyze stream complete', { durationMs, webSearch, searches: searchCount });
@@ -640,13 +642,14 @@ export async function generateCompactPlan(message, attachments, userId = null, c
   }
 
   const durationMs = Date.now() - t0;
-  if (userId) {
-    try {
-      const finalMsg = await stream.finalMessage();
+  try {
+    const finalMsg = await stream.finalMessage();
+    recordClaudeCall({ call: 'plan_outline', usage: finalMsg.usage, durationMs, userId });
+    if (userId) {
       recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
       metrics.recordAICall({ fn: 'generateCompactPlan', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs });
-    } catch {}
-  }
+    }
+  } catch {}
   logger.info('claude compact plan complete', { durationMs, totalSlides: slides.length });
 
   if (!header) {
@@ -696,6 +699,7 @@ Return only the title text, nothing else.`,
   });
 
   const durationMsTitle = Date.now() - tTitle;
+  recordClaudeCall({ call: 'suggest_title', usage: response.usage, durationMs: durationMsTitle, userId });
   if (userId) {
     recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
     metrics.recordAICall({ fn: 'suggestTitle', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs: durationMsTitle });
@@ -787,6 +791,7 @@ ${assignment}${siblings}`;
     messages: [{ role: 'user', content: message }],
   });
 
+  recordClaudeCall({ call: 'outline_new_slide', usage: response.usage, durationMs: Date.now() - _t, userId });
   if (userId) {
     try {
       recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
@@ -863,6 +868,7 @@ ${countInstruction}`;
       system: NEW_SLIDES_PLAN_SYSTEM,
       messages: [{ role: 'user', content: planMessage }],
     });
+    recordClaudeCall({ call: 'plan_new_slides', usage: planResp.usage, durationMs: Date.now() - tSlides, userId });
     if (userId) {
       try {
         recordTokenUsage(userId, planResp.usage?.input_tokens, planResp.usage?.output_tokens);

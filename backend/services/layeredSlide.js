@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { withCostContext } from './aiCosts.js';
 import sharp from 'sharp';
 import * as imageStore from './imageStore.js';
 import { logger } from './logger.js';
@@ -220,7 +221,7 @@ function applyReviewFixes(layout, fixes = []) {
 
 export async function buildLayeredSlide({
   presentationId, slide, header, deckDesign, brief, uploads = [], userId = null,
-  aspectRatio = '16:9', style = 'classic', siblingTitles = [], instruction = null,
+  aspectRatio = '16:9', siblingTitles = [], instruction = null,
   onLayout = () => {}, onLayer = () => {}, review = true,
   // layoutOverride: a raw layout to build instead of asking Claude (re-render
   // an existing design, e.g. at another image quality). returnRaw: include the
@@ -231,6 +232,17 @@ export async function buildLayeredSlide({
   // screen rects and re-snap boxes): only layers without a file are
   // generated, everything else is kept as is.
   prebuilt = false,
+}) {
+  // Every call made while building this slide is attributed to it (ai_costs).
+  return withCostContext({ presentationId, slideIndex: slide.index, userId: userId || undefined }, () => buildLayeredSlideInner({
+    presentationId, slide, header, deckDesign, brief, uploads, userId, aspectRatio, siblingTitles, instruction,
+    onLayout, onLayer, review, layoutOverride, returnRaw, prebuilt,
+  }));
+}
+
+async function buildLayeredSlideInner({
+  presentationId, slide, header, deckDesign, brief, uploads, userId, aspectRatio, siblingTitles, instruction,
+  onLayout, onLayer, review, layoutOverride, returnRaw, prebuilt,
 }) {
   const t0 = Date.now();
   const stats = { layout_ms: 0, first_image_start_ms: null, images: [], review_ms: 0, total_ms: 0, mock: IMAGE_MOCK_MODE };
@@ -453,7 +465,7 @@ export async function buildLayeredSlide({
     // ── 1. layout (images start while it streams) ──────────────────────────
     const raw = layoutOverride
       ? JSON.parse(JSON.stringify(layoutOverride))
-      : await designSlideLayout({ slide, header, deckDesign, brief, uploads, aspectRatio, style, siblingTitles, instruction, userId, onPartial });
+      : await designSlideLayout({ slide, header, deckDesign, brief, uploads, aspectRatio, siblingTitles, instruction, userId, onPartial });
     const rawCopy = returnRaw ? JSON.parse(JSON.stringify(raw)) : undefined;
     const layout = prebuilt ? raw : normalizeLayout(raw, { aspectRatio, uploadCount: uploads.length });
     stats.layout_ms = Date.now() - t0;

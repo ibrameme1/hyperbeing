@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import CostsPanel from '../components/admin/CostsPanel';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -14,6 +15,7 @@ import {
   Pencil, Check, X, ArrowLeft, Trash2, Database, Save, ExternalLink,
   TableProperties, ChevronLeft, HardDrive, Folder, File, Download,
   ArrowUp, ChevronsUpDown, Copy, Image as ImageIcon,
+  DollarSign,
 } from 'lucide-react';
 import api from '../api/client';
 
@@ -727,6 +729,7 @@ export default function AnalyticsDashboard() {
     { id: 'metrics',       label: 'Metrics',         icon: Cpu },
     { id: 'database',      label: 'Database',        icon: Database },
     { id: 'storage',       label: 'Storage',         icon: HardDrive },
+    { id: 'costs',         label: 'Costs',           icon: DollarSign },
   ];
 
   return (
@@ -896,6 +899,9 @@ export default function AnalyticsDashboard() {
             )}
           </div>
         </div>
+
+        {/* ── COSTS TAB — actual AI spend (ai_costs) ── */}
+        {activeTab === 'costs' && <CostsPanel />}
 
         {/* ── OVERVIEW TAB ── */}
         {activeTab === 'overview' && (

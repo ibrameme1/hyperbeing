@@ -1,4 +1,5 @@
 import { logger, requestContext } from './logger.js';
+import { recordImageCall } from './aiCosts.js';
 import { tracer } from './tracer.js';
 
 const MOCK_MODE = !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'demo';
@@ -109,6 +110,7 @@ export async function generateDesignImage(prompt, referenceImages = [], aspectRa
       }
 
       tracer.recordStep(_tid, stepName, 'completed', Date.now() - _t);
+      recordImageCall({ call: 'design_image', model: IMAGE_MODEL, usage: json.usage, durationMs: Date.now() - _t, operation: 'design_mode', meta: { size, references: referenceImages.length } });
       return `data:image/png;base64,${b64}`;
     } catch (err) {
       if (attempt < maxAttempts) {

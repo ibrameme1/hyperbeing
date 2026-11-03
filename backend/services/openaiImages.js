@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { recordImageCall } from './aiCosts.js';
 import { logger, requestContext } from './logger.js';
 import { tracer } from './tracer.js';
 
@@ -162,6 +163,11 @@ export async function generateLayerImage({ prompt, size = '1024x1024', transpare
       // can be measured (see scripts/layered-benchmark.js).
       logger.info('layer image generated', { label, ms, size, quality, transparent, refs: refs.length, model: LAYER_IMAGE_MODEL, usage: json.usage || null });
       tracer.recordStep(_tid, stepName, 'completed', ms);
+      recordImageCall({
+        call: transparent ? (mockSpec?.kind === 'cluster' ? 'image_cluster' : 'image_element') : 'image_background',
+        model: LAYER_IMAGE_MODEL, usage: json.usage, durationMs: ms,
+        meta: { label, size, quality, refs: refs.length },
+      });
       return { buffer: Buffer.from(b64, 'base64'), ms, usage: json.usage || null };
     } catch (err) {
       if (attempt < maxAttempts) {

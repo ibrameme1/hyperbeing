@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { recordClaudeCall } from './aiCosts.js';
 import { recordTokenUsage } from './stripeService.js';
 import { logger, requestContext } from './logger.js';
 import { tracer } from './tracer.js';
@@ -49,6 +50,7 @@ export async function generatePromptResponse(history, userMessage, attachedImage
   });
 
   if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
+  recordClaudeCall({ call: 'prompt_generator', usage: response.usage, userId, operation: 'prompt_generator' });
 
   const rawText = response.content
     .filter(b => b.type === 'text')

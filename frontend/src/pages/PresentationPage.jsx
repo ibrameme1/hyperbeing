@@ -584,7 +584,6 @@ export default function PresentationPage() {
           presentationId={id}
           title={presentation.title}
           currentPlan={currentPlan}
-          deckStyle={presentation.style || 'classic'}
           onBack={() => {
             sseRef.current?.close();
             navigate('/dashboard');
