@@ -85,6 +85,15 @@ export async function generateLayerImage({ prompt, size = '1024x1024', transpare
   const stepName = `layer_image_${label}`;
   tracer.recordStep(_tid, stepName, 'started', 0);
 
+  // TEST-ONLY provider: images come from a folder instead of the OpenAI API
+  // (internal benchmarks generate them through another channel, e.g. the
+  // Higgsfield connector, to avoid spending API credits). A missing image is
+  // written out as a request file and replaced by a mock image so the run
+  // completes; drop the generated PNG in as <key>.png and replay.
+  if (process.env.LAYER_IMAGE_PROVIDER === 'files') {
+    return filesProvider({ prompt, size, transparent, references, label, quality, mockSpec, t0: _t });
+  }
+
   if (MOCK_MODE) {
     await new Promise(r => setTimeout(r, 400 + Math.random() * 900));
     const buffer = await mockLayerImage(size, transparent, mockSpec || { label });
@@ -218,3 +227,24 @@ function hashCode(s) {
 }
 
 export const IMAGE_MOCK_MODE = MOCK_MODE;
+
+// ── test-only "files" provider ──────────────────────────────────────────────
+async function filesProvider({ prompt, size, transparent, references, label, quality, mockSpec, t0 }) {
+  const fs = await import('fs');
+  const path = await import('path');
+  const crypto = await import('crypto');
+  const dir = process.env.LAYER_IMAGE_FILES_DIR;
+  if (!dir) throw new Error('LAYER_IMAGE_FILES_DIR is required with LAYER_IMAGE_PROVIDER=files');
+  const key = crypto.createHash('sha1').update(JSON.stringify({ prompt, size, transparent, quality })).digest('hex').slice(0, 16);
+  const file = path.join(dir, `${key}.png`);
+  const [w, h] = size.split('x').map(Number);
+  if (fs.existsSync(file)) {
+    // The external generator may only offer preset aspect ratios: fit to the requested size.
+    const buffer = await sharp(file).resize(w, h, { fit: 'fill' }).png().toBuffer();
+    return { buffer, ms: Date.now() - t0, usage: null, provider: 'files' };
+  }
+  fs.mkdirSync(path.join(dir, 'requests'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'requests', `${key}.json`), JSON.stringify({ key, label, prompt, size, transparent, quality, references: references.length }, null, 2));
+  const buffer = await mockLayerImage(size, transparent, mockSpec || { label });
+  return { buffer, ms: Date.now() - t0, usage: null, provider: 'files-missing' };
+}

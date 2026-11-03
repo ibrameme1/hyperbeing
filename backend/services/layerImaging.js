@@ -227,7 +227,7 @@ export function hexToRgb(hex) {
 // items: [{ id, box: {x,y,w,h} as 0-1 fractions of the cluster image }]
 // Returns [{ id, buffer, x, y, w, h (pixels in the cluster image), pixels }]
 // for every item that received at least one component.
-export async function splitCluster(buffer, items, { minAlpha = 4, seedAlpha = 160, seedCore = 0.5 } = {}) {
+export async function splitCluster(buffer, items, { minAlpha = 4, seedAlpha = 160, seedCore = 0.5, mergeLevel = 110 } = {}) {
   const { data, width, height } = await raw(buffer);
   const N = width * height;
   const A = (k) => data[k * 4 + 3];
@@ -257,6 +257,10 @@ export async function splitCluster(buffer, items, { minAlpha = 4, seedAlpha = 16
   //    reachable with the smallest "most transparent pixel crossed". Regions
   //    therefore meet at the faintest junction — the thin trail or glow
   //    between two objects — instead of cutting through solid objects.
+  // meet[a*n+b] = the faintest level at which regions a and b touch (0 =
+  // touching through fully solid pixels, 255 = through near-invisible ones).
+  const nItems = items.length;
+  const meet = new Float32Array(nItems * nItems).fill(256);
   for (let level = 0; level < 256; level++) {
     const bucket = buckets[level];
     for (let qi = 0; qi < bucket.length; qi++) {
@@ -268,6 +272,12 @@ export async function splitCluster(buffer, items, { minAlpha = 4, seedAlpha = 16
           const nx = x + dx; const ny = y + dy;
           if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
           const n = ny * width + nx;
+          if (label[n] >= 0 && label[n] !== label[k]) {
+            const lv = Math.max(level, 255 - A(n));
+            const a = label[k]; const b = label[n];
+            if (lv < meet[a * nItems + b]) { meet[a * nItems + b] = lv; meet[b * nItems + a] = lv; }
+            continue;
+          }
           if (label[n] !== -1 || A(n) < minAlpha) continue;
           label[n] = label[k];
           buckets[Math.max(level, 255 - A(n))].push(n);
@@ -308,9 +318,36 @@ export async function splitCluster(buffer, items, { minAlpha = 4, seedAlpha = 16
     for (const k of piece) label[k] = best;
   }
 
-  // 4. Cut out each item.
+  // 4. Never cut through solid pixels: regions that touch through solid
+  //    pixels (meet level < mergeLevel, i.e. contact alpha > ~145) are one
+  //    physical thing — e.g. fuel streams drawn over a rider, coins landing
+  //    in a wallet — and are merged into a single piece. Only faint
+  //    junctions (a thin glow or light trail) stay as cuts. The merged piece
+  //    takes the id of its largest member.
+  const parent = items.map((_, i) => i);
+  const find = (a) => (parent[a] === a ? a : (parent[a] = find(parent[a])));
+  for (let a = 0; a < nItems; a++) {
+    for (let b = a + 1; b < nItems; b++) {
+      if (meet[a * nItems + b] < mergeLevel) parent[find(a)] = find(b);
+    }
+  }
+  const counts = new Float64Array(nItems);
+  for (let k = 0; k < N; k++) if (label[k] >= 0) counts[label[k]]++;
+  const groups = new Map();
+  for (let i = 0; i < nItems; i++) { const r = find(i); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(i); }
+  const repOf = new Int16Array(nItems);
+  const mergedInto = new Map();
+  for (const members of groups.values()) {
+    const rep = members.reduce((p, q) => (counts[q] > counts[p] ? q : p));
+    for (const m of members) repOf[m] = rep;
+    mergedInto.set(rep, members.filter(m => m !== rep && counts[m] > 0).map(m => items[m].id));
+  }
+  for (let k = 0; k < N; k++) if (label[k] >= 0) label[k] = repOf[label[k]];
+
+  // 5. Cut out each piece.
   const out = [];
   for (let i = 0; i < items.length; i++) {
+    if (repOf[i] !== i) continue;
     let minX = width; let minY = height; let maxX = -1; let maxY = -1; let pixels = 0;
     for (let k = 0; k < N; k++) {
       if (label[k] !== i) continue;
@@ -329,7 +366,7 @@ export async function splitCluster(buffer, items, { minAlpha = 4, seedAlpha = 16
         if (label[k] === i) data.copy(cut, (y * w + x) * 4, k * 4, k * 4 + 4);
       }
     }
-    out.push({ id: items[i].id, buffer: await fromRaw(cut, w, h), x: minX, y: minY, w, h, pixels });
+    out.push({ id: items[i].id, buffer: await fromRaw(cut, w, h), x: minX, y: minY, w, h, pixels, merged: mergedInto.get(i) || [] });
   }
   return out;
 }

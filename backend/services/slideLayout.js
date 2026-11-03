@@ -633,10 +633,14 @@ export function fitLayout(layout) {
     // Short labels/kickers/pill text that wrap should WIDEN (with their
     // pill/badge shape, matched by identical box) rather than break lines.
     const explicitLines = String(l.text).split('\n').length;
+    // On a device screen they may only widen up to the screen's edge (a long
+    // caption then wraps inside the screen instead of hanging off the phone).
+    const screenRect = onScreen ? layout.layers.find(d => d.id === l.screen_of)?.screen?.rect : null;
+    const rightLimit = onScreen ? (screenRect ? screenRect.x + screenRect.w - 4 : l.x + l.w) : canvas.w - margin;
     if (est.lines > explicitLines && ['label', 'caption', 'kicker'].includes(l.role) && String(l.text).length <= 60) {
       const widest = Math.max(...String(l.text).split('\n').map(t => measure(l, t)));
       const needed = Math.ceil(widest * 1.06 + (l.align === 'center' ? 32 : 4));
-      if (needed > l.w && l.x + needed <= canvas.w - margin) {
+      if (needed > l.w && l.x + needed <= rightLimit) {
         const old = { x: l.x, y: l.y, w: l.w, h: l.h };
         const grow = needed - l.w;
         l.w = needed;
@@ -906,6 +910,43 @@ export function resolveCollisions(layout) {
 // MOVE clear; failing that it SHRINKS (down to 55%) anchored at the side
 // farthest from the text — e.g. a hand-held phone stays on the bottom edge —
 // and moves if needed. On-screen text scales with it.
+// A row of screen devices (a "device collage") reads as one unit only when the
+// devices sit close together. After trimming, a portrait phone in a squarish
+// box leaves big gaps, so pack each row to `gap` px apart, keeping the row
+// centred on its original span. Screen rects and screen children move with
+// their device. Returns a list of moved ids.
+export function tightenDeviceRows(layout, { gap = 40, maxGap = 64 } = {}) {
+  const devices = layout.layers.filter(l => l.kind === 'image' && l.screen && !l.screen_of)
+    .sort((a, b) => a.x - b.x);
+  const rows = [];
+  for (const d of devices) {
+    const cy = d.y + d.h / 2;
+    const row = rows.find(r => r.some(o => Math.abs(cy - (o.y + o.h / 2)) < Math.min(o.h, d.h) * 0.35));
+    if (row) row.push(d); else rows.push([d]);
+  }
+  const moved = [];
+  for (const row of rows) {
+    if (row.length < 2) continue;
+    row.sort((a, b) => a.x - b.x);
+    const gaps = row.slice(1).map((d, i) => d.x - (row[i].x + row[i].w));
+    if (gaps.some(g => g < 0) || !gaps.some(g => g > maxGap)) continue;
+    const start = row[0].x;
+    const end = row[row.length - 1].x + row[row.length - 1].w;
+    const total = row.reduce((s, d) => s + d.w, 0) + gap * (row.length - 1);
+    let x = Math.round(start + (end - start - total) / 2);
+    for (const d of row) {
+      const dx = x - d.x;
+      x += d.w + gap;
+      if (!dx) continue;
+      d.x += dx;
+      if (d.screen?.rect) d.screen.rect.x += dx;
+      for (const c of layout.layers) if (c.screen_of === d.id) c.x += dx;
+      moved.push(d.id);
+    }
+  }
+  return moved;
+}
+
 export function resolveImageOverlaps(layout) {
   const { canvas } = layout;
   const margin = Math.round(canvas.w * 0.02);
@@ -915,7 +956,11 @@ export function resolveImageOverlaps(layout) {
   const area = (r) => Math.max(0, r.w) * Math.max(0, r.h);
   const inter = (a, b) => ({ x: Math.max(a.x, b.x), y: Math.max(a.y, b.y), w: Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), h: Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) });
 
-  for (const img of layout.layers.filter(l => l.kind === 'image' && !['effect', 'screen_image', 'connector'].includes(l.role) && !l.screen_of)) {
+  // Merged cluster pieces (objects that touched in the generated image) span
+  // several items, so their bounding box naturally reaches the labels Claude
+  // set beside each item; moving the whole group would tear the composition
+  // apart (it used to push the rider/stream piece off the canvas). Leave them.
+  for (const img of layout.layers.filter(l => l.kind === 'image' && !['effect', 'screen_image', 'connector'].includes(l.role) && !l.screen_of && !l.merged?.length)) {
     const group = [img, ...layout.layers.filter(l => l.screen_of === img.id)];
     const texts = layout.layers.filter(t => isObstacleText(t) && !group.includes(t));
     const conflicts = texts.filter(t => overlaps(t, img) && area(inter(t, img)) > 0.05 * area(t));
@@ -925,8 +970,9 @@ export function resolveImageOverlaps(layout) {
     const ok = (placed) => {
       const b = placed[0];
       if (b.x < margin * 0.5 - 1 || b.y < -1 || b.x + b.w > canvas.w - margin * 0.5 + 1 || b.y + b.h > canvas.h + 1) {
-        // Images may sit on the bottom/side edge (hand-held devices) but not run off it.
-        if (b.y + b.h > canvas.h + 1 || b.x < -1 || b.x + b.w > canvas.w + 1) return false;
+        // Images may sit on the bottom/side edge (hand-held devices) but never
+        // run off any edge — including the top.
+        if (b.y < -1 || b.y + b.h > canvas.h + 1 || b.x < -1 || b.x + b.w > canvas.w + 1) return false;
       }
       if (texts.some(t => overlaps(t, b) && area(inter(t, b)) > 0.02 * area(t))) return false;
       return !strips.some(s => overlaps(s, b) && area(inter(s, b)) > 0.15 * area(b));

@@ -3,7 +3,7 @@ import sharp from 'sharp';
 import * as imageStore from './imageStore.js';
 import { logger } from './logger.js';
 import { designSlideLayout, reviewSlideLayout } from './layoutAgent.js';
-import { normalizeLayout, fitLayout, layoutFiles, canvasFor, MAX_GENERATIONS_PER_SLIDE, resolveCollisions, resolveImageOverlaps } from './slideLayout.js';
+import { normalizeLayout, fitLayout, layoutFiles, canvasFor, MAX_GENERATIONS_PER_SLIDE, resolveCollisions, resolveImageOverlaps, tightenDeviceRows } from './slideLayout.js';
 import { generateLayerImage, scheduleImageJob, sizeForAspect, IMAGE_MOCK_MODE, LONG_SIDE, LAYER_IMAGE_QUALITY } from './openaiImages.js';
 import {
   coverToAspect, ensureTransparent, unscreen, trimTransparent, extractScreen,
@@ -38,7 +38,16 @@ export function assetUrl(presentationId, file) {
 
 const ELEMENT_SUFFIX = 'Isolated on a transparent background, nothing else in frame: no background, no surface, no floor, no shadow, no reflection, no text, no letters, no watermark, no frame or border. The whole subject is fully visible with a small empty margin around it, never cropped.';
 const EFFECT_SUFFIX = 'Rendered purely as light on a completely black (#000000) background. Nothing else in frame: no objects, no surface, no text. Smooth, soft, luminous falloff.';
-const SCREEN_SUFFIX = 'The device faces the camera perfectly straight-on and flat: no tilt, no perspective, no rotation. Its entire screen is one flat, uniform, pure chroma-green (#00FF00) rectangle with no UI, no reflections and no glare.';
+const SCREEN_SUFFIX = 'The device faces the camera perfectly straight-on and flat: no tilt, no perspective, no skew. Its entire screen is one flat, uniform, pure chroma-green (#00FF00) rectangle with no UI, no reflections and no glare.';
+// The device's orientation must match its box, or a portrait phone gets
+// letterboxed into a landscape slot (tiny device, huge gaps). Claude's prompts
+// often forget to say which way the device is held, so derive it from the box.
+function deviceOrientation(l) {
+  if (!l.w || !l.h) return '';
+  if (l.w > l.h * 1.15) return 'The device is held sideways in LANDSCAPE orientation (clearly wider than tall, long edge horizontal), filling the frame edge to edge. ';
+  if (l.h > l.w * 1.15) return 'The device is upright in PORTRAIT orientation (taller than wide), filling the frame top to bottom. ';
+  return '';
+}
 const SCREEN_IMAGE_SUFFIX = 'Flat, full-frame screen content exactly as it would appear on the display itself (like a screenshot or a video frame): no phone, no device, no bezel, no hands holding a phone, no frame, no border, no UI chrome unless described.';
 const CONNECTOR_OBJECTS_SUFFIX = 'On a transparent background: only the stream itself, nothing else in frame, no source or destination objects, no background, no surface, no text.';
 const HERO_REF_NOTE = 'The attached reference image shows the slide\'s main object. Use it ONLY to match lighting direction, materials, colour palette and render style so this object belongs in the same scene. Do NOT draw the reference object or any part of it.';
@@ -46,8 +55,16 @@ const CLUSTER_SUFFIX = 'Objects that interact physically connect (for example a 
 const EMPTY_BG_SUFFIX = 'This is an EMPTY backdrop: absolutely no objects of any kind (no devices, phones, products, coins, glass panels, cards, people, shapes or props). Only light, colour, atmosphere and texture. No text, no letters, no logos, no UI.';
 const BG_SUFFIX = 'No overlaid text, no captions, no letters or numbers, no logos, no watermarks, no UI, no cards, no panels, no buttons, no frames, no borders. Leave the described negative space genuinely clean.';
 
-function composePrompt(deckDesign, layout, body, suffix) {
-  return [deckDesign?.style_block, layout.style_block, body, suffix].filter(s => s && String(s).trim()).join('\n\n');
+// objectOnly: for transparent object/cluster/icon layers. The deck style block
+// is written for whole slides and often carries backdrop directions
+// ("matte obsidian background", "vignette on all four edges", "film grain")
+// that fight a transparent background — scope it to the object.
+function composePrompt(deckDesign, layout, body, suffix, { objectOnly = false } = {}) {
+  const style = [deckDesign?.style_block, layout.style_block].filter(s => s && String(s).trim()).join('\n\n');
+  const styled = style && objectOnly
+    ? `Rendering style — apply to the objects only; ignore any background, backdrop, vignette, grain or frame directions in it:\n${style}`
+    : style;
+  return [styled, body, suffix].filter(s => s && String(s).trim()).join('\n\n');
 }
 
 async function storeBuffer(buffer) {
@@ -116,7 +133,7 @@ export function clusterPlan(l, deckDesign, styleBlock) {
     return `${i + 1}. ${it.name || it.id}: ${it.prompt} Occupies ${pct(f.x)}%-${pct(f.x + f.w)}% of the frame width and ${pct(f.y)}%-${pct(f.y + f.h)}% of its height.`;
   }).join('\n');
   const body = `ONE cohesive composition containing exactly these ${items.length} objects, all lit by the same light, sharing one perspective and one colour grade, arranged in the frame as follows (positions measured from the top-left of the frame):\n${lines}${l.prompt ? `\n\nHow they relate: ${l.prompt}` : ''}`;
-  const prompt = composePrompt(deckDesign, { style_block: styleBlock }, body, CLUSTER_SUFFIX);
+  const prompt = composePrompt(deckDesign, { style_block: styleBlock }, body, CLUSTER_SUFFIX, { objectOnly: true });
   return { box, size, frac, prompt };
 }
 
@@ -143,6 +160,9 @@ function placeScreenChildren(layout, device, rect) {
       delete l.in_screen;
     }
     const n = l.screen_norm;
+    // Children may never spill past the screen edge (a caption authored at
+    // x 0.08 with w 1 would hang outside the phone).
+    n.w = Math.min(n.w, 1 - n.x); n.h = Math.min(n.h, 1 - n.y);
     l.x = Math.round(rect.x + n.x * rect.w);
     l.y = Math.round(rect.y + n.y * rect.h);
     l.w = Math.max(4, Math.round(n.w * rect.w));
@@ -287,13 +307,13 @@ export async function buildLayeredSlide({
     const size = geometry?.size || sizeForAspect(l.w, l.h);
     let suffix;
     if (connector) suffix = `${geometry.sentence} ${lightConnector ? EFFECT_SUFFIX : CONNECTOR_OBJECTS_SUFFIX}`;
-    else suffix = effect ? EFFECT_SUFFIX : screenImage ? SCREEN_IMAGE_SUFFIX : `${l.screen ? `${SCREEN_SUFFIX} ` : ''}${ELEMENT_SUFFIX}`;
+    else suffix = effect ? EFFECT_SUFFIX : screenImage ? SCREEN_IMAGE_SUFFIX : `${l.screen ? `${deviceOrientation(l)}${SCREEN_SUFFIX} ` : ''}${ELEMENT_SUFFIX}`;
     const usesHeroRef = l.role === 'element' && !!heroAssetPromise;
     const waitForHero = usesHeroRef ? heroAssetPromise : Promise.resolve(null);
 
     const promise = waitForHero.then(heroAsset => scheduleImageJob(l.role === 'hero' ? 1 : 2, async () => {
       const references = await resolveRefs(l.refs);
-      let prompt = composePrompt(deckDesign, { style_block: styleBlock }, l.prompt, suffix);
+      let prompt = composePrompt(deckDesign, { style_block: styleBlock }, l.prompt, suffix, { objectOnly: !effect && !screenImage });
       if (heroAsset?.file) {
         const heroBuf = await loadStoredFile(heroAsset.file);
         if (heroBuf) {
@@ -471,7 +491,17 @@ export async function buildLayeredSlide({
             w: Math.round(part.w * sx), h: Math.round(part.h * sy), rotation: 0, opacity: 1,
           });
         });
-        const missing = l.items.filter(it => !asset.parts.some(pp => pp.id === it.id));
+        // Objects that physically overlap/touch were kept as one piece rather
+        // than cut apart — they live inside their partner's layer.
+        const mergedIds = new Set(asset.parts.flatMap(pp => pp.merged || []));
+        for (const pp of asset.parts) {
+          const il = itemLayers.find(x => x.id === pp.id);
+          if (il && pp.merged?.length) {
+            il.name = [il.name || il.id, ...pp.merged.map(m => l.items.find(it => it.id === m)?.name || m)].join(' + ');
+            il.merged = [...pp.merged];
+          }
+        }
+        const missing = l.items.filter(it => !asset.parts.some(pp => pp.id === it.id) && !mergedIds.has(it.id));
         if (missing.length) {
           layout.dropped = [...(layout.dropped || []), ...missing.map(it => ({ id: it.id, name: it.name, kind: 'image', prompt: it.prompt, reason: 'not found in cluster image' }))];
         }
@@ -549,7 +579,7 @@ export async function buildLayeredSlide({
       noteStart();
       waits.push(scheduleImageJob(2, async () => {
         const res = await generateLayerImage({
-          prompt: composePrompt(deckDesign, { style_block: styleBlock }, body, 'Transparent background, no grid lines, no cell borders, no labels, no text, no shadow.'),
+          prompt: composePrompt(deckDesign, { style_block: styleBlock }, body, 'Transparent background, no grid lines, no cell borders, no labels, no text, no shadow.', { objectOnly: true }),
           size, transparent: true, label: `s${slide.index}_icons`, mockSpec: { kind: 'sheet', cols, rows, label: 'icons' },
         });
         stats.images.push({ id: 'icon_sheet', ms: res?.ms ?? null, usage: res?.usage ?? null, ok: !!res, size, icons: n });
@@ -590,6 +620,9 @@ export async function buildLayeredSlide({
     }
 
     // ── 4. fit + visual self-review ────────────────────────────────────────
+    // Devices are trimmed to their real silhouette, which can leave wide gaps
+    // in a row of phones; pull the row back together before review.
+    tightenDeviceRows(layout);
     let { warnings } = fitLayout(layout);
     if (review) {
       const tr = Date.now();

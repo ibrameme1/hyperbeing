@@ -327,6 +327,22 @@ describe('splitCluster', () => {
     expect(byId.phone.w).toBeGreaterThan(70);
   });
 
+  it('never cuts through solid pixels: an object drawn over another stays one piece', async () => {
+    // A "rider" with a solid "stream" drawn across his body — the stream's
+    // declared region overlaps the rider. Must come out as ONE piece.
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300">
+      <rect x="40" y="40" width="120" height="220" fill="#063"/>
+      <path d="M100 120 C 160 100, 200 80, 280 60" stroke="#fc0" stroke-width="14" fill="none"/></svg>`;
+    const parts = await splitCluster(await svgPng(svg), [
+      { id: 'rider', box: { x: 0.1, y: 0.1, w: 0.45, h: 0.8 } },
+      { id: 'stream', box: { x: 0.3, y: 0.15, w: 0.65, h: 0.35 } },
+    ]);
+    expect(parts).toHaveLength(1);
+    expect(parts[0].id).toBe('rider');
+    expect(parts[0].merged).toEqual(['stream']);
+    expect(parts[0].w).toBeGreaterThan(220); // includes the stream, uncut
+  });
+
   it('separates TOUCHING objects at their faintest junction', async () => {
     // Two solid blocks joined by a faint (low-alpha) bridge — one connected
     // shape, but the cut must happen in the bridge, not through a block.
@@ -382,5 +398,45 @@ describe('resolveImageOverlaps', () => {
     expect(phone.y + phone.h).toBeLessThanOrEqual(1081);         // still on canvas
     expect(m.x).toBeGreaterThanOrEqual(phone.x);                 // child travelled with it
     expect(m.y).toBeGreaterThanOrEqual(phone.y);
+  });
+});
+
+import { tightenDeviceRows } from '../services/slideLayout.js';
+describe('image placement guards', () => {
+  it('never moves an image off the top edge to clear text', () => {
+    const l = normalizeLayout({ layers: [
+      { kind: 'text', id: 'body', role: 'body', text: 'Some body copy here', size: 40, x: 600, y: 700, w: 900, h: 300 },
+      { kind: 'image', id: 'obj', role: 'hero', prompt: 'obj', x: 500, y: 40, w: 1000, h: 1000 },
+    ] });
+    resolveImageOverlaps(l);
+    expect(l.layers[1].y).toBeGreaterThanOrEqual(-1);
+  });
+
+  it('leaves merged cluster pieces where the cluster put them', () => {
+    const l = normalizeLayout({ layers: [
+      { kind: 'text', id: 'label', role: 'label', text: 'Developer earnings', size: 30, x: 1600, y: 560, w: 200, h: 80 },
+      { kind: 'image', id: 'wallet', role: 'hero', prompt: 'wallet', x: 900, y: 60, w: 930, h: 900 },
+    ] });
+    l.layers[1].merged = ['coins'];
+    expect(resolveImageOverlaps(l)).toEqual([]);
+    expect(l.layers[1]).toMatchObject({ x: 900, y: 60 });
+  });
+
+  it('packs a row of devices together, moving screens and screen children along', () => {
+    const l = normalizeLayout({ layers: [
+      { kind: 'image', id: 'a', role: 'element', prompt: 'p', screen: { fill: '#000' }, x: 900, y: 450, w: 180, h: 370 },
+      { kind: 'image', id: 'b', role: 'element', prompt: 'p', screen: { fill: '#000' }, x: 1300, y: 450, w: 180, h: 370 },
+      { kind: 'image', id: 'c', role: 'element', prompt: 'p', screen: { fill: '#000' }, x: 1650, y: 450, w: 180, h: 370 },
+      { kind: 'text', id: 't', role: 'body', text: 'hi', in_screen: 'b', x: 0.1, y: 0.1, w: 0.8, h: 0.1 },
+    ] });
+    const [a, b, c, t] = l.layers;
+    b.screen.rect = { x: 1310, y: 460, w: 160, h: 350 };
+    t.screen_of = 'b'; delete t.in_screen; Object.assign(t, { x: 1320, y: 480, w: 140, h: 30 });
+    tightenDeviceRows(l);
+    expect(b.x - (a.x + a.w)).toBe(40);
+    expect(c.x - (b.x + b.w)).toBe(40);
+    expect(b.screen.rect.x - b.x).toBe(10);
+    expect(t.x - b.x).toBe(20);
+    expect(Math.round((a.x + c.x + c.w) / 2)).toBe(Math.round((900 + 1830) / 2)); // stays centred
   });
 });

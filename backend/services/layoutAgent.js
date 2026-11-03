@@ -38,6 +38,28 @@ const QUALITY_LIBRARY = `${fs.readFileSync(path.join(__dirname, '../prompts/laye
 ## Minimalistic exemplars (verbatim)
 ${MINIMALISTIC_EXAMPLE_PROMPTS.map((p, i) => `### Minimalistic ${i + 1}\n${p}`).join('\n\n')}`;
 
+// Finished reference slides the team supplied (prompts/reference_slides/*.jpg),
+// shown to the layout call as IMAGES — the visual quality bar for hierarchy,
+// composition and how objects connect. Cached with the system prompt.
+const REFERENCE_DIR = path.join(__dirname, '../prompts/reference_slides');
+const REFERENCE_SLIDES = (() => {
+  try {
+    return fs.readdirSync(REFERENCE_DIR).filter(f => /\.(jpe?g|png)$/i.test(f)).sort().map(f => ({
+      name: f.replace(/\.[^.]+$/, ''),
+      block: { type: 'image', source: { type: 'base64', media_type: f.endsWith('.png') ? 'image/png' : 'image/jpeg', data: fs.readFileSync(path.join(REFERENCE_DIR, f)).toString('base64') } },
+    }));
+  } catch { return []; }
+})();
+
+function referenceSlideBlocks() {
+  if (!REFERENCE_SLIDES.length) return [];
+  const blocks = [{ type: 'text', text: `QUALITY REFERENCE SLIDES (${REFERENCE_SLIDES.map(r => r.name).join(', ')}): finished slides at the bar this slide must meet. Study the hierarchy (one dominant takeaway), composition, how objects physically connect and sit on grounding elements, card anatomy and spacing. Never copy their content, brands or copy.` }];
+  REFERENCE_SLIDES.forEach((r, i) => {
+    blocks.push(i === REFERENCE_SLIDES.length - 1 ? { ...r.block, cache_control: { type: 'ephemeral' } } : r.block);
+  });
+  return blocks;
+}
+
 function systemBlocks(text) {
   return [
     { type: 'text', text: QUALITY_LIBRARY, cache_control: { type: 'ephemeral' } },
@@ -277,6 +299,9 @@ STEP 4 — DESIGN QUALITY BAR (the slide must look like a top keynote designer m
 - ROW / CARD ANATOMY (use for lists of 2-4 items): frosted card 820-840 wide, 125-150 tall, radius 26-32, "highlight":true, subtle gradient border. Inside, left to right with ≥28px padding: an icon badge (ellipse 76x76, transparent fill, 2px accent/gradient border, a Lucide icon 36px centred in it) → bold title → a 2px vertical divider (rect, 55% card height, rgba(255,255,255,0.18)) → body text. Stat rows use a big gradient number instead of badge+title.
 - FILL THE CANVAS WITH INTENT. Content column ~45% / visual zone ~55% unless briefed otherwise; no dead zone larger than ~15% of the canvas; small supporting lines (proof line with a shield-check icon, KPI line with a chart-line icon) anchor the bottom.
 - Logo top-left at the margin (height 56-72px). If the user uploaded a logo, use it (source "upload").
+- KEY TAKEAWAY FIRST: the headline/takeaway is the most prominent thing on the slide — largest type, clear space around it, nothing overlapping it. For campaign/insight slides with a dense visual, a centred full-width headline block above the visual (as in the device-collage reference) is often the strongest structure.
+- DEVICE COLLAGES: the primary conversation sits on ONE large device (landscape when it is a long chat thread), secondary devices are smaller and grouped tightly (side by side or stacked 2-up) next to it on a shared baseline. Size every device box to the device's true shape (portrait phone ≈ 1:2 width:height, landscape phone ≈ 2:1) so it fills its box, and keep secondary devices ≤ 40px apart (or slightly overlapping) so the group reads as one unit. Devices never overlap text and never scatter.
+- OBJECT + LABEL PAIRS (as in the pedestal reference): each object sits on a grounding element generated with it in the cluster (a pedestal, plinth, platform or glow ring), and its label card sits BESIDE it, touching or slightly overlapping its edge — never covering the object's face.
 - PALETTE DISCIPLINE: every colour on the slide comes from the DECK DESIGN SYSTEM palette/gradient (tints and alpha variations of them are fine). Never introduce a colour the deck doesn't use (e.g. a dark-green strip on an aubergine/orange deck).
 - COMPANIONS: small objects that accompany a hero (game tiles, icons, badges, products) are real elements at ≥ 150px, placed ON an orbit/arc around the hero (add a "light" connector with "around":"<hero id>" so they visibly orbit it), slightly overlapping its silhouette — never scattered tiny in empty corners.
 - BACKGROUND for objects/native slides is an EMPTY atmosphere (light, colour, texture). Never describe objects, devices, products or shapes in a background prompt — every object is its own layer.
@@ -379,7 +404,7 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
     system: systemBlocks(system),
     tools: [LAYOUT_TOOL],
     tool_choice: { type: 'tool', name: LAYOUT_TOOL.name },
-    messages: [{ role: 'user', content: [{ type: 'text', text }, ...uploadsContent(uploads)] }],
+    messages: [{ role: 'user', content: [...referenceSlideBlocks(), { type: 'text', text }, ...uploadsContent(uploads)] }],
   });
   let json = '';
   let lastLayerCount = -1; let sawBackground = false;
