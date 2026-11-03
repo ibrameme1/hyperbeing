@@ -227,11 +227,40 @@ export function hexToRgb(hex) {
 // items: [{ id, box: {x,y,w,h} as 0-1 fractions of the cluster image }]
 // Returns [{ id, buffer, x, y, w, h (pixels in the cluster image), pixels }]
 // for every item that received at least one component.
-export async function splitCluster(buffer, items, { minAlpha = 4, seedAlpha = 160, seedCore = 0.5, mergeLevel = 110 } = {}) {
+export async function splitCluster(buffer, requested, { minAlpha = 4, seedAlpha = 160, seedCore = 0.5, mergeLevel = 110 } = {}) {
   const { data, width, height } = await raw(buffer);
   const N = width * height;
   const A = (k) => data[k * 4 + 3];
+  let items = requested;
   const label = new Int16Array(N).fill(-1); // item index, -1 = unassigned
+
+  // 0. Align the requested arrangement with what was actually drawn. The
+  //    model often shrinks or shifts the whole composition (extra margin,
+  //    letterboxing); seeding at the requested spots would then hand one
+  //    object's pixels to its neighbour. Map the union of the requested boxes
+  //    onto the bounding box of the solid content first.
+  let cx0 = width; let cy0 = height; let cx1 = -1; let cy1 = -1;
+  for (let k = 0; k < N; k++) {
+    if (A(k) < seedAlpha) continue;
+    const x = k % width; const y = (k - x) / width;
+    if (x < cx0) cx0 = x; if (x > cx1) cx1 = x; if (y < cy0) cy0 = y; if (y > cy1) cy1 = y;
+  }
+  const union = items.reduce((u, it) => ({
+    x0: Math.min(u.x0, it.box.x), y0: Math.min(u.y0, it.box.y),
+    x1: Math.max(u.x1, it.box.x + it.box.w), y1: Math.max(u.y1, it.box.y + it.box.h),
+  }), { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity });
+  const content = cx1 > cx0 && cy1 > cy0
+    ? { x0: cx0 / width, y0: cy0 / height, x1: (cx1 + 1) / width, y1: (cy1 + 1) / height }
+    : union;
+  const sx = (content.x1 - content.x0) / Math.max(1e-6, union.x1 - union.x0);
+  const sy = (content.y1 - content.y0) / Math.max(1e-6, union.y1 - union.y0);
+  items = items.map(it => ({
+    ...it,
+    box: {
+      x: content.x0 + (it.box.x - union.x0) * sx, y: content.y0 + (it.box.y - union.y0) * sy,
+      w: it.box.w * sx, h: it.box.h * sy,
+    },
+  }));
 
   // 1. Seeds: solid pixels in the central part of each item's declared
   //    region. Smaller items seed first so a large region (the hero) can't
@@ -368,5 +397,8 @@ export async function splitCluster(buffer, items, { minAlpha = 4, seedAlpha = 16
     }
     out.push({ id: items[i].id, buffer: await fromRaw(cut, w, h), x: minX, y: minY, w, h, pixels, merged: mergedInto.get(i) || [] });
   }
+  // Where the content actually sat vs. where it was requested (fractions of
+  // the frame) — lets the caller put the composition back where it belongs.
+  out.align = { content, union, items: Object.fromEntries(items.map(it => [it.id, it.box])) };
   return out;
 }

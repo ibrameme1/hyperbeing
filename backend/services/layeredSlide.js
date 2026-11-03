@@ -10,6 +10,7 @@ import {
   sliceSheet, containRect, normalizeReference, splitCluster,
 } from './layerImaging.js';
 import { renderLayoutPreview } from './layoutPreview.js';
+import { enforceTextContrast } from './textContrast.js';
 import { fetchBrandLogo } from './brandAssets.js';
 
 // ─── Build one layered slide ────────────────────────────────────────────────
@@ -48,7 +49,7 @@ function deviceOrientation(l) {
   if (l.h > l.w * 1.15) return 'The device is upright in PORTRAIT orientation (taller than wide), filling the frame top to bottom. ';
   return '';
 }
-const SCREEN_IMAGE_SUFFIX = 'Flat, full-frame screen content exactly as it would appear on the display itself (like a screenshot or a video frame): no phone, no device, no bezel, no hands holding a phone, no frame, no border, no UI chrome unless described.';
+const SCREEN_IMAGE_SUFFIX = 'Flat, full-frame screen content exactly as it would appear on the display itself (like a screenshot or a video frame): no phone, no device, no bezel, no hands holding a phone, no frame, no border, no UI chrome unless described. Any phone or screen visible inside the picture shows no legible text.';
 const CONNECTOR_OBJECTS_SUFFIX = 'On a transparent background: only the stream itself, nothing else in frame, no source or destination objects, no background, no surface, no text.';
 const HERO_REF_NOTE = 'The attached reference image shows the slide\'s main object. Use it ONLY to match lighting direction, materials, colour palette and render style so this object belongs in the same scene. Do NOT draw the reference object or any part of it.';
 const CLUSTER_SUFFIX = 'Objects that interact physically connect (for example a stream flowing from one object into another). Apart from those physical connections, leave a thin gap of empty transparent space between separate objects so each can be lifted out cleanly. Isolated on a transparent background: no background, no floor, no surface, no cast shadow, no text, no letters, no frame or border.';
@@ -380,6 +381,30 @@ export async function buildLayeredSlide({
       const buf = await ensureTransparent(res.buffer);
       const meta = await sharp(buf).metadata();
       const parts = await splitCluster(buf, plan.frac);
+      // The model may draw the composition smaller/shifted (extra margin,
+      // letterboxing). Put every object back over the spot Claude reserved for
+      // it (its card / label): each piece keeps its offset from where its item
+      // was found, re-centred on the requested item box, with one uniform scale
+      // so objects keep their relative sizes.
+      if (parts.align) {
+        const { content: c, union: u, items: aligned } = parts.align;
+        const W = meta.width; const H = meta.height;
+        const cw = (c.x1 - c.x0) * W; const ch = (c.y1 - c.y0) * H;
+        const uw = (u.x1 - u.x0) * W; const uh = (u.y1 - u.y0) * H;
+        if (cw > 0 && ch > 0) {
+          const k = Math.min(1.5, Math.max(0.75, Math.min(uw / cw, uh / ch)));
+          for (const p of parts) {
+            const a = aligned?.[p.id]; const r = plan.frac.find(f => f.id === p.id)?.box;
+            if (!a || !r) continue;
+            const acx = (a.x + a.w / 2) * W; const acy = (a.y + a.h / 2) * H;
+            const rcx = (r.x + r.w / 2) * W; const rcy = (r.y + r.h / 2) * H;
+            const pcx = p.x + p.w / 2; const pcy = p.y + p.h / 2;
+            p.w *= k; p.h *= k;
+            p.x = rcx + (pcx - acx) * k - p.w / 2;
+            p.y = rcy + (pcy - acy) * k - p.h / 2;
+          }
+        }
+      }
       const stored = [];
       for (const part of parts) {
         const file = await storeBuffer(part.buffer);
@@ -639,7 +664,16 @@ export async function buildLayeredSlide({
     }
     // Deterministic last line of defence: no text on text.
     const moved = [...resolveImageOverlaps(layout), ...resolveCollisions(layout)];
+    // Collision fixes can move text into a device row — refit the row.
+    moved.push(...tightenDeviceRows(layout));
     if (moved.length) ({ warnings } = fitLayout(layout));
+    // Every text must be readable on what actually ends up behind it.
+    try {
+      const recoloured = await enforceTextContrast(layout, (l, o) => renderLayoutPreview(l, loadStoredFile, o), deckDesign?.palette);
+      if (recoloured.length) warnings = [...warnings, ...recoloured];
+    } catch (err) {
+      logger.warn('contrast check failed', { slideIndex: slide.index, errorMessage: err.message });
+    }
     if (warnings.length) layout.warnings = warnings.slice(0, 20);
 
     // ── 5. flattened preview ───────────────────────────────────────────────

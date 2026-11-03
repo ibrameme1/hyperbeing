@@ -9,12 +9,12 @@ import { tracer } from './tracer.js';
 // Env-overridable like every other model id in the codebase.
 export const LAYER_IMAGE_MODEL = process.env.OPENAI_LAYER_IMAGE_MODEL || 'gpt-image-2.5-flare';
 // Quality per layer type (measured 2026-11-02, same layouts replayed):
-// backgrounds/scenes look the same at medium for ~1/4 of the cost, while the
-// object (cluster/element) images keep high — at medium they followed the
-// requested placement less reliably. OPENAI_LAYER_IMAGE_QUALITY overrides both.
+// medium for everything: ~1/4 of high's cost. Backgrounds look the same; objects
+// are a product decision (cost over the small loss in placement fidelity).
+// Set OPENAI_LAYER_QUALITY_OBJECTS=high to bring it back; OPENAI_LAYER_IMAGE_QUALITY overrides both.
 export const LAYER_IMAGE_QUALITY = {
   background: process.env.OPENAI_LAYER_IMAGE_QUALITY || process.env.OPENAI_LAYER_QUALITY_BACKGROUND || 'medium',
-  objects: process.env.OPENAI_LAYER_IMAGE_QUALITY || process.env.OPENAI_LAYER_QUALITY_OBJECTS || 'high',
+  objects: process.env.OPENAI_LAYER_IMAGE_QUALITY || process.env.OPENAI_LAYER_QUALITY_OBJECTS || 'medium',
 };
 
 const MOCK_MODE = !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'demo';
@@ -240,7 +240,11 @@ async function filesProvider({ prompt, size, transparent, references, label, qua
   const [w, h] = size.split('x').map(Number);
   if (fs.existsSync(file)) {
     // The external generator may only offer preset aspect ratios: fit to the requested size.
-    const buffer = await sharp(file).resize(w, h, { fit: 'fill' }).png().toBuffer();
+    // Test images come from preset aspect ratios; never distort them —
+    // transparent layers are padded, opaque ones cropped to the exact size.
+    const buffer = await sharp(file).resize(w, h, transparent
+      ? { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }
+      : { fit: 'cover' }).png().toBuffer();
     return { buffer, ms: Date.now() - t0, usage: null, provider: 'files' };
   }
   fs.mkdirSync(path.join(dir, 'requests'), { recursive: true });

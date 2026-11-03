@@ -440,3 +440,30 @@ describe('image placement guards', () => {
     expect(Math.round((a.x + c.x + c.w) / 2)).toBe(Math.round((900 + 1830) / 2)); // stays centred
   });
 });
+
+import { conformPhoneBox } from '../services/slideLayout.js';
+import { contrastRatio, pickReadableColor, requiredRatio } from '../services/textContrast.js';
+describe('phone boxes and text contrast', () => {
+  it('snaps squarish phone boxes to real phone proportions, keeping the original as a slot', () => {
+    const portrait = conformPhoneBox({ x: 820, y: 448, w: 330, h: 390 }, 'a sleek smartphone');
+    expect(portrait.h).toBe(390);
+    expect(portrait.w / portrait.h).toBeCloseTo(1 / 2.05, 1);
+    expect(portrait.slot).toEqual({ x: 820, y: 448, w: 330, h: 390 });
+    const landscape = conformPhoneBox({ x: 68, y: 448, w: 700, h: 600 }, 'flagship phone');
+    expect(landscape.w).toBe(700);
+    expect(landscape.w / landscape.h).toBeCloseTo(2.05, 1);
+    expect(conformPhoneBox({ x: 0, y: 0, w: 700, h: 500 }, 'a laptop with a phone beside it')).toEqual({});
+    expect(conformPhoneBox({ x: 0, y: 0, w: 205, h: 420 }, 'phone')).toEqual({}); // already phone-shaped
+  });
+
+  it('keeps the hue when fixing low-contrast text', () => {
+    const cream = { r: 245, g: 236, b: 215 };
+    const terracotta = { r: 193, g: 80, b: 42 };
+    expect(contrastRatio(terracotta, cream)).toBeLessThan(4.5);
+    const fixed = pickReadableColor(terracotta, cream, 4.5, []);
+    expect(contrastRatio(fixed, cream)).toBeGreaterThanOrEqual(4.5);
+    expect(fixed.r).toBeGreaterThan(fixed.g); // still a terracotta, just deeper
+    expect(requiredRatio({ size: 60, weight: 400 })).toBe(3);
+    expect(requiredRatio({ size: 22, weight: 400 })).toBe(4.5);
+  });
+});

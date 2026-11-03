@@ -302,6 +302,7 @@ function normalizeImage(l, base, canvas) {
     return { ...base, x: x0, y: y0, w: x1 - x0, h: y1 - y0, role, prompt, refs: refs(l.refs), items };
   }
   if (!prompt && !l.file) return null;
+  if (l.screen) Object.assign(base, conformPhoneBox(base, prompt));
   return {
     ...base,
     role,
@@ -325,6 +326,28 @@ function normalizeImage(l, base, canvas) {
     file: typeof l.file === 'string' ? l.file : undefined,
     src: typeof l.src === 'string' ? l.src : undefined,
   };
+}
+
+// Claude tends to give phones squarish boxes (330×390 for a portrait phone),
+// so the generated phone is letterboxed into a small sliver with big gaps
+// around it. Snap phone boxes to real phone proportions — landscape when the
+// box is at least square, portrait otherwise — centred in the original box.
+// The original box is kept as `slot` so tightenDeviceRows can later scale the
+// device row back up to fill the space Claude reserved.
+const PHONE_RE = /\b(phone|smartphone|iphone|android|pixel|galaxy|mobile)\b/i;
+const NOT_PHONE_RE = /\b(laptop|macbook|tablet|ipad|monitor|desktop|tv|television|watch|kiosk)\b/i;
+const PHONE_LONG = 2.05; // long side ÷ short side of a modern phone incl. bezel
+export function conformPhoneBox(box, prompt = '') {
+  if (!PHONE_RE.test(prompt) || NOT_PHONE_RE.test(prompt) || !box.w || !box.h) return {};
+  const r = box.w / box.h;
+  const landscape = r >= 1;
+  const target = landscape ? PHONE_LONG : 1 / PHONE_LONG;
+  if (Math.abs(Math.log(r / target)) < 0.08) return {};
+  const slot = { x: box.x, y: box.y, w: box.w, h: box.h };
+  let w; let h;
+  if (r > target) { h = box.h; w = h * target; } else { w = box.w; h = w / target; }
+  w = Math.round(w); h = Math.round(h);
+  return { x: Math.round(box.x + (box.w - w) / 2), y: Math.round(box.y + (box.h - h) / 2), w, h, slot };
 }
 
 function normalizeIcon(l, base) {
@@ -915,33 +938,72 @@ export function resolveCollisions(layout) {
 // box leaves big gaps, so pack each row to `gap` px apart, keeping the row
 // centred on its original span. Screen rects and screen children move with
 // their device. Returns a list of moved ids.
-export function tightenDeviceRows(layout, { gap = 40, maxGap = 64 } = {}) {
+export function tightenDeviceRows(layout, { gap = 40, maxGap = 64, maxScale = 1.6 } = {}) {
   const devices = layout.layers.filter(l => l.kind === 'image' && l.screen && !l.screen_of)
     .sort((a, b) => a.x - b.x);
   const rows = [];
   for (const d of devices) {
     const cy = d.y + d.h / 2;
-    const row = rows.find(r => r.some(o => Math.abs(cy - (o.y + o.h / 2)) < Math.min(o.h, d.h) * 0.35));
+    const row = rows.find(r => r.some(o => Math.abs(cy - (o.y + o.h / 2)) < Math.max(o.h, d.h) * 0.5));
     if (row) row.push(d); else rows.push([d]);
   }
+  const children = (d) => layout.layers.filter(c => c.screen_of === d.id);
+  const moveBy = (d, dx, dy) => {
+    d.x += dx; d.y += dy;
+    if (d.screen?.rect) { d.screen.rect.x += dx; d.screen.rect.y += dy; }
+    for (const c of children(d)) { c.x += dx; c.y += dy; }
+  };
+  // Scale a device (and its screen + children) about its top-left corner.
+  const scaleBy = (d, s) => {
+    const ox = d.x; const oy = d.y;
+    const sc = (r) => { r.x = Math.round(ox + (r.x - ox) * s); r.y = Math.round(oy + (r.y - oy) * s); r.w = Math.round(r.w * s); r.h = Math.round(r.h * s); };
+    sc(d);
+    if (d.screen?.rect) sc(d.screen.rect);
+    for (const c of children(d)) { sc(c); if (c.kind === 'text') c.size = Math.max(8, Math.round(c.size * s)); }
+  };
   const moved = [];
   for (const row of rows) {
-    if (row.length < 2) continue;
     row.sort((a, b) => a.x - b.x);
     const gaps = row.slice(1).map((d, i) => d.x - (row[i].x + row[i].w));
-    if (gaps.some(g => g < 0) || !gaps.some(g => g > maxGap)) continue;
-    const start = row[0].x;
-    const end = row[row.length - 1].x + row[row.length - 1].w;
-    const total = row.reduce((s, d) => s + d.w, 0) + gap * (row.length - 1);
-    let x = Math.round(start + (end - start - total) / 2);
+    if (gaps.some(g => g < -8)) { for (const d of row) delete d.slot; continue; } // deliberately overlapping collage
+    // The band Claude reserved for this row (before phone boxes were snapped).
+    const band = row.reduce((u, d) => {
+      const r = d.slot || d;
+      return { x0: Math.min(u.x0, r.x), y0: Math.min(u.y0, r.y), x1: Math.max(u.x1, r.x + r.w), y1: Math.max(u.y1, r.y + r.h) };
+    }, { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity });
+    // Never grow into text or full-width strips above/below the row (Claude's
+    // slot for a phone often runs into the footer line).
+    const ids = new Set(row.map(d => d.id));
+    const mid = (band.y0 + band.y1) / 2;
+    let clipped = false;
+    for (const o of layout.layers) {
+      const isObstacle = (o.kind === 'text' && !o.screen_of && !o.in_screen)
+        || (o.kind === 'shape' && o.w >= layout.canvas.w * 0.9 && o.h < layout.canvas.h * 0.25);
+      if (!isObstacle || ids.has(o.screen_of)) continue;
+      if (o.x >= band.x1 || o.x + o.w <= band.x0) continue;
+      const before = [band.y0, band.y1];
+      if (o.y + o.h / 2 > mid) band.y1 = Math.min(band.y1, o.y - 16);
+      else band.y0 = Math.max(band.y0, o.y + o.h + 16);
+      if (band.y0 !== before[0] || band.y1 !== before[1]) clipped = true;
+    }
+    const snapped = row.some(d => d.slot);
+    for (const d of row) delete d.slot;
+    if (!snapped && !clipped && (row.length < 2 || !gaps.some(g => g > maxGap))) continue;
+    const g = row.length > 1 ? gap : 0;
+    const widthAt = (s) => row.reduce((t, d) => t + d.w * s, 0) + g * (row.length - 1);
+    const tallest = Math.max(...row.map(d => d.h));
+    const s = Math.max(0.6, Math.min(maxScale, (band.x1 - band.x0) / widthAt(1), (band.y1 - band.y0) / tallest));
+    if (Math.abs(s - 1) > 0.01) for (const d of row) scaleBy(d, s);
+    // Lay the row out left to right, centred in the band, bottoms aligned.
+    const total = widthAt(1);
+    let x = Math.round(band.x0 + (band.x1 - band.x0 - total) / 2);
+    const rowH = Math.max(...row.map(d => d.h));
+    const top = Math.round(band.y0 + (band.y1 - band.y0 - rowH) / 2);
     for (const d of row) {
-      const dx = x - d.x;
-      x += d.w + gap;
-      if (!dx) continue;
-      d.x += dx;
-      if (d.screen?.rect) d.screen.rect.x += dx;
-      for (const c of layout.layers) if (c.screen_of === d.id) c.x += dx;
-      moved.push(d.id);
+      const dx = x - d.x; const dy = top + (rowH - d.h) - d.y;
+      x += d.w + g;
+      if (dx || dy || Math.abs(s - 1) > 0.01) moved.push(d.id);
+      moveBy(d, dx, dy);
     }
   }
   return moved;
@@ -974,6 +1036,9 @@ export function resolveImageOverlaps(layout) {
         // run off any edge — including the top.
         if (b.y < -1 || b.y + b.h > canvas.h + 1 || b.x < -1 || b.x + b.w > canvas.w + 1) return false;
       }
+      // The text we are moving away from must end up fully clear; other text
+      // tolerates a sliver of box overlap (boxes are larger than glyphs).
+      if (conflicts.some(t => overlaps(t, b) && area(inter(t, b)) > 0)) return false;
       if (texts.some(t => overlaps(t, b) && area(inter(t, b)) > 0.02 * area(t))) return false;
       return !strips.some(s => overlaps(s, b) && area(inter(s, b)) > 0.15 * area(b));
     };
@@ -991,11 +1056,32 @@ export function resolveImageOverlaps(layout) {
       }
       shifts.sort((a, b) => Math.abs(a[0]) + Math.abs(a[1]) - Math.abs(b[0]) - Math.abs(b[1]));
       for (const [dx, dy] of shifts) {
+        // Bounded corrections only: a big jump tears the composition apart.
+        // Cluster pieces keep their column (they sit over their own card or
+        // label) — they may shrink or nudge vertically, never slide sideways.
+        if (Math.abs(dx) > canvas.w * 0.3 || Math.abs(dy) > canvas.h * 0.3) continue;
+        if (img.cluster && (dx !== 0 || Math.abs(dy) > canvas.h * 0.15)) continue;
         const placed = transform(s, ox, oy, dx, dy);
         if (ok(placed)) { best = { placed, s }; break; }
       }
     }
-    if (!best) continue;
+    if (!best) {
+      // Can't clear the text by moving/shrinking. A supporting element (not
+      // the hero, not a device) goes BEHIND the cards that hold the text, so
+      // it reads as depth instead of covering the copy.
+      if (img.role === 'hero' || img.screen) continue;
+      const cards = layout.layers.filter(s => s.kind === 'shape' && !strips.includes(s)
+        && conflicts.some(t => t.x >= s.x - 4 && t.y >= s.y - 4 && t.x + t.w <= s.x + s.w + 4 && t.y + t.h <= s.y + s.h + 4));
+      if (cards.length < 1) continue;
+      const firstCard = Math.min(...cards.map(c => layout.layers.indexOf(c)));
+      const at = layout.layers.indexOf(img);
+      if (at > firstCard) {
+        layout.layers.splice(at, 1);
+        layout.layers.splice(firstCard, 0, img);
+        moved.push(`${img.id} sent behind ${cards.map(c => c.id).join(', ')}`);
+      }
+      continue;
+    }
     for (const p of best.placed) {
       Object.assign(p.l, { x: Math.round(p.x), y: Math.round(p.y), w: Math.round(p.w), h: Math.round(p.h) });
       if (p.l.kind === 'text' && best.s !== 1) p.l.size = Math.max(8, Math.round(p.l.size * best.s));
