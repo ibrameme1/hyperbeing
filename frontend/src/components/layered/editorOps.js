@@ -111,8 +111,9 @@ export function addShape(layout, { palette } = {}) {
 
 // Snapping: align the moving box's edges/centre with the canvas and other
 // layers. Returns the adjusted box plus guide lines to draw.
-export function snapBox(layout, id, box, threshold) {
-  const skip = new Set([id, ...layout.layers.filter(l => l.screen_of === id).map(l => l.id)]);
+export function snapBox(layout, ids, box, threshold) {
+  const moving = new Set(Array.isArray(ids) ? ids : [ids]);
+  const skip = new Set([...moving, ...layout.layers.filter(l => moving.has(l.screen_of)).map(l => l.id)]);
   const xs = [0, layout.canvas.w / 2, layout.canvas.w];
   const ys = [0, layout.canvas.h / 2, layout.canvas.h];
   for (const l of layout.layers) {
@@ -141,3 +142,173 @@ export function snapBox(layout, id, box, threshold) {
 
 // Which layers can be edited how.
 export const keepsAspect = (l) => l.kind === 'image' || l.kind === 'icon' || l.kind === 'logo';
+
+// ─── Rotation-aware resize ─────────────────────────────────────────────────
+// Resizing a rotated element must happen in the element's own (rotated)
+// frame, with the handle opposite the dragged one pinned in place — otherwise
+// the box drifts and grows along the wrong axis. `box` is the unrotated box
+// (x/y/w/h, rotation about its centre), (dx, dy) the pointer delta in canvas
+// px, `dir` the handle (n, ne, e, se, s, sw, w, nw).
+export function resizeRotated(box, rotation, dir, dx, dy, { lockAspect = false, min = 8 } = {}) {
+  const t = ((rotation || 0) * Math.PI) / 180;
+  const cos = Math.cos(t); const sin = Math.sin(t);
+  // Pointer delta in the element's local axes.
+  const lx = dx * cos + dy * sin;
+  const ly = -dx * sin + dy * cos;
+  const sx = dir.includes('e') ? 1 : dir.includes('w') ? -1 : 0;
+  const sy = dir.includes('s') ? 1 : dir.includes('n') ? -1 : 0;
+  let w = Math.max(min, box.w + sx * lx);
+  let h = Math.max(min, box.h + sy * ly);
+  if (lockAspect && sx && sy) {
+    const ratio = box.w / box.h;
+    if (w / h > ratio) w = h * ratio; else h = w / ratio;
+  }
+  // The anchor = the opposite handle; its world position must not move.
+  const cx = box.x + box.w / 2; const cy = box.y + box.h / 2;
+  const ax = (-sx * box.w) / 2; const ay = (-sy * box.h) / 2; // local offset from centre
+  const anchorX = cx + ax * cos - ay * sin;
+  const anchorY = cy + ax * sin + ay * cos;
+  const nax = (-sx * w) / 2; const nay = (-sy * h) / 2;
+  const ncx = anchorX - (nax * cos - nay * sin);
+  const ncy = anchorY - (nax * sin + nay * cos);
+  return { x: ncx - w / 2, y: ncy - h / 2, w, h };
+}
+
+// Resize cursor that matches the handle's on-screen direction after rotation.
+const CURSORS = ['ns-resize', 'nesw-resize', 'ew-resize', 'nwse-resize'];
+const HANDLE_ANGLE = { n: 0, ne: 45, e: 90, se: 135, s: 180, sw: 225, w: 270, nw: 315 };
+export function handleCursor(dir, rotation = 0) {
+  const a = (((HANDLE_ANGLE[dir] + rotation) % 180) + 180) % 180;
+  return CURSORS[Math.round(a / 45) % 4];
+}
+
+// ─── Multi-selection ───────────────────────────────────────────────────────
+// Layers drawn on a device's screen travel with their device, so whenever a
+// device is part of a selection its screen children are dropped from it (an
+// operation on the device already carries them).
+export function topLevel(layout, ids) {
+  const set = new Set(ids);
+  return ids.filter(id => {
+    const l = findLayer(layout, id);
+    return l && !(l.screen_of && set.has(l.screen_of));
+  });
+}
+
+// Axis-aligned bounds of a layer, taking its rotation into account.
+export function layerBounds(l) {
+  if (!l.rotation) return { x: l.x, y: l.y, w: l.w, h: l.h };
+  const t = (l.rotation * Math.PI) / 180;
+  const cx = l.x + l.w / 2; const cy = l.y + l.h / 2;
+  const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => {
+    const px = (a * l.w) / 2; const py = (b * l.h) / 2;
+    return [cx + px * Math.cos(t) - py * Math.sin(t), cy + px * Math.sin(t) + py * Math.cos(t)];
+  });
+  const xs = pts.map(p => p[0]); const ys = pts.map(p => p[1]);
+  return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+}
+
+export function selectionBounds(layout, ids) {
+  const boxes = ids.map(id => findLayer(layout, id)).filter(Boolean).map(layerBounds);
+  if (!boxes.length) return null;
+  const x = Math.min(...boxes.map(b => b.x)); const y = Math.min(...boxes.map(b => b.y));
+  return { x, y, w: Math.max(...boxes.map(b => b.x + b.w)) - x, h: Math.max(...boxes.map(b => b.y + b.h)) - y };
+}
+
+export function moveLayers(layout, ids, dx, dy) {
+  let next = layout;
+  for (const id of topLevel(layout, ids)) {
+    const l = findLayer(next, id);
+    next = setBox(next, id, { x: l.x + dx, y: l.y + dy, w: l.w, h: l.h });
+  }
+  return next;
+}
+
+// Scale a group from one bounding box to another (group resize). Text sizes
+// scale too when the group keeps its proportions.
+export function scaleLayers(layout, ids, from, to, { scaleText = false } = {}) {
+  const sx = to.w / (from.w || 1); const sy = to.h / (from.h || 1);
+  let next = layout;
+  for (const id of topLevel(layout, ids)) {
+    const l = findLayer(next, id);
+    // Scale about the layer's centre so rotated layers stay put relative to the group.
+    const cx = to.x + (l.x + l.w / 2 - from.x) * sx;
+    const cy = to.y + (l.y + l.h / 2 - from.y) * sy;
+    const w = Math.max(4, l.w * sx); const h = Math.max(4, l.h * sy);
+    next = setBox(next, id, { x: cx - w / 2, y: cy - h / 2, w, h });
+    if (scaleText && l.kind === 'text') next = updateLayer(next, id, { size: Math.max(6, round(l.size * Math.min(sx, sy))) });
+  }
+  return next;
+}
+
+// Align to the selection's bounds (or the canvas when one layer is selected).
+export function alignLayers(layout, ids, how) {
+  const top = topLevel(layout, ids);
+  const ref = top.length > 1 ? selectionBounds(layout, top) : { x: 0, y: 0, w: layout.canvas.w, h: layout.canvas.h };
+  let next = layout;
+  for (const id of top) {
+    const l = findLayer(next, id);
+    const b = layerBounds(l);
+    let dx = 0; let dy = 0;
+    if (how === 'left') dx = ref.x - b.x;
+    if (how === 'center') dx = ref.x + ref.w / 2 - (b.x + b.w / 2);
+    if (how === 'right') dx = ref.x + ref.w - (b.x + b.w);
+    if (how === 'top') dy = ref.y - b.y;
+    if (how === 'middle') dy = ref.y + ref.h / 2 - (b.y + b.h / 2);
+    if (how === 'bottom') dy = ref.y + ref.h - (b.y + b.h);
+    if (dx || dy) next = setBox(next, id, { x: l.x + dx, y: l.y + dy, w: l.w, h: l.h });
+  }
+  return next;
+}
+
+// Even gaps between 3+ layers along an axis (first and last stay put).
+export function distributeLayers(layout, ids, axis) {
+  const top = topLevel(layout, ids);
+  if (top.length < 3) return layout;
+  const pos = axis === 'x' ? 'x' : 'y'; const size = axis === 'x' ? 'w' : 'h';
+  const items = top.map(id => ({ id, b: layerBounds(findLayer(layout, id)) })).sort((a, b) => a.b[pos] - b.b[pos]);
+  const span = items[items.length - 1].b[pos] + items[items.length - 1].b[size] - items[0].b[pos];
+  const gap = (span - items.reduce((s, it) => s + it.b[size], 0)) / (items.length - 1);
+  let cursor = items[0].b[pos] + items[0].b[size] + gap;
+  let next = layout;
+  for (const it of items.slice(1, -1)) {
+    const l = findLayer(next, it.id);
+    const d = cursor - it.b[pos];
+    next = setBox(next, it.id, { x: l.x + (pos === 'x' ? d : 0), y: l.y + (pos === 'y' ? d : 0), w: l.w, h: l.h });
+    cursor += it.b[size] + gap;
+  }
+  return next;
+}
+
+export function removeLayers(layout, ids) {
+  return ids.reduce((acc, id) => removeLayer(acc, id), layout);
+}
+
+export function duplicateLayers(layout, ids) {
+  let next = layout; const created = [];
+  for (const id of topLevel(layout, ids)) {
+    const r = duplicateLayer(next, id);
+    next = r.layout;
+    if (r.id) created.push(r.id);
+  }
+  return { layout: next, ids: created };
+}
+
+// Reorder several layers, keeping their relative order.
+export function reorderLayers(layout, ids, to) {
+  const top = topLevel(layout, ids);
+  const order = (a, b) => layout.layers.findIndex(l => l.id === a) - layout.layers.findIndex(l => l.id === b);
+  // Moving up: process the topmost first so they don't leapfrog each other.
+  const seq = [...top].sort(order);
+  if (to === 'forward' || to === 'back') seq.reverse();
+  return seq.reduce((acc, id) => reorder(acc, id, to), layout);
+}
+
+// Layers a marquee rectangle touches (screen children collapse to their device).
+export function layersInRect(layout, rect) {
+  const hit = layout.layers.filter(l => {
+    if (l.hidden) return false;
+    const b = layerBounds(l);
+    return b.x < rect.x + rect.w && rect.x < b.x + b.w && b.y < rect.y + rect.h && rect.y < b.y + b.h;
+  }).map(l => l.id);
+  return topLevel(layout, hit);
+}

@@ -4,9 +4,11 @@ import { X, Undo2, Redo2, Type, SquarePlus, Check, Loader2, CloudOff, Layers, Mo
 import api from '../../api/client';
 import { capture } from '../../utils/posthog';
 import LayeredSlide, { LayerBody, layerBoxStyle, textStyle } from './LayeredSlide';
-import { Inspector, LayersPanel } from './EditorPanels';
+import { Inspector, MultiInspector, LayersPanel } from './EditorPanels';
 import {
-  findLayer, updateLayer, setBox, reorder, removeLayer, duplicateLayer, addText, addShape, snapBox, keepsAspect,
+  findLayer, updateLayer, setBox, addText, addShape, snapBox, keepsAspect,
+  resizeRotated, handleCursor, topLevel, selectionBounds, moveLayers, scaleLayers, alignLayers, distributeLayers,
+  removeLayers, duplicateLayers, reorderLayers, layersInRect,
 } from './editorOps';
 
 // ─── Slide editor (layered slides) ─────────────────────────────────────────
@@ -41,7 +43,11 @@ function swatchesOf(layout) {
 
 export default function SlideEditor({ slide, presentationId, onClose, onSaved, onAskAI }) {
   const [layout, setLayout] = useState(() => JSON.parse(JSON.stringify(slide.layout)));
-  const [selectedId, setSelectedId] = useState(null);
+  // Selection: one or more layer ids (last = most recently picked).
+  const [selectedIds, setSelectedIds] = useState([]);
+  const selectedId = selectedIds.length === 1 ? selectedIds[0] : null;
+  const setSelectedId = useCallback((id) => setSelectedIds(id ? [id] : []), []);
+  const [marquee, setMarquee] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [hoverId, setHoverId] = useState(null);
   const [guides, setGuides] = useState([]);
@@ -63,6 +69,9 @@ export default function SlideEditor({ slide, presentationId, onClose, onSaved, o
   const clientId = useMemo(() => `ed_${Math.random().toString(36).slice(2, 10)}`, []);
   const swatches = useMemo(() => swatchesOf(layout), [layout]);
   const selected = findLayer(layout, selectedId);
+  const selectedLayers = selectedIds.map(id => findLayer(layout, id)).filter(Boolean);
+  const selectedRef = useRef(selectedIds);
+  selectedRef.current = selectedIds;
   const [, forceRender] = useState(0); // undo/redo button state
 
   // ── saving ───────────────────────────────────────────────────────────────
@@ -122,16 +131,17 @@ export default function SlideEditor({ slide, presentationId, onClose, onSaved, o
     future.current.push(layoutRef.current);
     lastCoalesce.current = { key: null, at: 0 };
     setLayout(prev);
-    if (!findLayer(prev, selectedId)) setSelectedId(null);
+    setSelectedIds(ids => ids.filter(id => findLayer(prev, id)));
     scheduleSave();
     forceRender(n => n + 1);
-  }, [scheduleSave, selectedId]);
+  }, [scheduleSave]);
 
   const redo = useCallback(() => {
     const next = future.current.pop();
     if (!next) return;
     past.current.push(layoutRef.current);
     setLayout(next);
+    setSelectedIds(ids => ids.filter(id => findLayer(next, id)));
     scheduleSave();
     forceRender(n => n + 1);
   }, [scheduleSave]);
@@ -147,18 +157,36 @@ export default function SlideEditor({ slide, presentationId, onClose, onSaved, o
     commit(setBox(layoutRef.current, selectedId, { x: box.x, y: box.y, w: Math.max(4, box.w), h: Math.max(4, box.h) }));
   }, [commit, selectedId]);
 
-  const arrange = useCallback((to) => { if (selectedId) commit(reorder(layoutRef.current, selectedId, to)); }, [commit, selectedId]);
+  // Several layers at once: patch each (fn returns the patch for one layer, or null).
+  const patchEach = useCallback((fn) => {
+    let next = layoutRef.current;
+    for (const id of selectedRef.current) {
+      const l = findLayer(next, id);
+      const patch = l && fn(l);
+      if (patch) next = updateLayer(next, id, patch);
+    }
+    if (next !== layoutRef.current) commit(next);
+  }, [commit]);
+
+  const arrange = useCallback((to) => { if (selectedRef.current.length) commit(reorderLayers(layoutRef.current, selectedRef.current, to)); }, [commit]);
+  const align = useCallback((how) => { if (selectedRef.current.length) commit(alignLayers(layoutRef.current, selectedRef.current, how)); }, [commit]);
+  const distribute = useCallback((axis) => { if (selectedRef.current.length >= 3) commit(distributeLayers(layoutRef.current, selectedRef.current, axis)); }, [commit]);
   const remove = useCallback(() => {
-    if (!selectedId) return;
-    commit(removeLayer(layoutRef.current, selectedId));
-    setSelectedId(null);
-    capture('layer_deleted', { presentation_id: presentationId });
-  }, [commit, presentationId, selectedId]);
+    const ids = selectedRef.current;
+    if (!ids.length) return;
+    commit(removeLayers(layoutRef.current, ids));
+    setSelectedIds([]);
+    capture('layer_deleted', { presentation_id: presentationId, count: ids.length });
+  }, [commit, presentationId]);
   const duplicate = useCallback(() => {
-    if (!selectedId) return;
-    const { layout: next, id } = duplicateLayer(layoutRef.current, selectedId);
-    if (id) { commit(next); setSelectedId(id); }
-  }, [commit, selectedId]);
+    if (!selectedRef.current.length) return;
+    const { layout: next, ids } = duplicateLayers(layoutRef.current, selectedRef.current);
+    if (ids.length) { commit(next); setSelectedIds(ids); }
+  }, [commit]);
+  const selectAll = useCallback(() => {
+    const L = layoutRef.current;
+    setSelectedIds(topLevel(L, L.layers.filter(l => !l.hidden).map(l => l.id)));
+  }, []);
   const toggleHidden = useCallback((id) => {
     const l = findLayer(layoutRef.current, id);
     if (l) commit(updateLayer(layoutRef.current, id, { hidden: !l.hidden }));
@@ -195,20 +223,47 @@ export default function SlideEditor({ slide, presentationId, onClose, onSaved, o
     // the device; once the device (or something on it) is selected, clicks
     // reach the individual screen layers.
     if (l.screen_of) {
-      const cur = findLayer(layoutRef.current, selectedId);
-      const inGroup = cur && (cur.id === l.screen_of || cur.screen_of === l.screen_of);
+      const inGroup = selectedRef.current.some(id => id === l.screen_of || findLayer(layoutRef.current, id)?.screen_of === l.screen_of);
       const device = findLayer(layoutRef.current, l.screen_of);
       if (!inGroup && device) l = device;
     }
-    setSelectedId(l.id);
-    drag.current = { mode: 'move', id: l.id, sx: e.clientX, sy: e.clientY, box: { x: l.x, y: l.y, w: l.w, h: l.h }, base: layoutRef.current, moved: false };
+    // Shift / ⌘ / Ctrl-click adds or removes a layer from the selection.
+    const additive = e.shiftKey || e.metaKey || e.ctrlKey;
+    let ids;
+    if (additive) {
+      const cur = selectedRef.current;
+      ids = cur.includes(l.id) ? cur.filter(id => id !== l.id) : [...cur, l.id];
+      setSelectedIds(ids);
+      if (!ids.includes(l.id)) return; // just deselected it: nothing to drag
+    } else {
+      // Dragging a layer that's part of a multi-selection drags the group.
+      ids = selectedRef.current.includes(l.id) ? selectedRef.current : [l.id];
+      setSelectedIds(ids);
+    }
+    const moving = topLevel(layoutRef.current, ids);
+    drag.current = { mode: 'move', ids: moving, sx: e.clientX, sy: e.clientY, box: selectionBounds(layoutRef.current, moving), base: layoutRef.current, moved: false };
   };
 
   const startResize = (e, dir) => {
     e.stopPropagation();
-    const l = findLayer(layoutRef.current, selectedId);
-    if (!l) return;
-    drag.current = { mode: 'resize', dir, id: l.id, sx: e.clientX, sy: e.clientY, box: { x: l.x, y: l.y, w: l.w, h: l.h }, base: layoutRef.current, moved: false };
+    const ids = topLevel(layoutRef.current, selectedRef.current);
+    if (!ids.length) return;
+    if (ids.length === 1) {
+      const l = findLayer(layoutRef.current, ids[0]);
+      drag.current = { mode: 'resize', dir, id: l.id, rotation: l.rotation || 0, sx: e.clientX, sy: e.clientY, box: { x: l.x, y: l.y, w: l.w, h: l.h }, base: layoutRef.current, moved: false };
+    } else {
+      // Group resize scales every layer relative to the selection's bounds.
+      drag.current = { mode: 'group-resize', dir, ids, sx: e.clientX, sy: e.clientY, box: selectionBounds(layoutRef.current, ids), base: layoutRef.current, moved: false };
+    }
+  };
+
+  // Marquee: drag across empty canvas space to select everything it touches.
+  const startMarquee = (e) => {
+    if (e.button !== 0 || !stageRef.current) return;
+    const r = stageRef.current.getBoundingClientRect();
+    const toCanvas = (cx, cy) => ({ x: (cx - r.left) / scale, y: (cy - r.top) / scale });
+    const p = toCanvas(e.clientX, e.clientY);
+    drag.current = { mode: 'marquee', toCanvas, x0: p.x, y0: p.y, additive: e.shiftKey || e.metaKey || e.ctrlKey, prev: selectedRef.current, sx: e.clientX, sy: e.clientY, moved: false };
   };
 
   const startRotate = (e) => {
@@ -227,26 +282,27 @@ export default function SlideEditor({ slide, presentationId, onClose, onSaved, o
       const dx = (e.clientX - (d.sx ?? 0)) / scale; const dy = (e.clientY - (d.sy ?? 0)) / scale;
       if (!d.moved && d.mode !== 'rotate' && Math.abs(dx) + Math.abs(dy) < 2 / scale) return;
       d.moved = true;
-      if (d.mode === 'move') {
+      if (d.mode === 'marquee') {
+        const p = d.toCanvas(e.clientX, e.clientY);
+        const rect = { x: Math.min(d.x0, p.x), y: Math.min(d.y0, p.y), w: Math.abs(p.x - d.x0), h: Math.abs(p.y - d.y0) };
+        setMarquee(rect);
+        const hit = layersInRect(layoutRef.current, rect);
+        setSelectedIds(d.additive ? [...new Set([...d.prev, ...hit])] : hit);
+      } else if (d.mode === 'move') {
         const raw = { ...d.box, x: d.box.x + dx, y: d.box.y + dy };
-        const { box, guides: g } = e.altKey ? { box: raw, guides: [] } : snapBox(d.base, d.id, raw, 8 / scale);
+        const { box, guides: g } = e.altKey ? { box: raw, guides: [] } : snapBox(d.base, d.ids, raw, 8 / scale);
         setGuides(g);
-        setLayout(setBox(d.base, d.id, box));
+        setLayout(moveLayers(d.base, d.ids, box.x - d.box.x, box.y - d.box.y));
       } else if (d.mode === 'resize') {
+        // In the element's own rotated frame, opposite handle pinned.
         const l = findLayer(d.base, d.id);
-        let { x, y, w, h } = d.box;
-        if (d.dir.includes('e')) w = Math.max(8, d.box.w + dx);
-        if (d.dir.includes('s')) h = Math.max(8, d.box.h + dy);
-        if (d.dir.includes('w')) { w = Math.max(8, d.box.w - dx); x = d.box.x + d.box.w - w; }
-        if (d.dir.includes('n')) { h = Math.max(8, d.box.h - dy); y = d.box.y + d.box.h - h; }
         const lock = keepsAspect(l) !== e.shiftKey && d.dir.length === 2;
-        if (lock) {
-          const ratio = d.box.w / d.box.h;
-          if (w / h > ratio) w = h * ratio; else h = w / ratio;
-          if (d.dir.includes('w')) x = d.box.x + d.box.w - w;
-          if (d.dir.includes('n')) y = d.box.y + d.box.h - h;
-        }
-        setLayout(setBox(d.base, d.id, { x, y, w, h }));
+        setLayout(setBox(d.base, d.id, resizeRotated(d.box, d.rotation, d.dir, dx, dy, { lockAspect: lock })));
+      } else if (d.mode === 'group-resize') {
+        // Corners keep the group's proportions (and scale its text); Shift frees them.
+        const lock = d.dir.length === 2 && !e.shiftKey;
+        const to = resizeRotated(d.box, 0, d.dir, dx, dy, { lockAspect: lock });
+        setLayout(scaleLayers(d.base, d.ids, d.box, to, { scaleText: lock }));
       } else if (d.mode === 'rotate') {
         let deg = (Math.atan2(e.clientY - d.cy, e.clientX - d.cx) * 180) / Math.PI + 90;
         if (deg > 180) deg -= 360;
@@ -259,6 +315,11 @@ export default function SlideEditor({ slide, presentationId, onClose, onSaved, o
       const d = drag.current;
       drag.current = null;
       setGuides([]);
+      if (d?.mode === 'marquee') {
+        setMarquee(null);
+        if (!d.moved && !d.additive) setSelectedIds([]); // plain click on empty space
+        return;
+      }
       if (d?.moved) commit(layoutRef.current, { from: d.base });
     };
     window.addEventListener('pointermove', onMove);
@@ -275,11 +336,12 @@ export default function SlideEditor({ slide, presentationId, onClose, onSaved, o
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
       if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicate(); return; }
-      if (e.key === 'Escape') { if (selectedId) setSelectedId(null); else close(); return; }
-      if (!selectedId) return;
+      if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); selectAll(); return; }
+      if (e.key === 'Escape') { if (selectedRef.current.length) setSelectedIds([]); else close(); return; }
+      if (!selectedRef.current.length) return;
       if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(); return; }
       if (e.key === 'Enter') {
-        if (findLayer(layoutRef.current, selectedId)?.kind === 'text') { e.preventDefault(); setEditingId(selectedId); }
+        if (selectedId && findLayer(layoutRef.current, selectedId)?.kind === 'text') { e.preventDefault(); setEditingId(selectedId); }
         return;
       }
       if (e.key === ']') { arrange(mod ? 'front' : 'forward'); return; }
@@ -288,13 +350,12 @@ export default function SlideEditor({ slide, presentationId, onClose, onSaved, o
       const delta = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
       if (delta) {
         e.preventDefault();
-        const l = findLayer(layoutRef.current, selectedId);
-        commit(setBox(layoutRef.current, selectedId, { x: l.x + delta[0], y: l.y + delta[1], w: l.w, h: l.h }), { coalesce: `nudge-${selectedId}` });
+        commit(moveLayers(layoutRef.current, selectedRef.current, delta[0], delta[1]), { coalesce: `nudge-${selectedRef.current.join(',')}` });
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [arrange, close, commit, duplicate, redo, remove, selectedId, undo]);
+  }, [arrange, close, commit, duplicate, redo, remove, selectAll, selectedId, undo]);
 
   // ── rendering ────────────────────────────────────────────────────────────
   const commitInlineText = (id, el) => {
@@ -326,7 +387,9 @@ export default function SlideEditor({ slide, presentationId, onClose, onSaved, o
   };
 
   const k = 1 / (scale || 1); // one screen px in canvas px
-  const hover = hoverId && hoverId !== selectedId ? findLayer(layout, hoverId) : null;
+  const hover = hoverId && !selectedIds.includes(hoverId) ? findLayer(layout, hoverId) : null;
+  const groupIds = topLevel(layout, selectedIds);
+  const groupBox = groupIds.length > 1 ? selectionBounds(layout, groupIds) : null;
 
   return (
     <motion.div
@@ -359,7 +422,7 @@ export default function SlideEditor({ slide, presentationId, onClose, onSaved, o
           onPointerDown={e => {
             if (e.target.closest('[data-layer]') || e.target.closest('[data-handle]')) return;
             if (document.activeElement?.isContentEditable) document.activeElement.blur(); // commits the text
-            setSelectedId(null);
+            startMarquee(e);
           }}
         >
           <div style={{ width: 'min(100%, calc((100vh - 140px) * 16 / 9))', userSelect: 'none', WebkitUserSelect: 'none' }} className="shadow-2xl rounded-lg overflow-hidden">
@@ -369,6 +432,17 @@ export default function SlideEditor({ slide, presentationId, onClose, onSaved, o
               )}
               {selected && !selected.hidden && !editingId && (
                 <SelectionBox layer={selected} k={k} onResize={startResize} onRotate={startRotate} />
+              )}
+              {groupBox && (
+                <>
+                  {selectedLayers.map(l => (
+                    <div key={l.id} style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h, transform: l.rotation ? `rotate(${l.rotation}deg)` : undefined, outline: `${1.5 * k}px solid rgba(91,80,255,0.85)`, pointerEvents: 'none' }} />
+                  ))}
+                  <SelectionBox layer={{ ...groupBox, rotation: 0 }} k={k} onResize={startResize} dashed />
+                </>
+              )}
+              {marquee && (
+                <div style={{ position: 'absolute', left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h, background: 'rgba(91,80,255,0.12)', outline: `${k}px solid rgba(91,80,255,0.9)`, pointerEvents: 'none' }} />
               )}
               {guides.map((g, i) => (
                 <div key={i} style={{
@@ -391,7 +465,13 @@ export default function SlideEditor({ slide, presentationId, onClose, onSaved, o
             ))}
           </div>
           <div className="flex-1 overflow-y-auto">
-            {tab === 'edit' ? (
+            {tab === 'edit' && selectedLayers.length > 1 ? (
+              <MultiInspector
+                layers={selectedLayers} swatches={swatches}
+                onPatchEach={patchEach} onAlign={align} onDistribute={distribute}
+                onArrange={arrange} onDuplicate={duplicate} onDelete={remove}
+              />
+            ) : tab === 'edit' ? (
               <Inspector
                 layer={selected} layout={layout} swatches={swatches}
                 onPatch={patchSelected} onBox={setSelectedBox} onArrange={arrange}
@@ -399,7 +479,13 @@ export default function SlideEditor({ slide, presentationId, onClose, onSaved, o
                 onAskAI={onAskAI ? async (l) => { await save(); if (!dirty.current) onAskAI(l); } : undefined}
               />
             ) : (
-              <LayersPanel layout={layout} selectedId={selectedId} onSelect={id => { setSelectedId(id); setTab('edit'); }} onToggleHidden={toggleHidden} />
+              <LayersPanel
+                layout={layout} selectedIds={selectedIds} onToggleHidden={toggleHidden}
+                onSelect={(id, additive) => {
+                  if (additive) setSelectedIds(cur => (cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id]));
+                  else { setSelectedIds([id]); setTab('edit'); }
+                }}
+              />
             )}
           </div>
         </div>
@@ -434,26 +520,28 @@ function SaveStatus({ state, error, onRetry }) {
 
 // Selection frame with 8 resize handles and a rotation handle; sized in
 // canvas px but drawn at a constant on-screen size (k = 1 screen px).
-function SelectionBox({ layer: l, k, onResize, onRotate }) {
+function SelectionBox({ layer: l, k, onResize, onRotate, dashed = false }) {
   const hs = 10 * k;
   const handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
   const pos = (d) => ({
     left: d.includes('w') ? -hs / 2 : d.includes('e') ? l.w - hs / 2 : l.w / 2 - hs / 2,
     top: d.includes('n') ? -hs / 2 : d.includes('s') ? l.h - hs / 2 : l.h / 2 - hs / 2,
   });
-  const cursor = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
+  // Cursors follow the element's rotation (an "east" handle on a 90°-rotated box points down).
   return (
     <div style={{
       position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h,
       transform: l.rotation ? `rotate(${l.rotation}deg)` : undefined,
-      outline: `${2 * k}px solid #5B50FF`, pointerEvents: 'none',
+      outline: `${2 * k}px ${dashed ? 'dashed' : 'solid'} #5B50FF`, pointerEvents: 'none',
     }}>
       {handles.map(d => (
         <div key={d} data-handle onPointerDown={e => onResize(e, d)}
-          style={{ position: 'absolute', ...pos(d), width: hs, height: hs, background: '#fff', border: `${1.5 * k}px solid #5B50FF`, borderRadius: 2 * k, cursor: cursor[d], pointerEvents: 'auto' }} />
+          style={{ position: 'absolute', ...pos(d), width: hs, height: hs, background: '#fff', border: `${1.5 * k}px solid #5B50FF`, borderRadius: 2 * k, cursor: handleCursor(d, l.rotation || 0), pointerEvents: 'auto' }} />
       ))}
-      <div data-handle onPointerDown={onRotate} title="Rotate"
-        style={{ position: 'absolute', left: l.w / 2 - hs / 2, top: -hs * 3, width: hs, height: hs, borderRadius: '50%', background: '#fff', border: `${1.5 * k}px solid #5B50FF`, cursor: 'grab', pointerEvents: 'auto' }} />
+      {onRotate && (
+        <div data-handle onPointerDown={onRotate} title="Rotate (Shift snaps to 15°)"
+          style={{ position: 'absolute', left: l.w / 2 - hs / 2, top: -hs * 3, width: hs, height: hs, borderRadius: '50%', background: '#fff', border: `${1.5 * k}px solid #5B50FF`, cursor: 'grab', pointerEvents: 'auto' }} />
+      )}
     </div>
   );
 }

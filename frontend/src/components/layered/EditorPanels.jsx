@@ -3,6 +3,8 @@ import {
   AlignLeft, AlignCenter, AlignRight, Bold, Italic, CaseUpper, Copy, Trash2, Eye, EyeOff,
   BringToFront, SendToBack, ArrowUp, ArrowDown, FlipHorizontal, Type, Square, Image as ImageIcon,
   BarChart3, Shapes, Sparkles, Plus, Minus, Smartphone,
+  AlignStartVertical, AlignCenterVertical, AlignEndVertical, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
+  AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter,
 } from 'lucide-react';
 import { FONT_NAMES } from './fonts';
 
@@ -96,7 +98,7 @@ export function Inspector({ layer, layout, swatches, onPatch, onBox, onArrange, 
       <div className="p-4 text-[13px] text-zinc-500 leading-relaxed">
         Click any element on the slide to edit it. Double-click text to retype it.
         <div className="mt-3 text-zinc-600 text-[12px]">
-          Shortcuts: arrows nudge (Shift = 10px) · Delete removes · ⌘D duplicates · ⌘Z / ⇧⌘Z undo / redo · [ ] layer order
+          Shift-click or drag across empty space to select several · ⌘A selects all · arrows nudge (Shift = 10px) · Delete removes · ⌘D duplicates · ⌘Z / ⇧⌘Z undo / redo · [ ] layer order
         </div>
       </div>
     );
@@ -140,6 +142,73 @@ export function Inspector({ layer, layout, swatches, onPatch, onBox, onArrange, 
         </button>
       )}
 
+      <Row title="Arrange">
+        <div className="flex flex-wrap gap-1.5">
+          <IconButton title="Bring to front" onClick={() => onArrange('front')}><BringToFront size={14} /></IconButton>
+          <IconButton title="Forward" onClick={() => onArrange('forward')}><ArrowUp size={14} /></IconButton>
+          <IconButton title="Backward" onClick={() => onArrange('backward')}><ArrowDown size={14} /></IconButton>
+          <IconButton title="Send to back" onClick={() => onArrange('back')}><SendToBack size={14} /></IconButton>
+          <IconButton title="Duplicate (⌘D)" onClick={onDuplicate}><Copy size={14} /></IconButton>
+          <IconButton title="Delete (Del)" onClick={onDelete} danger><Trash2 size={14} /></IconButton>
+        </div>
+      </Row>
+    </div>
+  );
+}
+
+// ─── Several layers selected ───────────────────────────────────────────────
+// Align/distribute, shared opacity, one colour for all (text colour, shape
+// fill, icon colour), arrange, duplicate, delete.
+export function MultiInspector({ layers, swatches, onPatchEach, onAlign, onDistribute, onArrange, onDuplicate, onDelete }) {
+  const opacity = Math.round((layers[0]?.opacity ?? 1) * 100);
+  const sameOpacity = layers.every(l => Math.round((l.opacity ?? 1) * 100) === opacity);
+  const colourable = layers.filter(l => l.kind === 'text' || l.kind === 'shape' || (l.kind === 'icon' && !l.src));
+  const colourOf = (l) => (l.kind === 'shape' ? l.fill : l.color);
+  const firstColour = colourable[0] ? colourOf(colourable[0]) : null;
+  const texts = layers.filter(l => l.kind === 'text');
+  return (
+    <div className="p-4 flex flex-col gap-4 text-zinc-200">
+      <div className="flex items-center justify-between">
+        <span className="text-[13px] font-semibold">{layers.length} layers selected</span>
+        <span className="text-[11px] text-zinc-500">⇧-click to add or remove</span>
+      </div>
+      <Row title="Align">
+        <div className="flex flex-wrap gap-1.5">
+          <IconButton title="Align left edges" onClick={() => onAlign('left')}><AlignStartVertical size={14} /></IconButton>
+          <IconButton title="Align centres horizontally" onClick={() => onAlign('center')}><AlignCenterVertical size={14} /></IconButton>
+          <IconButton title="Align right edges" onClick={() => onAlign('right')}><AlignEndVertical size={14} /></IconButton>
+          <IconButton title="Align top edges" onClick={() => onAlign('top')}><AlignStartHorizontal size={14} /></IconButton>
+          <IconButton title="Align middles" onClick={() => onAlign('middle')}><AlignCenterHorizontal size={14} /></IconButton>
+          <IconButton title="Align bottom edges" onClick={() => onAlign('bottom')}><AlignEndHorizontal size={14} /></IconButton>
+        </div>
+        <div className="flex gap-1.5">
+          <IconButton title={layers.length < 3 ? 'Select 3 or more to distribute' : 'Distribute horizontally'} onClick={() => layers.length >= 3 && onDistribute('x')}>
+            <AlignHorizontalDistributeCenter size={14} /> Space evenly ↔
+          </IconButton>
+          <IconButton title={layers.length < 3 ? 'Select 3 or more to distribute' : 'Distribute vertically'} onClick={() => layers.length >= 3 && onDistribute('y')}>
+            <AlignVerticalDistributeCenter size={14} /> ↕
+          </IconButton>
+        </div>
+      </Row>
+      <Row title="Opacity">
+        <NumberField suffix="%" min={0} max={100} value={sameOpacity ? opacity : ''} onChange={v => onPatchEach(() => ({ opacity: v / 100 }))} />
+      </Row>
+      {colourable.length > 0 && (
+        <Row title={`Colour (${colourable.length} layer${colourable.length === 1 ? '' : 's'})`}>
+          <ColorField value={firstColour} swatches={swatches}
+            onChange={c => onPatchEach(l => (l.kind === 'shape' ? { fill: c, gradient: null }
+              : l.kind === 'text' ? { color: c, gradient: null, runs: (l.runs || []).map(r => ({ ...r, color: undefined, gradient: undefined })) }
+                : l.kind === 'icon' && !l.src ? { color: c } : null))} />
+        </Row>
+      )}
+      {texts.length > 1 && texts.length === layers.length && (
+        <Row title="Font">
+          <select value={texts.every(t => t.font === texts[0].font) ? texts[0].font : ''} onChange={e => onPatchEach(() => ({ font: e.target.value }))} className={inputCls}>
+            {!texts.every(t => t.font === texts[0].font) && <option value="">Mixed</option>}
+            {FONT_NAMES.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+        </Row>
+      )}
       <Row title="Arrange">
         <div className="flex flex-wrap gap-1.5">
           <IconButton title="Bring to front" onClick={() => onArrange('front')}><BringToFront size={14} /></IconButton>
@@ -278,7 +347,8 @@ function CellInput({ value, onCommit, numeric }) {
 // ─── Layers list (top of the stack first) ──────────────────────────────────
 const KIND_ICON = { text: Type, shape: Square, image: ImageIcon, chart: BarChart3, icon: Shapes, logo: ImageIcon };
 
-export function LayersPanel({ layout, selectedId, onSelect, onToggleHidden }) {
+export function LayersPanel({ layout, selectedIds = [], onSelect, onToggleHidden }) {
+  const selected = new Set(selectedIds);
   const items = [...layout.layers].reverse();
   return (
     <div className="flex flex-col py-1">
@@ -287,8 +357,8 @@ export function LayersPanel({ layout, selectedId, onSelect, onToggleHidden }) {
         const name = l.kind === 'text' ? String(l.text).replace(/\s+/g, ' ').slice(0, 40) : (l.name || l.id);
         return (
           <div key={l.id}
-            className={`group flex items-center gap-2 px-3 py-1.5 cursor-pointer text-[12px] ${selectedId === l.id ? 'bg-zinc-800 text-zinc-50' : 'text-zinc-400 hover:bg-zinc-900'} ${l.screen_of ? 'pl-7' : ''}`}
-            onClick={() => onSelect(l.id)}>
+            className={`group flex items-center gap-2 px-3 py-1.5 cursor-pointer text-[12px] ${selected.has(l.id) ? 'bg-zinc-800 text-zinc-50' : 'text-zinc-400 hover:bg-zinc-900'} ${l.screen_of ? 'pl-7' : ''}`}
+            onClick={e => onSelect(l.id, e.shiftKey || e.metaKey || e.ctrlKey)}>
             <Icon size={13} className="shrink-0" />
             <span className={`truncate flex-1 ${l.hidden ? 'opacity-40' : ''}`}>{name}</span>
             <button onClick={e => { e.stopPropagation(); onToggleHidden(l.id); }}
