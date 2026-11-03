@@ -232,6 +232,9 @@ export function initDatabase() {
   // disk (GAPS #7) and this column holds the filename instead. Add image_file
   // and make image_data nullable-in-practice (kept for the migration window).
   try { db.exec('ALTER TABLE slide_versions ADD COLUMN image_file TEXT'); } catch { /* exists */ }
+  // Layered slides: a version also stores the layout it was rendered from, so
+  // restoring it brings back every editable layer (not just the flat image).
+  try { db.exec('ALTER TABLE slide_versions ADD COLUMN layout TEXT'); } catch { /* exists */ }
 
   // One-time migration (guarded by PRAGMA user_version): move version images
   // embedded in slides_data into slide_versions, leaving metadata stubs behind.

@@ -420,6 +420,9 @@ Rules:
 - key_points ≤ 12 words each
 - When "PREFLIGHT ANSWERS:" is present, you have all needed info — generate immediately`;
 
+// Single-image era prompt (pre layered slides). No longer sent to Claude as a
+// system prompt — its art-direction section is the source of
+// CLASSIC_ART_DIRECTION (bottom of file), which the layered-slide agent uses.
 const PROMPT_GEN_SYSTEM = `You are Nova, generating detailed visual prompts for an existing slide outline.
 
 Output format — CRITICAL. Output ONLY lines starting with SLIDE:. No other text, no markdown, no commentary.
@@ -553,59 +556,9 @@ ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 // ─── Minimalistic style ──────────────────────────────────────────────────────
 // The classic style above produces busy editorial slides (hot pink + neon green,
 // photo collages, emoji pills). The minimalistic style is the opposite: cinematic,
-// restrained, near-monochrome, ONE idea per slide. Rather than a written rule
-// block, it teaches the look by example — MINIMALISTIC_STYLE_REFERENCE (from
-// ./minimalisticExamples.js) carries the 12 ideal prompts plus guardrails, and is
-// shared across every minimalistic system prompt so the look stays consistent
-// everywhere image prompts are generated (main flow, add-slides, single-slide
-// fallback).
-
-const MINIMALISTIC_PROMPT_GEN_SYSTEM = `You are Nova, generating detailed visual prompts for an existing slide outline — in MINIMALISTIC style.
-
-Output format — CRITICAL. Output ONLY lines starting with SLIDE:. No other text, no markdown, no commentary.
-
-One line per slide:
-SLIDE:{"index":N,"nano_banana_prompt":"...roughly 200-450 words, matching the reference style below...","attach_image_categories":["moodboard"|"branding"|"all"|[]]}
-
-══════════════════════════════════════════
-CRITICAL OUTPUT RULE
-══════════════════════════════════════════
-
-You MUST output exactly one SLIDE: line for every index listed in the outline — in ascending order.
-- If the outline has N slides you output EXACTLY N SLIDE: lines
-- The FIRST line you output MUST be SLIDE: for the LOWEST index in the outline (do NOT skip or defer any slide — including the cover)
-- Missing any index causes a hard system error and ruins the entire presentation
-- After generating all prompts, mentally count them — if you have fewer than N, add the missing ones before stopping
-
-Rules:
-- nano_banana_prompt must be roughly 200-450 words, matching the reference prompts below
-- EVERY slide including the cover (index 0) follows the EXACT SAME minimalistic style and restrained palette — no exceptions
-- COVER SLIDE (index 0, type "cover"): it has no key_points. Derive its visual concept entirely from the Original Brief and theme. Choose the single strongest hero photograph or metaphor object that embodies the whole deck, in the same restrained palette and cinematic finish as every other slide.
-
-${MINIMALISTIC_STYLE_REFERENCE}
-
-ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
-- "moodboard" — attach moodboard references to slides where visual style guidance is needed
-- "branding" — attach branding/logos/pack shots to slides where products or brand identity feature
-- "all" — attach all uploaded images
-- [] — attach nothing (e.g., pure text quote slides)`;
-
-const MINIMALISTIC_SINGLE_SLIDE_PROMPT_SYSTEM = `You are Nova. Generate a nano_banana_prompt for one presentation slide — in MINIMALISTIC style.
-
-Output ONLY the visual prompt as plain prose — roughly 200 to 450 words, matching the length and density of the reference prompts below. No JSON, no markdown, no labels, no "SLIDE:", no bullet points — just the prompt text itself.
-
-For a COVER slide (index 0): it has no key_points — derive the whole concept from the Original Brief and theme, choosing the single strongest hero photograph or metaphor object that embodies the deck, in the same restrained style as every other slide.
-
-${MINIMALISTIC_STYLE_REFERENCE}`;
-
-// Pick the system prompt for a generation function based on the requested style.
-// Default is 'classic' so every existing call path is unchanged.
-function pickPromptGenSystem(style) {
-  return style === 'minimalistic' ? MINIMALISTIC_PROMPT_GEN_SYSTEM : PROMPT_GEN_SYSTEM;
-}
-function pickSingleSlideSystem(style) {
-  return style === 'minimalistic' ? MINIMALISTIC_SINGLE_SLIDE_PROMPT_SYSTEM : SINGLE_SLIDE_PROMPT_SYSTEM;
-}
+// restrained, near-monochrome, ONE idea per slide, taught by example via
+// MINIMALISTIC_STYLE_REFERENCE (./minimalisticExamples.js). Both style
+// references are consumed by the layered-slide agent (layoutAgent.js).
 
 // Streaming compact plan — calls callbacks.onHeader(header) and callbacks.onSlide(slide)
 // as each line arrives so the frontend can show rows immediately.
@@ -717,124 +670,6 @@ export async function generateCompactPlan(message, attachments, userId = null, c
   return { header, slides };
 }
 
-export async function streamSlidePrompts(slides, header, message, attachments, callbacks, userId = null, style = 'classic') {
-  const { onPrompt } = callbacks;
-
-  if (MOCK_MODE) {
-    for (const slide of slides) {
-      await new Promise(r => setTimeout(r, 250));
-      onPrompt({ ...slide, nano_banana_prompt: slide.title, attach_image_categories: [] });
-    }
-    return;
-  }
-
-  const _tid = requestContext.getStore()?.requestId;
-  const _t = Date.now();
-  tracer.recordStep(_tid, 'claude_prompt_gen', 'started', 0);
-
-  // Sort slides by index so position-based matching is deterministic
-  const sortedSlides = [...slides].sort((a, b) => a.index - b.index);
-
-  const outlineText = sortedSlides.map(s =>
-    `Slide ${s.index} [${s.type}]: "${s.title}"${s.subtitle ? ` — ${s.subtitle}` : ''}. Key points: ${(s.key_points || []).join('; ')}`
-  ).join('\n');
-
-  const firstIdx = sortedSlides[0].index;
-  const lastIdx  = sortedSlides[sortedSlides.length - 1].index;
-  const isCoverIncluded = sortedSlides.some(s => s.index === 0 && s.type === 'cover');
-
-  const promptMessage = `Generate nano_banana_prompts for ALL ${sortedSlides.length} slides (indices ${firstIdx} through ${lastIdx}).
-
-OUTPUT REQUIREMENT: You MUST output exactly ${sortedSlides.length} SLIDE: lines — one per index from ${firstIdx} to ${lastIdx}, in order. The FIRST line must be SLIDE:{"index":${firstIdx},...}. Never skip any index.${
-    isCoverIncluded
-      ? `\n\nCOVER SLIDE (index 0): It has no key_points. Derive its entire visual concept from the Original Brief and presentation theme below. Same design language (black background, hot pink accent, neon green) as all other slides — no exceptions.`
-      : ''
-  }
-
-Presentation: ${header.presentation_title}
-Theme: ${header.theme}
-Color palette: ${JSON.stringify(header.color_palette)}
-
-Slide outline:
-${outlineText}
-
-Original brief: ${message}
-
-FINAL CHECK before you respond: you must output exactly ${sortedSlides.length} SLIDE: line(s) — one for each of these indices, in order: ${sortedSlides.map(s => s.index).join(', ')}. Do not stop after fewer lines.`;
-
-  const userContent = buildUserContent(promptMessage, attachments);
-
-  const t0 = Date.now();
-  logger.info('claude prompt generation start', { slideCount: sortedSlides.length });
-
-  const stream = client.messages.stream({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 16000,
-    system: pickPromptGenSystem(style),
-    messages: [{ role: 'user', content: userContent }],
-  });
-
-  let buffer = '';
-  // Position-based mapping: the Nth SLIDE: output maps to the Nth slide in sorted order.
-  // This is robust against Claude emitting wrong index numbers (e.g. starting at 1 instead of 0).
-  let promptPosition = 0;
-
-  function handleParsedPrompt(promptData) {
-    // Map by position first; fall back to index-based lookup if position overflows
-    const slide = sortedSlides[promptPosition] ?? sortedSlides.find(s => s.index === promptData.index) ?? {};
-    promptPosition++;
-    logger.debug('slide prompt generated', { position: promptPosition, claimedIndex: promptData.index, actualIndex: slide.index });
-    onPrompt({
-      ...slide,
-      nano_banana_prompt: promptData.nano_banana_prompt,
-      attach_image_categories: promptData.attach_image_categories ?? [],
-    });
-  }
-
-  for await (const event of stream) {
-    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-      buffer += event.delta.text;
-      const { objects, remaining } = extractPrefixedObjects(buffer);
-      buffer = remaining;
-
-      for (const { prefix, jsonStr } of objects) {
-        if (prefix === 'SLIDE:') {
-          try {
-            handleParsedPrompt(parseJSON(jsonStr));
-          } catch (e) {
-            logger.warn('failed to parse slide prompt', { errorMessage: e.message });
-          }
-        }
-      }
-    }
-  }
-
-  if (buffer.trim()) {
-    const { objects, remaining } = extractPrefixedObjects(buffer + '\n');
-    for (const { prefix, jsonStr } of objects) {
-      if (prefix === 'SLIDE:') {
-        try { handleParsedPrompt(parseJSON(jsonStr)); } catch (e) {
-          logger.warn('failed to parse slide prompt (final buffer)', { errorMessage: e.message, jsonStrPreview: jsonStr.slice(0, 200) });
-        }
-      }
-    }
-    if (remaining.trim()) {
-      logger.warn('streamSlidePrompts: incomplete SLIDE object left in buffer at stream end', { remainingPreview: remaining.slice(0, 300) });
-    }
-  }
-
-  let finalMsg = null;
-  try { finalMsg = await stream.finalMessage(); } catch {}
-  if (finalMsg?.stop_reason === 'max_tokens') {
-    logger.warn('streamSlidePrompts: response truncated by max_tokens', { promptsGenerated: promptPosition, expected: sortedSlides.length });
-  }
-  if (userId && finalMsg) {
-    recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
-    metrics.recordAICall({ fn: 'streamSlidePrompts', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs: Date.now() - t0 });
-  }
-  logger.info('claude prompt generation complete', { durationMs: Date.now() - t0, promptsGenerated: promptPosition, expected: sortedSlides.length });
-  tracer.recordStep(_tid, 'claude_prompt_gen', 'completed', Date.now() - _t);
-}
 
 // ─── Suggest presentation title ──────────────────────────────────────────────
 
@@ -896,80 +731,7 @@ Rules:
 // Plain-text output — no JSON parsing required, eliminating the failure mode
 // where a long prose prompt with embedded quotes/apostrophes breaks jsonrepair.
 
-const SINGLE_SLIDE_PROMPT_SYSTEM = `You are Nova. Generate a nano_banana_prompt for one presentation slide.
 
-Output ONLY the visual prompt as plain prose — 250 to 600 words. No JSON, no markdown, no labels, no "SLIDE:", no bullet points — just the prompt text itself.
-
-The prompt MUST follow the MANDATORY 5-LAYER STRUCTURE in this order:
-
-1. BACKGROUND — state exact color (hex when relevant) and one sentence on WHY it serves the mood.
-2. TOP / HEADER — bold white ALL-CAPS display type, 2–3 short lines, LAST line in HOT PINK, followed by a WHITE ITALIC subhead.
-3. MAIN BODY — choose ONE: A) SINGLE HERO PHOTOGRAPH, B) COLLAGE OF REAL MOMENTS, C) STRUCTURED COLUMNS/GRID, D) ISOMETRIC 3D RENDER. Describe every detail.
-4. CALLOUT CARDS — for each: border color, background tint, verbatim text, emoji, size.
-5. BOTTOM STRIP — full-width dark green or black strip with a bold white verdict line, optionally a neon green italic second beat.
-
-NON-NEGOTIABLE PALETTE: pure black (#000000) backgrounds, hot pink accents, neon green dividers/subtext, white type.
-
-QUALITY: include at least 3 sensory details, 1 verbatim on-screen text (when phones/screens appear), 1 named human emotional state, culturally specific markers, stats paired with consequences.
-
-BANNED FOREVER: "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization", "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart".`;
-
-export async function generateSingleSlidePrompt(slide, header, originalBrief, attachments = [], userId = null, style = 'classic') {
-  if (MOCK_MODE) {
-    return { nano_banana_prompt: slide.title, attach_image_categories: ['moodboard'] };
-  }
-
-  const isCover = (slide.index === 0 || slide.type === 'cover');
-  const coverNote = !isCover
-    ? ''
-    : style === 'minimalistic'
-      ? '\nCOVER SLIDE: No key_points exist — derive the entire visual concept from the Original Brief and presentation theme. Choose the single strongest hero photograph or metaphor object that embodies the whole deck, in the same restrained near-monochrome palette and cinematic finish as every other slide. No abstract gradients or atmospheric haze.'
-      : '\nCOVER SLIDE: No key_points exist — derive the entire visual concept from the Original Brief and presentation theme. Must use black/near-black background, hot pink accent, neon green design language. Use SINGLE HERO PHOTOGRAPH or ISOMETRIC 3D RENDER for the main body. Absolutely no abstract gradients or atmospheric haze.';
-
-  const slideContext = [
-    `Presentation: "${header.presentation_title}"`,
-    `Theme: ${header.theme}`,
-    `Color palette: ${JSON.stringify(header.color_palette)}`,
-    ``,
-    `Slide index: ${slide.index}`,
-    `Type: ${slide.type}`,
-    `Title: "${slide.title}"`,
-    slide.subtitle  ? `Subtitle: "${slide.subtitle}"` : null,
-    slide.key_points?.length ? `Key points: ${slide.key_points.join(' | ')}` : null,
-    coverNote,
-    ``,
-    `Original brief: ${originalBrief}`,
-  ].filter(Boolean).join('\n');
-
-  const userContent = buildUserContent(slideContext, attachments.slice(0, 3));
-
-  const _tid = requestContext.getStore()?.requestId;
-  const _t = Date.now();
-
-  logger.info('generating targeted single-slide prompt', { slideIndex: slide.index, type: slide.type });
-
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1200,
-    system: pickSingleSlideSystem(style),
-    messages: [{ role: 'user', content: userContent }],
-  });
-
-  if (userId) {
-    try {
-      recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
-      metrics.recordAICall({ fn: 'generateSingleSlidePrompt', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs: Date.now() - _t });
-    } catch {}
-  }
-
-  const promptText = response.content[0].text.trim();
-  logger.info('targeted single-slide prompt complete', { slideIndex: slide.index, promptLength: promptText.length });
-
-  return {
-    nano_banana_prompt: promptText,
-    attach_image_categories: attachments.length > 0 ? ['moodboard'] : [],
-  };
-}
 
 // ─── Targeted single-slide outline (fallback for any slide missed by streamNewSlides) ─
 
@@ -1159,3 +921,16 @@ ${countInstruction}`;
 
   tracer.recordStep(_tid, 'claude_new_slides', 'completed', Date.now() - _t);
 }
+
+// ─── Shared with the layered-slide agent (layoutAgent.js) ───────────────────
+// The classic art direction (5-layer structure, palette, quality bar, banned
+// clichés) sliced out of PROMPT_GEN_SYSTEM, minus its SLIDE:-line output
+// format — so layered slides inherit exactly the same visual language without
+// duplicating (and drifting from) the prompt text.
+export const CLASSIC_ART_DIRECTION = (() => {
+  const start = PROMPT_GEN_SYSTEM.indexOf('MANDATORY 5-LAYER STRUCTURE FOR EVERY PROMPT');
+  const end = PROMPT_GEN_SYSTEM.indexOf('ATTACH IMAGE CATEGORIES');
+  return start !== -1 && end > start ? PROMPT_GEN_SYSTEM.slice(start, end).trim() : PROMPT_GEN_SYSTEM;
+})();
+
+export { sanitizeDeep, MINIMALISTIC_STYLE_REFERENCE };

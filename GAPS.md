@@ -202,3 +202,11 @@
 - **`isPlaceholderImage` conflates mock mode with failure** — in mock mode every slide is an SVG placeholder, so mock generations mark slides as errors in `runFullFlow`'s check paths and issue refunds; harmless locally but makes mock-mode behavior diverge from real mode.
 - **Accessibility debt** on the app UI (icon-only buttons without labels, <44px touch targets, color-only credit ring) — a full audit with file/line detail already exists in `.impeccable/audit/2026-06-04T22-08-16Z__frontend-src.md`; treat it as the backlog.
 - **`analyzeLimiter` etc. key by `req.userId`** — set correctly because limiters run after `authenticateToken` in those routes, but the global `apiLimiter` in `server.js` runs pre-auth and silently falls back to IP keying; corporate-NAT users share a 200 req/15 min budget.
+
+## 22. Layered slides — known limits after Stage 1 (backend)
+
+- **Web app still shows the flattened preview.** Layered slides render server-side previews (`image_data`); the live layer renderer + editor are Stage 2/3. **Fix:** frontend `SlideStage` consuming `slide.layout` + `slide_layout`/`slide_layer_ready` events.
+- **Natural-language edits on layered slides are refused (409)** until Stage 4 (layout ops + single-element regeneration); legacy flat slides still edit via Gemini.
+- **`POST /:id/unlock-slides` still awaits the builds before responding** (now parallel, ~1-2 min worst case vs the 5-min axios timeout). **Fix:** respond immediately + SSE, once the frontend handles it (Stage 2).
+- **Layout latency dominates**: Claude takes ~32-64s to write a dense layout (measured 2026-11-01). Image generation now starts while it streams; further cuts (smaller prompts, splitting dense layouts) are open.
+- **PPTX export** — DONE (2026-11-02): `GET /:id/export/pptx`, measured ~2 s / ~4 MB for 9 real layered slides. Gradient text exports as the gradient's middle colour (pptxgenjs has no gradient text); frosted-glass blur exports as a translucent fill.

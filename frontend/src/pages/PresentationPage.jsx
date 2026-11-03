@@ -388,9 +388,45 @@ export default function PresentationPage() {
         );
       }
 
+      // Live layered build: the layout arrives first (slide_layout), then each
+      // generated layer as it lands (slide_layer_ready). Kept on the slide as
+      // `live_layout`, shown by SlideRenderer while the slide is generating.
+      if (event.type === 'slide_layout') {
+        setGeneratedSlides(prev => prev.map(s => s.index === event.index ? { ...s, live_layout: event.layout } : s));
+      }
+
+      if (event.type === 'slide_layer_ready') {
+        setGeneratedSlides(prev => prev.map(s => {
+          if (s.index !== event.index || !s.live_layout) return s;
+          const layer = event.layer;
+          const layers = [...s.live_layout.layers];
+          const at = layers.findIndex(l => l.id === layer.id);
+          if (at >= 0) layers[at] = layer;
+          else {
+            // A piece split out of a cluster replaces the cluster placeholder
+            // (first piece) or joins right after its siblings.
+            const ci = layers.findIndex(l => l.id === layer.cluster && l.role === 'cluster');
+            if (ci >= 0) layers.splice(ci, 1, layer);
+            else {
+              const sib = layers.map(l => l.cluster).lastIndexOf(layer.cluster);
+              layers.splice(sib >= 0 ? sib + 1 : layers.length, 0, layer);
+            }
+          }
+          return { ...s, live_layout: { ...s.live_layout, layers } };
+        }));
+      }
+
+      // An AI edit of a layered slide failed: the slide is unchanged (server
+      // sends it back) and the edit was refunded — show why.
+      if (event.type === 'slide_edit_failed') {
+        setGeneratedSlides(prev => prev.map(s => (s.index === event.index
+          ? { ...(event.slide || s), status: 'complete', live_layout: undefined, edit_error: event.message || 'This edit couldn\'t be applied.' }
+          : s)));
+      }
+
       if (event.type === 'slide_updated') {
         setGeneratedSlides(prev =>
-          prev.map(s => s.index === event.slide.index ? event.slide : s)
+          prev.map(s => s.index === event.slide.index ? { ...event.slide, edit_summary: event.source === 'ai_edit' ? event.summary : undefined } : s)
         );
       }
 
