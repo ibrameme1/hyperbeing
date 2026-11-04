@@ -521,3 +521,27 @@ describe('output economy: omitted fields default from the deck design', () => {
     expect(l.fonts).toMatchObject({ display: 'Sora', body: 'Lato', text: '#101418' });
   });
 });
+
+describe('device row packing ignores cluster pieces', () => {
+  it('never shrinks a merged ui cluster piece because a label sits beside it', () => {
+    const layout = { canvas: { w: 1920, h: 1080 }, layers: [
+      { kind: 'image', id: 'phone', role: 'hero', ui: true, cluster: 'visual', merged: ['coins', 'wallet'], x: 929, y: 67, w: 882, h: 895 },
+      { kind: 'text', id: 'wl', text: 'Developer\nearnings', size: 30, x: 1640, y: 510, w: 210, h: 84 },
+    ] };
+    const before = { ...layout.layers[0] };
+    tightenDeviceRows(layout); tightenDeviceRows(layout);
+    expect(layout.layers[0]).toMatchObject({ x: before.x, y: before.y, w: before.w, h: before.h });
+  });
+});
+
+describe('device row packing does not compound shrinking', () => {
+  it('keeps a clipped phone row at >= 60% across both packing passes', () => {
+    const layout = { canvas: { w: 1920, h: 1080 }, layers: [
+      { kind: 'image', id: 'p1', screen: { fill: '#000' }, x: 1000, y: 200, w: 300, h: 640 },
+      { kind: 'image', id: 'p2', screen: { fill: '#000' }, x: 1340, y: 200, w: 300, h: 640 },
+      { kind: 'text', id: 'foot', text: 'Footer line', size: 30, x: 900, y: 500, w: 900, h: 60 },
+    ] };
+    tightenDeviceRows(layout); tightenDeviceRows(layout);
+    expect(layout.layers[0].w).toBeGreaterThanOrEqual(Math.floor(300 * 0.6));
+  });
+});

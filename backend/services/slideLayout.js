@@ -994,8 +994,14 @@ export function resolveCollisions(layout) {
 // box leaves big gaps, so pack each row to `gap` px apart, keeping the row
 // centred on its original span. Screen rects and screen children move with
 // their device. Returns a list of moved ids.
+// Cumulative row-packing scale per device layer object (one build's lifetime).
+const packScale = new WeakMap();
 export function tightenDeviceRows(layout, { gap = 40, maxGap = 64, maxScale = 1.6 } = {}) {
-  const devices = layout.layers.filter(l => l.kind === 'image' && (l.screen || l.ui) && !l.screen_of)
+  // Standalone devices only. A cluster piece (even a "ui" phone) is part of a
+  // composed group — often merged with coins/wallets — and its box is not a
+  // phone; packing it as one shrank a whole cluster to ~36% (0.6 x 2 passes).
+  const devices = layout.layers.filter(l => l.kind === 'image' && !l.screen_of && !l.cluster && !l.merged?.length
+    && (l.screen || l.ui))
     .sort((a, b) => a.x - b.x);
   const rows = [];
   for (const d of devices) {
@@ -1048,8 +1054,12 @@ export function tightenDeviceRows(layout, { gap = 40, maxGap = 64, maxScale = 1.
     const g = row.length > 1 ? gap : 0;
     const widthAt = (s) => row.reduce((t, d) => t + d.w * s, 0) + g * (row.length - 1);
     const tallest = Math.max(...row.map(d => d.h));
-    const s = Math.max(0.6, Math.min(maxScale, (band.x1 - band.x0) / widthAt(1), (band.y1 - band.y0) / tallest));
-    if (Math.abs(s - 1) > 0.01) for (const d of row) scaleBy(d, s);
+    // The build packs rows twice (before review, after the collision fixes);
+    // the 60% floor is on the CUMULATIVE scale so a label beside a row can't
+    // shrink it 0.6 x 0.6.
+    const already = Math.min(...row.map(d => packScale.get(d) || 1));
+    const s = Math.max(0.6 / already, Math.min(maxScale, (band.x1 - band.x0) / widthAt(1), (band.y1 - band.y0) / tallest));
+    if (Math.abs(s - 1) > 0.01) for (const d of row) { scaleBy(d, s); packScale.set(d, (packScale.get(d) || 1) * s); }
     // Lay the row out left to right, centred in the band, bottoms aligned.
     const total = widthAt(1);
     let x = Math.round(band.x0 + (band.x1 - band.x0 - total) / 2);
