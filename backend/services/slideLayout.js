@@ -746,13 +746,20 @@ export function fitLayout(layout) {
   // Generated elements covering text (devices, heroes) — usually a layout bug.
   // Layers drawn BELOW the text are fine only if they're backgrounds of it,
   // which images on a designed slide rarely are.
+  // The wording depends on z-order: the reviewer acted on "covers" by moving
+  // text that was actually drawn ON TOP of the image (a card over a merged
+  // cluster's transparent corner). Light connectors are glows, like effects.
   for (const t of texts) {
-    for (const im of layout.layers.filter(l => l.kind === 'image' && l.role !== 'effect' && l.role !== 'screen_image')) {
+    for (const im of layout.layers.filter(l => l.kind === 'image' && l.role !== 'effect' && l.role !== 'screen_image' && !(l.role === 'connector' && l.medium === 'light'))) {
       if (t.screen_of === im.id) continue; // text on its own device's screen is the point
       if (overlaps(t, im)) {
         const ix = Math.min(t.x + t.w, im.x + im.w) - Math.max(t.x, im.x);
         const iy = Math.min(t.y + t.h, im.y + im.h) - Math.max(t.y, im.y);
-        if (ix * iy > 0.1 * t.w * t.h) warnings.push(`image "${im.id}" covers part of text "${t.id}"`);
+        if (ix * iy <= 0.1 * t.w * t.h) continue;
+        const above = layout.layers.indexOf(im) > layout.layers.indexOf(t);
+        warnings.push(above
+          ? `image "${im.id}" covers part of text "${t.id}"`
+          : `text "${t.id}" sits on top of image "${im.id}" (check it stays legible)`);
       }
     }
   }

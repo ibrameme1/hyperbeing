@@ -545,3 +545,15 @@ describe('device row packing does not compound shrinking', () => {
     expect(layout.layers[0].w).toBeGreaterThanOrEqual(Math.floor(300 * 0.6));
   });
 });
+
+import { fitLayout as fitForWarnings } from '../services/slideLayout.js';
+describe('image/text overlap warnings follow z-order', () => {
+  it('says "covers" only when the image is drawn above the text', () => {
+    const img = { kind: 'image', id: 'pic', role: 'hero', x: 0, y: 0, w: 800, h: 600 };
+    const txt = { kind: 'text', id: 'cap', role: 'body', text: 'Caption', font: 'Inter', size: 28, weight: 400, x: 100, y: 100, w: 300, h: 40, line_height: 1.15, letter_spacing: 0, align: 'left', valign: 'top' };
+    const below = fitForWarnings({ canvas: { w: 1920, h: 1080 }, layers: [{ ...img }, { ...txt }] }).warnings;
+    const above = fitForWarnings({ canvas: { w: 1920, h: 1080 }, layers: [{ ...txt }, { ...img }] }).warnings;
+    expect(below.join()).toMatch(/text "cap" sits on top of image "pic"/);
+    expect(above.join()).toMatch(/image "pic" covers part of text "cap"/);
+  });
+});
