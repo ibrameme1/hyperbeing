@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { recordClaudeCall } from './aiCosts.js';
+import { claudeRequest, answeredBy, toolInput } from './claudeModel.js';
 import { recordTokenUsage } from './stripeService.js';
 import { logger, requestContext } from './logger.js';
 import { tracer } from './tracer.js';
@@ -65,19 +66,17 @@ export async function craftDesignPrompts(userPrompt, attachedImages = [], count 
       text: `BRIEF:\n${userPrompt?.trim() || '(no text brief provided — rely on the reference images)'}\n\nIMAGE COUNT (N): ${count}`,
     });
 
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+    const response = await client.messages.create(...claudeRequest({
       max_tokens: 8000,
       system: SYSTEM_PROMPT,
       tools: [PROMPTS_TOOL],
-      tool_choice: { type: 'tool', name: 'submit_design_prompts' },
       messages: [{ role: 'user', content: userContent }],
-    });
+    }, { tool: 'submit_design_prompts' }));
 
     if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
-    recordClaudeCall({ call: 'design_prompts', usage: response.usage, userId, operation: 'design_mode' });
+    recordClaudeCall({ call: 'design_prompts', model: answeredBy(response), usage: response.usage, userId, operation: 'design_mode' });
 
-    const toolUse = response.content.find(b => b.type === 'tool_use' && b.name === 'submit_design_prompts');
+    const toolUse = { input: toolInput(response, 'submit_design_prompts') };
     const prompts = Array.isArray(toolUse?.input?.prompts)
       ? toolUse.input.prompts.filter(p => typeof p === 'string' && p.trim())
       : [];

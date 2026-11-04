@@ -26,6 +26,10 @@ const envNum = (name, dflt) => {
 export const CLAUDE_PRICES = {
   // input, output, cache write (5-min ephemeral = 1.25 × input), cache read (0.1 × input)
   'claude-sonnet-4-6': { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.30 },
+  // CLAUDE_MODEL=claude-sonnet-5-5 (cache read is 0.1 × input as well).
+  'claude-sonnet-5-5': { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.20 },
+  // Possible server-side refusal-fallback model for Sonnet 5.5 requests.
+  'claude-opus-5-5': { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.20 },
 };
 const WEB_SEARCH_PER_REQUEST = 0.01; // $10 per 1,000 searches
 
@@ -59,7 +63,9 @@ export function costContext() {
 }
 
 export function claudeCost(model, usage = {}) {
-  const p = CLAUDE_PRICES[model] || CLAUDE_PRICES['claude-sonnet-4-6'];
+  // Responses may name a dated snapshot of the model: match by prefix.
+  const key = Object.keys(CLAUDE_PRICES).find(k => model === k || String(model).startsWith(`${k}-`));
+  const p = CLAUDE_PRICES[key] || CLAUDE_PRICES['claude-sonnet-4-6'];
   const input = usage.input_tokens || 0;
   const cacheWrite = usage.cache_creation_input_tokens || 0;
   const cacheRead = usage.cache_read_input_tokens || 0;

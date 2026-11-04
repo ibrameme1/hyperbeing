@@ -10,6 +10,7 @@ import { metrics } from './metrics.js';
 import { tracer } from './tracer.js';
 import { sanitizeDeep } from './claudeAgent.js';
 import { MINIMALISTIC_EXAMPLE_PROMPTS } from './minimalisticExamples.js';
+import { CLAUDE_MODEL, claudeRequest, toolInput, answeredBy, usesAutoTools, warmupMaxTokens } from './claudeModel.js';
 import { FONT_NAMES, MAX_GENERATIONS_PER_SLIDE, MAX_LAYERS, MAX_SCREEN_LAYERS, MAX_SHEET_ICONS, canvasFor, extractCompletedLayoutParts } from './slideLayout.js';
 
 // ─── Layered-slide agent ────────────────────────────────────────────────────
@@ -24,7 +25,9 @@ import { FONT_NAMES, MAX_GENERATIONS_PER_SLIDE, MAX_LAYERS, MAX_SCREEN_LAYERS, M
 // All three use forced tool calls (parsed JSON, no line protocol) and all
 // output goes through sanitizeDeep (em-dash policy) + token accounting.
 
-const MODEL = 'claude-sonnet-4-6';
+// Model + per-model request shape (forced vs auto tool calls, thinking,
+// warm-up max_tokens) live in claudeModel.js; CLAUDE_MODEL switches them all.
+const MODEL = CLAUDE_MODEL;
 
 // ── The team's quality reference library ────────────────────────────────────
 // Every ideal slide prompt the team supplied (prompts/layered_quality_examples.md
@@ -94,7 +97,7 @@ function getClient() {
 }
 
 function account(userId, fn, response, t0) {
-  recordClaudeCall({ call: fn, usage: response.usage, durationMs: Date.now() - t0, userId });
+  recordClaudeCall({ call: fn, model: answeredBy(response), usage: response.usage, durationMs: Date.now() - t0, userId });
   if (!userId) return;
   try {
     recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
@@ -219,16 +222,14 @@ export async function designDeckSystem({ header, slides, brief, uploads = [], us
     { type: 'text', text: `PRESENTATION: ${header?.presentation_title || ''}\nTHEME HINT: ${header?.theme || ''}\nPALETTE HINT: ${JSON.stringify(header?.color_palette || {})}\n\nOUTLINE:\n${outline}\n\nORIGINAL BRIEF:\n${String(brief || '').slice(0, 12000)}` },
     ...uploadsContent(uploads),
   ];
-  const response = await getClient().messages.create({
-    model: MODEL,
+  const response = await getClient().messages.create(...claudeRequest({
     max_tokens: 2000,
     system: systemBlocks(DECK_SYSTEM_PROMPT.replace('{ART_DIRECTION}', ART_DIRECTION)),
     tools: [DECK_SYSTEM_TOOL],
-    tool_choice: { type: 'tool', name: DECK_SYSTEM_TOOL.name },
     messages: [{ role: 'user', content }],
-  });
+  }, { tool: DECK_SYSTEM_TOOL.name }));
   account(userId, 'designDeckSystem', response, t0);
-  const out = response.content.find(b => b.type === 'tool_use')?.input;
+  const out = toolInput(response, DECK_SYSTEM_TOOL.name);
   tracer.recordStep(_tid, 'claude_deck_design', out ? 'completed' : 'failed', Date.now() - t0);
   if (!out) throw new Error('deck design returned no tool call');
   logger.info('deck design complete', { ms: Date.now() - t0, fonts: out.fonts });
@@ -433,10 +434,11 @@ Submit the layout with the submit_slide_layout tool. Layers in back-to-front ord
 // one warm-up request as soon as the outline header arrives (well before the
 // slides start), and layout calls wait for it if it is still running.
 //
-// The warm-up must render the identical prefix, including the forced
-// tool_choice (a different tool_choice is a different cache entry). Forced
-// tool use is rejected with max_tokens: 0, so it uses max_tokens: 1 — one
-// billed output token.
+// The warm-up must render the identical prefix, including tool_choice (a
+// different tool_choice is a different cache entry) — both go through
+// claudeRequest(). Forced tool use (Sonnet 4.6) is rejected with
+// max_tokens: 0, so there it uses max_tokens: 1 (one billed output token);
+// models with auto tool choice (Sonnet 5.5) use 0.
 const WARM_TTL_MS = 4 * 60 * 1000; // ephemeral cache lives 5 min; stay under it
 const layoutWarmth = new Map(); // key → { at, promise }
 
@@ -447,8 +449,10 @@ function layoutPrefix(aspectRatio) {
     .replace('{ART_DIRECTION}', ART_DIRECTION);
   return {
     system: systemBlocks(system),
-    tools: [LAYOUT_TOOL],
-    tool_choice: { type: 'tool', name: LAYOUT_TOOL.name },
+    // Newest models stream tool input only with eager_input_streaming (the
+    // images start while the layout streams); older ones keep the exact
+    // tool definition their cached prefix was written with.
+    tools: [usesAutoTools(MODEL) ? { ...LAYOUT_TOOL, eager_input_streaming: true } : LAYOUT_TOOL],
   };
 }
 
@@ -478,12 +482,11 @@ export function prewarmLayoutCache({ aspectRatio = '16:9', userId = null } = {})
   const cur = layoutWarmth.get(k);
   if (cur && Date.now() - cur.at < WARM_TTL_MS) return cur.promise || Promise.resolve(false);
   const t0 = Date.now();
-  const promise = getClient().messages.create({
-    model: MODEL,
-    max_tokens: 1,
+  const promise = getClient().messages.create(...claudeRequest({
+    max_tokens: warmupMaxTokens(MODEL),
     ...layoutPrefix(aspectRatio),
     messages: [{ role: 'user', content: [...referenceSlideBlocks(), { type: 'text', text: 'Cache warm-up: no slide yet.' }] }],
-  }).then((response) => {
+  }, { tool: LAYOUT_TOOL.name })).then((response) => {
     account(userId, 'prewarmLayoutCache', response, t0);
     logger.info('layout cache warmed', { aspectRatio, ms: Date.now() - t0, cacheWrite: response.usage?.cache_creation_input_tokens, cacheRead: response.usage?.cache_read_input_tokens });
     return true;
@@ -544,12 +547,11 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
   // instead of writing its own copy.
   await awaitLayoutWarm(aspectRatio);
   noteLayoutCacheUse(aspectRatio);
-  const stream = getClient().messages.stream({
-    model: MODEL,
+  const stream = getClient().messages.stream(...claudeRequest({
     max_tokens: 12000,
     ...layoutPrefix(aspectRatio),
     messages: [{ role: 'user', content: [...referenceSlideBlocks(), { type: 'text', text }, ...uploadsContent(uploads)] }],
-  });
+  }, { tool: LAYOUT_TOOL.name }));
   let json = '';
   let lastLayerCount = -1; let sawBackground = false;
   stream.on('streamEvent', (ev) => {
@@ -565,7 +567,9 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
   });
   const response = await stream.finalMessage();
   account(userId, 'designSlideLayout', response, t0);
-  const out = response.content.find(b => b.type === 'tool_use')?.input;
+  if (response.stop_reason === 'max_tokens') logger.warn('slide layout hit max_tokens', { slideIndex: slide.index, outputTokens: response.usage?.output_tokens });
+  if (response.stop_reason === 'refusal') logger.warn('slide layout refused', { slideIndex: slide.index, details: response.stop_details });
+  const out = toolInput(response, LAYOUT_TOOL.name);
   tracer.recordStep(_tid, `claude_layout_${slide.index}`, out ? 'completed' : 'failed', Date.now() - t0);
   if (!out) throw new Error('slide layout returned no tool call');
   logger.info('slide layout designed', { slideIndex: slide.index, ms: Date.now() - t0, layers: out.layers?.length, composition: out.composition, outputTokens: response.usage?.output_tokens });
@@ -630,12 +634,10 @@ export async function reviewSlideLayout({ layout, previewPng, warnings = [], use
     if (!response) return { verdict: `review pending (files mode, key ${key})`, fixes: [] };
     return sanitizeDeep(response);
   }
-  const response = await getClient().messages.create({
-    model: MODEL,
+  const response = await getClient().messages.create(...claudeRequest({
     max_tokens: 3000,
     system: REVIEW_SYSTEM_PROMPT,
     tools: [REVIEW_TOOL],
-    tool_choice: { type: 'tool', name: REVIEW_TOOL.name },
     messages: [{
       role: 'user',
       content: [
@@ -643,9 +645,9 @@ export async function reviewSlideLayout({ layout, previewPng, warnings = [], use
         { type: 'text', text: `LAYERS:\n${JSON.stringify(compact)}\n\nAUTOMATED CHECK WARNINGS:\n${warnings.length ? warnings.map(w => `- ${w}`).join('\n') : '(none)'}` },
       ],
     }],
-  });
+  }, { tool: REVIEW_TOOL.name }));
   account(userId, 'reviewSlideLayout', response, t0);
-  const out = response.content.find(b => b.type === 'tool_use')?.input || { verdict: 'no review', fixes: [] };
+  const out = toolInput(response, REVIEW_TOOL.name) || { verdict: 'no review', fixes: [] };
   tracer.recordStep(_tid, `claude_review_${slideIndex}`, 'completed', Date.now() - t0);
   logger.info('slide layout reviewed', { slideIndex, ms: Date.now() - t0, verdict: String(out.verdict).slice(0, 200), fixes: out.fixes?.length || 0 });
   return sanitizeDeep(out);
@@ -733,12 +735,10 @@ export async function editSlideLayout({ layout, previewPng, instruction, deckDes
   const _tid = requestContext.getStore()?.requestId;
   const t0 = Date.now();
   tracer.recordStep(_tid, `claude_edit_${slideIndex}`, 'started', 0);
-  const response = await getClient().messages.create({
-    model: MODEL,
+  const response = await getClient().messages.create(...claudeRequest({
     max_tokens: 6000,
     system: systemBlocks(EDIT_SYSTEM_PROMPT),
     tools: [EDIT_TOOL],
-    tool_choice: { type: 'tool', name: EDIT_TOOL.name },
     messages: [{
       role: 'user',
       content: [
@@ -747,9 +747,9 @@ export async function editSlideLayout({ layout, previewPng, instruction, deckDes
         ...uploadsContent(uploads),
       ],
     }],
-  });
+  }, { tool: EDIT_TOOL.name }));
   account(userId, 'editSlideLayout', response, t0);
-  const out = response.content.find(b => b.type === 'tool_use')?.input || { summary: 'no edit', ops: [] };
+  const out = toolInput(response, EDIT_TOOL.name) || { summary: 'no edit', ops: [] };
   tracer.recordStep(_tid, `claude_edit_${slideIndex}`, 'completed', Date.now() - t0);
   logger.info('slide edit planned', { slideIndex, ms: Date.now() - t0, ops: out.ops?.length || 0, summary: String(out.summary).slice(0, 200) });
   return sanitizeDeep(out);
