@@ -170,6 +170,10 @@ function baseLayer(l, canvas, id) {
   };
 }
 
+// Text roles that default to the deck's display font and weight 700 (Claude
+// omits font/weight when they match these defaults).
+export const DISPLAY_ROLES = ['headline', 'display', 'stat'];
+
 function normalizeText(l, base, fonts) {
   const runs = Array.isArray(l.runs)
     ? l.runs
@@ -185,7 +189,7 @@ function normalizeText(l, base, fonts) {
     : null;
   const text = str(l.text, 4000) || (runs ? runs.map(r => r.text).join('') : '');
   if (!text.trim()) return null;
-  const isDisplay = l.role === 'headline' || l.role === 'display';
+  const isDisplay = DISPLAY_ROLES.includes(l.role);
   return {
     ...base,
     role: str(l.role, 30, 'body'),
@@ -196,7 +200,7 @@ function normalizeText(l, base, fonts) {
     weight: num(l.weight, 100, 900, isDisplay ? 700 : 400),
     italic: !!l.italic,
     uppercase: !!l.uppercase,
-    color: color(l.color, '#FFFFFF'),
+    color: color(l.color, fonts.text || '#FFFFFF'),
     gradient: gradient(l.gradient) || undefined,
     align: ['left', 'center', 'right'].includes(l.align) ? l.align : 'left',
     valign: ['top', 'middle', 'bottom'].includes(l.valign) ? l.valign : 'top',
@@ -425,13 +429,18 @@ function unstring(v) {
   }
 }
 
-export function normalizeLayout(raw, { aspectRatio = '16:9', uploadCount = 0 } = {}) {
+// `deck` (the deck design system) supplies the defaults Claude may omit to
+// save output tokens: the display/body fonts and the text colour.
+export function normalizeLayout(raw, { aspectRatio = '16:9', uploadCount = 0, deck = null } = {}) {
   if (!raw || typeof raw !== 'object') throw new Error('layout is not an object');
   raw = { ...raw, layers: unstring(raw.layers), background: unstring(raw.background), brands: unstring(raw.brands), fonts: unstring(raw.fonts) };
   const canvas = canvasFor(aspectRatio);
   const fonts = {
-    display: font(raw.fonts?.display, 'Inter'),
-    body: font(raw.fonts?.body, 'Inter'),
+    display: font(raw.fonts?.display, font(deck?.fonts?.display, 'Inter')),
+    body: font(raw.fonts?.body, font(deck?.fonts?.body, 'Inter')),
+    // Not a font — the default text colour, carried with the fonts so every
+    // normalize call site (including edits, which pass layout.fonts) gets it.
+    text: color(raw.fonts?.text, color(deck?.palette?.text, '#FFFFFF')),
   };
 
   const usedIds = new Set();

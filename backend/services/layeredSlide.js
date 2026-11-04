@@ -451,7 +451,7 @@ async function buildLayeredSlideInner({
     if (parts.background && typeof parts.composition !== 'string') parts = { ...parts, background: undefined };
     if (Array.isArray(parts.brands)) parts.brands.forEach(ensureBrand);
     try {
-      const early = normalizeLayout({ background: parts.background || { type: 'color' }, layers: parts.layers || [] }, { aspectRatio, uploadCount: uploads.length });
+      const early = normalizeLayout({ background: parts.background || { type: 'color' }, layers: parts.layers || [] }, { aspectRatio, uploadCount: uploads.length, deck: deckDesign });
       if (parts.background && early.background.type === 'image') startBackground(early.background);
       for (const l of early.layers) {
         if (l.kind !== 'image') continue;
@@ -474,7 +474,7 @@ async function buildLayeredSlideInner({
       ? JSON.parse(JSON.stringify(layoutOverride))
       : await designSlideLayout({ slide, header, deckDesign, brief, uploads, aspectRatio, siblingTitles, instruction, userId, onPartial });
     const rawCopy = returnRaw ? JSON.parse(JSON.stringify(raw)) : undefined;
-    const layout = prebuilt ? raw : normalizeLayout(raw, { aspectRatio, uploadCount: uploads.length });
+    const layout = prebuilt ? raw : normalizeLayout(raw, { aspectRatio, uploadCount: uploads.length, deck: deckDesign });
     stats.layout_ms = Date.now() - t0;
     if (layout.style_block && !styleBlock) styleBlock = layout.style_block;
     composition = layout.composition;

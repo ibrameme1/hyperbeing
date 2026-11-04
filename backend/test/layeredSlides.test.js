@@ -505,3 +505,19 @@ describe('device screen UI: drawn by the image model unless a capped native hero
     expect(clusterPlan(plain, {}, '').prompt).toMatch(/no text, no letters/);
   });
 });
+
+describe('output economy: omitted fields default from the deck design', () => {
+  it('fills font, weight and text colour from the deck when Claude leaves them out', () => {
+    const deck = { fonts: { display: 'Sora', body: 'Lato' }, palette: { text: '#101418' } };
+    const l = normalizeForScreens({ layers: [
+      { kind: 'text', id: 'h1', role: 'headline', text: 'Big idea', x: 60, y: 60, w: 900, h: 140, size: 96 },
+      { kind: 'text', id: 't1', text: 'Body copy', x: 60, y: 300, w: 900, h: 60, size: 28 },
+      { kind: 'text', id: 't2', text: 'Accent', color: '#FF2E74', font: 'Inter', x: 60, y: 400, w: 900, h: 60 },
+    ] }, { deck });
+    const [h1, t1, t2] = l.layers;
+    expect([h1.font, h1.weight, h1.color]).toEqual(['Sora', 700, '#101418']);
+    expect([t1.font, t1.weight, t1.role, t1.align, t1.valign, t1.italic]).toEqual(['Lato', 400, 'body', 'left', 'top', false]);
+    expect([t2.font, t2.color]).toEqual(['Inter', '#FF2E74']);
+    expect(l.fonts).toMatchObject({ display: 'Sora', body: 'Lato', text: '#101418' });
+  });
+});
