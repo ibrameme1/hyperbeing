@@ -33,6 +33,12 @@ export function canvasFor(aspectRatio) {
 // one icon sheet). Bounds cost and rate-limit pressure; Claude is told the same.
 export const MAX_GENERATIONS_PER_SLIDE = 7;
 export const MAX_LAYERS = 60;
+// Native (editable) layers inside device screens, per slide. Screen UI is
+// normally drawn by the image model (a device layer with "ui": true); only a
+// hero device whose on-screen copy IS the point of the slide gets native
+// in_screen layers, and only this many — full native chat UIs cost ~30 layers
+// of Claude output (~$0.03 a slide) for detail nobody edits.
+export const MAX_SCREEN_LAYERS = 8;
 export const MAX_SHEET_ICONS = 8;
 
 // Curated Google Fonts the renderer loads. Claude picks the font that does the
@@ -164,6 +170,10 @@ function baseLayer(l, canvas, id) {
   };
 }
 
+// Text roles that default to the deck's display font and weight 700 (Claude
+// omits font/weight when they match these defaults).
+export const DISPLAY_ROLES = ['headline', 'display', 'stat'];
+
 function normalizeText(l, base, fonts) {
   const runs = Array.isArray(l.runs)
     ? l.runs
@@ -179,7 +189,7 @@ function normalizeText(l, base, fonts) {
     : null;
   const text = str(l.text, 4000) || (runs ? runs.map(r => r.text).join('') : '');
   if (!text.trim()) return null;
-  const isDisplay = l.role === 'headline' || l.role === 'display';
+  const isDisplay = DISPLAY_ROLES.includes(l.role);
   return {
     ...base,
     role: str(l.role, 30, 'body'),
@@ -190,7 +200,7 @@ function normalizeText(l, base, fonts) {
     weight: num(l.weight, 100, 900, isDisplay ? 700 : 400),
     italic: !!l.italic,
     uppercase: !!l.uppercase,
-    color: color(l.color, '#FFFFFF'),
+    color: color(l.color, fonts.text || '#FFFFFF'),
     gradient: gradient(l.gradient) || undefined,
     align: ['left', 'center', 'right'].includes(l.align) ? l.align : 'left',
     valign: ['top', 'middle', 'bottom'].includes(l.valign) ? l.valign : 'top',
@@ -286,6 +296,9 @@ function clusterItems(v, canvas) {
       x: num(it?.x, -canvas.w, canvas.w * 2, 0), y: num(it?.y, -canvas.h, canvas.h * 2, 0),
       w: num(it?.w, 8, canvas.w * 2, 200), h: num(it?.h, 8, canvas.h * 2, 200),
       rotation: num(it?.rotation, -180, 180, 0),
+      // The item is a device whose screen UI (with its copy) is drawn by the
+      // image model, so the cluster prompt must allow that text.
+      ui: it?.ui ? true : undefined,
     };
   }).filter(it => it.prompt);
 }
@@ -302,7 +315,7 @@ function normalizeImage(l, base, canvas) {
     return { ...base, x: x0, y: y0, w: x1 - x0, h: y1 - y0, role, prompt, refs: refs(l.refs), items };
   }
   if (!prompt && !l.file) return null;
-  if (l.screen) Object.assign(base, conformPhoneBox(base, prompt));
+  if (l.screen || l.ui) Object.assign(base, conformPhoneBox(base, prompt));
   return {
     ...base,
     role,
@@ -312,6 +325,9 @@ function normalizeImage(l, base, canvas) {
     // chroma-green screen that is detected after generation; layers whose
     // `in_screen` points at this id are positioned inside that rect.
     screen: l.screen ? { fill: color(l.screen?.fill, '#000000') } : undefined,
+    // Device whose screen UI is drawn by the image model (copy quoted in the
+    // prompt; edited by regenerating the image). A native screen wins.
+    ui: l.ui && !l.screen ? true : undefined,
     shadow: shadow(l.shadow) || undefined,
     glow: l.glow ? { color: color(l.glow?.color, 'rgba(255,255,255,0.6)'), blur: num(l.glow?.blur, 0, 200, 40) } : undefined,
     flip: !!l.flip,
@@ -413,13 +429,18 @@ function unstring(v) {
   }
 }
 
-export function normalizeLayout(raw, { aspectRatio = '16:9', uploadCount = 0 } = {}) {
+// `deck` (the deck design system) supplies the defaults Claude may omit to
+// save output tokens: the display/body fonts and the text colour.
+export function normalizeLayout(raw, { aspectRatio = '16:9', uploadCount = 0, deck = null } = {}) {
   if (!raw || typeof raw !== 'object') throw new Error('layout is not an object');
   raw = { ...raw, layers: unstring(raw.layers), background: unstring(raw.background), brands: unstring(raw.brands), fonts: unstring(raw.fonts) };
   const canvas = canvasFor(aspectRatio);
   const fonts = {
-    display: font(raw.fonts?.display, 'Inter'),
-    body: font(raw.fonts?.body, 'Inter'),
+    display: font(raw.fonts?.display, font(deck?.fonts?.display, 'Inter')),
+    body: font(raw.fonts?.body, font(deck?.fonts?.body, 'Inter')),
+    // Not a font — the default text colour, carried with the fonts so every
+    // normalize call site (including edits, which pass layout.fonts) gets it.
+    text: color(raw.fonts?.text, color(deck?.palette?.text, '#FFFFFF')),
   };
 
   const usedIds = new Set();
@@ -493,6 +514,14 @@ export function normalizeLayout(raw, { aspectRatio = '16:9', uploadCount = 0 } =
       if (device) layer.in_screen = device.id;
       delete layer._in_screen_raw;
     }
+  }
+  // Cap native screen UI (photos inside a screen don't count). Children come
+  // right after their device, so the later ones (lower-priority detail) go.
+  let screenNative = 0;
+  for (let i = 0; i < layers.length; i++) {
+    const l = layers[i];
+    if (!l.in_screen || l.role === 'screen_image') continue;
+    if (++screenNative > MAX_SCREEN_LAYERS) { layers.splice(i, 1); i--; }
   }
 
   if (!layers.length && background.type === 'color' && !raw.background) {
@@ -717,13 +746,20 @@ export function fitLayout(layout) {
   // Generated elements covering text (devices, heroes) — usually a layout bug.
   // Layers drawn BELOW the text are fine only if they're backgrounds of it,
   // which images on a designed slide rarely are.
+  // The wording depends on z-order: the reviewer acted on "covers" by moving
+  // text that was actually drawn ON TOP of the image (a card over a merged
+  // cluster's transparent corner). Light connectors are glows, like effects.
   for (const t of texts) {
-    for (const im of layout.layers.filter(l => l.kind === 'image' && l.role !== 'effect' && l.role !== 'screen_image')) {
+    for (const im of layout.layers.filter(l => l.kind === 'image' && l.role !== 'effect' && l.role !== 'screen_image' && !(l.role === 'connector' && l.medium === 'light'))) {
       if (t.screen_of === im.id) continue; // text on its own device's screen is the point
       if (overlaps(t, im)) {
         const ix = Math.min(t.x + t.w, im.x + im.w) - Math.max(t.x, im.x);
         const iy = Math.min(t.y + t.h, im.y + im.h) - Math.max(t.y, im.y);
-        if (ix * iy > 0.1 * t.w * t.h) warnings.push(`image "${im.id}" covers part of text "${t.id}"`);
+        if (ix * iy <= 0.1 * t.w * t.h) continue;
+        const above = layout.layers.indexOf(im) > layout.layers.indexOf(t);
+        warnings.push(above
+          ? `image "${im.id}" covers part of text "${t.id}"`
+          : `text "${t.id}" sits on top of image "${im.id}" (check it stays legible)`);
       }
     }
   }
@@ -965,8 +1001,14 @@ export function resolveCollisions(layout) {
 // box leaves big gaps, so pack each row to `gap` px apart, keeping the row
 // centred on its original span. Screen rects and screen children move with
 // their device. Returns a list of moved ids.
+// Cumulative row-packing scale per device layer object (one build's lifetime).
+const packScale = new WeakMap();
 export function tightenDeviceRows(layout, { gap = 40, maxGap = 64, maxScale = 1.6 } = {}) {
-  const devices = layout.layers.filter(l => l.kind === 'image' && l.screen && !l.screen_of)
+  // Standalone devices only. A cluster piece (even a "ui" phone) is part of a
+  // composed group — often merged with coins/wallets — and its box is not a
+  // phone; packing it as one shrank a whole cluster to ~36% (0.6 x 2 passes).
+  const devices = layout.layers.filter(l => l.kind === 'image' && !l.screen_of && !l.cluster && !l.merged?.length
+    && (l.screen || l.ui))
     .sort((a, b) => a.x - b.x);
   const rows = [];
   for (const d of devices) {
@@ -1019,8 +1061,12 @@ export function tightenDeviceRows(layout, { gap = 40, maxGap = 64, maxScale = 1.
     const g = row.length > 1 ? gap : 0;
     const widthAt = (s) => row.reduce((t, d) => t + d.w * s, 0) + g * (row.length - 1);
     const tallest = Math.max(...row.map(d => d.h));
-    const s = Math.max(0.6, Math.min(maxScale, (band.x1 - band.x0) / widthAt(1), (band.y1 - band.y0) / tallest));
-    if (Math.abs(s - 1) > 0.01) for (const d of row) scaleBy(d, s);
+    // The build packs rows twice (before review, after the collision fixes);
+    // the 60% floor is on the CUMULATIVE scale so a label beside a row can't
+    // shrink it 0.6 x 0.6.
+    const already = Math.min(...row.map(d => packScale.get(d) || 1));
+    const s = Math.max(0.6 / already, Math.min(maxScale, (band.x1 - band.x0) / widthAt(1), (band.y1 - band.y0) / tallest));
+    if (Math.abs(s - 1) > 0.01) for (const d of row) { scaleBy(d, s); packScale.set(d, (packScale.get(d) || 1) * s); }
     // Lay the row out left to right, centred in the band, bottoms aligned.
     const total = widthAt(1);
     let x = Math.round(band.x0 + (band.x1 - band.x0 - total) / 2);

@@ -1,5 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { recordClaudeCall } from './aiCosts.js';
+import { claudeRequest, webSearchTool, answeredBy } from './claudeModel.js';
+// Text of a plain response (newest models may put other blocks first).
+const textOf = (r) => (r?.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
 import { jsonrepair } from 'jsonrepair';
 import { recordTokenUsage } from './stripeService.js';
 import { logger, requestContext } from './logger.js';
@@ -323,13 +326,12 @@ export async function analyzePresentationStream(message, attachments = [], userI
   const userContent = buildUserContent(message, attachments);
   const t0 = Date.now();
 
-  const stream = client.messages.stream({
-    model: 'claude-sonnet-4-6',
+  const stream = client.messages.stream(...claudeRequest({
     max_tokens: 1536,
     system: buildAnalyzePrompt(webSearch),
-    ...(webSearch ? { tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }] } : {}),
+    ...(webSearch ? { tools: [webSearchTool(3)] } : {}),
     messages: [{ role: 'user', content: userContent }],
-  });
+  }));
 
   // Accumulate partial JSON of web_search tool-use blocks so we can emit the
   // real query the moment Claude finishes deciding what to search for.
@@ -353,7 +355,7 @@ export async function analyzePresentationStream(message, attachments = [], userI
   const response = await stream.finalMessage();
   const durationMs = Date.now() - t0;
   if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
-  recordClaudeCall({ call: 'analyze_brief', usage: response.usage, durationMs, userId, operation: 'analyze' });
+  recordClaudeCall({ call: 'analyze_brief', model: answeredBy(response), usage: response.usage, durationMs, userId, operation: 'analyze' });
   metrics.recordAICall({ fn: 'analyzePresentationStream', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs });
   const searchCount = response.content.filter(b => b.type === 'server_tool_use' && b.name === 'web_search').length;
   logger.info('claude analyze stream complete', { durationMs, webSearch, searches: searchCount });
@@ -595,12 +597,11 @@ export async function generateCompactPlan(message, attachments, userId = null, c
   const t0 = Date.now();
   logger.info('claude compact plan start', { messageLen: message.length });
 
-  const stream = client.messages.stream({
-    model: 'claude-sonnet-4-6',
+  const stream = client.messages.stream(...claudeRequest({
     max_tokens: 3000,
     system: COMPACT_PLAN_PROMPT,
     messages: [{ role: 'user', content: userContent }],
-  });
+  }));
 
   let buffer = '';
   let header = null;
@@ -644,7 +645,7 @@ export async function generateCompactPlan(message, attachments, userId = null, c
   const durationMs = Date.now() - t0;
   try {
     const finalMsg = await stream.finalMessage();
-    recordClaudeCall({ call: 'plan_outline', usage: finalMsg.usage, durationMs, userId });
+    recordClaudeCall({ call: 'plan_outline', model: answeredBy(finalMsg), usage: finalMsg.usage, durationMs, userId });
     if (userId) {
       recordTokenUsage(userId, finalMsg.usage?.input_tokens, finalMsg.usage?.output_tokens);
       metrics.recordAICall({ fn: 'generateCompactPlan', inputTokens: finalMsg.usage?.input_tokens, outputTokens: finalMsg.usage?.output_tokens, durationMs });
@@ -684,8 +685,7 @@ export async function suggestTitle(context, userId = null) {
   tracer.recordStep(_tid, 'claude_suggest_title', 'started', 0);
 
   const tTitle = Date.now();
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+  const response = await client.messages.create(...claudeRequest({
     max_tokens: 60,
     messages: [{
       role: 'user',
@@ -696,10 +696,10 @@ ${JSON.stringify(context, null, 2)}
 
 Return only the title text, nothing else.`,
     }],
-  });
+  }));
 
   const durationMsTitle = Date.now() - tTitle;
-  recordClaudeCall({ call: 'suggest_title', usage: response.usage, durationMs: durationMsTitle, userId });
+  recordClaudeCall({ call: 'suggest_title', model: answeredBy(response), usage: response.usage, durationMs: durationMsTitle, userId });
   if (userId) {
     recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
     metrics.recordAICall({ fn: 'suggestTitle', inputTokens: response.usage?.input_tokens, outputTokens: response.usage?.output_tokens, durationMs: durationMsTitle });
@@ -707,7 +707,7 @@ Return only the title text, nothing else.`,
   logger.info('claude suggest title complete', { durationMs: durationMsTitle });
 
   tracer.recordStep(_tid, 'claude_suggest_title', 'completed', Date.now() - _t);
-  return sanitizeText(response.content[0].text.trim().replace(/^["']|["']$/g, ''));
+  return sanitizeText(textOf(response).trim().replace(/^["']|["']$/g, ''));
 }
 
 // ─── Stream new slides (add-slides feature) ──────────────────────────────────
@@ -784,14 +784,13 @@ ${assignment}${siblings}`;
   const _t = Date.now();
   logger.info('generating targeted single new slide', { index });
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+  const response = await client.messages.create(...claudeRequest({
     max_tokens: 1024,
     system: SINGLE_NEW_SLIDE_SYSTEM,
     messages: [{ role: 'user', content: message }],
-  });
+  }));
 
-  recordClaudeCall({ call: 'outline_new_slide', usage: response.usage, durationMs: Date.now() - _t, userId });
+  recordClaudeCall({ call: 'outline_new_slide', model: answeredBy(response), usage: response.usage, durationMs: Date.now() - _t, userId });
   if (userId) {
     try {
       recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
@@ -799,7 +798,7 @@ ${assignment}${siblings}`;
     } catch {}
   }
 
-  const text = response.content[0].text.trim();
+  const text = textOf(response).trim();
   const jsonText = text.startsWith('```')
     ? text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
     : text;
@@ -862,20 +861,19 @@ ${countInstruction}`;
 
   let stubs = [];
   try {
-    const planResp = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+    const planResp = await client.messages.create(...claudeRequest({
       max_tokens: 1500,
       system: NEW_SLIDES_PLAN_SYSTEM,
       messages: [{ role: 'user', content: planMessage }],
-    });
-    recordClaudeCall({ call: 'plan_new_slides', usage: planResp.usage, durationMs: Date.now() - tSlides, userId });
+    }));
+    recordClaudeCall({ call: 'plan_new_slides', model: answeredBy(planResp), usage: planResp.usage, durationMs: Date.now() - tSlides, userId });
     if (userId) {
       try {
         recordTokenUsage(userId, planResp.usage?.input_tokens, planResp.usage?.output_tokens);
         metrics.recordAICall({ fn: 'planNewSlides', inputTokens: planResp.usage?.input_tokens, outputTokens: planResp.usage?.output_tokens, durationMs: Date.now() - tSlides });
       } catch {}
     }
-    const text = planResp.content[0].text.trim();
+    const text = textOf(planResp).trim();
     const jsonText = text.startsWith('```') ? text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '') : text;
     const parsed = parseJSON(jsonText);
     if (Array.isArray(parsed)) stubs = parsed.filter(s => s && typeof s === 'object');

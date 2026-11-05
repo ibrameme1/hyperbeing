@@ -32,7 +32,7 @@ const EDITABLE = {
   logo: ['flip'],
 };
 // Server-only fields that must survive a re-normalization untouched.
-const KEEP = ['screen_of', 'screen_norm', 'screen', 'cluster', 'merged', 'file', 'src', 'prompt', 'refs', 'role', 'source', 'brand', 'upload', 'items', 'from', 'to', 'around', 'medium', 'spread', 'glow', 'frosted'];
+const KEEP = ['screen_of', 'screen_norm', 'screen', 'cluster', 'merged', 'file', 'src', 'prompt', 'refs', 'role', 'source', 'brand', 'upload', 'items', 'from', 'to', 'around', 'medium', 'spread', 'glow', 'frosted', 'ui'];
 
 function aspectOf(canvas) {
   return ASPECTS.find(a => { const c = canvasFor(a); return c.w === canvas.w && c.h === canvas.h; }) || '16:9';

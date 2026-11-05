@@ -297,7 +297,7 @@ const GN = [
   {id:'db_credits',g:'database',l:'credit_transactions',s:'amount · type · user_id',steps:[]},
   {id:'db_logs',g:'database',l:'app_logs',s:'level · message · context',steps:[]},
   {id:'db_analytics',g:'database',l:'analytics_events',s:'event_type · user_id',steps:[]},
-  {id:'ext_anthropic',g:'external',l:'Anthropic API',s:'claude-sonnet-4-6',steps:[]},
+  {id:'ext_anthropic',g:'external',l:'Anthropic API',s:process.env.CLAUDE_MODEL||'claude-sonnet-5-5',steps:[]},
   {id:'ext_gemini',g:'external',l:'Google Gemini',s:'gemini-3.1-flash-image-preview',steps:[]},
   {id:'ext_stripe',g:'external',l:'Stripe API',s:'subscriptions · checkout',steps:[]},
   {id:'ext_posthog',g:'external',l:'PostHog',s:'event capture · analytics',steps:[]},

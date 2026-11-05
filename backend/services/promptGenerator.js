@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { recordClaudeCall } from './aiCosts.js';
+import { claudeRequest, answeredBy } from './claudeModel.js';
 import { recordTokenUsage } from './stripeService.js';
 import { logger, requestContext } from './logger.js';
 import { tracer } from './tracer.js';
@@ -42,15 +43,14 @@ export async function generatePromptResponse(history, userMessage, attachedImage
     { role: 'user', content: userContent },
   ];
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+  const response = await client.messages.create(...claudeRequest({
     max_tokens: 2000,
     system: SYSTEM_PROMPT,
     messages,
-  });
+  }));
 
   if (userId) recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
-  recordClaudeCall({ call: 'prompt_generator', usage: response.usage, userId, operation: 'prompt_generator' });
+  recordClaudeCall({ call: 'prompt_generator', model: answeredBy(response), usage: response.usage, userId, operation: 'prompt_generator' });
 
   const rawText = response.content
     .filter(b => b.type === 'text')

@@ -10,7 +10,8 @@ import { metrics } from './metrics.js';
 import { tracer } from './tracer.js';
 import { sanitizeDeep } from './claudeAgent.js';
 import { MINIMALISTIC_EXAMPLE_PROMPTS } from './minimalisticExamples.js';
-import { FONT_NAMES, MAX_GENERATIONS_PER_SLIDE, MAX_SHEET_ICONS, canvasFor, extractCompletedLayoutParts } from './slideLayout.js';
+import { CLAUDE_MODEL, claudeRequest, toolInput, answeredBy, usesAutoTools, warmupMaxTokens } from './claudeModel.js';
+import { FONT_NAMES, MAX_GENERATIONS_PER_SLIDE, MAX_LAYERS, MAX_SCREEN_LAYERS, MAX_SHEET_ICONS, canvasFor, extractCompletedLayoutParts } from './slideLayout.js';
 
 // ─── Layered-slide agent ────────────────────────────────────────────────────
 // Three Claude calls drive a layered slide:
@@ -24,7 +25,9 @@ import { FONT_NAMES, MAX_GENERATIONS_PER_SLIDE, MAX_SHEET_ICONS, canvasFor, extr
 // All three use forced tool calls (parsed JSON, no line protocol) and all
 // output goes through sanitizeDeep (em-dash policy) + token accounting.
 
-const MODEL = 'claude-sonnet-4-6';
+// Model + per-model request shape (forced vs auto tool calls, thinking,
+// warm-up max_tokens) live in claudeModel.js; CLAUDE_MODEL switches them all.
+const MODEL = CLAUDE_MODEL;
 
 // ── The team's quality reference library ────────────────────────────────────
 // Every ideal slide prompt the team supplied (prompts/layered_quality_examples.md
@@ -94,7 +97,7 @@ function getClient() {
 }
 
 function account(userId, fn, response, t0) {
-  recordClaudeCall({ call: fn, usage: response.usage, durationMs: Date.now() - t0, userId });
+  recordClaudeCall({ call: fn, model: answeredBy(response), usage: response.usage, durationMs: Date.now() - t0, userId });
   if (!userId) return;
   try {
     recordTokenUsage(userId, response.usage?.input_tokens, response.usage?.output_tokens);
@@ -153,7 +156,7 @@ CRAFT RULES FOR EVERY DECK
 - When the slide argues something, end on a verdict line (a bottom strip or closing line): declarative, surprising, final.
 - Image prompts carry at least 3 sensory details (light, material, texture, expression), a named human emotional state when people appear, culturally specific markers for the audience (places, age groups, rituals, slang), and a moment of contrast or surprise where possible. Every stat is paired with what it means.
 - Typography: always specify weight, case, colour and placement through the native text layers; display type for headlines, a calm body face for everything else.
-- Text on phones, laptops and screens (chats, captions, view counts, timestamps, dashboards) is ALWAYS native in_screen layers on a front-facing device, never words inside an image prompt.
+- UI on phones, laptops and screens (chats, captions, view counts, timestamps, dashboards) is DRAWN BY THE IMAGE MODEL by default: describe it in the device prompt and quote its key copy exactly. Only the hero device of a slide whose on-screen copy is the point gets a few native editable screen layers (see the image rules).
 - If the user uploaded moodboards or reference images, say explicitly which colours, materials and mood from them carry into the slide.
 - Never mention aspect ratio in an image prompt.
 - BANNED: "business people in a meeting", "person using laptop", "team collaborating in office", "cityscape at night", "handshake", "growth chart", "abstract gradient background", "glowing orbs", "geometric shapes floating", "neural network visualization". Always find a specific, real, directed visual concept.`;
@@ -219,16 +222,14 @@ export async function designDeckSystem({ header, slides, brief, uploads = [], us
     { type: 'text', text: `PRESENTATION: ${header?.presentation_title || ''}\nTHEME HINT: ${header?.theme || ''}\nPALETTE HINT: ${JSON.stringify(header?.color_palette || {})}\n\nOUTLINE:\n${outline}\n\nORIGINAL BRIEF:\n${String(brief || '').slice(0, 12000)}` },
     ...uploadsContent(uploads),
   ];
-  const response = await getClient().messages.create({
-    model: MODEL,
+  const response = await getClient().messages.create(...claudeRequest({
     max_tokens: 2000,
     system: systemBlocks(DECK_SYSTEM_PROMPT.replace('{ART_DIRECTION}', ART_DIRECTION)),
     tools: [DECK_SYSTEM_TOOL],
-    tool_choice: { type: 'tool', name: DECK_SYSTEM_TOOL.name },
     messages: [{ role: 'user', content }],
-  });
+  }, { tool: DECK_SYSTEM_TOOL.name }));
   account(userId, 'designDeckSystem', response, t0);
-  const out = response.content.find(b => b.type === 'tool_use')?.input;
+  const out = toolInput(response, DECK_SYSTEM_TOOL.name);
   tracer.recordStep(_tid, 'claude_deck_design', out ? 'completed' : 'failed', Date.now() - t0);
   if (!out) throw new Error('deck design returned no tool call');
   logger.info('deck design complete', { ms: Date.now() - t0, fonts: out.fonts });
@@ -292,7 +293,7 @@ image — a generated visual element:
         {"id":"phone","name":"Game phone","prompt":"...","x":930,"y":60,"w":560,"h":880},
         {"id":"coins","name":"Coin stream","prompt":"...","x":1330,"y":640,"w":330,"h":200},
         {"id":"wallet","name":"Wallet","prompt":"...","x":1500,"y":690,"w":290,"h":270}]}
-    Items: 2-8 objects. The FIRST item is the hero. Each item's box is where that object should appear on the canvas (the app turns these into positions inside one frame). A stream/trail linking two objects is its own item whose box spans the gap between them. Items that should be separately movable need a little empty space between them in their boxes; items that physically touch will come out as one piece. Glows that wash behind everything stay separate "effect" layers; devices with an editable "screen" stay separate image layers.
+    Items: 2-8 objects. The FIRST item is the hero. Each item's box is where that object should appear on the canvas (the app turns these into positions inside one frame). A stream/trail linking two objects is its own item whose box spans the gap between them. Items that should be separately movable need a little empty space between them in their boxes; items that physically touch will come out as one piece. Glows that wash behind everything stay separate "effect" layers; a device with a native "screen" stays a separate image layer. A cluster item that is a device showing UI gets "ui":true and quotes its screen copy in its prompt.
   - role "connector": the thing that PHYSICALLY LINKS elements so the slide reads as one connected scene — coins pouring from a phone's ad banner into a wallet, a light trail from a product to a card, an energy beam, a data stream, an orbit ring around a hero. Give
       "from":{"layer":"<id>","anchor":"top|bottom|left|right|center|top-left|top-right|bottom-left|bottom-right" or {"x":0.8,"y":0.85}} and "to":{...}  (anchor = a point of that layer's box; {"x","y"} are fractions of it — aim at the exact spot, e.g. the ad banner or the wallet's opening)
       or "around":"<id>" for an orbit ring encircling that layer,
@@ -300,17 +301,18 @@ image — a generated visual element:
     Do NOT give a connector x/y/w/h — the app computes its exact box from the anchors and tells the image model precisely where the stream enters and exits. Prefer putting streams inside a "cluster" (generated with their objects, so they connect perfectly); use a separate connector only to link layers that can't be in the same cluster (e.g. a light trail from a cluster object to a native card, or an orbit ring around a screen device). Its prompt describes the stream itself ("a cascade of 9 glossy gold coins tumbling and spinning, small at the start and growing larger, with orange light streaks between them").
   - The box (x,y,w,h) is where the element sits; the generated image is fitted inside it preserving aspect, so give the box the element's natural proportions.
   - Contact shadows / reflections / glows that ground an element: use the native "shadow"/"glow" fields, or a separate "effect" layer under it. Never ask the element itself to include a shadow.
-  - Devices whose SCREEN should show editable UI (chat messages, captions, dashboards): add "screen":{"fill":"#0B141A"} and describe the device as PERFECTLY FRONT-FACING and flat-on (no tilt, no perspective). Then put the screen contents as separate native layers with "in_screen":"<device id>" and x,y,w,h in NORMALIZED 0-1 coordinates of the screen (0,0 = screen top-left, 1,1 = bottom-right). A tilted/3D-angled device must instead have its screen content described in its prompt.
-  - A photo/video frame that should appear INSIDE a device screen: an image layer with role "screen_image", "in_screen":"<device id>", normalized coords (usually 0,0,1,1 — it is cropped to fill that area). Its prompt describes only the picture on the display (e.g. "a candid selfie video frame of…"), never a phone or device.
+  - DEVICE SCREENS (phones, laptops, tablets, monitors). Default: the image model DRAWS the screen UI. Add "ui":true to the device layer and describe in its prompt what the screen shows (app, layout, colours) and quote the visible copy exactly in double quotes, kept short (a name, 1-3 short messages or a caption, a number, a button label; at most ~25 words of copy per device). The device may be tilted or angled. Don't add "screen" or in_screen layers for it. Changing that copy later regenerates the image, which is fine.
+  - Exception, at most ONE device per slide: the slide's hero device when its on-screen copy IS the takeaway (the message itself is the point). Then add "screen":{"fill":"#0B141A"}, keep the device front-facing, and add AT MOST ${MAX_SCREEN_LAYERS} native layers with "in_screen":"<device id>" in NORMALIZED 0-1 screen coordinates (0,0 = screen top-left, 1,1 = bottom-right): only the copy that matters (e.g. a header name + 2-3 message bubbles). No status bars, keyboards, avatars, timestamps or decorative UI. Layers beyond the cap are discarded. Every other device on that slide uses "ui":true.
+  - A photo/video frame that should appear INSIDE a native screen: an image layer with role "screen_image", "in_screen":"<device id>", normalized coords (usually 0,0,1,1 — it is cropped to fill that area). Its prompt describes only the picture on the display (e.g. "a candid selfie video frame of…"), never a phone or device.
   - The same device can appear several times: give every copy the identical prompt (it is generated once and reused).
-  - HARD RULE: chat messages, social posts, captions, comments, view counts, notifications, dashboards and any other readable UI on a phone/laptop/tablet are ALWAYS native layers (text/shape/icon with "in_screen") on a front-facing device with "screen". Never write that copy into an image prompt — it must stay editable and spelled exactly. Only photographic content inside a screen (a selfie video frame, a photo) is an image ("screen_image"). The device prompt describes ONLY the hardware (body, finish, bezel, lighting) — never what is on the screen.
-  - Example — a phone showing a WhatsApp thread (screen children use 0-1 screen coordinates and come right after their device):
+  - Device prompts never repeat what the app already adds: no camera angle words for a native-screen device (the app makes it front-facing), no background, floor or void.
+  - Example — a hero phone whose WhatsApp message is the point (native screen, 4 screen layers), next to a secondary phone drawn by the image model:
     {"kind":"image","id":"phone","role":"hero","prompt":"A modern flagship smartphone, matte black frame, thin uniform bezels, soft cool rim light along the left edge","screen":{"fill":"#0B141A"},"x":120,"y":300,"w":380,"h":760}
     {"kind":"shape","id":"wa_header","shape":"rect","fill":"#1F2C34","in_screen":"phone","x":0,"y":0,"w":1,"h":0.09}
     {"kind":"text","id":"wa_name","role":"label","text":"Aura Airlines ✈️","font":"Inter","size":20,"weight":700,"color":"#E9EDEF","valign":"middle","in_screen":"phone","x":0.06,"y":0.015,"w":0.8,"h":0.06}
     {"kind":"shape","id":"bubble_1","shape":"rect","fill":"#202C33","radius":14,"in_screen":"phone","x":0.05,"y":0.13,"w":0.86,"h":0.3}
     {"kind":"text","id":"msg_1","role":"body","text":"Assalam o Alaikum [NAME]. You are #847 on the waitlist.","font":"Inter","size":18,"color":"#E9EDEF","in_screen":"phone","x":0.09,"y":0.15,"w":0.78,"h":0.22}
-    {"kind":"text","id":"msg_1_time","role":"caption","text":"8:43 pm ✓✓","font":"Inter","size":14,"color":"#53BDEB","align":"right","in_screen":"phone","x":0.5,"y":0.38,"w":0.38,"h":0.04}
+    {"kind":"image","id":"phone_tiktok","role":"element","ui":true,"prompt":"A modern flagship smartphone, matte black frame, tilted 10 degrees, its screen showing a dark TikTok video feed: a candid clip of a young woman in a Lahore airport queue holding up her phone, caption \"I got the message 😭\", a red like counter reading \"412K\"","x":560,"y":360,"w":300,"h":600}
 
 text — real, editable text:
   {"kind":"text","id":"headline","role":"headline|subhead|body|label|stat|caption|quote","text":"Line one\\nLine two","runs":[{"text":"Line two","color":"#FF2E74"}],"font":"<font>","size":96,"weight":800,"italic":false,"uppercase":true,"color":"#FFFFFF","gradient":{...optional},"align":"left|center|right","valign":"top|middle|bottom","line_height":1.0,"letter_spacing":0,"x":..,"y":..,"w":..,"h":..}
@@ -321,7 +323,7 @@ text — real, editable text:
 shape — native panels, cards, pills, strips, dividers, glass:
   {"kind":"shape","id":"card_1","shape":"rect|ellipse|line","fill":"rgba(255,255,255,0.08)","gradient":{...optional},"radius":24,"border":{"color":"rgba(255,255,255,0.18)","width":1.5},"frosted":{"blur":24},"shadow":{...optional},"x":..,"y":..,"w":..,"h":..}
   - Frosted glass cards = "frosted" + a translucent fill + thin light border; add "highlight":true for the glass bevel (light catching the top edge) and a gradient border for a lit/accent edge: "border":{"width":1.5,"gradient":{"angle":90,"stops":[{"color":"rgba(255,255,255,0.35)","pos":0},{"color":"rgba(255,46,116,0.6)","pos":100}]}}. A glowing card = "shadow":{"color":"rgba(255,46,116,0.45)","blur":60,"dx":0,"dy":0}. Pills = rect with radius = h/2. Full-width strips = rect spanning the canvas. Horizontal hairlines = shape "line" with h 2; vertical dividers = a rect 2px wide.
-  - Cards, panels, screens-as-UI, tables, pills and strips are ALWAYS native shapes with native text on top — never generated images (they must stay editable and crisp).
+  - Cards, panels, tables, pills and strips on the slide itself are ALWAYS native shapes with native text on top — never generated images (they must stay editable and crisp). UI inside a device screen follows the device rules above.
 
 chart — real, editable data:
   {"kind":"chart","id":"growth","chart_type":"column|bar|line|area|pie|donut","categories":["2000","2001"],"series":[{"name":"Volume","values":[100,108],"color":"#4FACFE"}],"options":{"show_values":true,"show_grid":false,"value_prefix":"","value_suffix":"%","axis_color":"rgba(255,255,255,0.4)","label_color":"#FFFFFF","font":"<font>","font_size":18,"y_min":0,"y_max":420,"line_width":5,"point_colors":["#FF2E74",null]},"x":..,"y":..,"w":..,"h":..}
@@ -344,9 +346,11 @@ STEP 3 — IMAGE PROMPTS (the quality of the slide lives here)
 - Write each prompt like the art-directed prompts in the art direction below: specific subject, materials, lighting, camera/lens or render engine, expression and moment for people, culturally specific details. 40-150 words per element; 80-250 words for a scene background.
 - Element prompts describe ONLY that one thing. The app appends "isolated on a transparent background, nothing else in frame, no shadow, no text" — do not describe a background, surface, floor, frame or other objects.
 - Background prompts describe the environment/atmosphere ONLY. The app appends "no text, no letters, no logos, no UI, no cards". State exactly where the negative space is (e.g. "the left 45% falls off into clean near-black for text").
-- No text inside generated images. All words are native text layers. The only exception is text physically printed on a real object inside a scene or a tilted device screen (a shop sign, a pack label) — keep it short and quote it exactly.
+- No text inside generated images. All words are native text layers. The exceptions: text physically printed on a real object inside a scene (a shop sign, a pack label), and the on-screen copy of a "ui":true device. Keep it short and quote it exactly.
 - refs: attach "upload:N" when an uploaded image should guide that layer (a product photo, a person, a moodboard look, a pack shot); attach "brand:<Name>" for a fetched brand logo.
 - Image generations are expensive: background image + image layers + one icon sheet ≤ ${MAX_GENERATIONS_PER_SLIDE} per slide. Most slides need 1-5. Repeated identical devices count once.
+- At most ${MAX_LAYERS} layers per slide; anything after that is discarded. Most slides need 10-30. Every layer is written by you, so spend layers on what the audience reads, not on decorative detail.
+- OUTPUT ECONOMY (every character you write is paid for; the app fills these in): OMIT any field that equals its default. Defaults: role "body"; align "left"; valign "top"; italic, uppercase, flip false; rotation 0; opacity 1; line_height 1.15; letter_spacing 0; weight 700 for roles headline/display/stat and 400 otherwise; font = the deck's display font for roles headline/display/stat and the deck's body font otherwise; text colour = the deck palette's text colour. Write a field only when it differs. Ids are short and unique (h1, sub, t3, card1, phone); never add "name". Image prompts describe only the subject: the app already prepends the deck style_block and appends isolation, no-text and device-angle instructions, so never repeat those. Economy is only about defaults: never drop a design choice to save tokens (accent runs and gradients on key words, heavier weights, shadows, glows, letter spacing the art direction calls for).
 
 ══════════════════════════════════════════
 STEP 4 — DESIGN QUALITY BAR (the slide must look like a top keynote designer made it)
@@ -430,10 +434,11 @@ Submit the layout with the submit_slide_layout tool. Layers in back-to-front ord
 // one warm-up request as soon as the outline header arrives (well before the
 // slides start), and layout calls wait for it if it is still running.
 //
-// The warm-up must render the identical prefix, including the forced
-// tool_choice (a different tool_choice is a different cache entry). Forced
-// tool use is rejected with max_tokens: 0, so it uses max_tokens: 1 — one
-// billed output token.
+// The warm-up must render the identical prefix, including tool_choice (a
+// different tool_choice is a different cache entry) — both go through
+// claudeRequest(). Forced tool use (Sonnet 4.6) is rejected with
+// max_tokens: 0, so there it uses max_tokens: 1 (one billed output token);
+// models with auto tool choice (Sonnet 5.5) use 0.
 const WARM_TTL_MS = 4 * 60 * 1000; // ephemeral cache lives 5 min; stay under it
 const layoutWarmth = new Map(); // key → { at, promise }
 
@@ -444,8 +449,10 @@ function layoutPrefix(aspectRatio) {
     .replace('{ART_DIRECTION}', ART_DIRECTION);
   return {
     system: systemBlocks(system),
-    tools: [LAYOUT_TOOL],
-    tool_choice: { type: 'tool', name: LAYOUT_TOOL.name },
+    // Newest models stream tool input only with eager_input_streaming (the
+    // images start while the layout streams); older ones keep the exact
+    // tool definition their cached prefix was written with.
+    tools: [usesAutoTools(MODEL) ? { ...LAYOUT_TOOL, eager_input_streaming: true } : LAYOUT_TOOL],
   };
 }
 
@@ -475,12 +482,11 @@ export function prewarmLayoutCache({ aspectRatio = '16:9', userId = null } = {})
   const cur = layoutWarmth.get(k);
   if (cur && Date.now() - cur.at < WARM_TTL_MS) return cur.promise || Promise.resolve(false);
   const t0 = Date.now();
-  const promise = getClient().messages.create({
-    model: MODEL,
-    max_tokens: 1,
+  const promise = getClient().messages.create(...claudeRequest({
+    max_tokens: warmupMaxTokens(MODEL),
     ...layoutPrefix(aspectRatio),
     messages: [{ role: 'user', content: [...referenceSlideBlocks(), { type: 'text', text: 'Cache warm-up: no slide yet.' }] }],
-  }).then((response) => {
+  }, { tool: LAYOUT_TOOL.name })).then((response) => {
     account(userId, 'prewarmLayoutCache', response, t0);
     logger.info('layout cache warmed', { aspectRatio, ms: Date.now() - t0, cacheWrite: response.usage?.cache_creation_input_tokens, cacheRead: response.usage?.cache_read_input_tokens });
     return true;
@@ -541,12 +547,11 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
   // instead of writing its own copy.
   await awaitLayoutWarm(aspectRatio);
   noteLayoutCacheUse(aspectRatio);
-  const stream = getClient().messages.stream({
-    model: MODEL,
+  const stream = getClient().messages.stream(...claudeRequest({
     max_tokens: 12000,
     ...layoutPrefix(aspectRatio),
     messages: [{ role: 'user', content: [...referenceSlideBlocks(), { type: 'text', text }, ...uploadsContent(uploads)] }],
-  });
+  }, { tool: LAYOUT_TOOL.name }));
   let json = '';
   let lastLayerCount = -1; let sawBackground = false;
   stream.on('streamEvent', (ev) => {
@@ -562,7 +567,9 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
   });
   const response = await stream.finalMessage();
   account(userId, 'designSlideLayout', response, t0);
-  const out = response.content.find(b => b.type === 'tool_use')?.input;
+  if (response.stop_reason === 'max_tokens') logger.warn('slide layout hit max_tokens', { slideIndex: slide.index, outputTokens: response.usage?.output_tokens });
+  if (response.stop_reason === 'refusal') logger.warn('slide layout refused', { slideIndex: slide.index, details: response.stop_details });
+  const out = toolInput(response, LAYOUT_TOOL.name);
   tracer.recordStep(_tid, `claude_layout_${slide.index}`, out ? 'completed' : 'failed', Date.now() - t0);
   if (!out) throw new Error('slide layout returned no tool call');
   logger.info('slide layout designed', { slideIndex: slide.index, ms: Date.now() - t0, layers: out.layers?.length, composition: out.composition, outputTokens: response.usage?.output_tokens });
@@ -627,12 +634,10 @@ export async function reviewSlideLayout({ layout, previewPng, warnings = [], use
     if (!response) return { verdict: `review pending (files mode, key ${key})`, fixes: [] };
     return sanitizeDeep(response);
   }
-  const response = await getClient().messages.create({
-    model: MODEL,
+  const response = await getClient().messages.create(...claudeRequest({
     max_tokens: 3000,
     system: REVIEW_SYSTEM_PROMPT,
     tools: [REVIEW_TOOL],
-    tool_choice: { type: 'tool', name: REVIEW_TOOL.name },
     messages: [{
       role: 'user',
       content: [
@@ -640,9 +645,9 @@ export async function reviewSlideLayout({ layout, previewPng, warnings = [], use
         { type: 'text', text: `LAYERS:\n${JSON.stringify(compact)}\n\nAUTOMATED CHECK WARNINGS:\n${warnings.length ? warnings.map(w => `- ${w}`).join('\n') : '(none)'}` },
       ],
     }],
-  });
+  }, { tool: REVIEW_TOOL.name }));
   account(userId, 'reviewSlideLayout', response, t0);
-  const out = response.content.find(b => b.type === 'tool_use')?.input || { verdict: 'no review', fixes: [] };
+  const out = toolInput(response, REVIEW_TOOL.name) || { verdict: 'no review', fixes: [] };
   tracer.recordStep(_tid, `claude_review_${slideIndex}`, 'completed', Date.now() - t0);
   logger.info('slide layout reviewed', { slideIndex, ms: Date.now() - t0, verdict: String(out.verdict).slice(0, 200), fixes: out.fixes?.length || 0 });
   return sanitizeDeep(out);
@@ -690,7 +695,7 @@ const EDIT_SYSTEM_PROMPT = `You are Nova, editing ONE slide you already designed
 
 Carry out the user's instruction with the SMALLEST set of operations:
 - Text, colours, sizes, fonts, positions, chart numbers, icons, card styles → "update" the existing layers natively. Never regenerate an image to change text or colour that is a native layer.
-- A different or changed OBJECT/PICTURE (e.g. "make the phone a laptop", "the coins should be gold", "add a rocket") → "regenerate" that image layer with a complete new prompt in the same rendering style as the other prompts (or "add" a new image layer with role "element" and a prompt). Prompts describe only the object, never text or UI copy (screen copy stays native layers with in_screen).
+- A different or changed OBJECT/PICTURE (e.g. "make the phone a laptop", "the coins should be gold", "add a rocket") → "regenerate" that image layer with a complete new prompt in the same rendering style as the other prompts (or "add" a new image layer with role "element" and a prompt). Prompts describe only the object, never text, except a "ui":true device whose on-screen copy lives in its prompt: to change that copy, "regenerate" the device with its full prompt and the new copy quoted exactly. A device with a native "screen" keeps its copy in its in_screen layers.
 - A different mood/scene → "background" with a full new prompt (keep its negative space where the text sits), or a native color/gradient.
 - Removing something → "remove". Layering → "reorder".
 - Keep the deck's palette and fonts unless the user asks otherwise. Keep everything readable (WCAG AA contrast) and inside the canvas; when you move or resize, keep alignment with the surrounding layers.
@@ -730,12 +735,10 @@ export async function editSlideLayout({ layout, previewPng, instruction, deckDes
   const _tid = requestContext.getStore()?.requestId;
   const t0 = Date.now();
   tracer.recordStep(_tid, `claude_edit_${slideIndex}`, 'started', 0);
-  const response = await getClient().messages.create({
-    model: MODEL,
+  const response = await getClient().messages.create(...claudeRequest({
     max_tokens: 6000,
     system: systemBlocks(EDIT_SYSTEM_PROMPT),
     tools: [EDIT_TOOL],
-    tool_choice: { type: 'tool', name: EDIT_TOOL.name },
     messages: [{
       role: 'user',
       content: [
@@ -744,9 +747,9 @@ export async function editSlideLayout({ layout, previewPng, instruction, deckDes
         ...uploadsContent(uploads),
       ],
     }],
-  });
+  }, { tool: EDIT_TOOL.name }));
   account(userId, 'editSlideLayout', response, t0);
-  const out = response.content.find(b => b.type === 'tool_use')?.input || { summary: 'no edit', ops: [] };
+  const out = toolInput(response, EDIT_TOOL.name) || { summary: 'no edit', ops: [] };
   tracer.recordStep(_tid, `claude_edit_${slideIndex}`, 'completed', Date.now() - t0);
   logger.info('slide edit planned', { slideIndex, ms: Date.now() - t0, ops: out.ops?.length || 0, summary: String(out.summary).slice(0, 200) });
   return sanitizeDeep(out);

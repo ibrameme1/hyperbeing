@@ -468,3 +468,92 @@ describe('phone boxes and text contrast', () => {
     expect(requiredRatio({ size: 22, weight: 400 })).toBe(4.5);
   });
 });
+
+import { normalizeLayout as normalizeForScreens, MAX_SCREEN_LAYERS } from '../services/slideLayout.js';
+import { clusterPlan } from '../services/layeredSlide.js';
+describe('device screen UI: drawn by the image model unless a capped native hero screen', () => {
+  it('keeps "ui" on devices (dropped when the device has a native screen)', () => {
+    const l = normalizeForScreens({ layers: [
+      { kind: 'image', id: 'p1', ui: true, prompt: 'A smartphone showing a TikTok feed, caption "hi"', x: 100, y: 100, w: 300, h: 600 },
+      { kind: 'image', id: 'p2', ui: true, screen: { fill: '#000' }, prompt: 'A smartphone', x: 500, y: 100, w: 300, h: 600 },
+    ] });
+    expect(l.layers.find(x => x.id === 'p1').ui).toBe(true);
+    expect(l.layers.find(x => x.id === 'p2').ui).toBeUndefined();
+  });
+  it(`caps native in_screen layers at ${MAX_SCREEN_LAYERS} per slide (screen photos exempt)`, () => {
+    const kids = Array.from({ length: 14 }, (_, i) => ({ kind: 'text', id: `m${i}`, text: `msg ${i}`, in_screen: 'phone', x: 0.1, y: i * 0.06, w: 0.8, h: 0.05 }));
+    const l = normalizeForScreens({ layers: [
+      { kind: 'image', id: 'phone', role: 'hero', screen: { fill: '#0B141A' }, prompt: 'A smartphone', x: 100, y: 100, w: 380, h: 760 },
+      { kind: 'image', id: 'shot', role: 'screen_image', in_screen: 'phone', prompt: 'a selfie video frame', x: 0, y: 0, w: 1, h: 1 },
+      ...kids,
+      { kind: 'text', id: 'headline', text: 'Headline', x: 600, y: 100, w: 800, h: 120 },
+    ] });
+    expect(l.layers.filter(x => x.in_screen && x.role !== 'screen_image')).toHaveLength(MAX_SCREEN_LAYERS);
+    expect(l.layers.some(x => x.id === 'shot')).toBe(true);
+    expect(l.layers.some(x => x.id === 'headline')).toBe(true);
+    expect(l.layers.some(x => x.id === 'm13')).toBe(false);
+  });
+  it('lets a cluster with a UI device carry on-screen copy instead of forbidding text', () => {
+    const items = [
+      { id: 'phone', ui: true, prompt: 'A phone showing a chat, message "see you at 8"', x: 100, y: 100, w: 300, h: 600 },
+      { id: 'coins', prompt: 'gold coins', x: 450, y: 400, w: 200, h: 200 },
+    ];
+    const withUi = normalizeForScreens({ layers: [{ kind: 'image', id: 'v', role: 'cluster', items }] }).layers[0];
+    expect(withUi.items[0].ui).toBe(true);
+    expect(clusterPlan(withUi, {}, '').prompt).toMatch(/only words anywhere are the on-screen interface copy/);
+    const plain = normalizeForScreens({ layers: [{ kind: 'image', id: 'v', role: 'cluster', items: items.map(({ ui, ...it }) => it) }] }).layers[0];
+    expect(clusterPlan(plain, {}, '').prompt).toMatch(/no text, no letters/);
+  });
+});
+
+describe('output economy: omitted fields default from the deck design', () => {
+  it('fills font, weight and text colour from the deck when Claude leaves them out', () => {
+    const deck = { fonts: { display: 'Sora', body: 'Lato' }, palette: { text: '#101418' } };
+    const l = normalizeForScreens({ layers: [
+      { kind: 'text', id: 'h1', role: 'headline', text: 'Big idea', x: 60, y: 60, w: 900, h: 140, size: 96 },
+      { kind: 'text', id: 't1', text: 'Body copy', x: 60, y: 300, w: 900, h: 60, size: 28 },
+      { kind: 'text', id: 't2', text: 'Accent', color: '#FF2E74', font: 'Inter', x: 60, y: 400, w: 900, h: 60 },
+    ] }, { deck });
+    const [h1, t1, t2] = l.layers;
+    expect([h1.font, h1.weight, h1.color]).toEqual(['Sora', 700, '#101418']);
+    expect([t1.font, t1.weight, t1.role, t1.align, t1.valign, t1.italic]).toEqual(['Lato', 400, 'body', 'left', 'top', false]);
+    expect([t2.font, t2.color]).toEqual(['Inter', '#FF2E74']);
+    expect(l.fonts).toMatchObject({ display: 'Sora', body: 'Lato', text: '#101418' });
+  });
+});
+
+describe('device row packing ignores cluster pieces', () => {
+  it('never shrinks a merged ui cluster piece because a label sits beside it', () => {
+    const layout = { canvas: { w: 1920, h: 1080 }, layers: [
+      { kind: 'image', id: 'phone', role: 'hero', ui: true, cluster: 'visual', merged: ['coins', 'wallet'], x: 929, y: 67, w: 882, h: 895 },
+      { kind: 'text', id: 'wl', text: 'Developer\nearnings', size: 30, x: 1640, y: 510, w: 210, h: 84 },
+    ] };
+    const before = { ...layout.layers[0] };
+    tightenDeviceRows(layout); tightenDeviceRows(layout);
+    expect(layout.layers[0]).toMatchObject({ x: before.x, y: before.y, w: before.w, h: before.h });
+  });
+});
+
+describe('device row packing does not compound shrinking', () => {
+  it('keeps a clipped phone row at >= 60% across both packing passes', () => {
+    const layout = { canvas: { w: 1920, h: 1080 }, layers: [
+      { kind: 'image', id: 'p1', screen: { fill: '#000' }, x: 1000, y: 200, w: 300, h: 640 },
+      { kind: 'image', id: 'p2', screen: { fill: '#000' }, x: 1340, y: 200, w: 300, h: 640 },
+      { kind: 'text', id: 'foot', text: 'Footer line', size: 30, x: 900, y: 500, w: 900, h: 60 },
+    ] };
+    tightenDeviceRows(layout); tightenDeviceRows(layout);
+    expect(layout.layers[0].w).toBeGreaterThanOrEqual(Math.floor(300 * 0.6));
+  });
+});
+
+import { fitLayout as fitForWarnings } from '../services/slideLayout.js';
+describe('image/text overlap warnings follow z-order', () => {
+  it('says "covers" only when the image is drawn above the text', () => {
+    const img = { kind: 'image', id: 'pic', role: 'hero', x: 0, y: 0, w: 800, h: 600 };
+    const txt = { kind: 'text', id: 'cap', role: 'body', text: 'Caption', font: 'Inter', size: 28, weight: 400, x: 100, y: 100, w: 300, h: 40, line_height: 1.15, letter_spacing: 0, align: 'left', valign: 'top' };
+    const below = fitForWarnings({ canvas: { w: 1920, h: 1080 }, layers: [{ ...img }, { ...txt }] }).warnings;
+    const above = fitForWarnings({ canvas: { w: 1920, h: 1080 }, layers: [{ ...txt }, { ...img }] }).warnings;
+    expect(below.join()).toMatch(/text "cap" sits on top of image "pic"/);
+    expect(above.join()).toMatch(/image "pic" covers part of text "cap"/);
+  });
+});

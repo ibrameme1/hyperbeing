@@ -62,7 +62,7 @@ cd backend && npm test
 | Frontend | React 18, Vite, Tailwind CSS, Framer Motion |
 | Backend | Node.js, Express, SQLite (better-sqlite3) |
 | Auth | JWT (15-min access + 7-day refresh), Passport OAuth |
-| AI planning agent | Anthropic Claude (`claude-sonnet-4-6`) |
+| AI planning agent | Anthropic Claude (`claude-sonnet-5-5`, `CLAUDE_MODEL`) |
 | Image generation | OpenAI `gpt-image-2.5-flare` for every slide layer; `gpt-image-2` for Design Mode; Google Gemini (`gemini-3.1-flash-image-preview`) only for edits of legacy single-image slides |
 | Payments | Stripe subscriptions + credit ledger |
 | PDF export | jsPDF (client-side) |
