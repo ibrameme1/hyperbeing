@@ -50,3 +50,19 @@ describe('isPrivateAddress (SSRF guard)', () => {
     expect(isPrivateAddress('not-an-ip')).toBe(true);
   });
 });
+
+import { extractPrefixedObjects as extractForSplits } from '../services/claudeAgent.js';
+describe('extractPrefixedObjects keeps prefixes split across stream chunks', () => {
+  const full = 'HEADER:{"total_slides":2}\nSLIDE:{"index":0,"t":"a } b"}\nSLIDE:{"index":1,"t":"x"}\n';
+  const run = (chunks) => { let b = ''; const out = []; for (const c of chunks) { b += c; const { objects, remaining } = extractForSplits(b); b = remaining; out.push(...objects.map(o => o.prefix)); } return out; };
+  it('chunk ending exactly after "SLIDE:" (the Sonnet 5.5 production failure)', () => {
+    expect(run(['HEADER:{"total_slides":2}\nSLIDE:', '{"index":0,"t":"a } b"}\nSLIDE:{"index":1,"t":"x"}\n'])).toEqual(['HEADER:', 'SLIDE:', 'SLIDE:']);
+  });
+  it('chunk ending inside the prefix ("SLI" | "DE:")', () => {
+    expect(run(['HEADER:{"total_slides":2}\nSLI', 'DE:{"index":0,"t":"a } b"}\nSL', 'IDE:{"index":1,"t":"x"}\n'])).toEqual(['HEADER:', 'SLIDE:', 'SLIDE:']);
+  });
+  it('every two-chunk split and char-by-char streaming yield all three objects', () => {
+    for (let cut = 1; cut < full.length; cut++) expect(run([full.slice(0, cut), full.slice(cut)]).length).toBe(3);
+    expect(run([...full]).length).toBe(3);
+  });
+});

@@ -603,10 +603,18 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
       // outline streaming — it only needs the header + brief, and it is on the
       // critical path of every slide.
       pendingDeckDesign = designDeckSystem({ header: h, slides: [], brief: message, uploads: allImages, userId });
-      // Warm the slide-layout prompt cache now, so the parallel slide layouts
-      // that start after the outline read it instead of each writing it.
-      if ((h.total_slides || 0) > 1) prewarmLayoutCache({ aspectRatio, userId });
       pendingDeckDesign.catch(() => {}); // awaited (and failure-handled) in ensureDeckDesign
+      // Warm the slide-layout prompt cache so the parallel slide layouts read
+      // it instead of each writing it. It starts right AFTER deck design: both
+      // share the ~24k-token quality library (libraryTools()), so deck design
+      // writes it once and the warm-up reads it and only writes the layout
+      // rules + reference images. Started together, both wrote the library.
+      // (This .then is attached before ensureDeckDesign awaits the design, so
+      // the warm-up is registered before any slide layout looks for it.)
+      if ((h.total_slides || 0) > 1) {
+        const warm = () => prewarmLayoutCache({ aspectRatio, userId });
+        pendingDeckDesign.then(warm, warm);
+      }
 
       // Persist header message and update status to generating
       db.prepare(`INSERT INTO messages (id, presentation_id, role, content, metadata) VALUES (?, ?, 'assistant', ?, ?)`)
