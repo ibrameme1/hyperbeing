@@ -10,7 +10,7 @@ import { metrics } from './metrics.js';
 import { tracer } from './tracer.js';
 import { sanitizeDeep } from './claudeAgent.js';
 import { MINIMALISTIC_EXAMPLE_PROMPTS } from './minimalisticExamples.js';
-import { CLAUDE_MODEL, claudeRequest, toolInput, answeredBy, usesAutoTools, warmupMaxTokens } from './claudeModel.js';
+import { CLAUDE_MODEL, claudeRequest, toolInput, answeredBy, usesAutoTools, warmupMaxTokens, streamToolCall } from './claudeModel.js';
 import { FONT_NAMES, MAX_GENERATIONS_PER_SLIDE, MAX_LAYERS, MAX_SCREEN_LAYERS, MAX_SHEET_ICONS, canvasFor, extractCompletedLayoutParts } from './slideLayout.js';
 
 // ─── Layered-slide agent ────────────────────────────────────────────────────
@@ -547,25 +547,23 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
   // instead of writing its own copy.
   await awaitLayoutWarm(aspectRatio);
   noteLayoutCacheUse(aspectRatio);
-  const stream = getClient().messages.stream(...claudeRequest({
+  let lastLayerCount = -1; let sawBackground = false;
+  // Raw event stream, not the SDK's MessageStream (see streamToolCall).
+  const response = await streamToolCall(getClient(), claudeRequest({
     max_tokens: 12000,
     ...layoutPrefix(aspectRatio),
     messages: [{ role: 'user', content: [...referenceSlideBlocks(), { type: 'text', text }, ...uploadsContent(uploads)] }],
-  }, { tool: LAYOUT_TOOL.name }));
-  let json = '';
-  let lastLayerCount = -1; let sawBackground = false;
-  stream.on('streamEvent', (ev) => {
-    if (ev.type !== 'content_block_delta' || ev.delta?.type !== 'input_json_delta' || !onPartial) return;
-    json += ev.delta.partial_json;
-    const parts = extractCompletedLayoutParts(json);
-    // Only notify when something new completed (cheap re-scan, rare callbacks).
-    if (parts.layers.length !== lastLayerCount || (!!parts.background && !sawBackground)) {
-      lastLayerCount = parts.layers.length;
-      sawBackground = !!parts.background;
-      try { onPartial(sanitizeDeep(parts)); } catch (err) { logger.warn('layout onPartial failed', { errorMessage: err.message }); }
-    }
+  }, { tool: LAYOUT_TOOL.name }), {
+    onJson: onPartial ? (json) => {
+      const parts = extractCompletedLayoutParts(json);
+      // Only notify when something new completed (cheap re-scan, rare callbacks).
+      if (parts.layers.length !== lastLayerCount || (!!parts.background && !sawBackground)) {
+        lastLayerCount = parts.layers.length;
+        sawBackground = !!parts.background;
+        try { onPartial(sanitizeDeep(parts)); } catch (err) { logger.warn('layout onPartial failed', { errorMessage: err.message }); }
+      }
+    } : null,
   });
-  const response = await stream.finalMessage();
   account(userId, 'designSlideLayout', response, t0);
   if (response.stop_reason === 'max_tokens') logger.warn('slide layout hit max_tokens', { slideIndex: slide.index, outputTokens: response.usage?.output_tokens });
   if (response.stop_reason === 'refusal') logger.warn('slide layout refused', { slideIndex: slide.index, details: response.stop_details });

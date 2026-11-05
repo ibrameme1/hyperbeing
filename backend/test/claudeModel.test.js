@@ -67,3 +67,32 @@ describe('claudeModel: per-model request shape', () => {
     expect(claudeCost('claude-sonnet-4-6', usage)).toBeCloseTo((1000 * 3 + 30000 * 0.3 + 2000 * 15) / 1e6, 8);
   });
 });
+
+import { streamToolCall } from '../services/claudeModel.js';
+describe('streamToolCall (raw events, no SDK partial parser)', () => {
+  const fakeClient = (events) => ({ messages: { create: async (body) => { expect(body.stream).toBe(true); return (async function* () { for (const e of events) yield e; })(); } } });
+  it('assembles tool JSON split at awkward points and merges usage', async () => {
+    const full = JSON.stringify({ layers: [{ kind: 'text', text: 'Say "hi" \\u00e9 -12.5', size: -1e2 }] });
+    const chunks = []; for (let i = 0; i < full.length; i += 3) chunks.push(full.slice(i, i + 3));
+    const seen = [];
+    const r = await streamToolCall(fakeClient([
+      { type: 'message_start', message: { model: 'claude-sonnet-5-5', usage: { input_tokens: 10, cache_read_input_tokens: 40000, output_tokens: 1 } } },
+      { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', name: 'submit_slide_layout', input: {} } },
+      ...chunks.map(c => ({ type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: c } })),
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 900, input_tokens: null } },
+    ]), [{ model: 'claude-sonnet-5-5' }, {}], { onJson: (j) => seen.push(j.length) });
+    expect(r.content[0].input).toEqual(JSON.parse(full));
+    expect(r.usage).toMatchObject({ input_tokens: 10, cache_read_input_tokens: 40000, output_tokens: 900 });
+    expect(r.stop_reason).toBe('tool_use');
+    expect(seen.at(-1)).toBe(full.length);
+  });
+  it('repairs slightly broken JSON instead of failing the slide', async () => {
+    const r = await streamToolCall(fakeClient([
+      { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', name: 't', input: {} } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"layers":[{"a":1},]' } },
+      { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 5 } },
+    ]), [{ model: 'm' }, {}]);
+    expect(r.content[0].input).toEqual({ layers: [{ a: 1 }] });
+  });
+});

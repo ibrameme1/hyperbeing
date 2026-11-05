@@ -953,7 +953,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   </div>
                   <div className="text-center">
                     <p className="text-white text-sm font-semibold">This slide couldn't be generated</p>
-                    <p className="text-white/50 text-xs mt-1">The AI image service returned an error. Tap Regenerate to try again.</p>
+                    <p className="text-white/50 text-xs mt-1">Something went wrong while designing this slide. Your credit was refunded. Tap Regenerate to try again.</p>
                   </div>
                   <button
                     onClick={() => handleRetrySlide(current)}

@@ -1,3 +1,5 @@
+import { jsonrepair } from 'jsonrepair';
+
 // Which Claude model the backend talks to, and the request differences that
 // come with it. Everything is driven by CLAUDE_MODEL (default
 // claude-sonnet-5-5; set CLAUDE_MODEL=claude-sonnet-4-6 to roll back — every
@@ -109,4 +111,57 @@ export function claudeRequest(body, { tool = null, model = CLAUDE_MODEL } = {}) 
     out.messages = msgs;
   }
   return [out, fb.options];
+}
+
+/**
+ * Streams one structured (tool) answer WITHOUT the SDK's MessageStream helper.
+ *
+ * Why: @anthropic-ai/sdk 0.36's MessageStream re-parses the partial tool
+ * JSON after every chunk with its bundled partial-JSON parser. With
+ * eager_input_streaming (Sonnet 5.5) chunks end at arbitrary characters and
+ * that parser intermittently throws ("Unexpected non-whitespace character
+ * after JSON") even though the final JSON is valid — which failed ~1 in 3
+ * layout calls in production. Here the raw events are read, the tool JSON is
+ * accumulated as text, `onJson(sofar)` is called after each chunk (the
+ * caller's own tolerant parser handles partials), and the JSON is parsed once
+ * at the end (jsonrepair as a fallback).
+ *
+ * Returns a Message-shaped object ({ model, usage, stop_reason, stop_details,
+ * content }) so accounting and toolInput() work unchanged.
+ */
+export async function streamToolCall(client, [body, options], { onJson = null } = {}) {
+  const events = await client.messages.create({ ...body, stream: true }, options);
+  const usage = {};
+  const merge = (u) => { for (const [k, v] of Object.entries(u || {})) if (v !== null && v !== undefined) usage[k] = v; };
+  const blocks = new Map(); // index → { type, name, json, text }
+  let model = body.model; let stopReason = null; let stopDetails = null;
+  for await (const ev of events) {
+    if (ev.type === 'message_start') { model = ev.message?.model || model; merge(ev.message?.usage); }
+    else if (ev.type === 'content_block_start') {
+      blocks.set(ev.index, { type: ev.content_block?.type, name: ev.content_block?.name, json: '', text: ev.content_block?.text || '' });
+    } else if (ev.type === 'content_block_delta') {
+      const b = blocks.get(ev.index);
+      if (!b) continue;
+      if (ev.delta?.type === 'input_json_delta') {
+        b.json += ev.delta.partial_json || '';
+        if (onJson && b.type === 'tool_use') {
+          try { onJson(b.json); } catch { /* partial callbacks must never break the stream */ }
+        }
+      } else if (ev.delta?.type === 'text_delta') b.text += ev.delta.text || '';
+    } else if (ev.type === 'message_delta') {
+      stopReason = ev.delta?.stop_reason ?? stopReason;
+      stopDetails = ev.delta?.stop_details ?? stopDetails;
+      merge(ev.usage);
+    }
+  }
+  const content = [...blocks.entries()].sort((a, b) => a[0] - b[0]).map(([, b]) => {
+    if (b.type !== 'tool_use') return { type: b.type, text: b.text };
+    let input = null;
+    const raw = b.json.trim() || '{}';
+    try { input = JSON.parse(raw); } catch {
+      try { input = JSON.parse(jsonrepair(raw)); } catch { input = null; }
+    }
+    return { type: 'tool_use', name: b.name, input };
+  }).filter(b => b.type !== 'tool_use' || b.input);
+  return { model, usage, stop_reason: stopReason, stop_details: stopDetails, content };
 }
