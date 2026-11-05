@@ -116,7 +116,7 @@ const results = await Promise.all(slides.map(async (slide) => {
 const summary = {
   when: new Date().toISOString(),
   image_model: IMAGE_MOCK_MODE ? 'mock' : LAYER_IMAGE_MODEL, image_quality: LAYER_IMAGE_QUALITY,
-  claude: claudeMock ? 'mock' : 'claude-sonnet-4-6',
+  claude: claudeMock ? 'mock' : (process.env.CLAUDE_MODEL || 'claude-sonnet-5-5'),
   deck_design_ms: deckMs, wall_ms: Date.now() - t0, slides: results,
 };
 fs.writeFileSync(path.join(outDir, 'summary.json'), JSON.stringify(summary, null, 2));

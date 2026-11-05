@@ -19,7 +19,7 @@ The single most important mental model (since 2026-11): **slides are layered doc
 | Backend | Node 20 + Express (ESM, `"type": "module"`) | Simple single-process API server |
 | Database | SQLite via better-sqlite3 (synchronous), WAL mode | Zero-ops persistence; everything including images and logs lives in one file |
 | Auth | JWT (15-min access + 7-day refresh) + Passport for Google/Meta/TikTok OAuth | Stateless API auth; express-session exists **only** for the OAuth redirect dance (5-min cookie) |
-| Planning/copy AI | Anthropic Claude (`claude-sonnet-4-6`) | Nova's brain: brief analysis, slide plans, image-prompt writing |
+| Planning/copy AI | Anthropic Claude (`claude-sonnet-5-5`, `CLAUDE_MODEL`) | Nova's brain: brief analysis, slide plans, image-prompt writing |
 | Image AI (classic style) | Google `gemini-3.1-flash-image-preview` — called "Nano Banana"/"NB2" throughout the code | Multimodal: accepts reference images + text, returns slide bitmaps |
 | Image AI (Design Mode) | OpenAI `gpt-image-2` (`gptImageGeneration.js`) | Design Mode images. Slide layers use `gpt-image-2.5-flare` (`openaiImages.js`) |
 | Payments | Stripe (subscriptions + webhook) | Credit economy defined in `backend/config/credits.js` |
@@ -86,7 +86,7 @@ PRODUCT.md             Product positioning + design principles — read it befor
    ├── SQLite (backend/data/hyperbeing.db) — users, presentations, messages,
    │     subscriptions, credit_transactions (ledger), design_generations,
    │     prompt_sessions, feedback, analytics_events, app_logs
-   ├── Anthropic API (claude-sonnet-4-6) — planning, prompts, web_search tool
+   ├── Anthropic API (claude-sonnet-5-5) — planning, prompts, web_search tool
    ├── Google Gemini image API ("Nano Banana") — classic-style slide images
    ├── OpenAI images API (gpt-image-2.5-flare slide layers; gpt-image-2 Design Mode)
    ├── Stripe — checkout, webhook at /api/billing/webhook (raw body, sig-verified)

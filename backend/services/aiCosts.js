@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'async_hooks';
+import { CLAUDE_MODEL, DEFAULT_CLAUDE_MODEL } from './claudeModel.js';
 import { getDb } from '../database.js';
 import { logger } from './logger.js';
 
@@ -26,7 +27,7 @@ const envNum = (name, dflt) => {
 export const CLAUDE_PRICES = {
   // input, output, cache write (5-min ephemeral = 1.25 × input), cache read (0.1 × input)
   'claude-sonnet-4-6': { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.30 },
-  // CLAUDE_MODEL=claude-sonnet-5-5 (cache read is 0.1 × input as well).
+  // The default model (CLAUDE_MODEL); cache read is 0.1 × input as well.
   'claude-sonnet-5-5': { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.20 },
   // Possible server-side refusal-fallback model for Sonnet 5.5 requests.
   'claude-opus-5-5': { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.20 },
@@ -65,7 +66,7 @@ export function costContext() {
 export function claudeCost(model, usage = {}) {
   // Responses may name a dated snapshot of the model: match by prefix.
   const key = Object.keys(CLAUDE_PRICES).find(k => model === k || String(model).startsWith(`${k}-`));
-  const p = CLAUDE_PRICES[key] || CLAUDE_PRICES['claude-sonnet-4-6'];
+  const p = CLAUDE_PRICES[key] || CLAUDE_PRICES[CLAUDE_MODEL] || CLAUDE_PRICES[DEFAULT_CLAUDE_MODEL];
   const input = usage.input_tokens || 0;
   const cacheWrite = usage.cache_creation_input_tokens || 0;
   const cacheRead = usage.cache_read_input_tokens || 0;
@@ -120,7 +121,7 @@ function insert(row) {
 }
 
 /** One Claude Messages API response (streamed or not). */
-export function recordClaudeCall({ call, model = 'claude-sonnet-4-6', usage, durationMs = null, userId, operation, meta } = {}) {
+export function recordClaudeCall({ call, model = CLAUDE_MODEL, usage, durationMs = null, userId, operation, meta } = {}) {
   if (!usage) return;
   insert({
     provider: 'anthropic', model, call, userId, operation,

@@ -26,6 +26,8 @@ describe('ai cost math', () => {
   });
 });
 
+// The report maths below uses Sonnet 4.6 rates explicitly, so it does not move
+// when the default model (CLAUDE_MODEL) does.
 describe('ai cost records', () => {
   it('attributes calls to the deck, slide and operation from context', async () => {
     await withCostContext({ userId: 'u1', presentationId: 'p1', operation: 'deck_create' }, async () => {
@@ -55,10 +57,10 @@ describe('cost report', () => {
     const db = getDb();
     db.prepare('DELETE FROM ai_costs').run();
     await withCostContext({ userId: 'u2', presentationId: 'deck2', operation: 'deck_create' }, async () => {
-      recordClaudeCall({ call: 'plan_outline', usage: { input_tokens: 500, output_tokens: 1500 } });
+      recordClaudeCall({ call: 'plan_outline', model: 'claude-sonnet-4-6', usage: { input_tokens: 500, output_tokens: 1500 } });
       for (const slideIndex of [0, 1]) {
         await withCostContext({ slideIndex }, async () => {
-          recordClaudeCall({ call: 'designSlideLayout', usage: slideIndex === 0
+          recordClaudeCall({ call: 'designSlideLayout', model: 'claude-sonnet-4-6', usage: slideIndex === 0
             ? { input_tokens: 2000, cache_creation_input_tokens: 28000, output_tokens: 3000 }
             : { input_tokens: 2000, cache_read_input_tokens: 28000, output_tokens: 3000 } });
           recordImageCall({ call: 'image_background', model: 'gpt-image-2.5-flare', usage: { input_tokens: 300, output_tokens: 367 } });

@@ -1,7 +1,8 @@
 // Which Claude model the backend talks to, and the request differences that
 // come with it. Everything is driven by CLAUDE_MODEL (default
-// claude-sonnet-4-6, the model every prompt was tuned on). Setting
-// CLAUDE_MODEL=claude-sonnet-5-5 switches every call site at once:
+// claude-sonnet-5-5; set CLAUDE_MODEL=claude-sonnet-4-6 to roll back — every
+// prompt was originally tuned on it and it keeps its exact old requests).
+// The Sonnet 5.5 request shape applies to every call site at once:
 //
 //  - Forced tool calls (`tool_choice: {type:'tool'}`) are rejected (400) by
 //    the newest models. They get `tool_choice: auto` (one call, no parallel
@@ -17,9 +18,11 @@
 //    CLAUDE_REFUSAL_FALLBACK=off. The response's own `model` is what gets
 //    priced, so a fallback is costed correctly.
 //
-// Older models get exactly the requests they got before this module existed.
+// Older models (e.g. claude-sonnet-4-6) get exactly the requests they got
+// before this module existed.
 
-export const CLAUDE_MODEL = (process.env.CLAUDE_MODEL || 'claude-sonnet-4-6').trim();
+export const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5-5';
+export const CLAUDE_MODEL = (process.env.CLAUDE_MODEL || DEFAULT_CLAUDE_MODEL).trim();
 
 // Models that reject forced tool_choice ("any"/"tool").
 const AUTO_TOOL_MODELS = /^claude-(sonnet-5-5|opus-5-5|fable-5-1|mythos-5-1)\b/;

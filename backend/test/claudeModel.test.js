@@ -1,12 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { claudeRequest, toolChoice, toolInput, usesAutoTools, warmupMaxTokens, modelParams, fallbackParams } from '../services/claudeModel.js';
+import { CLAUDE_MODEL, DEFAULT_CLAUDE_MODEL, claudeRequest, toolChoice, toolInput, usesAutoTools, warmupMaxTokens, modelParams, fallbackParams } from '../services/claudeModel.js';
 import { claudeCost } from '../services/aiCosts.js';
 
 const img = (n) => ({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: `x${n}` } });
 const cached = (b) => ({ ...b, cache_control: { type: 'ephemeral' } });
 
 describe('claudeModel: per-model request shape', () => {
-  it('keeps the exact forced tool call for Sonnet 4.6 (the default)', () => {
+  it('defaults to Sonnet 5.5 (CLAUDE_MODEL unset) and prices unknown models at the default rates', () => {
+    expect(DEFAULT_CLAUDE_MODEL).toBe('claude-sonnet-5-5');
+    if (!process.env.CLAUDE_MODEL) expect(CLAUDE_MODEL).toBe('claude-sonnet-5-5');
+    expect(claudeCost('some-future-model', { output_tokens: 1e6 })).toBeCloseTo(10);
+  });
+
+  it('keeps the exact forced tool call for Sonnet 4.6 (rollback via CLAUDE_MODEL)', () => {
     const [body, options] = claudeRequest({ max_tokens: 10, messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] }, { tool: 'submit_x', model: 'claude-sonnet-4-6' });
     expect(body.tool_choice).toEqual({ type: 'tool', name: 'submit_x' });
     expect(body.messages[0].content[0].text).toBe('hi');
