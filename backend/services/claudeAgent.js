@@ -53,14 +53,26 @@ export function extractPrefixedObjects(text) {
     const headerIdx = text.indexOf('HEADER:', pos);
 
     let prefix, start;
-    if (slideIdx === -1 && headerIdx === -1) break;
+    if (slideIdx === -1 && headerIdx === -1) {
+      // No complete prefix left — but the chunk may END in the middle of one
+      // ("…}\nSLI" | "DE:{…"). Keep that tail for the next chunk; dropping it
+      // silently lost whole slides on Sonnet 5.5, whose stream chunks split
+      // differently (deck showed "crafting 2 slides" then 0).
+      for (let k = Math.min(7, text.length - pos); k > 0; k--) {
+        const tail = text.slice(text.length - k);
+        if ('SLIDE:'.startsWith(tail) || 'HEADER:'.startsWith(tail)) return { objects, remaining: tail };
+      }
+      break;
+    }
     if (slideIdx === -1)        { prefix = 'HEADER:'; start = headerIdx; }
     else if (headerIdx === -1)  { prefix = 'SLIDE:';  start = slideIdx; }
     else if (slideIdx < headerIdx) { prefix = 'SLIDE:'; start = slideIdx; }
     else                        { prefix = 'HEADER:'; start = headerIdx; }
 
     const jsonStart = start + prefix.length;
-    if (jsonStart >= text.length || text[jsonStart] !== '{') {
+    // The chunk ended right after the prefix ("…}\nSLIDE:" | "{…"): keep it.
+    if (jsonStart >= text.length) return { objects, remaining: text.slice(start) };
+    if (text[jsonStart] !== '{') {
       pos = start + 1;
       continue;
     }
