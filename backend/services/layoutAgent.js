@@ -10,7 +10,7 @@ import { metrics } from './metrics.js';
 import { tracer } from './tracer.js';
 import { sanitizeDeep } from './claudeAgent.js';
 import { MINIMALISTIC_EXAMPLE_PROMPTS } from './minimalisticExamples.js';
-import { CLAUDE_MODEL, claudeRequest, toolInput, answeredBy, usesAutoTools, warmupMaxTokens } from './claudeModel.js';
+import { CLAUDE_MODEL, claudeRequest, toolInput, answeredBy, usesAutoTools, warmupMaxTokens, streamToolCall } from './claudeModel.js';
 import { FONT_NAMES, MAX_GENERATIONS_PER_SLIDE, MAX_LAYERS, MAX_SCREEN_LAYERS, MAX_SHEET_ICONS, canvasFor, extractCompletedLayoutParts } from './slideLayout.js';
 
 // ─── Layered-slide agent ────────────────────────────────────────────────────
@@ -222,17 +222,20 @@ export async function designDeckSystem({ header, slides, brief, uploads = [], us
     { type: 'text', text: `PRESENTATION: ${header?.presentation_title || ''}\nTHEME HINT: ${header?.theme || ''}\nPALETTE HINT: ${JSON.stringify(header?.color_palette || {})}\n\nOUTLINE:\n${outline}\n\nORIGINAL BRIEF:\n${String(brief || '').slice(0, 12000)}` },
     ...uploadsContent(uploads),
   ];
+  // If the layout warm-up is running, let it finish: deck design then READS
+  // the shared library prefix instead of writing a second copy.
+  await awaitAnyLayoutWarm();
   const response = await getClient().messages.create(...claudeRequest({
     max_tokens: 2000,
     system: systemBlocks(DECK_SYSTEM_PROMPT.replace('{ART_DIRECTION}', ART_DIRECTION)),
-    tools: [DECK_SYSTEM_TOOL],
+    tools: libraryTools(),
     messages: [{ role: 'user', content }],
   }, { tool: DECK_SYSTEM_TOOL.name }));
   account(userId, 'designDeckSystem', response, t0);
   const out = toolInput(response, DECK_SYSTEM_TOOL.name);
   tracer.recordStep(_tid, 'claude_deck_design', out ? 'completed' : 'failed', Date.now() - t0);
   if (!out) throw new Error('deck design returned no tool call');
-  logger.info('deck design complete', { ms: Date.now() - t0, fonts: out.fonts });
+  logger.info('deck design complete', { ms: Date.now() - t0, fonts: out.fonts, cacheWrite: response.usage?.cache_creation_input_tokens, cacheRead: response.usage?.cache_read_input_tokens });
   return sanitizeDeep(out);
 }
 
@@ -452,7 +455,7 @@ function layoutPrefix(aspectRatio) {
     // Newest models stream tool input only with eager_input_streaming (the
     // images start while the layout streams); older ones keep the exact
     // tool definition their cached prefix was written with.
-    tools: [usesAutoTools(MODEL) ? { ...LAYOUT_TOOL, eager_input_streaming: true } : LAYOUT_TOOL],
+    tools: libraryTools(),
   };
 }
 
@@ -463,6 +466,14 @@ function noteLayoutCacheUse(aspectRatio) {
   const k = warmKey(aspectRatio);
   const cur = layoutWarmth.get(k);
   layoutWarmth.set(k, { at: Date.now(), promise: cur?.promise || null });
+}
+
+// Deck design shares the library part of the warm-up's prefix whatever the
+// canvas, so it waits for any warm-up in flight.
+async function awaitAnyLayoutWarm(timeoutMs = 10000) {
+  const pending = [...layoutWarmth.values()].map(v => v.promise).filter(Boolean);
+  if (!pending.length) return;
+  await Promise.race([Promise.all(pending), new Promise(r => setTimeout(r, timeoutMs))]);
 }
 
 async function awaitLayoutWarm(aspectRatio, timeoutMs = 10000) {
@@ -547,32 +558,30 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
   // instead of writing its own copy.
   await awaitLayoutWarm(aspectRatio);
   noteLayoutCacheUse(aspectRatio);
-  const stream = getClient().messages.stream(...claudeRequest({
+  let lastLayerCount = -1; let sawBackground = false;
+  // Raw event stream, not the SDK's MessageStream (see streamToolCall).
+  const response = await streamToolCall(getClient(), claudeRequest({
     max_tokens: 12000,
     ...layoutPrefix(aspectRatio),
     messages: [{ role: 'user', content: [...referenceSlideBlocks(), { type: 'text', text }, ...uploadsContent(uploads)] }],
-  }, { tool: LAYOUT_TOOL.name }));
-  let json = '';
-  let lastLayerCount = -1; let sawBackground = false;
-  stream.on('streamEvent', (ev) => {
-    if (ev.type !== 'content_block_delta' || ev.delta?.type !== 'input_json_delta' || !onPartial) return;
-    json += ev.delta.partial_json;
-    const parts = extractCompletedLayoutParts(json);
-    // Only notify when something new completed (cheap re-scan, rare callbacks).
-    if (parts.layers.length !== lastLayerCount || (!!parts.background && !sawBackground)) {
-      lastLayerCount = parts.layers.length;
-      sawBackground = !!parts.background;
-      try { onPartial(sanitizeDeep(parts)); } catch (err) { logger.warn('layout onPartial failed', { errorMessage: err.message }); }
-    }
+  }, { tool: LAYOUT_TOOL.name }), {
+    onJson: onPartial ? (json) => {
+      const parts = extractCompletedLayoutParts(json);
+      // Only notify when something new completed (cheap re-scan, rare callbacks).
+      if (parts.layers.length !== lastLayerCount || (!!parts.background && !sawBackground)) {
+        lastLayerCount = parts.layers.length;
+        sawBackground = !!parts.background;
+        try { onPartial(sanitizeDeep(parts)); } catch (err) { logger.warn('layout onPartial failed', { errorMessage: err.message }); }
+      }
+    } : null,
   });
-  const response = await stream.finalMessage();
   account(userId, 'designSlideLayout', response, t0);
   if (response.stop_reason === 'max_tokens') logger.warn('slide layout hit max_tokens', { slideIndex: slide.index, outputTokens: response.usage?.output_tokens });
   if (response.stop_reason === 'refusal') logger.warn('slide layout refused', { slideIndex: slide.index, details: response.stop_details });
   const out = toolInput(response, LAYOUT_TOOL.name);
   tracer.recordStep(_tid, `claude_layout_${slide.index}`, out ? 'completed' : 'failed', Date.now() - t0);
   if (!out) throw new Error('slide layout returned no tool call');
-  logger.info('slide layout designed', { slideIndex: slide.index, ms: Date.now() - t0, layers: out.layers?.length, composition: out.composition, outputTokens: response.usage?.output_tokens });
+  logger.info('slide layout designed', { slideIndex: slide.index, ms: Date.now() - t0, layers: out.layers?.length, composition: out.composition, outputTokens: response.usage?.output_tokens, cacheWrite: response.usage?.cache_creation_input_tokens, cacheRead: response.usage?.cache_read_input_tokens });
   return sanitizeDeep(out);
 }
 
@@ -691,6 +700,21 @@ const EDIT_TOOL = {
   },
 };
 
+// Every call that carries the quality library (deck design, layout + its
+// warm-up, AI edits) sends this EXACT tool list in this order. The cache key
+// is the prefix tools → system → messages, so different tool lists made the
+// ~24k-token library get written twice per deck (once by deck design, once
+// by the layout warm-up). With one list, the library block (system block 1,
+// cache_control) is written once and read by every other call; tool_choice
+// still selects the one tool each call must answer with.
+let _libraryTools = null;
+function libraryTools() {
+  if (!_libraryTools) {
+    _libraryTools = [usesAutoTools(MODEL) ? { ...LAYOUT_TOOL, eager_input_streaming: true } : LAYOUT_TOOL, DECK_SYSTEM_TOOL, EDIT_TOOL];
+  }
+  return _libraryTools;
+}
+
 const EDIT_SYSTEM_PROMPT = `You are Nova, editing ONE slide you already designed. The slide is built from layers (canvas pixel coordinates, z-order = array order): a background, generated image elements (each has the "prompt" it was generated from), native text, shapes, charts, icons and logos. You see the rendered slide and its layer JSON.
 
 Carry out the user's instruction with the SMALLEST set of operations:
@@ -738,7 +762,7 @@ export async function editSlideLayout({ layout, previewPng, instruction, deckDes
   const response = await getClient().messages.create(...claudeRequest({
     max_tokens: 6000,
     system: systemBlocks(EDIT_SYSTEM_PROMPT),
-    tools: [EDIT_TOOL],
+    tools: libraryTools(),
     messages: [{
       role: 'user',
       content: [
