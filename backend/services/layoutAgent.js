@@ -120,10 +120,14 @@ function imageBlock(dataUrl, mime) {
 // everywhere (layout refs, logos, edits).
 export function uploadVisible(u, i, slide = null) {
   if (!u?.data) return false;
-  if (!u.source_doc || u.category === 'moodboard') return true;
+  // Scoped pictures: from the user's files, found online for one slide, or
+  // attached to one add-slides / edit request.
+  const scoped = u.scoped || (u.source_doc && u.category !== 'moodboard') || u.category === 'web';
+  if (!scoped) return true;
   if (!slide) return false;
   if (Array.isArray(slide.uploads) && slide.uploads.map(Number).includes(i)) return true;
-  return !!(Array.isArray(u.slides) && slide.source_slide && u.slides.includes(Number(slide.source_slide)));
+  return !!(Array.isArray(u.slides) && slide.source_slide && u.source_doc && u.source_doc === slide.source_doc
+    && u.slides.includes(Number(slide.source_slide)));
 }
 
 // The user's brief attachments, labelled with the index the layout refers to
@@ -133,6 +137,7 @@ function uploadsContent(uploads, slide = null) {
   uploads.forEach((u, i) => {
     if (!uploadVisible(u, i, slide)) return;
     const cat = u.category === 'moodboard' ? 'moodboard / style reference'
+      : u.category === 'web' ? `real photo found online for this slide: ${String(u.subject || u.name || '').slice(0, 120)}${u.credit ? ` (${String(u.credit).slice(0, 120)})` : ''}`
       : u.category === 'document' ? `picture from the user's file "${String(u.source_doc || '').slice(0, 60)}"${u.slides ? ` (their slide ${u.slides.join(', ')})` : ''}`
       : u.category ? 'branding / logo / product picture' : 'reference image';
     parts.push({ type: 'text', text: `UPLOAD ${i} (${cat}${u.name && !u.source_doc ? `, file "${String(u.name).slice(0, 60)}"` : ''}):` });
@@ -555,7 +560,7 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
     slide.speaker_note ? `Speaker note: ${slide.speaker_note}` : null,
     instruction ? `\nSPECIFIC DIRECTION FOR THIS SLIDE: ${instruction}` : null,
     '',
-    slide.source_content ? `\nTHE USER'S ORIGINAL VERSION OF THIS SLIDE (from the deck they asked to redesign; positions are % of their slide). Keep its content, facts and intent; you may keep, improve or replace its structure, but the result must meet the quality bar:\n${String(slide.source_content).slice(0, 4500)}` : null,
+    slide.source_content ? `\nTHE USER'S ORIGINAL VERSION OF THIS SLIDE (from the deck they asked to redesign; positions are % of their slide). Keep its content, facts and intent. REDESIGN it, don't restyle it: design this slide exactly as you would a brand-new slide held to the quality library and reference slides above (one dominant visual idea, a takeaway headline that lands, art-directed generated imagery, native charts for its numbers, premium composition). Never reproduce the old template's look, bullet layout or clip art; keep only true brand identity (logo, brand colours) and the user's real photos where they matter:\n${String(slide.source_content).slice(0, 4500)}` : null,
     slide.source_data ? `\nDATA FOR THIS SLIDE (from the user's files): show it as a native chart layer with these exact values and categories (never invent or change a number):\n${String(slide.source_data).slice(0, 3000)}` : null,
     '',
     `ORIGINAL BRIEF (use its exact copy, numbers, brand names and art direction wherever it describes this slide):\n${String(brief || '').slice(0, 20000)}`,
@@ -747,7 +752,9 @@ Carry out the user's instruction with the SMALLEST set of operations:
 
 Return at most ${MAX_GENERATIONS_PER_SLIDE} image regenerations/additions.`;
 
-export async function editSlideLayout({ layout, previewPng, instruction, deckDesign = null, uploads = [], userId = null, slideIndex = 0 }) {
+// scope: { uploads: [N...] } — the scoped pictures this edit may see (the
+// images attached to it, pictures of the files picked from the deck library).
+export async function editSlideLayout({ layout, previewPng, instruction, deckDesign = null, uploads = [], userId = null, slideIndex = 0, scope = null }) {
   const compact = {
     canvas: layout.canvas,
     fonts: layout.fonts,
@@ -785,8 +792,8 @@ export async function editSlideLayout({ layout, previewPng, instruction, deckDes
       role: 'user',
       content: [
         imageBlock(`data:image/png;base64,${previewPng.toString('base64')}`, 'image/png'),
-        { type: 'text', text: `DECK DESIGN SYSTEM:\n${JSON.stringify(deckDesign || {})}\n\nCURRENT LAYERS:\n${JSON.stringify(compact)}\n\nUSER INSTRUCTION:\n${String(instruction).slice(0, 2000)}${uploads.length ? `\n\nThe user attached ${uploads.length} image(s), shown below as UPLOAD 0..${uploads.length - 1}.` : ''}` },
-        ...uploadsContent(uploads),
+        { type: 'text', text: `DECK DESIGN SYSTEM:\n${JSON.stringify(deckDesign || {})}\n\nCURRENT LAYERS:\n${JSON.stringify(compact)}\n\nUSER INSTRUCTION:\n${String(instruction).slice(0, 6000)}${uploads.some((u, i) => uploadVisible(u, i, scope)) ? '\n\nThe user\'s images are shown below, each labelled UPLOAD N.' : ''}` },
+        ...uploadsContent(uploads, scope),
       ],
     }],
   }, { tool: EDIT_TOOL.name }));

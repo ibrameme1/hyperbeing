@@ -19,7 +19,7 @@ import { capture } from '../utils/posthog';
 import { SkeletonDashboardPage, SkeletonCard } from '../components/Skeleton';
 import FeedbackButton from '../components/FeedbackButton';
 import {
-  fileToAttachment, checkFile, formatBytes, isImageFile, isDocumentFile,
+  fileToAttachment, checkFile, formatBytes, isImageFile, isDocumentFile, uploadAsset, assetMetaLabel, extOf,
   ACCEPT_IMAGES, ACCEPT_DOCUMENTS, ACCEPT_INSPIRATION, MAX_DOCUMENTS, MAX_IMAGES, MAX_TOTAL_DOCUMENT_BYTES,
 } from '../utils/fileAttachment';
 
@@ -223,19 +223,17 @@ const IMAGE_CHECK = { allowDocuments: false };
 const INSPIRATION_CHECK = { docKinds: ['pdf', 'pptx'] };
 const DOC_ICONS = { pdf: FileText, pptx: Presentation, xlsx: FileSpreadsheet, csv: FileSpreadsheet, tsv: FileSpreadsheet, docx: FileText, txt: FileText, md: FileText, json: FileJson };
 
-function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove, onUpdate, isDark, accept, checkOpts = {}, purposeFor, emptyHint, showPurposeToggle = false, onError }) {
+// onFile(file) receives each accepted file: the parent reads images inline
+// and uploads documents to the asset library (once) as soon as they're dropped.
+function AttachZone({ label, icon: Icon, accentColor, files, onFile, onRemove, isDark, accept, checkOpts = {}, emptyHint, onError }) {
   const onDrop = useCallback((accepted, rejected) => {
     for (const r of rejected || []) onError?.(checkFile(r.file, checkOpts) || `"${r.file.name}": this file type isn't supported here.`);
-    accepted.forEach(async file => {
+    accepted.forEach(file => {
       const err = checkFile(file, checkOpts);
       if (err) { onError?.(err); return; }
-      try {
-        onAdd(await fileToAttachment(file, { purpose: purposeFor ? purposeFor(file) : 'content' }));
-      } catch {
-        onError?.(`"${file.name}" couldn't be read.`);
-      }
+      onFile(file);
     });
-  }, [onAdd, onError, checkOpts, purposeFor]);
+  }, [onFile, onError, checkOpts]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept, multiple: true });
   const muted = isDark ? '#555555' : '#888888';
@@ -310,27 +308,13 @@ function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove, on
                     <DocIcon size={18} style={{ color: accentColor, flexShrink: 0 }} />
                     <div style={{ minWidth: 0 }}>
                       <p title={f.name} style={{ margin: 0, fontSize: 12, fontWeight: 500, color: isDark ? '#f0f0ee' : '#0d0b1a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</p>
-                      <p style={{ margin: 0, fontSize: 11, color: muted }}>{(f.kind || '').toUpperCase()} · {formatBytes(f.size)}</p>
+                      <p style={{ margin: 0, fontSize: 11, color: muted, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {f.status === 'uploading'
+                          ? <><Loader2 size={10} className="animate-spin" /> Checking file…</>
+                          : f.asset ? assetMetaLabel(f.asset) : `${(f.kind || '').toUpperCase()} · ${formatBytes(f.size)}`}
+                      </p>
                     </div>
                   </div>
-                  {showPurposeToggle && f.kind === 'pptx' && (
-                    <div role="radiogroup" aria-label={`How to use ${f.name}`} style={{ display: 'flex', marginTop: 6, borderRadius: 6, overflow: 'hidden', border: '0.5px solid', borderColor: border }}>
-                      {[['redesign', 'Redesign it'], ['content', 'Use content']].map(([value, text]) => (
-                        <button
-                          key={value}
-                          role="radio"
-                          aria-checked={f.purpose === value}
-                          onClick={e => { e.stopPropagation(); onUpdate?.(f.id, { purpose: value }); }}
-                          style={{
-                            flex: 1, fontSize: 11, padding: '4px 0', cursor: 'pointer', border: 'none',
-                            background: f.purpose === value ? accentColor : 'transparent',
-                            color: f.purpose === value ? '#fff' : (isDark ? '#aaa' : '#555'),
-                            fontWeight: f.purpose === value ? 600 : 400,
-                          }}
-                        >{text}</button>
-                      ))}
-                    </div>
-                  )}
                   {removeBtn}
                 </div>
               );
@@ -509,6 +493,9 @@ export default function Dashboard() {
   const [analysis, setAnalysis] = useState(null);
   const [showQuestionFlow, setShowQuestionFlow] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [pendingAssetIds, setPendingAssetIds] = useState([]);
+  const [pendingSourceId, setPendingSourceId] = useState(null); // files already read by Claude in /analyze
+  const [readingFiles, setReadingFiles] = useState([]); // names shown while Claude reads them
   const [pendingInput, setPendingInput] = useState('');
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('16:9');
   const [webSearchEnabled, setWebSearchEnabled] = useState(() => {
@@ -568,33 +555,49 @@ export default function Dashboard() {
     return () => sse.close();
   }, [user?.id, queryClient]);
 
-  // Category tells the backend how to use each file: images guide branding /
-  // look; documents are 'content' (facts & data), 'redesign' (a .pptx whose
-  // structure and content Nova keeps while rebuilding the design) or
-  // 'inspiration' (a PDF/deck whose look the user likes).
+  // Images travel inline with the brief (category = how they guide the
+  // look). Documents are uploaded ONCE to the asset library the moment
+  // they're dropped (validated server-side right away) and referenced by id:
+  // Claude decides from the prompt whether a deck is to be redesigned or only
+  // used as material, so there is no toggle.
   const allAttachments = [
-    ...moodboardFiles.map(f => ({ ...f, category: f.type === 'document' ? 'inspiration' : 'moodboard' })),
+    ...moodboardFiles.filter(f => f.type !== 'document').map(f => ({ ...f, category: 'moodboard' })),
     ...brandingFiles.map(f => ({ ...f, category: 'branding' })),
-    ...dataFiles.map(f => ({ ...f, category: f.purpose || 'content' })),
   ];
-  const redesignFile = dataFiles.find(f => f.purpose === 'redesign');
+  const allDocuments = [...dataFiles, ...moodboardFiles.filter(f => f.type === 'document')];
+  const uploadingFiles = allDocuments.some(f => f.status === 'uploading');
+  const readyAssetIds = allDocuments.filter(f => f.asset).map(f => f.asset.id);
 
-  // Only one deck can be redesigned at a time: adding / switching one to
-  // "Redesign it" demotes any other deck to "Use content".
-  const addDataFile = useCallback(f => {
+  const addImageTo = useCallback(setter => async file => {
     setAttachError('');
-    setDataFiles(prev => [...prev, f.purpose === 'redesign' && prev.some(p => p.purpose === 'redesign') ? { ...f, purpose: 'content' } : f]);
+    try { const a = await fileToAttachment(file); setter(prev => [...prev, a]); }
+    catch { setAttachError(`"${file.name}" couldn't be read.`); }
   }, []);
-  const updateDataFile = useCallback((fileId, patch) => {
-    setDataFiles(prev => prev.map(p => (p.id === fileId ? { ...p, ...patch } : (patch.purpose === 'redesign' && p.purpose === 'redesign' ? { ...p, purpose: 'content' } : p))));
+  const addDocumentTo = useCallback((setter, category) => async file => {
+    setAttachError('');
+    const id = Math.random().toString(36).slice(2);
+    setter(prev => [...prev, { id, name: file.name, type: 'document', kind: extOf(file.name), size: file.size, status: 'uploading' }]);
+    try {
+      const asset = await uploadAsset(api, file, { category });
+      setter(prev => prev.map(f => (f.id === id ? { ...f, status: 'ready', asset } : f)));
+    } catch (err) {
+      setter(prev => prev.filter(f => f.id !== id));
+      setAttachError(err.message);
+    }
   }, []);
-  const addBrandingFile = useCallback(f => { setAttachError(''); setBrandingFiles(prev => [...prev, f]); }, []);
-  const addMoodboardFile = useCallback(f => { setAttachError(''); setMoodboardFiles(prev => [...prev, f]); }, []);
-  const pptxPurpose = useCallback(file => (/\.pptx$/i.test(file.name) ? 'redesign' : 'content'), []);
+  const onBrandingFile = useCallback(file => addImageTo(setBrandingFiles)(file), [addImageTo]);
+  const onDataFile = useCallback(file => addDocumentTo(setDataFiles, 'auto')(file), [addDocumentTo]);
+  const onMoodboardFile = useCallback(file => (isImageFile(file) ? addImageTo(setMoodboardFiles)(file) : addDocumentTo(setMoodboardFiles, 'inspiration')(file)), [addImageTo, addDocumentTo]);
+  // Removing an uploaded file also deletes it from the library (best effort).
+  const removeFrom = useCallback(setter => fileId => setter(prev => {
+    const f = prev.find(x => x.id === fileId);
+    if (f?.asset) api.delete(`/assets/${f.asset.id}`).catch(() => {});
+    return prev.filter(x => x.id !== fileId);
+  }), []);
 
   function attachmentLimitError() {
-    const docs = allAttachments.filter(a => a.type === 'document');
-    const images = allAttachments.filter(a => a.type !== 'document');
+    const docs = allDocuments;
+    const images = allAttachments;
     if (docs.length > MAX_DOCUMENTS) return `You can attach up to ${MAX_DOCUMENTS} files (PDF, PPTX, Excel, Word, CSV, text) per brief.`;
     if (images.length > MAX_IMAGES) return `You can attach up to ${MAX_IMAGES} images per brief.`;
     if (docs.reduce((n, d) => n + (d.size || 0), 0) > MAX_TOTAL_DOCUMENT_BYTES) return `Your files add up to more than ${formatBytes(MAX_TOTAL_DOCUMENT_BYTES)}. Remove some or upload smaller versions.`;
@@ -609,13 +612,13 @@ export default function Dashboard() {
   }
 
   async function handleSubmit() {
-    if (!input.trim() && allAttachments.length === 0) return;
+    if (!input.trim() && allAttachments.length === 0 && readyAssetIds.length === 0) return;
+    if (uploadingFiles) { setSubmitError('Your files are still being checked. One moment…'); return; }
     const limitErr = attachmentLimitError();
     if (limitErr) { setSubmitError(limitErr); return; }
     capture('prompt_submitted', {
       has_attachments: allAttachments.length > 0,
-      has_documents: dataFiles.length > 0 || moodboardFiles.some(f => f.type === 'document'),
-      redesign: !!redesignFile,
+      has_documents: readyAssetIds.length > 0,
       aspect_ratio: selectedAspectRatio,
     });
     const controller = new AbortController();
@@ -656,7 +659,7 @@ export default function Dashboard() {
       const res = await fetch(`${apiBase}/api/presentations/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ message: enrichedMessage, attachments: attachmentsPayload, webSearch: webSearchEnabled }),
+        body: JSON.stringify({ message: enrichedMessage, attachments: attachmentsPayload, asset_ids: readyAssetIds, webSearch: webSearchEnabled }),
         signal: controller.signal,
       });
 
@@ -681,6 +684,7 @@ export default function Dashboard() {
       const decoder = new TextDecoder();
       let buffer = '';
       let analysis = null;
+      let sourceId = null;
       let streamError = null;
 
       while (true) {
@@ -695,7 +699,9 @@ export default function Dashboard() {
           let ev;
           try { ev = JSON.parse(line.slice(6)); } catch { continue; }
           if (ev.type === 'search') setSearchQueries(prev => [...prev, ev.query]);
-          else if (ev.type === 'done') analysis = ev.analysis;
+          else if (ev.type === 'reading_files') setReadingFiles(ev.files || []);
+          else if (ev.type === 'files_read') setReadingFiles([]);
+          else if (ev.type === 'done') { analysis = ev.analysis; sourceId = ev.source_id || null; }
           else if (ev.type === 'error') streamError = ev.error;
         }
       }
@@ -704,6 +710,8 @@ export default function Dashboard() {
       if (analysis) {
         setPendingInput(enrichedMessage);
         setPendingAttachments(attachmentsPayload);
+        setPendingAssetIds(readyAssetIds);
+        setPendingSourceId(sourceId);
         setAnalysis(analysis);
         setShowQuestionFlow(true);
       } else {
@@ -714,6 +722,7 @@ export default function Dashboard() {
       setSubmitError('Could not analyse your brief. Please try again.');
     } finally {
       setAnalyzing(false);
+      setReadingFiles([]);
       analyzeAbortRef.current = null;
     }
   }
@@ -736,6 +745,9 @@ export default function Dashboard() {
       const { data } = await api.post('/presentations', {
         message: comprehensiveMessage,
         attachments: pendingAttachments,
+        asset_ids: pendingAssetIds,
+        source_id: pendingSourceId,
+        webSearch: webSearchEnabled,
         aspectRatio: selectedAspectRatio,
       });
       track('presentation_created', { presentation_id: data.presentation.id, aspect_ratio: selectedAspectRatio });
@@ -778,7 +790,7 @@ export default function Dashboard() {
     deletePresentation.mutate(id);
   }
 
-  const totalAttachments = allAttachments.length;
+  const totalAttachments = allAttachments.length + allDocuments.length;
 
   // Files dropped straight on the prompt: images go to Branding & Pictures,
   // documents to Files & Data (a .pptx defaults to "Redesign it").
@@ -787,22 +799,18 @@ export default function Dashboard() {
     const files = Array.from(e.dataTransfer.files);
     if (!files.length) return;
     setShowZones(true);
-    files.forEach(async file => {
+    files.forEach(file => {
       const err = checkFile(file);
       if (err) { setAttachError(err); return; }
-      try {
-        if (isImageFile(file)) addBrandingFile(await fileToAttachment(file));
-        else if (isDocumentFile(file)) addDataFile(await fileToAttachment(file, { purpose: pptxPurpose(file) }));
-      } catch {
-        setAttachError(`"${file.name}" couldn't be read.`);
-      }
+      if (isImageFile(file)) onBrandingFile(file);
+      else if (isDocumentFile(file)) onDataFile(file);
     });
   }
 
   return (
     <>
     <AnimatePresence>
-      {fetchingUrls.length > 0 && (
+      {(fetchingUrls.length > 0 || readingFiles.length > 0) && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -813,7 +821,7 @@ export default function Dashboard() {
           <motion.div
             role="dialog"
             aria-modal="true"
-            aria-label="Reading your links"
+            aria-label={readingFiles.length ? 'Reading your files' : 'Reading your links'}
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
@@ -826,8 +834,12 @@ export default function Dashboard() {
                 <Sparkles size={24} className="text-white" />
               </motion.div>
             </div>
-            <h3 className="font-bold text-lg mb-1" style={{ color: 'var(--text-primary)' }}>Reading your link</h3>
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{fetchingUrls.map(u => { try { return new URL(u).hostname; } catch { return u; } }).join(', ')}</p>
+            <h3 className="font-bold text-lg mb-1" style={{ color: 'var(--text-primary)' }}>{readingFiles.length ? 'Nova is reading your files' : 'Reading your link'}</h3>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              {readingFiles.length
+                ? `${readingFiles.join(', ')}. Your questions come next.`
+                : fetchingUrls.map(u => { try { return new URL(u).hostname; } catch { return u; } }).join(', ')}
+            </p>
           </motion.div>
         </motion.div>
       )}
@@ -1054,7 +1066,7 @@ export default function Dashboard() {
                     <p className="text-xs" style={{ color: isDark ? '#555' : '#aaa' }}>⌘ + Enter</p>
                     <button
                       onClick={handleSubmit}
-                      disabled={analyzing || (!input.trim() && allAttachments.length === 0)}
+                      disabled={analyzing || uploadingFiles || (!input.trim() && allAttachments.length === 0 && readyAssetIds.length === 0)}
                       className="py-2 px-5 text-sm font-semibold text-white rounded-btn flex items-center gap-2 disabled:opacity-40"
                       style={{ background: '#5B50FF', border: 'none', cursor: 'pointer' }}
                     >
@@ -1074,7 +1086,7 @@ export default function Dashboard() {
                 {/* Mobile-only: full-width Create button */}
                 <button
                   onClick={handleSubmit}
-                  disabled={analyzing || (!input.trim() && allAttachments.length === 0)}
+                  disabled={analyzing || uploadingFiles || (!input.trim() && allAttachments.length === 0 && readyAssetIds.length === 0)}
                   className="sm:hidden w-full ios-btn py-3 text-sm justify-center"
                 >
                   <Send size={15} /> Create presentation
@@ -1102,15 +1114,12 @@ export default function Dashboard() {
                       icon={FileSpreadsheet}
                       accentColor="#0F9D58"
                       files={dataFiles}
-                      onAdd={addDataFile}
-                      onUpdate={updateDataFile}
-                      onRemove={id => setDataFiles(prev => prev.filter(f => f.id !== id))}
+                      onFile={onDataFile}
+                      onRemove={removeFrom(setDataFiles)}
                       onError={setAttachError}
                       accept={ACCEPT_DOCUMENTS}
                       checkOpts={DATA_CHECK}
-                      purposeFor={pptxPurpose}
-                      showPurposeToggle
-                      emptyHint="Drop a PowerPoint to redesign, or PDFs, Excel, Word, CSV for Nova to read and chart"
+                      emptyHint="PowerPoint, PDF, Excel, Word, CSV or text. Nova reads them, charts your data, and can redesign your deck"
                       isDark={isDark}
                     />
                   </div>
@@ -1119,8 +1128,8 @@ export default function Dashboard() {
                     icon={ImageIcon}
                     accentColor="#007AFF"
                     files={brandingFiles}
-                    onAdd={addBrandingFile}
-                    onRemove={id => setBrandingFiles(prev => prev.filter(f => f.id !== id))}
+                    onFile={onBrandingFile}
+                    onRemove={removeFrom(setBrandingFiles)}
                     onError={setAttachError}
                     accept={ACCEPT_IMAGES}
                     checkOpts={IMAGE_CHECK}
@@ -1132,26 +1141,23 @@ export default function Dashboard() {
                     icon={Palette}
                     accentColor="#5B50FF"
                     files={moodboardFiles}
-                    onAdd={addMoodboardFile}
-                    onRemove={id => setMoodboardFiles(prev => prev.filter(f => f.id !== id))}
+                    onFile={onMoodboardFile}
+                    onRemove={removeFrom(setMoodboardFiles)}
                     onError={setAttachError}
                     accept={ACCEPT_INSPIRATION}
                     checkOpts={INSPIRATION_CHECK}
                     emptyHint="Images, or a PDF / deck whose look you like"
                     isDark={isDark}
                   />
-                  {(attachError || redesignFile) && (
-                    <div className="sm:col-span-2" aria-live="polite">
-                      {attachError && (
-                        <p role="alert" className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-xl px-4 py-2.5 m-0">{attachError}</p>
-                      )}
-                      {redesignFile && !attachError && (
-                        <p className="text-sm rounded-xl px-4 py-2.5 m-0" style={{ background: isDark ? 'rgba(15,157,88,0.12)' : 'rgba(15,157,88,0.08)', color: isDark ? '#b9e6cc' : '#0b5d36' }}>
-                          Nova will keep the slides, structure and content of "{redesignFile.name}", tighten the wording, and rebuild every slide's design. Tell it in the prompt if you want slides added, cut or merged.
-                        </p>
-                      )}
-                    </div>
-                  )}
+                  <div className="sm:col-span-2" aria-live="polite">
+                    {attachError ? (
+                      <p role="alert" className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-xl px-4 py-2.5 m-0">{attachError}</p>
+                    ) : dataFiles.some(f => f.kind === 'pptx') ? (
+                      <p className="text-xs m-0 px-1" style={{ color: isDark ? '#888' : '#666' }}>
+                        Say "redesign this deck" to have Nova rebuild your PowerPoint slide by slide in its design, keeping your content. Otherwise Nova uses it as material for a new deck.
+                      </p>
+                    ) : null}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

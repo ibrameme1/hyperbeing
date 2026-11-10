@@ -213,8 +213,9 @@
 
 ## 23. Files attached to briefs — known limits (2026-11)
 
-- **Files are uploaded as base64 JSON, twice** (once to `/analyze`, once to `POST /`), within the 50 MB body limit. A multipart upload endpoint returning an upload id would halve traffic and lift the size ceiling.
 - **Ingest runs on the request thread.** Parsing a 25 MB workbook or re-encoding 10 deck pictures blocks the event loop for up to ~1-2 s. Move to a worker thread if large files become common.
-- **Only the extracted digest is kept.** Retries/unlocks/added slides see the source pack, not the raw files; AI edits of a slide don't see file pictures that weren't on it. PDFs are read once (source analysis); `/analyze` only sees their name and page count.
-- **No legacy formats** (.ppt/.xls/.doc, Keynote/Numbers/Pages) and no password-protected files — users are told to re-save. Slide-master/layout placeholder text that isn't on the slide itself isn't extracted; EMF/WMF/SVG pictures inside decks are skipped.
-- **Source analysis costs tokens but no credits** (like the outline); a 100-page PDF is ~$0.5 of input. Credits are still only charged per built slide.
+- **Files go over the wire as base64 JSON** (one request per file, within the 50 MB body limit). A multipart endpoint would cut ~25% of the bytes and lift the ceiling.
+- **Ticking library files in add-slides / edits re-reads them with Claude** (PDFs in full, prompt-cached for ~5 min) — slower and costlier than relying on the deck's source pack; the UI says so. Web-photo search only runs at deck creation, not for added slides.
+- **Web photos**: Openverse coverage of brands/products is thin; Brave (`BRAVE_SEARCH_API_KEY`) covers more but returns no license info — only enable it after a legal decision. Credits are in speaker notes, not on the slide.
+- **No legacy formats** (.ppt/.xls/.doc, Keynote/Numbers/Pages) and no password-protected files — users are told to re-save. Slide-master placeholder text isn't extracted; EMF/WMF/SVG pictures inside decks are skipped.
+- **Source analysis / web-photo picks cost tokens but no credits** (like the outline). Credits are still only charged per built slide.

@@ -236,6 +236,38 @@ export function initDatabase() {
   // restoring it brings back every editable layer (not just the flat image).
   try { db.exec('ALTER TABLE slide_versions ADD COLUMN layout TEXT'); } catch { /* exists */ }
 
+  // Asset library: files (PDF/PPTX/XLSX/DOCX/CSV/text) a user attached to a
+  // brief or to a deck. Uploaded ONCE (POST /api/assets), validated + extracted
+  // then; the raw bytes live on disk (services/assets.js) so Claude can re-read
+  // them later (add slides, edits). presentation_id is NULL until the brief is
+  // submitted; unattached assets older than a day are swept.
+  // source_analyses: the source pack Claude produced while the user answered
+  // the preflight questions, reused by the create call (files read once).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS assets (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      presentation_id TEXT,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      purpose TEXT DEFAULT 'auto',
+      size INTEGER,
+      file TEXT,
+      extracted TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_assets_user ON assets(user_id);
+    CREATE INDEX IF NOT EXISTS idx_assets_presentation ON assets(presentation_id);
+    CREATE TABLE IF NOT EXISTS source_analyses (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      asset_ids TEXT NOT NULL,
+      user_image_count INTEGER DEFAULT 0,
+      source TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   // One-time migration (guarded by PRAGMA user_version): move version images
   // embedded in slides_data into slide_versions, leaving metadata stubs behind.
   migrateEmbeddedSlideVersions();

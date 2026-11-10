@@ -4,7 +4,7 @@ import {
   ChevronLeft, ChevronRight, Download, Loader2, ArrowLeft,
   Sparkles, Send, Images, FileDown, Presentation, Paperclip, X, Plus,
   AlertTriangle, RefreshCw, Check, Pencil, Trash2, ImageIcon, Lock,
-  History, RotateCcw,
+  History, RotateCcw, FileText,
 } from 'lucide-react';
 import SlideRenderer from './SlideRenderer';
 import SlideEditor from './layered/SlideEditor';
@@ -14,6 +14,7 @@ import { exportToPDF, exportImages } from '../utils/pdfExport';
 import api from '../api/client';
 import { capture } from '../utils/posthog';
 import { fileToImageAttachment } from '../utils/imageAttachment';
+import AssetLibrary from './AssetLibrary';
 import { mediaUrl, isRealImage } from '../utils/mediaUrl';
 
 // Separate component so each item has its own wasDragging ref
@@ -120,6 +121,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [localSlides, setLocalSlides] = useState(slides);
   const [editAttachments, setEditAttachments] = useState([]);
+  const [editAssetIds, setEditAssetIds] = useState([]); // deck files Nova re-reads for this edit
+  const [showEditFiles, setShowEditFiles] = useState(false);
   const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [showEditPrompt, setShowEditPrompt] = useState(false);
   // Direct editor for layered slides (Stage 3).
@@ -143,6 +146,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
   const [addDesc, setAddDesc] = useState('');
   const [addCount, setAddCount] = useState(1); // number 1-5 or 'auto'
   const [addAttachments, setAddAttachments] = useState([]);
+  const [addAssetIds, setAddAssetIds] = useState([]); // deck files Nova re-reads for the new slides
   const [addLoading, setAddLoading] = useState(false);
   const addFileRef = useRef(null);
 
@@ -270,6 +274,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       await api.post(`/presentations/${presentationId}/slides/${slideIndex}/regenerate`, {
         instruction: editInstruction.trim(),
         attachments: editAttachments.map(a => ({ data: a.data, mimeType: a.mimeType, name: a.name })),
+        asset_ids: editAssetIds,
       });
       capture('slide_edited', {
         presentation_id: presentationId,
@@ -277,6 +282,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       });
       setEditInstruction('');
       setEditAttachments([]);
+      setEditAssetIds([]);
+      setShowEditFiles(false);
       setShowEditPrompt(false);
     } catch (err) {
       console.error('Edit failed:', err);
@@ -494,6 +501,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
         description: addDesc.trim(),
         count: addCount,
         attachments: addAttachments.map(a => ({ data: a.data, mimeType: a.mimeType, name: a.name })),
+        asset_ids: addAssetIds,
       });
       setShowAddSlides(false);
       setAddDesc('');
@@ -843,6 +851,11 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                     }}
                     onClick={e => e.stopPropagation()}
                   >
+                    {showEditFiles && (
+                      <div className="mb-3 rounded-2xl p-3 max-h-64 overflow-y-auto" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                        <AssetLibrary presentationId={presentationId} selected={editAssetIds} onChange={setEditAssetIds} dark title="Files for this edit" />
+                      </div>
+                    )}
                     {editAttachments.length > 0 && (
                       <div className="flex gap-2 flex-wrap mb-2">
                         {editAttachments.map(att => (
@@ -883,8 +896,19 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                           onClick={() => editFileRef.current?.click()}
                           className="flex-shrink-0 w-7 h-7 rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors"
                           title="Attach reference image (becomes pic2, pic3…)"
+                          aria-label="Attach reference image"
                         >
                           <Paperclip size={13} className="text-white/40" />
+                        </button>
+                        <button
+                          onClick={() => setShowEditFiles(v => !v)}
+                          className="flex-shrink-0 h-7 px-2 rounded-xl flex items-center justify-center gap-1 hover:bg-white/10 transition-colors"
+                          title="Use the deck's files (PDF, PowerPoint, Excel…) for this edit"
+                          aria-label="Use the deck's files for this edit"
+                          aria-expanded={showEditFiles}
+                        >
+                          <FileText size={13} className={editAssetIds.length ? 'text-[#8B80FF]' : 'text-white/40'} />
+                          {editAssetIds.length > 0 && <span className="text-[10px] font-bold text-[#8B80FF]">{editAssetIds.length}</span>}
                         </button>
                       </div>
                       <button
@@ -1103,6 +1127,10 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   />
                   <p className="text-[11px] text-gray-400 dark:text-zinc-500 mt-1">⌘+Enter to generate · drag images below to attach</p>
                 </div>
+
+                {/* Deck file library: files from the brief (or added here) that
+                    Nova re-reads for these slides. No re-uploading. */}
+                <AssetLibrary presentationId={presentationId} selected={addAssetIds} onChange={setAddAssetIds} defaultSelectAll />
 
                 {/* Attachment row */}
                 <div>

@@ -19,11 +19,13 @@ import {
   suggestPlanForCost, novaInsufficientCredits, previewEditCost, isAdmin,
 } from '../services/stripeService.js';
 import { validateAttachments } from '../middleware/attachments.js';
-import { ingestAttachments, splitStored, FileRejected, FILE_LIMITS } from '../services/fileIngest.js';
+import { ingestImages, uploadsFromDocument, splitStored, isDocument, decodeDataUrl, FileRejected, FILE_LIMITS } from '../services/fileIngest.js';
 import {
   analyzeSourceMaterial, composeBrief, sourceBriefText, redesignDeckOf, redesignPlanContext,
-  attachRedesignSources, slideDatasetsText,
+  attachRedesignSources, slideDatasetsText, applyIntent, rebaseSource,
 } from '../services/sourceAnalysis.js';
+import { createAsset, loadAssets, deckAssets, attachAssets, assetMaterial, deleteDeckAssets } from '../services/assets.js';
+import { findWebImage, WEB_IMAGES_ENABLED, MAX_WEB_IMAGES_PER_DECK } from '../services/webImages.js';
 import { assertPublicUrl } from '../services/urlGuard.js';
 import { validate, isString, isOptionalString, isEnum, isArray, isIntBetween } from '../middleware/validate.js';
 import { createPresentationLimiter, addSlidesLimiter, analyzeLimiter } from '../middleware/rateLimits.js';
@@ -111,10 +113,96 @@ function outlineOf(slide) {
     subtitle: slide.subtitle ?? null, key_points: slide.key_points || [], speaker_note: slide.speaker_note || '',
     // From the user's files (redesign / data): needed when the slide is built later.
     ...(slide.source_slide ? { source_slide: slide.source_slide } : {}),
+    ...(slide.source_doc ? { source_doc: slide.source_doc } : {}),
     ...(slide.source_content ? { source_content: slide.source_content } : {}),
     ...(slide.source_data ? { source_data: slide.source_data } : {}),
     ...(Array.isArray(slide.uploads) ? { uploads: slide.uploads } : {}),
   };
+}
+
+// ─── Files attached to briefs / add-slides / edits ─────────────────────────
+// Documents are uploaded once to the asset library (routes/assets.js) and
+// referenced by id; images still travel inline (they're small and become the
+// deck's upload:N references). This assembles everything a request brings:
+//   uploads   = the user's images, then pictures extracted from the files
+//               (appended AFTER, so the user's upload:N indices never shift)
+//   documents = file descriptions (digest, deck structure, tables)
+//   pdfs      = PDF bytes, read from disk only when Claude must read them
+// Throws FileRejected (user-facing) for a bad file.
+async function gatherBriefFiles({ userId, attachments = [], assetIds = [], presentationId = null, withPdfs = true }) {
+  const images = attachments.filter(a => !isDocument(a));
+  const userImages = await ingestImages(images);
+  // Old clients may still send documents inline: they become assets too.
+  const ids = Array.isArray(assetIds) ? assetIds.map(String) : [];
+  for (const d of attachments.filter(isDocument)) {
+    const asset = await createAsset({ userId, name: d.name, buf: decodeDataUrl(d.data), category: d.category === 'inspiration' ? 'inspiration' : 'auto' });
+    ids.push(asset.id);
+  }
+  if (ids.length > FILE_LIMITS.maxDocuments) throw new FileRejected(`Too many files (max ${FILE_LIMITS.maxDocuments} per brief).`);
+  const rows = loadAssets(userId, ids, { presentationId });
+  if (rows.length !== new Set(ids).size) throw new FileRejected('One of your files is no longer available. Please attach it again.');
+  const documents = []; const pdfs = []; const extracted = [];
+  for (const row of rows) {
+    const m = assetMaterial(row);
+    documents.push(m.doc);
+    if (withPdfs && m.pdf) pdfs.push(m.pdf);
+    extracted.push(...uploadsFromDocument(m.doc, m.images, { assetId: row.id, room: FILE_LIMITS.maxExtractedImages - extracted.length }));
+  }
+  return { userImages, uploads: [...userImages, ...extracted], documents, pdfs, assetIds: rows.map(r => r.id) };
+}
+
+const fileErrorResponse = (res, err) => {
+  if (err instanceof FileRejected) return res.status(400).json({ error: err.message });
+  logger.error('attachment processing failed', { errorMessage: err.message });
+  return res.status(400).json({ error: 'We couldn\'t read one of your files. Try re-saving it or uploading a different format.' });
+};
+
+// Appends images to the deck's stored uploads (the brief message's
+// attachments), so every later call resolves upload:N to the same picture.
+// Returns the new images' upload indices (null for any past the cap).
+// Synchronous read-modify-write: safe in this single-process app.
+function appendDeckUploads(db, presentationId, images) {
+  if (!images.length) return [];
+  const row = db.prepare(`SELECT id, attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`).get(presentationId);
+  if (!row) return images.map(() => null);
+  let stored = [];
+  try { stored = JSON.parse(row.attachments || '[]'); } catch { /* bad json */ }
+  let count = splitStored(stored).uploads.length;
+  const indices = images.map(img => {
+    if (count >= FILE_LIMITS.maxDeckUploads) return null;
+    stored.push(img);
+    return count++;
+  });
+  db.prepare('UPDATE messages SET attachments = ? WHERE id = ?').run(JSON.stringify(stored), row.id);
+  return indices;
+}
+
+/**
+ * Library files picked for an add-slides request or an edit: their pictures
+ * join the deck's uploads (once), and Claude reads the files again with THIS
+ * request in mind (PDFs in full; cached for repeat reads). Returns
+ * { text, uploadIndices }.
+ */
+async function readLibraryFiles({ db, presentationId, userId, assetIds, request }) {
+  const rows = loadAssets(userId, assetIds, { presentationId });
+  if (!rows.length) return { text: '', uploadIndices: [] };
+  const row = db.prepare(`SELECT attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`).get(presentationId);
+  let stored = [];
+  try { stored = JSON.parse(row?.attachments || '[]'); } catch { /* bad json */ }
+  const deckUploads = splitStored(stored).uploads;
+  const uploadIndices = []; const documents = []; const pdfs = []; const fresh = [];
+  for (const r of rows) {
+    const m = assetMaterial(r);
+    documents.push({ ...m.doc, purpose: m.doc.purpose === 'inspiration' ? 'inspiration' : 'content' });
+    if (m.pdf) pdfs.push(m.pdf);
+    const have = deckUploads.map((u, i) => (u.source_asset === r.id ? i : -1)).filter(i => i >= 0);
+    if (have.length) uploadIndices.push(...have);
+    else fresh.push(...uploadsFromDocument(m.doc, m.images, { assetId: r.id, room: 6 }));
+  }
+  uploadIndices.push(...appendDeckUploads(db, presentationId, fresh).filter(i => i !== null));
+  const allUploads = splitStored(JSON.parse(db.prepare(`SELECT attachments FROM messages WHERE presentation_id = ? AND role = 'user' ORDER BY created_at ASC LIMIT 1`).get(presentationId)?.attachments || '[]')).uploads;
+  const source = await analyzeSourceMaterial({ brief: request, documents, pdfs, uploads: allUploads, userId });
+  return { text: sourceBriefText(source), uploadIndices: [...new Set(uploadIndices)].slice(0, 8) };
 }
 
 function slideImageUrl(presentationId, slideIndex, file) {
@@ -462,8 +550,8 @@ router.get('/:id/slides/:index/versions/:versionId/image', (req, res) => {
 
 // ─── Analyze brief and return contextual questions ─────────────────────────
 router.post('/analyze', authenticateToken, costScope('analyze'), analyzeLimiter, async (req, res) => {
-  const { message, attachments = [] } = req.body;
-  if (!message?.trim() && attachments.length === 0) {
+  const { message, attachments = [], asset_ids: assetIds = [] } = req.body;
+  if (!message?.trim() && attachments.length === 0 && !assetIds.length) {
     return res.status(400).json({ error: 'Message or attachment required' });
   }
   if (typeof message !== 'undefined' && typeof message !== 'string') {
@@ -472,48 +560,51 @@ router.post('/analyze', authenticateToken, costScope('analyze'), analyzeLimiter,
   if (message && message.length > 50_000) {
     return res.status(400).json({ error: 'Message too long (max 50,000 characters)' });
   }
+  if (!Array.isArray(assetIds)) return res.status(400).json({ error: 'asset_ids must be an array' });
   const attachmentsErr = validateAttachments(attachments, FILE_LIMITS.maxImages + FILE_LIMITS.maxDocuments, 'attachments', { allowDocuments: true });
   if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
   try { checkTokenBudget(req.user.id); } catch (err) {
     if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
     throw err;
   }
-  // Validate + extract files now so a bad file fails here, before the
-  // question flow, with the same message the create call would give.
-  let ingested;
-  try { ingested = await ingestAttachments(attachments); } catch (err) {
-    if (err instanceof FileRejected) return res.status(400).json({ error: err.message });
-    logger.error('attachment ingest failed', { errorMessage: err.message });
-    return res.status(400).json({ error: 'We couldn\'t read one of your files. Try re-saving it or uploading a different format.' });
+  let files;
+  try { files = await gatherBriefFiles({ userId: req.user.id, attachments, assetIds, presentationId: null }); } catch (err) {
+    return fileErrorResponse(res, err);
   }
-  // The preflight questions only need to know WHAT the files are about: they
-  // get the extracted text (short) and the user's own images. PDFs are read in
-  // full once, at creation (source analysis), not twice.
-  const { uploads: analyzeImages } = splitStored(ingested.stored);
-  const filesNote = ingested.documents.length
-    ? `\n\nATTACHED FILES (extracted; use them to ask sharper questions, never ask for what they already answer):\n${ingested.documents.map(d => `--- "${d.name}" (${d.purpose === 'redesign' ? 'the user\'s current deck, to redesign' : d.purpose === 'inspiration' ? 'design inspiration' : 'content / data'}) ---\n${String(d.digest).slice(0, 6000)}`).join('\n')}`
-    : '';
-  const analyzeMessage = `${message || ''}${filesNote}`;
 
   const webSearch = req.body.webSearch === true;
 
-  // Stream over SSE so the client can show live search queries as Nova runs them.
+  // Stream over SSE so the client can show live progress (reading files, web searches).
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
+  const send = (ev) => res.write(`data: ${JSON.stringify(ev)}\n\n`);
 
   try {
-    const analysis = await analyzePresentationStream(analyzeMessage, analyzeImages.filter(a => !a.source_doc), req.user.id, {
-      webSearch,
-      onEvent: (ev) => { res.write(`data: ${JSON.stringify(ev)}\n\n`); },
-    });
-    res.write(`data: ${JSON.stringify({ type: 'done', analysis })}\n\n`);
+    // 1. Claude reads the files FIRST (the only time they're read for this
+    //    brief: the pack is saved and the create call reuses it), so the
+    //    follow-up questions are asked about what the files actually say.
+    let source = null; let sourceId = null;
+    if (files.documents.length) {
+      send({ type: 'reading_files', files: files.documents.map(d => d.name) });
+      source = await analyzeSourceMaterial({ brief: message || '', documents: files.documents, pdfs: files.pdfs, uploads: files.uploads, userId: req.user.id });
+      sourceId = uuid();
+      getDb().prepare('INSERT INTO source_analyses (id, user_id, asset_ids, user_image_count, source) VALUES (?, ?, ?, ?, ?)')
+        .run(sourceId, req.user.id, JSON.stringify([...files.assetIds].sort()), files.userImages.length, JSON.stringify(source));
+      send({ type: 'files_read', redesign_file: source?.redesign_file || '' });
+    }
+    // 2. Questions, informed by the analysis (never asking what the files answer).
+    const filesNote = source
+      ? `\n\nTHE USER ATTACHED FILES, ALREADY ANALYZED (ask sharper questions from them; never ask for anything they already answer)${source.redesign_file ? `. The user wants "${source.redesign_file}" redesigned: ask about the redesign (audience, tone, what to emphasise), not about its content` : ''}:\n${sourceBriefText(source)}`
+      : '';
+    const analysis = await analyzePresentationStream(`${message || ''}${filesNote}`, files.userImages, req.user.id, { webSearch, onEvent: send });
+    send({ type: 'done', analysis, source_id: sourceId });
     res.end();
   } catch (err) {
     logger.error('analysis failed', { errorMessage: err.message });
-    res.write(`data: ${JSON.stringify({ type: 'error', error: 'Brief analysis failed. Please try again — if the problem persists, try shortening your description.' })}\n\n`);
+    send({ type: 'error', error: 'Brief analysis failed. Please try again — if the problem persists, try shortening your description.' });
     res.end();
   }
 });
@@ -523,10 +614,11 @@ router.post('/', authenticateToken, costScope('deck_create'), createPresentation
   // `style` (classic / minimalistic) is gone: one design system, where Claude
   // picks each deck's look from the brief. Old clients may still send it; it
   // is ignored.
-  const { message, attachments = [], aspectRatio = '16:9' } = req.body;
-  if (!message?.trim() && attachments.length === 0) {
+  const { message, attachments = [], aspectRatio = '16:9', asset_ids: assetIds = [], source_id: sourceId = null } = req.body;
+  if (!message?.trim() && attachments.length === 0 && !(Array.isArray(assetIds) && assetIds.length)) {
     return res.status(400).json({ error: 'Message or attachment required' });
   }
+  if (!Array.isArray(assetIds)) return res.status(400).json({ error: 'asset_ids must be an array' });
   if (typeof message !== 'undefined' && typeof message !== 'string') {
     return res.status(400).json({ error: 'Message must be a string' });
   }
@@ -543,16 +635,23 @@ router.post('/', authenticateToken, costScope('deck_create'), createPresentation
     throw err;
   }
 
-  // Validate every file (type by magic bytes, ZIP/macro safety, size/page
-  // limits) and extract its content BEFORE anything is created, so a bad file
-  // is a plain 400 with a reason. Only the extracted description is stored —
-  // never the raw Office/PDF bytes.
-  let ingested;
-  try { ingested = await ingestAttachments(attachments); } catch (err) {
-    if (err instanceof FileRejected) return res.status(400).json({ error: err.message });
-    logger.error('attachment ingest failed', { errorMessage: err.message });
-    return res.status(400).json({ error: 'We couldn\'t read one of your files. Try re-saving it or uploading a different format.' });
+  // Files were validated + extracted when uploaded (asset library); images
+  // are validated here. A bad file is a plain 400 with a reason, before
+  // anything is created. PDFs are not loaded here: the analysis done during
+  // the question step is reused, and only re-run if it's missing.
+  let files;
+  try { files = await gatherBriefFiles({ userId: req.user.id, attachments, assetIds, presentationId: null, withPdfs: false }); } catch (err) {
+    return fileErrorResponse(res, err);
   }
+  // The source pack from /analyze, if it covers exactly these files.
+  let source = null;
+  if (sourceId && files.assetIds.length) {
+    const row = getDb().prepare('SELECT * FROM source_analyses WHERE id = ? AND user_id = ?').get(String(sourceId), req.user.id);
+    if (row && row.asset_ids === JSON.stringify([...files.assetIds].sort())) {
+      try { source = rebaseSource(JSON.parse(row.source), files.userImages.length - row.user_image_count); } catch { source = null; }
+    }
+  }
+  const webSearch = req.body.webSearch === true;
 
   // Credits are deducted in runFullFlow() once Claude returns the final
   // slide count — at PER_SLIDE credits per slide, with any unaffordable
@@ -570,7 +669,12 @@ router.post('/', authenticateToken, costScope('deck_create'), createPresentation
   db.prepare(
     `INSERT INTO messages (id, presentation_id, role, content, attachments)
      VALUES (?, ?, 'user', ?, ?)`
-  ).run(msgId, id, message, JSON.stringify(ingested.stored));
+  ).run(msgId, id, message || '', JSON.stringify([
+    ...files.uploads,
+    // Stubs only: the file content lives in the asset library.
+    ...files.documents.map(d => ({ type: 'document', asset_id: d.asset_id, name: d.name, kind: d.kind })),
+  ]));
+  attachAssets(files.assetIds, id);
 
   // Respond immediately — Claude planning + image generation run async
   res.status(201).json({
@@ -582,9 +686,7 @@ router.post('/', authenticateToken, costScope('deck_create'), createPresentation
 
   const userId = req.user.id;
   const _traceId = requestContext.getStore()?.requestId;
-  // PDFs (and the raw tables used by the fallback analysis) are handed over in
-  // memory only; they're read once by the source analysis and never stored.
-  withCostContext({ presentationId: id }, () => runFullFlow(id, message, userId, _traceId, { pdfs: ingested.pdfs, documents: ingested.documents })).catch(err => {
+  withCostContext({ presentationId: id }, () => runFullFlow(id, message || '', userId, _traceId, { source, webSearch })).catch(err => {
     logger.error('slide flow failed', { errorMessage: err.message, stack: err.stack?.split('\n').slice(0,4).join('\n') });
     broadcast(id, { type: 'error', message: err.message });
     const errDb = getDb();
@@ -593,7 +695,7 @@ router.post('/', authenticateToken, costScope('deck_create'), createPresentation
   });
 });
 
-async function runFullFlow(presentationId, message, userId = null, traceId = null, { pdfs = [], documents: liveDocuments = null } = {}) {
+async function runFullFlow(presentationId, message, userId = null, traceId = null, { source: preSource = null, webSearch = false } = {}) {
   const db = getDb();
   const _t = Date.now();
   tracer.recordStep(traceId, 'full_flow', 'started', 0);
@@ -611,23 +713,28 @@ async function runFullFlow(presentationId, message, userId = null, traceId = nul
   try { userAttachments = JSON.parse(firstUserMsg?.attachments || '[]'); } catch {}
   // allImages = every image upload, in stored order (UPLOAD N indices): the
   // user's own images first, then pictures extracted from their files.
-  const { uploads: allImages, documents: storedDocuments } = splitStored(userAttachments);
-  const documents = liveDocuments || storedDocuments;
+  const { uploads: allImages } = splitStored(userAttachments);
   const userImages = allImages.filter(a => !a.source_doc);
+  const materials = deckAssets(presentationId).map(assetMaterial);
 
-  // ── Phase 0: read the user's files (PDF / PPTX / XLSX / DOCX / CSV / text) ──
-  // One Claude call turns them into a source pack (facts, chartable datasets,
-  // picture notes, design inspiration, redesign notes) that every later call
-  // sees through the composed brief.
-  let source = null;
-  if (documents.length) {
-    broadcast(presentationId, { type: 'source_analyzing', files: documents.map(d => d.name) });
-    source = await analyzeSourceMaterial({ brief: message, documents, pdfs, uploads: allImages, userId });
-    db.prepare(`UPDATE presentations SET slide_plan = ? WHERE id = ?`).run(JSON.stringify({ source }), presentationId);
+  // ── Phase 0: the user's files (PDF / PPTX / XLSX / DOCX / CSV / text) ──────
+  // Normally Claude already read them while the user answered the questions
+  // (/analyze) and that source pack is reused. Only if it's missing (an old
+  // client, an expired analysis) are they read here, once.
+  let source = preSource;
+  if (!source && materials.length) {
+    broadcast(presentationId, { type: 'source_analyzing', files: materials.map(m => m.doc.name) });
+    source = await analyzeSourceMaterial({ brief: message, documents: materials.map(m => m.doc), pdfs: materials.map(m => m.pdf).filter(Boolean), uploads: allImages, userId });
+  }
+  // No toggle: Claude decided from the brief whether a deck is to be
+  // redesigned (redesign_file) or only used as material — or both.
+  const documents = applyIntent(materials.map(m => m.doc), source);
+  if (source || webSearch) {
+    db.prepare(`UPDATE presentations SET slide_plan = ? WHERE id = ?`).run(JSON.stringify({ ...(source ? { source } : {}), web_search: webSearch }), presentationId);
   }
   const brief = composeBrief(message, source);
-  // A PPTX marked "redesign": keep its structure (one slide per visible slide)
-  // and content, rebuild every slide at the quality bar.
+  // A redesigned PPTX keeps its structure (one slide per visible slide) and
+  // content; every slide is rebuilt at the quality-library bar.
   const redesignDoc = redesignDeckOf(documents);
   const redesign = redesignDoc ? redesignPlanContext(redesignDoc) : null;
 
@@ -692,7 +799,11 @@ async function runFullFlow(presentationId, message, userId = null, traceId = nul
         slide: { index: slide.index, type: slide.type, title: slide.title, key_points: (slide.key_points || []).slice(0, 2) },
       });
     },
-  }, { sourceText: sourceBriefText(source), redesign: redesign && { ...redesign, slides: redesignDoc.deck.slides.filter(s => !s.hidden) } });
+  }, {
+    sourceText: sourceBriefText(source),
+    redesign: redesign && { ...redesign, slides: redesignDoc.deck.slides.filter(s => !s.hidden) },
+    webImages: webSearch && WEB_IMAGES_ENABLED,
+  });
 
   // Give each planned slide what its layout call needs from the files: the
   // original slide (redesign) and the exact data the plan assigned to it.
@@ -702,6 +813,37 @@ async function runFullFlow(presentationId, message, userId = null, traceId = nul
       const data = slideDatasetsText(enriched[i], source);
       slides[i] = data ? { ...enriched[i], source_data: data } : enriched[i];
     }
+  }
+
+  // ── Real photos found online (web search on) ──────────────────────────────
+  // Runs while the deck design call (started at the header) is in flight.
+  // Each photo becomes a slide-scoped upload; its credit goes into the slide's
+  // speaker notes. Not found / web search off → the layout describes the
+  // subject and the image model generates it.
+  if (webSearch && WEB_IMAGES_ENABLED) {
+    const wanted = [];
+    for (const sl of slides) {
+      const w = Array.isArray(sl.web_images) ? sl.web_images[0] : null;
+      if (w?.query && wanted.length < MAX_WEB_IMAGES_PER_DECK) wanted.push({ sl, w });
+    }
+    const found = await Promise.all(wanted.map(({ w }) => findWebImage({ query: w.query, subject: w.subject, userId })));
+    const hits = wanted.map((x, i) => ({ ...x, img: found[i] })).filter(x => x.img);
+    const indices = appendDeckUploads(db, presentationId, hits.map(({ img }) => ({
+      type: 'image', category: 'web', name: img.subject, subject: img.subject, data: img.data, mimeType: img.mimeType,
+      credit: img.credit, license: img.license, source_url: img.source_url,
+    })));
+    hits.forEach(({ sl, img }, i) => {
+      const idx = indices[i];
+      if (idx === null) return;
+      allImages[idx] = { type: 'image', category: 'web', name: img.subject, subject: img.subject, data: img.data, mimeType: img.mimeType, credit: img.credit };
+      const pos = slides.indexOf(sl);
+      slides[pos] = {
+        ...sl,
+        uploads: [...(Array.isArray(sl.uploads) ? sl.uploads : []), idx],
+        speaker_note: `${sl.speaker_note || ''}${sl.speaker_note ? '\n\n' : ''}Photo credit: ${img.credit}`.trim(),
+      };
+    });
+    if (wanted.length) logger.info('web images', { presentationId, wanted: wanted.length, found: hits.length });
   }
 
   if (!headerBroadcast) {
@@ -982,8 +1124,9 @@ router.get('/:id/events', (req, res) => {
 
 // ─── Regenerate a single slide (user-described edit → direct to Gemini) ──────
 router.post('/:id/slides/:index/regenerate', authenticateToken, costScope('slide_edit'), async (req, res) => {
-  const { instruction, attachments: reqBodyAttachments = [] } = req.body;
+  const { instruction, attachments: reqBodyAttachments = [], asset_ids: editAssetIds = [] } = req.body;
   if (!instruction?.trim()) return res.status(400).json({ error: 'Please describe what you\'d like to change about this slide.' });
+  if (!Array.isArray(editAssetIds) || editAssetIds.length > 20) return res.status(400).json({ error: 'asset_ids must be a list of up to 20 files' });
   const attachmentsErr = validateAttachments(reqBodyAttachments);
   if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
 
@@ -1040,7 +1183,7 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, costScope('slide
   res.json({ message: 'Editing…', index: targetIndex });
 
   if (slideForPrompt.layout) {
-    withCostContext({ operation: 'ai_edit', slideIndex: targetIndex }, () => runLayeredEdit({ db, pres, req, targetIndex, instruction: instruction.trim(), attachments: userUploads, editResult }));
+    withCostContext({ operation: 'ai_edit', slideIndex: targetIndex }, () => runLayeredEdit({ db, pres, req, targetIndex, instruction: instruction.trim(), attachments: userUploads, assetIds: editAssetIds, editResult }));
     return;
   }
 
@@ -1127,7 +1270,7 @@ router.post('/:id/slides/:index/regenerate', authenticateToken, costScope('slide
 // generated — every other layer, file and position is kept. The outgoing
 // layout + preview move into version history (one click to undo).
 // On any failure the slide is left exactly as it was and the edit is refunded.
-async function runLayeredEdit({ db, pres, req, targetIndex, instruction, attachments, editResult }) {
+async function runLayeredEdit({ db, pres, req, targetIndex, instruction, attachments, assetIds = [], editResult }) {
   const presId = req.params.id;
   const userId = req.user.id;
   const setStatus = (status) => {
@@ -1154,12 +1297,22 @@ async function runLayeredEdit({ db, pres, req, targetIndex, instruction, attachm
   broadcast(presId, { type: 'slide_generating', index: targetIndex });
 
   try {
+    // Edit images and the pictures of library files picked for this edit
+    // join the deck's uploads (scoped), so the edited layout's upload:N refs
+    // still resolve in later edits/retries. Picked files are read again by
+    // Claude with this instruction in mind.
+    const editImgs = await ingestImages(attachments.map(a => ({ type: 'image', name: a.name || 'reference', data: a.data })));
+    const editIdx = appendDeckUploads(db, presId, editImgs.map(img => ({ ...img, category: 'edit reference', scoped: true }))).filter(i => i !== null);
+    const library = assetIds.length
+      ? await readLibraryFiles({ db, presentationId: presId, userId, assetIds, request: instruction })
+      : { text: '', uploadIndices: [] };
     const ctx = await loadDeckContext(db, pres, userId);
-    const uploads = [...ctx.uploads, ...attachments.map(a => ({ type: 'image', category: 'edit reference', name: a.name, data: a.data, mimeType: a.mimeType }))];
+    const uploads = ctx.uploads;
+    const scope = { uploads: [...editIdx, ...library.uploadIndices], source_slide: before.source_slide, source_doc: before.source_doc };
     const preview = await renderLayoutPreview(before.layout, loadStoredFile, { width: 1280 });
     const plan = await editSlideLayout({
-      layout: before.layout, previewPng: preview, instruction, deckDesign: ctx.deckDesign,
-      uploads, userId, slideIndex: targetIndex,
+      layout: before.layout, previewPng: preview, instruction: library.text ? `${instruction}\n\n${library.text}` : instruction,
+      deckDesign: ctx.deckDesign, uploads, userId, slideIndex: targetIndex, scope,
     });
     const { layout: edited, regenerated, applied } = applyEditOps(before.layout, plan.ops, { uploadCount: uploads.length });
     if (!applied.length) return fail('no ops', plan.summary || 'Nova couldn\'t find anything to change for that instruction. Try describing it differently.');
@@ -1575,7 +1728,7 @@ router.post('/:id/suggest-title', authenticateToken, costScope('suggest_title'),
 
 // ─── Add more slides ──────────────────────────────────────────────────────
 router.post('/:id/add-slides', authenticateToken, costScope('add_slides'), addSlidesLimiter, (req, res) => {
-  const { description, count = 1, attachments: reqAttachments = [] } = req.body; // `style` ignored (one design system)
+  const { description, count = 1, attachments: reqAttachments = [], asset_ids: addAssetIds = [] } = req.body; // `style` ignored (one design system)
   if (!description?.trim() || typeof description !== 'string') {
     return res.status(400).json({ error: 'Please describe the slides you\'d like to add.' });
   }
@@ -1584,6 +1737,7 @@ router.post('/:id/add-slides', authenticateToken, costScope('add_slides'), addSl
   }
   const attachmentsErr = validateAttachments(reqAttachments);
   if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
+  if (!Array.isArray(addAssetIds) || addAssetIds.length > 20) return res.status(400).json({ error: 'asset_ids must be a list of up to 20 files' });
   if (count !== 'auto' && (isNaN(parseInt(count)) || parseInt(count) < 1 || parseInt(count) > 10)) {
     return res.status(400).json({ error: 'Count must be 1–10 or "auto"' });
   }
@@ -1672,9 +1826,20 @@ router.post('/:id/add-slides', authenticateToken, costScope('add_slides'), addSl
   // Run async
   (async () => {
     try {
-      // Images attached to this add-slides request (the brief's own uploads
-      // are added from the deck context below).
-      const extraImages = (reqAttachments || []).filter(a => a.data);
+      // Images attached to this request join the deck's uploads (scoped to
+      // the new slides) so upload:N means the same picture in every later
+      // retry / edit. Files picked from the deck library are read again by
+      // Claude with THIS request in mind (their pictures join too).
+      let extraIdx = [];
+      try {
+        const extra = await ingestImages((reqAttachments || []).filter(a => a.data));
+        extraIdx = appendDeckUploads(db, req.params.id, extra.map(img => ({ ...img, scoped: true, category: 'add reference' }))).filter(i => i !== null);
+      } catch (err) { logger.warn('add-slides image rejected', { errorMessage: err.message }); }
+      const library = addAssetIds.length
+        ? await readLibraryFiles({ db, presentationId: req.params.id, userId: req.user.id, assetIds: addAssetIds, request: description })
+        : { text: '', uploadIndices: [] };
+      const addScopedUploads = [...extraIdx, ...library.uploadIndices];
+      const plannerDescription = library.text ? `${description}\n\n${library.text}` : description;
 
       // Give the planner the established visual language of the deck: the
       // design system plus a one-line visual summary of every existing slide
@@ -1697,8 +1862,8 @@ router.post('/:id/add-slides', authenticateToken, costScope('add_slides'), addSl
       };
 
       const newSlideDefs = [];
-      await streamNewSlides(description, slideCount, startIndex, presentationContext, (slideDef) => {
-        newSlideDefs.push(slideDef);
+      await streamNewSlides(plannerDescription, slideCount, startIndex, presentationContext, (slideDef) => {
+        newSlideDefs.push(addScopedUploads.length ? { ...slideDef, uploads: addScopedUploads } : slideDef);
       }, req.user.id);
       newSlideDefs.sort((a, b) => a.index - b.index);
 
@@ -1708,7 +1873,8 @@ router.post('/:id/add-slides', authenticateToken, costScope('add_slides'), addSl
       const promptedSlideDefs = newSlideDefs;
       const deckCtx = await loadDeckContext(db, pres, req.user.id);
       if (promptedSlideDefs.length > 1) prewarmLayoutCache({ aspectRatio: deckCtx.aspectRatio, userId: req.user.id });
-      const addUploads = [...extraImages, ...deckCtx.uploads].slice(0, 8);
+      // Same order as the stored uploads (indices stay global).
+      const addUploads = deckCtx.uploads;
       const addSiblings = [...deckCtx.siblingTitles, ...newSlideDefs.map(d => d.title)];
 
       // For 'auto' mode the slide count is only known now — check affordability
@@ -1792,7 +1958,7 @@ router.post('/:id/add-slides', authenticateToken, costScope('add_slides'), addSl
               slide: slideDef,
               header: deckCtx.header, deckDesign: deckCtx.deckDesign,
               // The add-slides request is the most specific direction for these slides.
-              brief: `${deckCtx.brief}\n\nADD-SLIDES REQUEST: ${description}`,
+              brief: `${deckCtx.brief}\n\nADD-SLIDES REQUEST: ${description}${library.text ? `\n\n${library.text}` : ''}`,
               uploads: addUploads, userId: req.user.id,
               aspectRatio, siblingTitles: addSiblings,
               onLayout: (layout) => broadcast(req.params.id, { type: 'slide_layout', index: slideDef.index, layout }),
@@ -2051,6 +2217,7 @@ router.delete('/:id', authenticateToken, (req, res) => {
   const verFiles = versionFiles(db, req.params.id);
 
   const result = db.prepare('DELETE FROM presentations WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+  if (result.changes) deleteDeckAssets(req.params.id); // the deck's file library goes with it
   if (result.changes === 0) return res.status(404).json({ error: 'Presentation not found or you don\'t have permission to delete it.' });
 
   for (const f of new Set([...slides.flatMap(s => slideFiles(s)), ...verFiles])) imageStore.remove(f);

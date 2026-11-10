@@ -90,3 +90,26 @@ export async function fileToAttachment(file, { purpose = 'content' } = {}) {
   const data = await readAsDataURL(file);
   return { id: id(), name: file.name, type: 'document', mimeType: file.type || 'application/octet-stream', data, size: file.size, kind: extOf(file.name), purpose };
 }
+
+// Uploads ONE document to the asset library (validated + extracted on the
+// server right away, so a bad file fails immediately with a reason). Briefs,
+// add-slides requests and edits then refer to it by id: the bytes are sent
+// once. Resolves to the asset descriptor; rejects with a user-facing message.
+export async function uploadAsset(api, file, { category = 'auto', presentationId = null } = {}) {
+  const data = await readAsDataURL(file);
+  try {
+    const { data: res } = await api.post('/assets', { name: file.name, data, category, presentationId }, { timeout: 120_000 });
+    return res.asset;
+  } catch (err) {
+    throw new Error(err.response?.data?.error || (err.response?.status === 413 ? `"${file.name}" is too large.` : `"${file.name}" couldn't be uploaded. Please try again.`));
+  }
+}
+
+/** Short description of an uploaded asset, e.g. "PPTX · 12 slides". */
+export function assetMetaLabel(a) {
+  const kind = (a.kind || '').toUpperCase();
+  if (a.meta?.slides) return `${kind} · ${a.meta.slides} slide${a.meta.slides !== 1 ? 's' : ''}`;
+  if (a.meta?.pages) return `${kind} · ${a.meta.pages} page${a.meta.pages !== 1 ? 's' : ''}`;
+  if (a.meta?.sheets) return `${kind} · ${a.meta.sheets} sheet${a.meta.sheets !== 1 ? 's' : ''}`;
+  return `${kind} · ${formatBytes(a.size)}`;
+}

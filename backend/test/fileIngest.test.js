@@ -3,11 +3,11 @@ import JSZip from 'jszip';
 import PptxGenJS from 'pptxgenjs';
 import sharp from 'sharp';
 import {
-  ingestDocument, ingestAttachments, ingestImage, readZip, sniff, parseCsv, FileRejected, FILE_LIMITS,
+  ingestDocument, ingestImages, ingestImage, uploadsFromDocument, readZip, sniff, parseCsv, FileRejected, FILE_LIMITS,
 } from '../services/fileIngest.js';
 import {
   fallbackSource, composeBrief, sourceBriefText, redesignDeckOf, redesignPlanContext, attachRedesignSources,
-  slideDatasetsText, tableToDataset,
+  slideDatasetsText, tableToDataset, guessRedesignFile, applyIntent, rebaseSource,
 } from '../services/sourceAnalysis.js';
 import { uploadVisible } from '../services/layoutAgent.js';
 import { validateAttachments } from '../middleware/attachments.js';
@@ -176,26 +176,35 @@ describe('extraction', () => {
   });
 });
 
-describe('ingestAttachments', () => {
-  it('stores user images first, then extracted pictures, then documents without raw bytes', async () => {
+// Mirrors routes/presentations.js gatherBriefFiles: user images, then file pictures.
+async function brief(images, docs) {
+  const userImages = await ingestImages(images);
+  const documents = []; const extracted = [];
+  for (const d of docs) {
+    const r = await ingestDocument(d);
+    documents.push(r.doc);
+    extracted.push(...uploadsFromDocument(r.doc, r.images, { assetId: `a-${documents.length}`, room: FILE_LIMITS.maxExtractedImages - extracted.length }));
+  }
+  return { uploads: [...userImages, ...extracted], documents };
+}
+
+describe('brief files', () => {
+  it('puts user images first, then file pictures tied to their source', async () => {
     const png = await pngBuffer(200, 200);
-    const out = await ingestAttachments([
-      { type: 'image', name: 'logo.png', data: dataUrl(png, 'image/png'), category: 'branding' },
-      doc('Q3 review.pptx', await makePptx(), 'redesign'),
-      doc('kpis.xlsx', await makeXlsx()),
-    ]);
-    expect(out.stored.map(a => a.type)).toEqual(['image', 'image', 'document', 'document']);
-    expect(out.stored[0].category).toBe('branding');
-    expect(out.stored[1]).toMatchObject({ category: 'document', source_doc: 'Q3 review.pptx', slides: [2] });
-    expect(out.stored.filter(a => a.type === 'document').every(d => !d.data && !d.tables)).toBe(true);
-    expect(out.documents[1].tables).toBeTruthy(); // in-memory copy keeps tables for analysis
+    const out = await brief(
+      [{ type: 'image', name: 'logo.png', data: dataUrl(png, 'image/png'), category: 'branding' }],
+      [doc('Q3 review.pptx', await makePptx()), doc('kpis.xlsx', await makeXlsx())],
+    );
+    expect(out.uploads).toHaveLength(2);
+    expect(out.uploads[0].category).toBe('branding');
+    expect(out.uploads[1]).toMatchObject({ category: 'document', source_doc: 'Q3 review.pptx', source_asset: 'a-1', slides: [2] });
+    expect(out.documents[0].purpose).toBe('auto');
+    expect(out.documents[1].tables).toBeTruthy();
   });
 
-  it('enforces counts and the single-redesign rule', async () => {
-    const pptx = await makePptx();
-    await expect(ingestAttachments([doc('a.pptx', pptx, 'redesign'), doc('b.pptx', pptx, 'redesign')])).rejects.toThrow(/Only one deck/);
-    const many = Array.from({ length: FILE_LIMITS.maxDocuments + 1 }, (_, i) => doc(`f${i}.txt`, Buffer.from('hi')));
-    await expect(ingestAttachments(many)).rejects.toBeInstanceOf(FileRejected);
+  it('caps images and refuses redesign of non-decks', async () => {
+    const many = Array.from({ length: FILE_LIMITS.maxImages + 1 }, (_, i) => ({ name: `i${i}.png`, data: 'data:image/png;base64,AAAA' }));
+    await expect(ingestImages(many)).rejects.toBeInstanceOf(FileRejected);
     await expect(ingestDocument(doc('x.xlsx', await makeXlsx(), 'redesign'))).rejects.toThrow(/only PowerPoint/);
   });
 
@@ -204,18 +213,38 @@ describe('ingestAttachments', () => {
   });
 });
 
+describe('intent (no toggle): redesign or use as material', () => {
+  it('reads the intent from the prompt', async () => {
+    const { documents } = await brief([], [doc('board.pptx', await makePptx()), doc('kpis.xlsx', await makeXlsx())]);
+    expect(guessRedesignFile('Make this deck better', documents)).toBe('board.pptx');
+    expect(guessRedesignFile('Please redesign board and add the KPI numbers', documents)).toBe('board.pptx');
+    expect(guessRedesignFile('A sales kickoff deck for 2027 using last year\'s numbers', documents)).toBe('');
+    const solo = (await brief([], [doc('board.pptx', await makePptx())])).documents;
+    expect(guessRedesignFile('', solo)).toBe('board.pptx');
+    const applied = applyIntent(documents, { redesign_file: 'board.pptx' });
+    expect(applied.map(d => d.purpose)).toEqual(['redesign', 'content']);
+    expect(applyIntent(documents, { redesign_file: '' }).map(d => d.purpose)).toEqual(['content', 'content']);
+  });
+
+  it('rebases picture indices when the image count changed', () => {
+    expect(rebaseSource({ visuals: [{ upload: 1 }] }, 2).visuals[0].upload).toBe(3);
+  });
+});
+
 describe('source pack + redesign plumbing', () => {
   it('folds facts, datasets and redesign content into the right places', async () => {
-    const out = await ingestAttachments([doc('Q3 review.pptx', await makePptx(), 'redesign'), doc('kpis.xlsx', await makeXlsx())]);
-    const uploads = out.stored.filter(a => a.data);
-    const source = fallbackSource(out.documents, uploads);
+    const out = await brief([], [doc('Q3 review.pptx', await makePptx()), doc('kpis.xlsx', await makeXlsx())]);
+    const uploads = out.uploads;
+    const source = fallbackSource(out.documents, uploads, 'Make this deck better');
+    expect(source.redesign_file).toBe('Q3 review.pptx');
     expect(source.datasets[0].id).toBe('d1');
-    const brief = composeBrief('Make this deck better', source);
-    expect(brief.startsWith('Make this deck better')).toBe(true);
-    expect(brief).toMatch(/SOURCE MATERIAL FROM THE USER'S FILES/);
+    const composed = composeBrief('Make this deck better', source);
+    expect(composed.startsWith('Make this deck better')).toBe(true);
+    expect(composed).toMatch(/SOURCE MATERIAL FROM THE USER'S FILES/);
+    expect(composed).toMatch(/quality library/);
     expect(sourceBriefText(source)).toMatch(/1200\.5 \| 1500 \| 1710/);
 
-    const deck = redesignDeckOf(out.documents);
+    const deck = redesignDeckOf(applyIntent(out.documents, source));
     expect(redesignPlanContext(deck).count).toBe(2);
     const slides = attachRedesignSources([{ index: 0, title: 'A', source_slide: 1 }, { index: 1, title: 'B', source_slide: 2, datasets: ['d1'] }], deck, uploads);
     expect(slides[0].source_content).toMatch(/Quarterly Results/);
@@ -227,5 +256,9 @@ describe('source pack + redesign plumbing', () => {
     expect(uploadVisible(uploads[0], 0, slides[0])).toBe(false);
     expect(uploadVisible(uploads[0], 0, null)).toBe(false);
     expect(uploadVisible({ data: 'x', category: 'branding' }, 3, null)).toBe(true);
+    // Web photos and edit references are scoped to the slides they were assigned to.
+    expect(uploadVisible({ data: 'x', category: 'web' }, 4, { uploads: [4] })).toBe(true);
+    expect(uploadVisible({ data: 'x', category: 'web' }, 4, { uploads: [] })).toBe(false);
+    expect(uploadVisible({ data: 'x', scoped: true }, 5, null)).toBe(false);
   });
 });

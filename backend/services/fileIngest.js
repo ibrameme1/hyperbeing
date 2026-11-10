@@ -51,6 +51,7 @@ export const FILE_LIMITS = {
   sheetCols: 30,
   maxSheets: 12,
   maxDeckSlides: 40,          // a PPTX to redesign
+  maxDeckUploads: 99,         // every image a deck can reference as upload:N (user, file, web, edit images)
 };
 
 // extension → kind. Everything else is rejected.
@@ -79,7 +80,10 @@ const REFUSED = {
 };
 
 export const ALLOWED_EXTENSIONS = Object.keys(EXT_KIND);
-const DOC_PURPOSES = ['content', 'redesign', 'inspiration'];
+// 'auto' = Claude decides from the brief whether a deck is to be redesigned or
+// used as material (no toggle in the UI); 'inspiration' = its LOOK is wanted.
+// 'redesign' / 'content' are what 'auto' resolves to (sourceAnalysis.applyIntent).
+const DOC_PURPOSES = ['auto', 'content', 'redesign', 'inspiration'];
 
 export class FileRejected extends Error {
   constructor(message) { super(message); this.name = 'FileRejected'; this.userFacing = true; }
@@ -611,15 +615,19 @@ export function inspectPdf(buf, name) {
  * Throws FileRejected with a user-facing message.
  */
 export async function ingestDocument(att) {
-  const name = String(att?.name || '').slice(0, 255);
+  return ingestDocumentBuffer(String(att?.name || '').slice(0, 255), decodeDataUrl(att?.data), att?.category);
+}
+
+/** Same as ingestDocument, from raw bytes (the asset store re-reads files from disk). */
+export async function ingestDocumentBuffer(name, buf, category = 'auto') {
+  name = String(name || '').slice(0, 255);
   const ext = extensionOf(name);
   if (REFUSED[ext]) reject(name, REFUSED[ext]);
   const kind = EXT_KIND[ext];
   if (!kind || kind === 'image') reject(name, `.${ext || '?'} files aren't supported. You can upload PDF, PPTX, XLSX, DOCX, CSV, TXT, MD, JSON or images.`);
-  const buf = decodeDataUrl(att.data);
   if (!buf || !buf.length) reject(name, 'the file is empty or could not be read.');
 
-  const purpose = DOC_PURPOSES.includes(att.category) ? att.category : 'content';
+  const purpose = DOC_PURPOSES.includes(category) ? category : 'auto';
   if (purpose === 'redesign' && kind !== 'pptx') reject(name, 'only PowerPoint (.pptx) files can be redesigned.');
   const magic = sniff(buf);
   if (magic === 'exe') reject(name, 'executable files aren\'t accepted.');
@@ -731,63 +739,42 @@ export async function ingestImage(att) {
   return keepOriginal ? { data: `data:${mimeType};base64,${buf.toString('base64')}`, mimeType } : { data: img.data, mimeType: img.mimeType };
 }
 
-const isDocument = (a) => a?.type === 'document' || (a?.type !== 'image' && EXT_KIND[extensionOf(a?.name)] && EXT_KIND[extensionOf(a?.name)] !== 'image');
+export const isDocument = (a) => a?.type === 'document' || (a?.type !== 'image' && EXT_KIND[extensionOf(a?.name)] && EXT_KIND[extensionOf(a?.name)] !== 'image');
 
-/**
- * Validates and processes a whole brief's attachments.
- * Returns {
- *   stored:  attachments array to persist in messages.attachments — user images
- *            first (their UPLOAD indices are unchanged), then images extracted
- *            from documents, then document descriptions (no data),
- *   pdfs:    transient PDF payloads for the source-analysis call,
- *   documents: the document descriptions,
- * }
- */
-export async function ingestAttachments(attachments = []) {
-  const images = attachments.filter(a => !isDocument(a));
-  const docs = attachments.filter(isDocument);
+/** Validates + normalizes the user's own images of a brief / edit / add-slides request. */
+export async function ingestImages(images = []) {
   if (images.length > FILE_LIMITS.maxImages) throw new FileRejected(`Too many images (max ${FILE_LIMITS.maxImages}).`);
-  if (docs.length > FILE_LIMITS.maxDocuments) throw new FileRejected(`Too many files (max ${FILE_LIMITS.maxDocuments} documents per brief).`);
-  const docBytes = docs.reduce((n, d) => n + (typeof d.data === 'string' ? d.data.length * 0.75 : 0), 0);
-  if (docBytes > FILE_LIMITS.totalDocumentBytes) throw new FileRejected(`Your files add up to more than ${FILE_LIMITS.totalDocumentBytes / MB}MB. Remove some or upload smaller versions.`);
-  if (docs.filter(d => d.category === 'redesign').length > 1) throw new FileRejected('Only one deck can be redesigned at a time. Mark the others as "Use content".');
-
-  const storedImages = [];
+  const out = [];
   for (const a of images) {
     const { data, mimeType } = await ingestImage(a);
-    storedImages.push({ type: 'image', name: String(a.name || 'image').slice(0, 255), data, mimeType, ...(a.category ? { category: String(a.category).slice(0, 30) } : {}) });
+    out.push({ type: 'image', name: String(a.name || 'image').slice(0, 255), data, mimeType, ...(a.category ? { category: String(a.category).slice(0, 30) } : {}) });
   }
-
-  const documents = []; const extracted = []; const pdfs = [];
-  // Per-file picture caps: a deck being redesigned needs its pictures (they're
-  // tied to their slides, so each layout call only sees its own); content
-  // files' pictures are offered to the slides the plan assigns them to;
-  // inspiration pictures guide EVERY slide's look, so keep those few.
-  const PER_DOC_IMAGES = { redesign: FILE_LIMITS.maxExtractedImages, content: 6, inspiration: 4 };
-  for (const a of docs) {
-    const r = await ingestDocument(a);
-    documents.push(r.doc);
-    if (r.pdf) pdfs.push(r.pdf);
-    let taken = 0;
-    for (const img of r.images) {
-      if (extracted.length >= FILE_LIMITS.maxExtractedImages || taken >= PER_DOC_IMAGES[r.doc.purpose]) break;
-      taken++;
-      // Inspiration files' pictures guide the LOOK (moodboard); deck pictures
-      // stay tied to the slides they came from; everything else is content.
-      extracted.push({
-        type: 'image', name: img.name.slice(0, 255), data: img.data, mimeType: img.mimeType,
-        category: r.doc.purpose === 'inspiration' ? 'moodboard' : 'document',
-        source_doc: r.doc.name,
-        ...(r.doc.purpose === 'redesign' && img.slides ? { slides: img.slides, media: img.media } : {}),
-      });
-    }
-  }
-  // `tables` (raw rows, used only by the deterministic fallback analysis) are
-  // not persisted; the digest already carries the same content as text.
-  return { stored: [...storedImages, ...extracted, ...documents.map(({ tables, ...d }) => d)], documents, pdfs };
+  return out;
 }
 
-/** Split a stored attachments array into image uploads and document descriptions. */
+// Per-file picture caps: a PowerPoint's pictures stay tied to the slides they
+// came from (each layout call only sees its own), other files' pictures are
+// offered to the slides the plan assigns them to, and inspiration pictures
+// guide EVERY slide's look — so keep those few.
+const PER_DOC_IMAGES = { pptx: FILE_LIMITS.maxExtractedImages, other: 6, inspiration: 4 };
+
+/**
+ * The image uploads a document contributes to a deck (appended AFTER the
+ * user's own images, so their upload:N indices never shift). `room` = how
+ * many more extracted pictures the deck may take.
+ */
+export function uploadsFromDocument(doc, images = [], { assetId = null, room = FILE_LIMITS.maxExtractedImages } = {}) {
+  const cap = Math.min(room, doc.purpose === 'inspiration' ? PER_DOC_IMAGES.inspiration : doc.kind === 'pptx' ? PER_DOC_IMAGES.pptx : PER_DOC_IMAGES.other);
+  return images.slice(0, Math.max(0, cap)).map(img => ({
+    type: 'image', name: String(img.name).slice(0, 255), data: img.data, mimeType: img.mimeType,
+    category: doc.purpose === 'inspiration' ? 'moodboard' : 'document',
+    source_doc: doc.name,
+    ...(assetId ? { source_asset: assetId } : {}),
+    ...(img.slides ? { slides: img.slides } : {}),
+  }));
+}
+
+/** Split a stored attachments array into image uploads and document stubs. */
 export function splitStored(attachments = []) {
   return {
     uploads: attachments.filter(a => a?.data && a.type !== 'document'),
