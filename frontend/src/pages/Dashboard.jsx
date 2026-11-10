@@ -5,7 +5,7 @@ import { useDropzone } from 'react-dropzone';
 import {
   Sparkles, Send, X, Clock, Trash2, Loader2,
   ImageIcon, Palette, Plus, ChevronDown, ChevronUp, Zap,
-  Bot, Search, Globe,
+  Bot, Search, Globe, FileText, FileSpreadsheet, FileJson, Presentation,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
@@ -18,7 +18,10 @@ import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
 import { SkeletonDashboardPage, SkeletonCard } from '../components/Skeleton';
 import FeedbackButton from '../components/FeedbackButton';
-import { fileToImageAttachment } from '../utils/imageAttachment';
+import {
+  fileToAttachment, checkFile, formatBytes, isImageFile, isDocumentFile,
+  ACCEPT_IMAGES, ACCEPT_DOCUMENTS, ACCEPT_INSPIRATION, MAX_DOCUMENTS, MAX_IMAGES, MAX_TOTAL_DOCUMENT_BYTES,
+} from '../utils/fileAttachment';
 
 // Builds the authed URL for a presentation's thumbnail image. Access tokens
 // rotate every 15 min, so a leaked URL goes stale quickly.
@@ -215,21 +218,28 @@ const PLACEHOLDER_EXAMPLES = [
 const PLACEHOLDER_TEXT = PLACEHOLDER_EXAMPLES[new Date().getDay() % PLACEHOLDER_EXAMPLES.length];
 
 // ─── Attachment Drop Zone ──────────────────────────────────────────────────
-function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove, isDark }) {
-  const onDrop = useCallback(accepted => {
-    accepted.forEach(async file => {
-      try {
-        const { data, mimeType } = await fileToImageAttachment(file);
-        onAdd({ id: Math.random().toString(36).slice(2), name: file.name, type: 'image', mimeType, data });
-      } catch {}
-    });
-  }, [onAdd]);
+const DATA_CHECK = { allowImages: false };
+const IMAGE_CHECK = { allowDocuments: false };
+const INSPIRATION_CHECK = { docKinds: ['pdf', 'pptx'] };
+const DOC_ICONS = { pdf: FileText, pptx: Presentation, xlsx: FileSpreadsheet, csv: FileSpreadsheet, tsv: FileSpreadsheet, docx: FileText, txt: FileText, md: FileText, json: FileJson };
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { 'image/*': [] },
-    multiple: true,
-  });
+function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove, onUpdate, isDark, accept, checkOpts = {}, purposeFor, emptyHint, showPurposeToggle = false, onError }) {
+  const onDrop = useCallback((accepted, rejected) => {
+    for (const r of rejected || []) onError?.(checkFile(r.file, checkOpts) || `"${r.file.name}": this file type isn't supported here.`);
+    accepted.forEach(async file => {
+      const err = checkFile(file, checkOpts);
+      if (err) { onError?.(err); return; }
+      try {
+        onAdd(await fileToAttachment(file, { purpose: purposeFor ? purposeFor(file) : 'content' }));
+      } catch {
+        onError?.(`"${file.name}" couldn't be read.`);
+      }
+    });
+  }, [onAdd, onError, checkOpts, purposeFor]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept, multiple: true });
+  const muted = isDark ? '#555555' : '#888888';
+  const border = isDark ? '#2a2a2a' : '#e8e8e8';
 
   return (
     <div style={{
@@ -237,26 +247,15 @@ function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove, is
       borderRadius: 8,
       overflow: 'hidden',
       border: '0.5px solid',
-      borderColor: isDark ? '#2a2a2a' : '#e8e8e8',
+      borderColor: border,
       boxShadow: isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.06)',
     }}>
-      <div style={{
-        padding: '12px 16px',
-        borderBottom: '0.5px solid',
-        borderColor: isDark ? '#2a2a2a' : '#e8e8e8',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-      }}>
-        <div style={{
-          width: 28, height: 28, borderRadius: 8, display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          background: accentColor + '18', flexShrink: 0,
-        }}>
+      <div style={{ padding: '12px 16px', borderBottom: '0.5px solid', borderColor: border, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: accentColor + '18', flexShrink: 0 }}>
           <Icon size={14} style={{ color: accentColor }} />
         </div>
         <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600, color: isDark ? '#f0f0ee' : '#0d0b1a' }}>{label}</span>
-        <span style={{ fontSize: 11, color: isDark ? '#555555' : '#888888', marginLeft: 'auto' }}>{files.length} image{files.length !== 1 ? 's' : ''}</span>
+        <span style={{ fontSize: 11, color: muted, marginLeft: 'auto' }}>{files.length} file{files.length !== 1 ? 's' : ''}</span>
       </div>
 
       <div
@@ -265,26 +264,22 @@ function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove, is
           minHeight: 90,
           padding: 12,
           cursor: 'pointer',
-          background: isDragActive
-            ? (isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.06)')
-            : 'transparent',
+          background: isDragActive ? (isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.06)') : 'transparent',
           outline: isDragActive ? '2px solid rgba(59,130,246,0.5)' : 'none',
           outlineOffset: -2,
           transition: 'background 0.2s',
         }}
       >
-        <input {...getInputProps()} />
+        <input {...getInputProps()} aria-label={`Add files to ${label}`} />
 
         {files.length === 0 ? (
-          <div style={{ height: 66, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <p style={{ fontSize: 12, color: isDark ? '#555555' : '#888888', margin: 0 }}>{isDragActive ? 'Drop here' : 'Drop images or click to browse'}</p>
+          <div style={{ minHeight: 66, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+            <p style={{ fontSize: 12, color: muted, margin: 0 }}>{isDragActive ? 'Drop here' : emptyHint}</p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {files.map(f => (
-              <div key={f.id} style={{ position: 'relative' }} className="group">
-                <img src={f.data} alt={f.name}
-                     style={{ height: 56, width: 56, borderRadius: 8, objectFit: 'cover', border: '0.5px solid', borderColor: isDark ? '#2a2a2a' : '#e8e8e8', display: 'block' }} />
+            {files.map(f => {
+              const removeBtn = (
                 <button
                   onClick={e => { e.stopPropagation(); onRemove(f.id); }}
                   aria-label={`Remove ${f.name}`}
@@ -294,12 +289,52 @@ function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove, is
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     border: '1px solid #2a2a2a', cursor: 'pointer', opacity: 0,
                   }}
-                  className="group-hover:opacity-100 transition-opacity"
+                  className="group-hover:opacity-100 focus:opacity-100 transition-opacity"
                 >
                   <X size={10} />
                 </button>
-              </div>
-            ))}
+              );
+              if (f.type !== 'document') {
+                return (
+                  <div key={f.id} style={{ position: 'relative' }} className="group">
+                    <img src={f.data} alt={f.name}
+                         style={{ height: 56, width: 56, borderRadius: 8, objectFit: 'cover', border: '0.5px solid', borderColor: border, display: 'block' }} />
+                    {removeBtn}
+                  </div>
+                );
+              }
+              const DocIcon = DOC_ICONS[f.kind] || FileText;
+              return (
+                <div key={f.id} style={{ position: 'relative', width: 168 }} className="group" onClick={e => e.stopPropagation()}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, border: '0.5px solid', borderColor: border, background: isDark ? '#1b1b1b' : '#fafafa' }}>
+                    <DocIcon size={18} style={{ color: accentColor, flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <p title={f.name} style={{ margin: 0, fontSize: 12, fontWeight: 500, color: isDark ? '#f0f0ee' : '#0d0b1a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</p>
+                      <p style={{ margin: 0, fontSize: 11, color: muted }}>{(f.kind || '').toUpperCase()} · {formatBytes(f.size)}</p>
+                    </div>
+                  </div>
+                  {showPurposeToggle && f.kind === 'pptx' && (
+                    <div role="radiogroup" aria-label={`How to use ${f.name}`} style={{ display: 'flex', marginTop: 6, borderRadius: 6, overflow: 'hidden', border: '0.5px solid', borderColor: border }}>
+                      {[['redesign', 'Redesign it'], ['content', 'Use content']].map(([value, text]) => (
+                        <button
+                          key={value}
+                          role="radio"
+                          aria-checked={f.purpose === value}
+                          onClick={e => { e.stopPropagation(); onUpdate?.(f.id, { purpose: value }); }}
+                          style={{
+                            flex: 1, fontSize: 11, padding: '4px 0', cursor: 'pointer', border: 'none',
+                            background: f.purpose === value ? accentColor : 'transparent',
+                            color: f.purpose === value ? '#fff' : (isDark ? '#aaa' : '#555'),
+                            fontWeight: f.purpose === value ? 600 : 400,
+                          }}
+                        >{text}</button>
+                      ))}
+                    </div>
+                  )}
+                  {removeBtn}
+                </div>
+              );
+            })}
             <div style={{
               height: 56, width: 56, borderRadius: 8,
               border: '1.5px dashed',
@@ -465,6 +500,8 @@ export default function Dashboard() {
     : 'What will you create today?';
   const [moodboardFiles, setMoodboardFiles] = useState([]);
   const [brandingFiles, setBrandingFiles] = useState([]);
+  const [dataFiles, setDataFiles] = useState([]); // PDFs, decks, sheets, docs, CSV/text
+  const [attachError, setAttachError] = useState('');
   const [showZones, setShowZones] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
@@ -531,10 +568,38 @@ export default function Dashboard() {
     return () => sse.close();
   }, [user?.id, queryClient]);
 
+  // Category tells the backend how to use each file: images guide branding /
+  // look; documents are 'content' (facts & data), 'redesign' (a .pptx whose
+  // structure and content Nova keeps while rebuilding the design) or
+  // 'inspiration' (a PDF/deck whose look the user likes).
   const allAttachments = [
-    ...moodboardFiles.map(f => ({ ...f, category: 'moodboard' })),
+    ...moodboardFiles.map(f => ({ ...f, category: f.type === 'document' ? 'inspiration' : 'moodboard' })),
     ...brandingFiles.map(f => ({ ...f, category: 'branding' })),
+    ...dataFiles.map(f => ({ ...f, category: f.purpose || 'content' })),
   ];
+  const redesignFile = dataFiles.find(f => f.purpose === 'redesign');
+
+  // Only one deck can be redesigned at a time: adding / switching one to
+  // "Redesign it" demotes any other deck to "Use content".
+  const addDataFile = useCallback(f => {
+    setAttachError('');
+    setDataFiles(prev => [...prev, f.purpose === 'redesign' && prev.some(p => p.purpose === 'redesign') ? { ...f, purpose: 'content' } : f]);
+  }, []);
+  const updateDataFile = useCallback((fileId, patch) => {
+    setDataFiles(prev => prev.map(p => (p.id === fileId ? { ...p, ...patch } : (patch.purpose === 'redesign' && p.purpose === 'redesign' ? { ...p, purpose: 'content' } : p))));
+  }, []);
+  const addBrandingFile = useCallback(f => { setAttachError(''); setBrandingFiles(prev => [...prev, f]); }, []);
+  const addMoodboardFile = useCallback(f => { setAttachError(''); setMoodboardFiles(prev => [...prev, f]); }, []);
+  const pptxPurpose = useCallback(file => (/\.pptx$/i.test(file.name) ? 'redesign' : 'content'), []);
+
+  function attachmentLimitError() {
+    const docs = allAttachments.filter(a => a.type === 'document');
+    const images = allAttachments.filter(a => a.type !== 'document');
+    if (docs.length > MAX_DOCUMENTS) return `You can attach up to ${MAX_DOCUMENTS} files (PDF, PPTX, Excel, Word, CSV, text) per brief.`;
+    if (images.length > MAX_IMAGES) return `You can attach up to ${MAX_IMAGES} images per brief.`;
+    if (docs.reduce((n, d) => n + (d.size || 0), 0) > MAX_TOTAL_DOCUMENT_BYTES) return `Your files add up to more than ${formatBytes(MAX_TOTAL_DOCUMENT_BYTES)}. Remove some or upload smaller versions.`;
+    return null;
+  }
 
   function handleCancelAnalyzing() {
     analyzeAbortRef.current?.abort();
@@ -545,8 +610,12 @@ export default function Dashboard() {
 
   async function handleSubmit() {
     if (!input.trim() && allAttachments.length === 0) return;
+    const limitErr = attachmentLimitError();
+    if (limitErr) { setSubmitError(limitErr); return; }
     capture('prompt_submitted', {
       has_attachments: allAttachments.length > 0,
+      has_documents: dataFiles.length > 0 || moodboardFiles.some(f => f.type === 'document'),
+      redesign: !!redesignFile,
       aspect_ratio: selectedAspectRatio,
     });
     const controller = new AbortController();
@@ -600,7 +669,7 @@ export default function Dashboard() {
         setSubmitError(
           body.error ||
           (status === 429 ? `You're creating presentations too quickly. Please wait ${body.retryAfter ?? 60} seconds.` :
-           status === 413 ? 'Your brief or attachments are too large. Try shortening your description or using fewer images.' :
+           status === 413 ? 'Your brief or attachments are too large. Try shortening your description or attaching fewer or smaller files.' :
            status === 402 ? 'You\'ve reached your monthly limit. Upgrade your plan to continue.' :
            'Could not analyse your brief. Please try again.')
         );
@@ -711,19 +780,22 @@ export default function Dashboard() {
 
   const totalAttachments = allAttachments.length;
 
+  // Files dropped straight on the prompt: images go to Branding & Pictures,
+  // documents to Files & Data (a .pptx defaults to "Redesign it").
   function handleTextareaDrop(e) {
     e.preventDefault();
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    const files = Array.from(e.dataTransfer.files);
     if (!files.length) return;
     setShowZones(true);
     files.forEach(async file => {
+      const err = checkFile(file);
+      if (err) { setAttachError(err); return; }
       try {
-        const { data, mimeType } = await fileToImageAttachment(file);
-        setBrandingFiles(prev => [...prev, {
-          id: Math.random().toString(36).slice(2),
-          name: file.name, type: 'image', mimeType, data,
-        }]);
-      } catch {}
+        if (isImageFile(file)) addBrandingFile(await fileToAttachment(file));
+        else if (isDocumentFile(file)) addDataFile(await fileToAttachment(file, { purpose: pptxPurpose(file) }));
+      } catch {
+        setAttachError(`"${file.name}" couldn't be read.`);
+      }
     });
   }
 
@@ -967,8 +1039,8 @@ export default function Dashboard() {
                       color: (showZones || totalAttachments > 0) ? '#8B80FF' : (isDark ? '#888' : '#555'),
                     }}
                   >
-                    <ImageIcon size={14} />
-                    <span style={{ display: 'none' }} className="sm:inline-block">Add references</span>
+                    <Plus size={14} />
+                    <span style={{ display: 'none' }} className="sm:inline-block">Add files &amp; references</span>
                     {totalAttachments > 0 && (
                       <span style={{ background: '#5B50FF', color: '#fff', borderRadius: 9999, fontSize: 11, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
                         {totalAttachments}
@@ -1022,26 +1094,64 @@ export default function Dashboard() {
                   initial={{ opacity: 0, height: 0, marginTop: 0 }}
                   animate={{ opacity: 1, height: 'auto', marginTop: 12 }}
                   exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                  className="grid grid-cols-2 gap-3 overflow-hidden"
+                  className="grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-hidden"
                 >
+                  <div className="sm:col-span-2">
+                    <AttachZone
+                      label="Files & Data"
+                      icon={FileSpreadsheet}
+                      accentColor="#0F9D58"
+                      files={dataFiles}
+                      onAdd={addDataFile}
+                      onUpdate={updateDataFile}
+                      onRemove={id => setDataFiles(prev => prev.filter(f => f.id !== id))}
+                      onError={setAttachError}
+                      accept={ACCEPT_DOCUMENTS}
+                      checkOpts={DATA_CHECK}
+                      purposeFor={pptxPurpose}
+                      showPurposeToggle
+                      emptyHint="Drop a PowerPoint to redesign, or PDFs, Excel, Word, CSV for Nova to read and chart"
+                      isDark={isDark}
+                    />
+                  </div>
                   <AttachZone
                     label="Branding & Pictures"
                     icon={ImageIcon}
                     accentColor="#007AFF"
                     files={brandingFiles}
-                    onAdd={f => setBrandingFiles(prev => [...prev, f])}
+                    onAdd={addBrandingFile}
                     onRemove={id => setBrandingFiles(prev => prev.filter(f => f.id !== id))}
+                    onError={setAttachError}
+                    accept={ACCEPT_IMAGES}
+                    checkOpts={IMAGE_CHECK}
+                    emptyHint="Logos, product shots, photos"
                     isDark={isDark}
                   />
                   <AttachZone
-                    label="Moodboard"
+                    label="Moodboard & Inspiration"
                     icon={Palette}
                     accentColor="#5B50FF"
                     files={moodboardFiles}
-                    onAdd={f => setMoodboardFiles(prev => [...prev, f])}
+                    onAdd={addMoodboardFile}
                     onRemove={id => setMoodboardFiles(prev => prev.filter(f => f.id !== id))}
+                    onError={setAttachError}
+                    accept={ACCEPT_INSPIRATION}
+                    checkOpts={INSPIRATION_CHECK}
+                    emptyHint="Images, or a PDF / deck whose look you like"
                     isDark={isDark}
                   />
+                  {(attachError || redesignFile) && (
+                    <div className="sm:col-span-2" aria-live="polite">
+                      {attachError && (
+                        <p role="alert" className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-xl px-4 py-2.5 m-0">{attachError}</p>
+                      )}
+                      {redesignFile && !attachError && (
+                        <p className="text-sm rounded-xl px-4 py-2.5 m-0" style={{ background: isDark ? 'rgba(15,157,88,0.12)' : 'rgba(15,157,88,0.08)', color: isDark ? '#b9e6cc' : '#0b5d36' }}>
+                          Nova will keep the slides, structure and content of "{redesignFile.name}", tighten the wording, and rebuild every slide's design. Tell it in the prompt if you want slides added, cut or merged.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

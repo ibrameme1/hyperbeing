@@ -576,11 +576,46 @@ ATTACH IMAGE CATEGORIES — for each slide set attach_image_categories:
 // MINIMALISTIC_STYLE_REFERENCE (./minimalisticExamples.js). Both style
 // references are consumed by the layered-slide agent (layoutAgent.js).
 
+// Appended to COMPACT_PLAN_PROMPT only when the brief came with files (the
+// default prompt is unchanged). Same line protocol; SLIDE objects gain
+// optional "datasets" / "uploads" / "source_slide" fields.
+const SOURCE_PLAN_RULES = `
+
+The user attached files. Their analyzed content follows the brief as SOURCE MATERIAL:
+- Build the story from it. Use its exact facts, names and numbers in titles and key_points; never invent data.
+- When a slide should show one of the listed datasets, add "datasets":["d1"] (ids from the list) to that SLIDE object.
+- When a slide should use a picture from the files, add "uploads":[N] (the UPLOAD numbers listed) to that SLIDE object.`;
+
+const redesignPlanRules = (count) => `
+
+REDESIGN MODE: the user attached their own deck (THE USER'S CURRENT DECK, below the brief) and wants it made better.
+- Output EXACTLY ${count} slides, one per source slide, in the same order, unless the brief explicitly asks to add, remove, split or merge slides (then follow the brief).
+- Every SLIDE object adds "source_slide":N, the source_slide number it redesigns (null for a slide the brief asked you to add).
+- Keep the user's structure, message, facts, numbers, names and quotes. Improve the wording: titles become takeaway headlines, wordy text is tightened into key_points of at most 12 words, but never drop or change a fact the user wrote.
+- type follows the content (the first slide is the cover when it is a title slide).
+- speaker_note: keep the user's speaker notes (tightened) when present, otherwise write one.`;
+
 // Streaming compact plan — calls callbacks.onHeader(header) and callbacks.onSlide(slide)
 // as each line arrives so the frontend can show rows immediately.
 // Returns { header, slides } for backward-compatible use in runFullFlow.
-export async function generateCompactPlan(message, attachments, userId = null, callbacks = {}) {
+// opts.sourceText: the analyzed source pack (files attached to the brief).
+// opts.redesign:   { count, text, slides } when an uploaded deck is redesigned.
+export async function generateCompactPlan(message, attachments, userId = null, callbacks = {}, opts = {}) {
   const { onHeader, onSlide } = callbacks;
+  const { sourceText = '', redesign = null } = opts;
+
+  if (MOCK_MODE && redesign?.slides?.length) {
+    // Mock redesign: one slide per source slide, content kept verbatim.
+    const slides = redesign.slides.map((s, i) => ({
+      index: i, type: i === 0 ? 'cover' : 'content', title: s.title || `Slide ${s.number}`, subtitle: s.subtitle || null,
+      key_points: String(s.content || '').split('\n').filter(l => /^Text/.test(l)).map(l => l.replace(/^Text[^:]*:\s*/, '').slice(0, 80)).slice(0, 4),
+      speaker_note: '', source_slide: s.number,
+    }));
+    const header = { presentation_title: slides[0]?.title || 'Redesigned deck', total_slides: slides.length, theme: 'modern-minimal', color_palette: {}, message: 'Redesigning your deck slide by slide.' };
+    onHeader?.(header);
+    for (const sl of slides) { await new Promise(r => setTimeout(r, 40)); onSlide?.(sl); }
+    return { header, slides };
+  }
 
   if (MOCK_MODE) {
     await new Promise(r => setTimeout(r, 100));
@@ -605,13 +640,15 @@ export async function generateCompactPlan(message, attachments, userId = null, c
   const _t = Date.now();
   tracer.recordStep(_tid, 'claude_plan_gen', 'started', 0);
 
-  const userContent = buildUserContent(message, attachments);
+  const planText = [message, sourceText, redesign?.text].filter(Boolean).join('\n\n');
+  const userContent = buildUserContent(planText, attachments);
   const t0 = Date.now();
-  logger.info('claude compact plan start', { messageLen: message.length });
+  logger.info('claude compact plan start', { messageLen: planText.length, withSources: !!sourceText, redesign: redesign?.count || 0 });
 
   const stream = client.messages.stream(...claudeRequest({
-    max_tokens: 3000,
-    system: COMPACT_PLAN_PROMPT,
+    // A redesign of a long deck needs room for one SLIDE line per source slide.
+    max_tokens: redesign ? Math.min(12000, 3000 + redesign.count * 250) : 3000,
+    system: COMPACT_PLAN_PROMPT + (sourceText ? SOURCE_PLAN_RULES : '') + (redesign ? redesignPlanRules(redesign.count) : ''),
     messages: [{ role: 'user', content: userContent }],
   }));
 

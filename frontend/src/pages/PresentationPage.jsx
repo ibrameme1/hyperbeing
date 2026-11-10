@@ -25,12 +25,18 @@ const GENERATING_MESSAGES = [
 ];
 
 // ─── Generating screen ─────────────────────────────────────────────────────
-function GeneratingScreen() {
+// While the attached files are being read (source_analyzing), the screen
+// says so: that step can take 20-60s for a long PDF or a big deck.
+function GeneratingScreen({ sourceFiles = [] }) {
   const [msgIdx, setMsgIdx] = useState(0);
+  const messages = sourceFiles.length
+    ? [`Reading ${sourceFiles.length === 1 ? `"${sourceFiles[0]}"` : `your ${sourceFiles.length} files`}…`, 'Pulling out the numbers worth charting…', 'Noting the facts your slides will use…', 'Looking at the pictures in your files…']
+    : GENERATING_MESSAGES;
   useEffect(() => {
-    const t = setInterval(() => setMsgIdx(i => (i + 1) % GENERATING_MESSAGES.length), 2800);
+    setMsgIdx(0);
+    const t = setInterval(() => setMsgIdx(i => (i + 1) % messages.length), 2800);
     return () => clearInterval(t);
-  }, []);
+  }, [messages.length]);
 
   return (
     <div
@@ -60,7 +66,7 @@ function GeneratingScreen() {
               transition={{ duration: 0.35 }}
               className="text-white/65 text-sm min-h-[20px]"
             >
-              {GENERATING_MESSAGES[msgIdx]}
+              {messages[msgIdx % messages.length]}
             </motion.p>
           </AnimatePresence>
         </div>
@@ -110,6 +116,7 @@ export default function PresentationPage() {
     }));
   });
   const [totalSlides, setTotalSlides] = useState(0);
+  const [sourceFiles, setSourceFiles] = useState([]); // files being read before planning
   const [generationStage, setGenerationStage] = useState(0);
   const [slidePlan, setSlidePlan] = useState([]);
   const [currentPlan, setCurrentPlan] = useState('free');
@@ -241,7 +248,13 @@ export default function PresentationPage() {
         startPolling(presId);
       }
 
+      if (event.type === 'source_analyzing') {
+        setSourceFiles(Array.isArray(event.files) ? event.files : []);
+        setPhase(p => (p === 'viewing' || p === 'plan_reveal') ? p : 'generating');
+      }
+
       if (event.type === 'plan_started') {
+        setSourceFiles([]);
         // Header parsed — we know how many slides to expect; switch to plan_reveal immediately
         const count = event.total_slides || 0;
         if (count > 0) {
@@ -520,7 +533,7 @@ export default function PresentationPage() {
   }
 
   if (phase === 'generating') {
-    return <GeneratingScreen />;
+    return <GeneratingScreen sourceFiles={sourceFiles} />;
   }
 
   if (phase === 'plan_reveal') {

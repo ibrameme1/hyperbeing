@@ -503,8 +503,12 @@ async function buildLayeredSlideInner({
       const dataUrl = l.source === 'upload' ? await uploadRef(l.upload) : brandLogos.get(l.brand.toLowerCase());
       if (!dataUrl) continue;
       // Logos uploaded on a solid background (JPEG, white box) get that
-      // background keyed out so they sit cleanly on the slide.
-      const buf = await ensureTransparent(Buffer.from(dataUrl.split(',')[1], 'base64'));
+      // background keyed out so they sit cleanly on the slide. Pictures taken
+      // from the user's files (deck photos, screenshots, product shots placed
+      // as-is) are photographs: keying their edges would eat into them.
+      const raw = Buffer.from(dataUrl.split(',')[1], 'base64');
+      const isFilePicture = l.source === 'upload' && !!uploads[l.upload]?.source_doc;
+      const buf = isFilePicture ? raw : await ensureTransparent(raw);
       const trimmed = await trimTransparent(buf) || { buffer: buf, width: l.w, height: l.h };
       l.file = await storeBuffer(trimmed.buffer); created.push(l.file);
       l.src = assetUrl(presentationId, l.file);

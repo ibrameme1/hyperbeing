@@ -210,3 +210,11 @@
 - **`POST /:id/unlock-slides` still awaits the builds before responding** (now parallel, ~1-2 min worst case vs the 5-min axios timeout). **Fix:** respond immediately + SSE, once the frontend handles it (Stage 2).
 - **Layout latency dominates**: Claude takes ~32-64s to write a dense layout (measured 2026-11-01). Image generation now starts while it streams; further cuts (smaller prompts, splitting dense layouts) are open.
 - **PPTX export** — DONE (2026-11-02): `GET /:id/export/pptx`, measured ~2 s / ~4 MB for 9 real layered slides. Gradient text exports as the gradient's middle colour (pptxgenjs has no gradient text); frosted-glass blur exports as a translucent fill.
+
+## 23. Files attached to briefs — known limits (2026-11)
+
+- **Files are uploaded as base64 JSON, twice** (once to `/analyze`, once to `POST /`), within the 50 MB body limit. A multipart upload endpoint returning an upload id would halve traffic and lift the size ceiling.
+- **Ingest runs on the request thread.** Parsing a 25 MB workbook or re-encoding 10 deck pictures blocks the event loop for up to ~1-2 s. Move to a worker thread if large files become common.
+- **Only the extracted digest is kept.** Retries/unlocks/added slides see the source pack, not the raw files; AI edits of a slide don't see file pictures that weren't on it. PDFs are read once (source analysis); `/analyze` only sees their name and page count.
+- **No legacy formats** (.ppt/.xls/.doc, Keynote/Numbers/Pages) and no password-protected files — users are told to re-save. Slide-master/layout placeholder text that isn't on the slide itself isn't extracted; EMF/WMF/SVG pictures inside decks are skipped.
+- **Source analysis costs tokens but no credits** (like the outline); a 100-page PDF is ~$0.5 of input. Credits are still only charged per built slide.

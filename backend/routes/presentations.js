@@ -19,6 +19,11 @@ import {
   suggestPlanForCost, novaInsufficientCredits, previewEditCost, isAdmin,
 } from '../services/stripeService.js';
 import { validateAttachments } from '../middleware/attachments.js';
+import { ingestAttachments, splitStored, FileRejected, FILE_LIMITS } from '../services/fileIngest.js';
+import {
+  analyzeSourceMaterial, composeBrief, sourceBriefText, redesignDeckOf, redesignPlanContext,
+  attachRedesignSources, slideDatasetsText,
+} from '../services/sourceAnalysis.js';
 import { assertPublicUrl } from '../services/urlGuard.js';
 import { validate, isString, isOptionalString, isEnum, isArray, isIntBetween } from '../middleware/validate.js';
 import { createPresentationLimiter, addSlidesLimiter, analyzeLimiter } from '../middleware/rateLimits.js';
@@ -88,7 +93,9 @@ async function loadDeckContext(db, pres, userId) {
     color_palette: plan.color_palette || {},
     design: plan.design,
   };
-  const brief = firstUserMsg?.content || header.presentation_title || '';
+  // The analyzed source pack (files attached to the brief) is folded into the
+  // brief, so retries / unlocks / added slides see the same facts and data.
+  const brief = composeBrief(firstUserMsg?.content || header.presentation_title || '', plan.source);
   const deckDesign = await ensureDeckDesign({ db, presentationId: pres.id, header, slides, brief, uploads, userId });
   return {
     header, deckDesign, brief, uploads,
@@ -102,6 +109,11 @@ function outlineOf(slide) {
   return {
     slide_index: slide.index, type: slide.type, title: slide.title,
     subtitle: slide.subtitle ?? null, key_points: slide.key_points || [], speaker_note: slide.speaker_note || '',
+    // From the user's files (redesign / data): needed when the slide is built later.
+    ...(slide.source_slide ? { source_slide: slide.source_slide } : {}),
+    ...(slide.source_content ? { source_content: slide.source_content } : {}),
+    ...(slide.source_data ? { source_data: slide.source_data } : {}),
+    ...(Array.isArray(slide.uploads) ? { uploads: slide.uploads } : {}),
   };
 }
 
@@ -460,12 +472,28 @@ router.post('/analyze', authenticateToken, costScope('analyze'), analyzeLimiter,
   if (message && message.length > 50_000) {
     return res.status(400).json({ error: 'Message too long (max 50,000 characters)' });
   }
-  const attachmentsErr = validateAttachments(attachments);
+  const attachmentsErr = validateAttachments(attachments, FILE_LIMITS.maxImages + FILE_LIMITS.maxDocuments, 'attachments', { allowDocuments: true });
   if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
   try { checkTokenBudget(req.user.id); } catch (err) {
     if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
     throw err;
   }
+  // Validate + extract files now so a bad file fails here, before the
+  // question flow, with the same message the create call would give.
+  let ingested;
+  try { ingested = await ingestAttachments(attachments); } catch (err) {
+    if (err instanceof FileRejected) return res.status(400).json({ error: err.message });
+    logger.error('attachment ingest failed', { errorMessage: err.message });
+    return res.status(400).json({ error: 'We couldn\'t read one of your files. Try re-saving it or uploading a different format.' });
+  }
+  // The preflight questions only need to know WHAT the files are about: they
+  // get the extracted text (short) and the user's own images. PDFs are read in
+  // full once, at creation (source analysis), not twice.
+  const { uploads: analyzeImages } = splitStored(ingested.stored);
+  const filesNote = ingested.documents.length
+    ? `\n\nATTACHED FILES (extracted; use them to ask sharper questions, never ask for what they already answer):\n${ingested.documents.map(d => `--- "${d.name}" (${d.purpose === 'redesign' ? 'the user\'s current deck, to redesign' : d.purpose === 'inspiration' ? 'design inspiration' : 'content / data'}) ---\n${String(d.digest).slice(0, 6000)}`).join('\n')}`
+    : '';
+  const analyzeMessage = `${message || ''}${filesNote}`;
 
   const webSearch = req.body.webSearch === true;
 
@@ -477,7 +505,7 @@ router.post('/analyze', authenticateToken, costScope('analyze'), analyzeLimiter,
   res.flushHeaders();
 
   try {
-    const analysis = await analyzePresentationStream(message, attachments, req.user.id, {
+    const analysis = await analyzePresentationStream(analyzeMessage, analyzeImages.filter(a => !a.source_doc), req.user.id, {
       webSearch,
       onEvent: (ev) => { res.write(`data: ${JSON.stringify(ev)}\n\n`); },
     });
@@ -491,7 +519,7 @@ router.post('/analyze', authenticateToken, costScope('analyze'), analyzeLimiter,
 });
 
 // ─── Create presentation + kick off async full flow ───────────────────────
-router.post('/', authenticateToken, costScope('deck_create'), createPresentationLimiter, (req, res) => {
+router.post('/', authenticateToken, costScope('deck_create'), createPresentationLimiter, async (req, res) => {
   // `style` (classic / minimalistic) is gone: one design system, where Claude
   // picks each deck's look from the brief. Old clients may still send it; it
   // is ignored.
@@ -505,7 +533,7 @@ router.post('/', authenticateToken, costScope('deck_create'), createPresentation
   if (message && message.length > 50_000) {
     return res.status(400).json({ error: 'Message too long (max 50,000 characters)' });
   }
-  const attachmentsErr = validateAttachments(attachments);
+  const attachmentsErr = validateAttachments(attachments, FILE_LIMITS.maxImages + FILE_LIMITS.maxDocuments, 'attachments', { allowDocuments: true });
   if (attachmentsErr) return res.status(400).json({ error: attachmentsErr });
   if (!VALID_ASPECT_RATIOS.includes(aspectRatio)) {
     return res.status(400).json({ error: `Invalid aspect ratio. Must be one of: ${VALID_ASPECT_RATIOS.join(', ')}` });
@@ -513,6 +541,17 @@ router.post('/', authenticateToken, costScope('deck_create'), createPresentation
   try { checkTokenBudget(req.user.id); } catch (err) {
     if (err.message === 'TOKEN_LIMIT_EXCEEDED') return res.status(402).json({ error: 'You\'ve reached your monthly token limit. Upgrade your plan to continue.', code: 'TOKEN_LIMIT_EXCEEDED' });
     throw err;
+  }
+
+  // Validate every file (type by magic bytes, ZIP/macro safety, size/page
+  // limits) and extract its content BEFORE anything is created, so a bad file
+  // is a plain 400 with a reason. Only the extracted description is stored —
+  // never the raw Office/PDF bytes.
+  let ingested;
+  try { ingested = await ingestAttachments(attachments); } catch (err) {
+    if (err instanceof FileRejected) return res.status(400).json({ error: err.message });
+    logger.error('attachment ingest failed', { errorMessage: err.message });
+    return res.status(400).json({ error: 'We couldn\'t read one of your files. Try re-saving it or uploading a different format.' });
   }
 
   // Credits are deducted in runFullFlow() once Claude returns the final
@@ -531,7 +570,7 @@ router.post('/', authenticateToken, costScope('deck_create'), createPresentation
   db.prepare(
     `INSERT INTO messages (id, presentation_id, role, content, attachments)
      VALUES (?, ?, 'user', ?, ?)`
-  ).run(msgId, id, message, JSON.stringify(attachments));
+  ).run(msgId, id, message, JSON.stringify(ingested.stored));
 
   // Respond immediately — Claude planning + image generation run async
   res.status(201).json({
@@ -543,7 +582,9 @@ router.post('/', authenticateToken, costScope('deck_create'), createPresentation
 
   const userId = req.user.id;
   const _traceId = requestContext.getStore()?.requestId;
-  withCostContext({ presentationId: id }, () => runFullFlow(id, message, attachments, userId, _traceId)).catch(err => {
+  // PDFs (and the raw tables used by the fallback analysis) are handed over in
+  // memory only; they're read once by the source analysis and never stored.
+  withCostContext({ presentationId: id }, () => runFullFlow(id, message, userId, _traceId, { pdfs: ingested.pdfs, documents: ingested.documents })).catch(err => {
     logger.error('slide flow failed', { errorMessage: err.message, stack: err.stack?.split('\n').slice(0,4).join('\n') });
     broadcast(id, { type: 'error', message: err.message });
     const errDb = getDb();
@@ -552,7 +593,7 @@ router.post('/', authenticateToken, costScope('deck_create'), createPresentation
   });
 });
 
-async function runFullFlow(presentationId, message, attachments, userId = null, traceId = null) {
+async function runFullFlow(presentationId, message, userId = null, traceId = null, { pdfs = [], documents: liveDocuments = null } = {}) {
   const db = getDb();
   const _t = Date.now();
   tracer.recordStep(traceId, 'full_flow', 'started', 0);
@@ -568,7 +609,27 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
     .get(presentationId);
   let userAttachments = [];
   try { userAttachments = JSON.parse(firstUserMsg?.attachments || '[]'); } catch {}
-  const allImages = userAttachments.filter(a => a.data);
+  // allImages = every image upload, in stored order (UPLOAD N indices): the
+  // user's own images first, then pictures extracted from their files.
+  const { uploads: allImages, documents: storedDocuments } = splitStored(userAttachments);
+  const documents = liveDocuments || storedDocuments;
+  const userImages = allImages.filter(a => !a.source_doc);
+
+  // ── Phase 0: read the user's files (PDF / PPTX / XLSX / DOCX / CSV / text) ──
+  // One Claude call turns them into a source pack (facts, chartable datasets,
+  // picture notes, design inspiration, redesign notes) that every later call
+  // sees through the composed brief.
+  let source = null;
+  if (documents.length) {
+    broadcast(presentationId, { type: 'source_analyzing', files: documents.map(d => d.name) });
+    source = await analyzeSourceMaterial({ brief: message, documents, pdfs, uploads: allImages, userId });
+    db.prepare(`UPDATE presentations SET slide_plan = ? WHERE id = ?`).run(JSON.stringify({ source }), presentationId);
+  }
+  const brief = composeBrief(message, source);
+  // A PPTX marked "redesign": keep its structure (one slide per visible slide)
+  // and content, rebuild every slide at the quality bar.
+  const redesignDoc = redesignDeckOf(documents);
+  const redesign = redesignDoc ? redesignPlanContext(redesignDoc) : null;
 
   const slidePromises = [];
   const completedSlides = new Map();
@@ -594,7 +655,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
   const slides = [];
   let pendingDeckDesign = null;
 
-  const { header } = await generateCompactPlan(message, attachments, userId, {
+  const { header } = await generateCompactPlan(message, userImages, userId, {
     onHeader(h) {
       // As soon as we know the total count, switch the frontend to plan_reveal
       broadcast(presentationId, { type: 'plan_started', total_slides: h.total_slides || 0 });
@@ -602,7 +663,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
       // Start the deck design system now, in parallel with the rest of the
       // outline streaming — it only needs the header + brief, and it is on the
       // critical path of every slide.
-      pendingDeckDesign = designDeckSystem({ header: h, slides: [], brief: message, uploads: allImages, userId });
+      pendingDeckDesign = designDeckSystem({ header: h, slides: [], brief, uploads: allImages, userId });
       pendingDeckDesign.catch(() => {}); // awaited (and failure-handled) in ensureDeckDesign
       // Warm the slide-layout prompt cache so the parallel slide layouts read
       // it instead of each writing it. It starts right AFTER deck design: both
@@ -631,7 +692,17 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
         slide: { index: slide.index, type: slide.type, title: slide.title, key_points: (slide.key_points || []).slice(0, 2) },
       });
     },
-  });
+  }, { sourceText: sourceBriefText(source), redesign: redesign && { ...redesign, slides: redesignDoc.deck.slides.filter(s => !s.hidden) } });
+
+  // Give each planned slide what its layout call needs from the files: the
+  // original slide (redesign) and the exact data the plan assigned to it.
+  if (source || redesignDoc) {
+    const enriched = attachRedesignSources(slides, redesignDoc, allImages);
+    for (let i = 0; i < slides.length; i++) {
+      const data = slideDatasetsText(enriched[i], source);
+      slides[i] = data ? { ...enriched[i], source_data: data } : enriched[i];
+    }
+  }
 
   if (!headerBroadcast) {
     broadcast(presentationId, { type: 'plan_started', total_slides: slides.length });
@@ -639,7 +710,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
 
   // Persist full plan to DB now that all slides are collected
   db.prepare(`UPDATE presentations SET slide_plan = ? WHERE id = ?`)
-    .run(JSON.stringify({ ...header, slides }), presentationId);
+    .run(JSON.stringify({ ...header, ...(source ? { source } : {}), slides }), presentationId);
 
   // plan_ready used for catch-up replay on reconnect
   broadcast(presentationId, {
@@ -682,7 +753,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
   // that every layer of every slide is generated against — the consistency
   // anchor that makes separately generated layers look like one designer's.
   const deckDesign = await ensureDeckDesign({
-    db, presentationId, header, slides, brief: message, uploads: allImages, userId, pending: pendingDeckDesign,
+    db, presentationId, header, slides, brief, uploads: allImages, userId, pending: pendingDeckDesign,
   });
   const siblingTitles = [...slides].sort((a, b) => a.index - b.index).map(s => s.title);
 
@@ -719,7 +790,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
     broadcast(presentationId, { type: 'slide_generating', index: slide.index });
 
     const promise = buildLayeredSlide({
-      presentationId, slide, header, deckDesign, brief: message, uploads: allImages, userId,
+      presentationId, slide, header, deckDesign, brief, uploads: allImages, userId,
       aspectRatio, siblingTitles,
       onLayout: (layout) => broadcast(presentationId, { type: 'slide_layout', index: slide.index, layout }),
       onLayer: (layer) => broadcast(presentationId, { type: 'slide_layer_ready', index: slide.index, layer }),
@@ -784,7 +855,7 @@ async function runFullFlow(presentationId, message, attachments, userId = null, 
 
   // Persist final slide_plan with full outline data
   db.prepare(`UPDATE presentations SET slide_plan = ? WHERE id = ?`)
-    .run(JSON.stringify({ ...header, design: deckDesign, slides: allSlides.map(({ image_data, layout, gen_stats, ...rest }) => rest) }), presentationId);
+    .run(JSON.stringify({ ...header, ...(source ? { source } : {}), design: deckDesign, slides: allSlides.map(({ image_data, layout, gen_stats, ...rest }) => rest) }), presentationId);
 
   db.prepare(`UPDATE presentations SET status = 'completed', slides_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
     .run(JSON.stringify(allSlides), presentationId);

@@ -112,15 +112,30 @@ function imageBlock(dataUrl, mime) {
   };
 }
 
+// Which uploads a call is shown. The user's own images (and pictures from
+// files marked as design inspiration) guide every call. Pictures extracted from
+// their other files are only shown to the slide they belong to: the slide of
+// the redesigned deck they came from, or the slides the plan assigned them to
+// ("uploads":[N]). Indices stay GLOBAL, so "upload:N" means the same image
+// everywhere (layout refs, logos, edits).
+export function uploadVisible(u, i, slide = null) {
+  if (!u?.data) return false;
+  if (!u.source_doc || u.category === 'moodboard') return true;
+  if (!slide) return false;
+  if (Array.isArray(slide.uploads) && slide.uploads.map(Number).includes(i)) return true;
+  return !!(Array.isArray(u.slides) && slide.source_slide && u.slides.includes(Number(slide.source_slide)));
+}
+
 // The user's brief attachments, labelled with the index the layout refers to
 // them by ("upload:N").
-function uploadsContent(uploads) {
+function uploadsContent(uploads, slide = null) {
   const parts = [];
   uploads.forEach((u, i) => {
-    if (!u?.data) return;
+    if (!uploadVisible(u, i, slide)) return;
     const cat = u.category === 'moodboard' ? 'moodboard / style reference'
+      : u.category === 'document' ? `picture from the user's file "${String(u.source_doc || '').slice(0, 60)}"${u.slides ? ` (their slide ${u.slides.join(', ')})` : ''}`
       : u.category ? 'branding / logo / product picture' : 'reference image';
-    parts.push({ type: 'text', text: `UPLOAD ${i} (${cat}${u.name ? `, file "${String(u.name).slice(0, 60)}"` : ''}):` });
+    parts.push({ type: 'text', text: `UPLOAD ${i} (${cat}${u.name && !u.source_doc ? `, file "${String(u.name).slice(0, 60)}"` : ''}):` });
     parts.push(imageBlock(u.data, u.mimeType));
   });
   return parts;
@@ -208,8 +223,8 @@ export async function designDeckSystem({ header, slides, brief, uploads = [], us
   if (MOCK_MODE) return mockDeckDesign();
   if (FILES_MODE) {
     const outline = slides.map(sl => `${sl.index}. [${sl.type}] ${sl.title}`).join('\n');
-    const { response } = filesAgent('deck', { outline, brief: String(brief || '').slice(0, 12000) }, {
-      tool: DECK_SYSTEM_TOOL, header, outline, brief: String(brief || '').slice(0, 12000), uploads: uploads.length,
+    const { response } = filesAgent('deck', { outline, brief: String(brief || '').slice(0, 20000) }, {
+      tool: DECK_SYSTEM_TOOL, header, outline, brief: String(brief || '').slice(0, 20000), uploads: uploads.length,
     });
     if (!response) throw new Error('deck design pending (files mode)');
     return sanitizeDeep(response);
@@ -219,7 +234,7 @@ export async function designDeckSystem({ header, slides, brief, uploads = [], us
   tracer.recordStep(_tid, 'claude_deck_design', 'started', 0);
   const outline = slides.map(s => `${s.index}. [${s.type}] ${s.title}`).join('\n');
   const content = [
-    { type: 'text', text: `PRESENTATION: ${header?.presentation_title || ''}\nTHEME HINT: ${header?.theme || ''}\nPALETTE HINT: ${JSON.stringify(header?.color_palette || {})}\n\nOUTLINE:\n${outline}\n\nORIGINAL BRIEF:\n${String(brief || '').slice(0, 12000)}` },
+    { type: 'text', text: `PRESENTATION: ${header?.presentation_title || ''}\nTHEME HINT: ${header?.theme || ''}\nPALETTE HINT: ${JSON.stringify(header?.color_palette || {})}\n\nOUTLINE:\n${outline}\n\nORIGINAL BRIEF:\n${String(brief || '').slice(0, 20000)}` },
     ...uploadsContent(uploads),
   ];
   // If the layout warm-up is running, let it finish: deck design then READS
@@ -540,8 +555,11 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
     slide.speaker_note ? `Speaker note: ${slide.speaker_note}` : null,
     instruction ? `\nSPECIFIC DIRECTION FOR THIS SLIDE: ${instruction}` : null,
     '',
+    slide.source_content ? `\nTHE USER'S ORIGINAL VERSION OF THIS SLIDE (from the deck they asked to redesign; positions are % of their slide). Keep its content, facts and intent; you may keep, improve or replace its structure, but the result must meet the quality bar:\n${String(slide.source_content).slice(0, 4500)}` : null,
+    slide.source_data ? `\nDATA FOR THIS SLIDE (from the user's files): show it as a native chart layer with these exact values and categories (never invent or change a number):\n${String(slide.source_data).slice(0, 3000)}` : null,
+    '',
     `ORIGINAL BRIEF (use its exact copy, numbers, brand names and art direction wherever it describes this slide):\n${String(brief || '').slice(0, 20000)}`,
-    uploads.length ? `\nThe user uploaded ${uploads.length} image(s), shown below as UPLOAD 0..${uploads.length - 1}. Use them wherever applicable: place uploaded logos natively ("logo" with source "upload"), and attach uploads as refs to the layers they should guide.` : null,
+    uploads.some((u, i) => uploadVisible(u, i, slide)) ? `\nThe user's images are shown below, each labelled UPLOAD N. Use them wherever applicable: place uploaded logos natively ("logo" with source "upload"); a real photo / product shot / screenshot from their files that must appear unchanged is placed the same way (a "logo" layer with source "upload" and that UPLOAD number: it is shown as-is, contained in its box); otherwise attach uploads as refs to the generated layers they should guide.` : null,
   ].filter(v => v !== null).join('\n');
 
   if (FILES_MODE) {
@@ -563,7 +581,7 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
   const response = await streamToolCall(getClient(), claudeRequest({
     max_tokens: 12000,
     ...layoutPrefix(aspectRatio),
-    messages: [{ role: 'user', content: [...referenceSlideBlocks(), { type: 'text', text }, ...uploadsContent(uploads)] }],
+    messages: [{ role: 'user', content: [...referenceSlideBlocks(), { type: 'text', text }, ...uploadsContent(uploads, slide)] }],
   }, { tool: LAYOUT_TOOL.name }), {
     onJson: onPartial ? (json) => {
       const parts = extractCompletedLayoutParts(json);
