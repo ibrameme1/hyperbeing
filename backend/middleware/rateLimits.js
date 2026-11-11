@@ -114,6 +114,16 @@ export const analyzeLimiter = rateLimit({
   handler: (req, res, next, options) => handler(res, options),
 });
 
+// 60 file uploads per hour (each runs validation + extraction on the server)
+export const assetUploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.userId || ipKeyGenerator(req),
+  handler: (req, res, next, options) => handler(res, options),
+});
+
 // 10 checkout sessions per hour per IP (prevent Stripe abuse)
 export const billingLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,

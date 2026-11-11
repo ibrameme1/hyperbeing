@@ -5,7 +5,7 @@ import { useDropzone } from 'react-dropzone';
 import {
   Sparkles, Send, X, Clock, Trash2, Loader2,
   ImageIcon, Palette, Plus, ChevronDown, ChevronUp, Zap,
-  Bot, Search, Globe,
+  Bot, Search, Globe, FileText, FileSpreadsheet, FileJson, Presentation,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
@@ -18,7 +18,10 @@ import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
 import { SkeletonDashboardPage, SkeletonCard } from '../components/Skeleton';
 import FeedbackButton from '../components/FeedbackButton';
-import { fileToImageAttachment } from '../utils/imageAttachment';
+import {
+  fileToAttachment, checkFile, formatBytes, isImageFile, isDocumentFile, uploadAsset, assetMetaLabel, extOf,
+  ACCEPT_IMAGES, ACCEPT_DOCUMENTS, ACCEPT_INSPIRATION, MAX_DOCUMENTS, MAX_IMAGES, MAX_TOTAL_DOCUMENT_BYTES,
+} from '../utils/fileAttachment';
 
 // Builds the authed URL for a presentation's thumbnail image. Access tokens
 // rotate every 15 min, so a leaked URL goes stale quickly.
@@ -215,21 +218,26 @@ const PLACEHOLDER_EXAMPLES = [
 const PLACEHOLDER_TEXT = PLACEHOLDER_EXAMPLES[new Date().getDay() % PLACEHOLDER_EXAMPLES.length];
 
 // ─── Attachment Drop Zone ──────────────────────────────────────────────────
-function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove, isDark }) {
-  const onDrop = useCallback(accepted => {
-    accepted.forEach(async file => {
-      try {
-        const { data, mimeType } = await fileToImageAttachment(file);
-        onAdd({ id: Math.random().toString(36).slice(2), name: file.name, type: 'image', mimeType, data });
-      } catch {}
-    });
-  }, [onAdd]);
+const DATA_CHECK = { allowImages: false };
+const IMAGE_CHECK = { allowDocuments: false };
+const INSPIRATION_CHECK = { docKinds: ['pdf', 'pptx'] };
+const DOC_ICONS = { pdf: FileText, pptx: Presentation, xlsx: FileSpreadsheet, csv: FileSpreadsheet, tsv: FileSpreadsheet, docx: FileText, txt: FileText, md: FileText, json: FileJson };
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { 'image/*': [] },
-    multiple: true,
-  });
+// onFile(file) receives each accepted file: the parent reads images inline
+// and uploads documents to the asset library (once) as soon as they're dropped.
+function AttachZone({ label, icon: Icon, accentColor, files, onFile, onRemove, isDark, accept, checkOpts = {}, emptyHint, onError }) {
+  const onDrop = useCallback((accepted, rejected) => {
+    for (const r of rejected || []) onError?.(checkFile(r.file, checkOpts) || `"${r.file.name}": this file type isn't supported here.`);
+    accepted.forEach(file => {
+      const err = checkFile(file, checkOpts);
+      if (err) { onError?.(err); return; }
+      onFile(file);
+    });
+  }, [onFile, onError, checkOpts]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept, multiple: true });
+  const muted = isDark ? '#555555' : '#888888';
+  const border = isDark ? '#2a2a2a' : '#e8e8e8';
 
   return (
     <div style={{
@@ -237,26 +245,15 @@ function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove, is
       borderRadius: 8,
       overflow: 'hidden',
       border: '0.5px solid',
-      borderColor: isDark ? '#2a2a2a' : '#e8e8e8',
+      borderColor: border,
       boxShadow: isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.06)',
     }}>
-      <div style={{
-        padding: '12px 16px',
-        borderBottom: '0.5px solid',
-        borderColor: isDark ? '#2a2a2a' : '#e8e8e8',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-      }}>
-        <div style={{
-          width: 28, height: 28, borderRadius: 8, display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          background: accentColor + '18', flexShrink: 0,
-        }}>
+      <div style={{ padding: '12px 16px', borderBottom: '0.5px solid', borderColor: border, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: accentColor + '18', flexShrink: 0 }}>
           <Icon size={14} style={{ color: accentColor }} />
         </div>
         <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600, color: isDark ? '#f0f0ee' : '#0d0b1a' }}>{label}</span>
-        <span style={{ fontSize: 11, color: isDark ? '#555555' : '#888888', marginLeft: 'auto' }}>{files.length} image{files.length !== 1 ? 's' : ''}</span>
+        <span style={{ fontSize: 11, color: muted, marginLeft: 'auto' }}>{files.length} file{files.length !== 1 ? 's' : ''}</span>
       </div>
 
       <div
@@ -265,26 +262,22 @@ function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove, is
           minHeight: 90,
           padding: 12,
           cursor: 'pointer',
-          background: isDragActive
-            ? (isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.06)')
-            : 'transparent',
+          background: isDragActive ? (isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.06)') : 'transparent',
           outline: isDragActive ? '2px solid rgba(59,130,246,0.5)' : 'none',
           outlineOffset: -2,
           transition: 'background 0.2s',
         }}
       >
-        <input {...getInputProps()} />
+        <input {...getInputProps()} aria-label={`Add files to ${label}`} />
 
         {files.length === 0 ? (
-          <div style={{ height: 66, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <p style={{ fontSize: 12, color: isDark ? '#555555' : '#888888', margin: 0 }}>{isDragActive ? 'Drop here' : 'Drop images or click to browse'}</p>
+          <div style={{ minHeight: 66, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+            <p style={{ fontSize: 12, color: muted, margin: 0 }}>{isDragActive ? 'Drop here' : emptyHint}</p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {files.map(f => (
-              <div key={f.id} style={{ position: 'relative' }} className="group">
-                <img src={f.data} alt={f.name}
-                     style={{ height: 56, width: 56, borderRadius: 8, objectFit: 'cover', border: '0.5px solid', borderColor: isDark ? '#2a2a2a' : '#e8e8e8', display: 'block' }} />
+            {files.map(f => {
+              const removeBtn = (
                 <button
                   onClick={e => { e.stopPropagation(); onRemove(f.id); }}
                   aria-label={`Remove ${f.name}`}
@@ -294,12 +287,38 @@ function AttachZone({ label, icon: Icon, accentColor, files, onAdd, onRemove, is
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     border: '1px solid #2a2a2a', cursor: 'pointer', opacity: 0,
                   }}
-                  className="group-hover:opacity-100 transition-opacity"
+                  className="group-hover:opacity-100 focus:opacity-100 transition-opacity"
                 >
                   <X size={10} />
                 </button>
-              </div>
-            ))}
+              );
+              if (f.type !== 'document') {
+                return (
+                  <div key={f.id} style={{ position: 'relative' }} className="group">
+                    <img src={f.data} alt={f.name}
+                         style={{ height: 56, width: 56, borderRadius: 8, objectFit: 'cover', border: '0.5px solid', borderColor: border, display: 'block' }} />
+                    {removeBtn}
+                  </div>
+                );
+              }
+              const DocIcon = DOC_ICONS[f.kind] || FileText;
+              return (
+                <div key={f.id} style={{ position: 'relative', width: 168 }} className="group" onClick={e => e.stopPropagation()}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, border: '0.5px solid', borderColor: border, background: isDark ? '#1b1b1b' : '#fafafa' }}>
+                    <DocIcon size={18} style={{ color: accentColor, flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <p title={f.name} style={{ margin: 0, fontSize: 12, fontWeight: 500, color: isDark ? '#f0f0ee' : '#0d0b1a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</p>
+                      <p style={{ margin: 0, fontSize: 11, color: muted, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {f.status === 'uploading'
+                          ? <><Loader2 size={10} className="animate-spin" /> Checking file…</>
+                          : f.asset ? assetMetaLabel(f.asset) : `${(f.kind || '').toUpperCase()} · ${formatBytes(f.size)}`}
+                      </p>
+                    </div>
+                  </div>
+                  {removeBtn}
+                </div>
+              );
+            })}
             <div style={{
               height: 56, width: 56, borderRadius: 8,
               border: '1.5px dashed',
@@ -465,6 +484,8 @@ export default function Dashboard() {
     : 'What will you create today?';
   const [moodboardFiles, setMoodboardFiles] = useState([]);
   const [brandingFiles, setBrandingFiles] = useState([]);
+  const [dataFiles, setDataFiles] = useState([]); // PDFs, decks, sheets, docs, CSV/text
+  const [attachError, setAttachError] = useState('');
   const [showZones, setShowZones] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
@@ -472,6 +493,9 @@ export default function Dashboard() {
   const [analysis, setAnalysis] = useState(null);
   const [showQuestionFlow, setShowQuestionFlow] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [pendingAssetIds, setPendingAssetIds] = useState([]);
+  const [pendingSourceId, setPendingSourceId] = useState(null); // files already read by Claude in /analyze
+  const [readingFiles, setReadingFiles] = useState([]); // names shown while Claude reads them
   const [pendingInput, setPendingInput] = useState('');
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('16:9');
   const [webSearchEnabled, setWebSearchEnabled] = useState(() => {
@@ -531,10 +555,54 @@ export default function Dashboard() {
     return () => sse.close();
   }, [user?.id, queryClient]);
 
+  // Images travel inline with the brief (category = how they guide the
+  // look). Documents are uploaded ONCE to the asset library the moment
+  // they're dropped (validated server-side right away) and referenced by id:
+  // Claude decides from the prompt whether a deck is to be redesigned or only
+  // used as material, so there is no toggle.
   const allAttachments = [
-    ...moodboardFiles.map(f => ({ ...f, category: 'moodboard' })),
+    ...moodboardFiles.filter(f => f.type !== 'document').map(f => ({ ...f, category: 'moodboard' })),
     ...brandingFiles.map(f => ({ ...f, category: 'branding' })),
   ];
+  const allDocuments = [...dataFiles, ...moodboardFiles.filter(f => f.type === 'document')];
+  const uploadingFiles = allDocuments.some(f => f.status === 'uploading');
+  const readyAssetIds = allDocuments.filter(f => f.asset).map(f => f.asset.id);
+
+  const addImageTo = useCallback(setter => async file => {
+    setAttachError('');
+    try { const a = await fileToAttachment(file); setter(prev => [...prev, a]); }
+    catch { setAttachError(`"${file.name}" couldn't be read.`); }
+  }, []);
+  const addDocumentTo = useCallback((setter, category) => async file => {
+    setAttachError('');
+    const id = Math.random().toString(36).slice(2);
+    setter(prev => [...prev, { id, name: file.name, type: 'document', kind: extOf(file.name), size: file.size, status: 'uploading' }]);
+    try {
+      const asset = await uploadAsset(api, file, { category });
+      setter(prev => prev.map(f => (f.id === id ? { ...f, status: 'ready', asset } : f)));
+    } catch (err) {
+      setter(prev => prev.filter(f => f.id !== id));
+      setAttachError(err.message);
+    }
+  }, []);
+  const onBrandingFile = useCallback(file => addImageTo(setBrandingFiles)(file), [addImageTo]);
+  const onDataFile = useCallback(file => addDocumentTo(setDataFiles, 'auto')(file), [addDocumentTo]);
+  const onMoodboardFile = useCallback(file => (isImageFile(file) ? addImageTo(setMoodboardFiles)(file) : addDocumentTo(setMoodboardFiles, 'inspiration')(file)), [addImageTo, addDocumentTo]);
+  // Removing an uploaded file also deletes it from the library (best effort).
+  const removeFrom = useCallback(setter => fileId => setter(prev => {
+    const f = prev.find(x => x.id === fileId);
+    if (f?.asset) api.delete(`/assets/${f.asset.id}`).catch(() => {});
+    return prev.filter(x => x.id !== fileId);
+  }), []);
+
+  function attachmentLimitError() {
+    const docs = allDocuments;
+    const images = allAttachments;
+    if (docs.length > MAX_DOCUMENTS) return `You can attach up to ${MAX_DOCUMENTS} files (PDF, PPTX, Excel, Word, CSV, text) per brief.`;
+    if (images.length > MAX_IMAGES) return `You can attach up to ${MAX_IMAGES} images per brief.`;
+    if (docs.reduce((n, d) => n + (d.size || 0), 0) > MAX_TOTAL_DOCUMENT_BYTES) return `Your files add up to more than ${formatBytes(MAX_TOTAL_DOCUMENT_BYTES)}. Remove some or upload smaller versions.`;
+    return null;
+  }
 
   function handleCancelAnalyzing() {
     analyzeAbortRef.current?.abort();
@@ -544,9 +612,13 @@ export default function Dashboard() {
   }
 
   async function handleSubmit() {
-    if (!input.trim() && allAttachments.length === 0) return;
+    if (!input.trim() && allAttachments.length === 0 && readyAssetIds.length === 0) return;
+    if (uploadingFiles) { setSubmitError('Your files are still being checked. One moment…'); return; }
+    const limitErr = attachmentLimitError();
+    if (limitErr) { setSubmitError(limitErr); return; }
     capture('prompt_submitted', {
       has_attachments: allAttachments.length > 0,
+      has_documents: readyAssetIds.length > 0,
       aspect_ratio: selectedAspectRatio,
     });
     const controller = new AbortController();
@@ -587,7 +659,7 @@ export default function Dashboard() {
       const res = await fetch(`${apiBase}/api/presentations/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ message: enrichedMessage, attachments: attachmentsPayload, webSearch: webSearchEnabled }),
+        body: JSON.stringify({ message: enrichedMessage, attachments: attachmentsPayload, asset_ids: readyAssetIds, webSearch: webSearchEnabled }),
         signal: controller.signal,
       });
 
@@ -600,7 +672,7 @@ export default function Dashboard() {
         setSubmitError(
           body.error ||
           (status === 429 ? `You're creating presentations too quickly. Please wait ${body.retryAfter ?? 60} seconds.` :
-           status === 413 ? 'Your brief or attachments are too large. Try shortening your description or using fewer images.' :
+           status === 413 ? 'Your brief or attachments are too large. Try shortening your description or attaching fewer or smaller files.' :
            status === 402 ? 'You\'ve reached your monthly limit. Upgrade your plan to continue.' :
            'Could not analyse your brief. Please try again.')
         );
@@ -612,6 +684,7 @@ export default function Dashboard() {
       const decoder = new TextDecoder();
       let buffer = '';
       let analysis = null;
+      let sourceId = null;
       let streamError = null;
 
       while (true) {
@@ -626,7 +699,9 @@ export default function Dashboard() {
           let ev;
           try { ev = JSON.parse(line.slice(6)); } catch { continue; }
           if (ev.type === 'search') setSearchQueries(prev => [...prev, ev.query]);
-          else if (ev.type === 'done') analysis = ev.analysis;
+          else if (ev.type === 'reading_files') setReadingFiles(ev.files || []);
+          else if (ev.type === 'files_read') setReadingFiles([]);
+          else if (ev.type === 'done') { analysis = ev.analysis; sourceId = ev.source_id || null; }
           else if (ev.type === 'error') streamError = ev.error;
         }
       }
@@ -635,6 +710,8 @@ export default function Dashboard() {
       if (analysis) {
         setPendingInput(enrichedMessage);
         setPendingAttachments(attachmentsPayload);
+        setPendingAssetIds(readyAssetIds);
+        setPendingSourceId(sourceId);
         setAnalysis(analysis);
         setShowQuestionFlow(true);
       } else {
@@ -645,6 +722,7 @@ export default function Dashboard() {
       setSubmitError('Could not analyse your brief. Please try again.');
     } finally {
       setAnalyzing(false);
+      setReadingFiles([]);
       analyzeAbortRef.current = null;
     }
   }
@@ -667,6 +745,9 @@ export default function Dashboard() {
       const { data } = await api.post('/presentations', {
         message: comprehensiveMessage,
         attachments: pendingAttachments,
+        asset_ids: pendingAssetIds,
+        source_id: pendingSourceId,
+        webSearch: webSearchEnabled,
         aspectRatio: selectedAspectRatio,
       });
       track('presentation_created', { presentation_id: data.presentation.id, aspect_ratio: selectedAspectRatio });
@@ -709,28 +790,27 @@ export default function Dashboard() {
     deletePresentation.mutate(id);
   }
 
-  const totalAttachments = allAttachments.length;
+  const totalAttachments = allAttachments.length + allDocuments.length;
 
+  // Files dropped straight on the prompt: images go to Branding & Pictures,
+  // documents to Files & Data (a .pptx defaults to "Redesign it").
   function handleTextareaDrop(e) {
     e.preventDefault();
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    const files = Array.from(e.dataTransfer.files);
     if (!files.length) return;
     setShowZones(true);
-    files.forEach(async file => {
-      try {
-        const { data, mimeType } = await fileToImageAttachment(file);
-        setBrandingFiles(prev => [...prev, {
-          id: Math.random().toString(36).slice(2),
-          name: file.name, type: 'image', mimeType, data,
-        }]);
-      } catch {}
+    files.forEach(file => {
+      const err = checkFile(file);
+      if (err) { setAttachError(err); return; }
+      if (isImageFile(file)) onBrandingFile(file);
+      else if (isDocumentFile(file)) onDataFile(file);
     });
   }
 
   return (
     <>
     <AnimatePresence>
-      {fetchingUrls.length > 0 && (
+      {(fetchingUrls.length > 0 || readingFiles.length > 0) && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -741,7 +821,7 @@ export default function Dashboard() {
           <motion.div
             role="dialog"
             aria-modal="true"
-            aria-label="Reading your links"
+            aria-label={readingFiles.length ? 'Reading your files' : 'Reading your links'}
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
@@ -754,8 +834,12 @@ export default function Dashboard() {
                 <Sparkles size={24} className="text-white" />
               </motion.div>
             </div>
-            <h3 className="font-bold text-lg mb-1" style={{ color: 'var(--text-primary)' }}>Reading your link</h3>
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{fetchingUrls.map(u => { try { return new URL(u).hostname; } catch { return u; } }).join(', ')}</p>
+            <h3 className="font-bold text-lg mb-1" style={{ color: 'var(--text-primary)' }}>{readingFiles.length ? 'Nova is reading your files' : 'Reading your link'}</h3>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              {readingFiles.length
+                ? `${readingFiles.join(', ')}. Your questions come next.`
+                : fetchingUrls.map(u => { try { return new URL(u).hostname; } catch { return u; } }).join(', ')}
+            </p>
           </motion.div>
         </motion.div>
       )}
@@ -967,8 +1051,8 @@ export default function Dashboard() {
                       color: (showZones || totalAttachments > 0) ? '#8B80FF' : (isDark ? '#888' : '#555'),
                     }}
                   >
-                    <ImageIcon size={14} />
-                    <span style={{ display: 'none' }} className="sm:inline-block">Add references</span>
+                    <Plus size={14} />
+                    <span style={{ display: 'none' }} className="sm:inline-block">Add files &amp; references</span>
                     {totalAttachments > 0 && (
                       <span style={{ background: '#5B50FF', color: '#fff', borderRadius: 9999, fontSize: 11, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
                         {totalAttachments}
@@ -982,7 +1066,7 @@ export default function Dashboard() {
                     <p className="text-xs" style={{ color: isDark ? '#555' : '#aaa' }}>⌘ + Enter</p>
                     <button
                       onClick={handleSubmit}
-                      disabled={analyzing || (!input.trim() && allAttachments.length === 0)}
+                      disabled={analyzing || uploadingFiles || (!input.trim() && allAttachments.length === 0 && readyAssetIds.length === 0)}
                       className="py-2 px-5 text-sm font-semibold text-white rounded-btn flex items-center gap-2 disabled:opacity-40"
                       style={{ background: '#5B50FF', border: 'none', cursor: 'pointer' }}
                     >
@@ -1002,7 +1086,7 @@ export default function Dashboard() {
                 {/* Mobile-only: full-width Create button */}
                 <button
                   onClick={handleSubmit}
-                  disabled={analyzing || (!input.trim() && allAttachments.length === 0)}
+                  disabled={analyzing || uploadingFiles || (!input.trim() && allAttachments.length === 0 && readyAssetIds.length === 0)}
                   className="sm:hidden w-full ios-btn py-3 text-sm justify-center"
                 >
                   <Send size={15} /> Create presentation
@@ -1022,26 +1106,58 @@ export default function Dashboard() {
                   initial={{ opacity: 0, height: 0, marginTop: 0 }}
                   animate={{ opacity: 1, height: 'auto', marginTop: 12 }}
                   exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                  className="grid grid-cols-2 gap-3 overflow-hidden"
+                  className="grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-hidden"
                 >
+                  <div className="sm:col-span-2">
+                    <AttachZone
+                      label="Files & Data"
+                      icon={FileSpreadsheet}
+                      accentColor="#0F9D58"
+                      files={dataFiles}
+                      onFile={onDataFile}
+                      onRemove={removeFrom(setDataFiles)}
+                      onError={setAttachError}
+                      accept={ACCEPT_DOCUMENTS}
+                      checkOpts={DATA_CHECK}
+                      emptyHint="PowerPoint, PDF, Excel, Word, CSV or text. Nova reads them, charts your data, and can redesign your deck"
+                      isDark={isDark}
+                    />
+                  </div>
                   <AttachZone
                     label="Branding & Pictures"
                     icon={ImageIcon}
                     accentColor="#007AFF"
                     files={brandingFiles}
-                    onAdd={f => setBrandingFiles(prev => [...prev, f])}
-                    onRemove={id => setBrandingFiles(prev => prev.filter(f => f.id !== id))}
+                    onFile={onBrandingFile}
+                    onRemove={removeFrom(setBrandingFiles)}
+                    onError={setAttachError}
+                    accept={ACCEPT_IMAGES}
+                    checkOpts={IMAGE_CHECK}
+                    emptyHint="Logos, product shots, photos"
                     isDark={isDark}
                   />
                   <AttachZone
-                    label="Moodboard"
+                    label="Moodboard & Inspiration"
                     icon={Palette}
                     accentColor="#5B50FF"
                     files={moodboardFiles}
-                    onAdd={f => setMoodboardFiles(prev => [...prev, f])}
-                    onRemove={id => setMoodboardFiles(prev => prev.filter(f => f.id !== id))}
+                    onFile={onMoodboardFile}
+                    onRemove={removeFrom(setMoodboardFiles)}
+                    onError={setAttachError}
+                    accept={ACCEPT_INSPIRATION}
+                    checkOpts={INSPIRATION_CHECK}
+                    emptyHint="Images, or a PDF / deck whose look you like"
                     isDark={isDark}
                   />
+                  <div className="sm:col-span-2" aria-live="polite">
+                    {attachError ? (
+                      <p role="alert" className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-xl px-4 py-2.5 m-0">{attachError}</p>
+                    ) : dataFiles.some(f => f.kind === 'pptx') ? (
+                      <p className="text-xs m-0 px-1" style={{ color: isDark ? '#888' : '#666' }}>
+                        Say "redesign this deck" to have Nova rebuild your PowerPoint slide by slide in its design, keeping your content. Otherwise Nova uses it as material for a new deck.
+                      </p>
+                    ) : null}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

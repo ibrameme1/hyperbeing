@@ -20,11 +20,13 @@ import adminDashboardRouter from './routes/adminDashboard.js';
 import feedbackRoutes from './routes/feedback.js';
 import designRoutes from './routes/design.js';
 import iconRoutes from './routes/icons.js';
+import assetRoutes from './routes/assets.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { logger } from './services/logger.js';
 import { getPostHog } from './services/posthogClient.js';
 import { clearStaleTestSubscriptions } from './services/stripeService.js';
 import { sweepStaleWork, sweepOrphanImages } from './services/recovery.js';
+import { sweepUnattachedAssets } from './services/assets.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -107,6 +109,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/design', designRoutes);
 app.use('/api/icons', iconRoutes);
+app.use('/api/assets', assetRoutes);
 
 // Admin monitoring dashboard — permissive CSP so vis.js CDN and inline scripts load
 app.use('/admin', (req, res, next) => {
@@ -180,6 +183,9 @@ try { sweepStaleWork(); } catch (err) { logger.error('startup sweep failed', { e
 // Delete image files no row references anymore (crash-looped migration leftovers,
 // generations killed mid-flight). Age-guarded so it never touches in-flight work.
 try { sweepOrphanImages(); } catch (err) { logger.error('orphan image sweep failed', { errorMessage: err.message }); }
+// Files uploaded for briefs that were never submitted: on boot and every 6h.
+sweepUnattachedAssets();
+setInterval(sweepUnattachedAssets, 6 * 60 * 60 * 1000).unref();
 clearStaleTestSubscriptions().catch(() => {}); // best-effort cleanup on startup
 app.listen(PORT, '0.0.0.0', () => {
   logger.info('server started', { port: PORT, env: process.env.NODE_ENV || 'development' });

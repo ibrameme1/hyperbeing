@@ -210,3 +210,12 @@
 - **`POST /:id/unlock-slides` still awaits the builds before responding** (now parallel, ~1-2 min worst case vs the 5-min axios timeout). **Fix:** respond immediately + SSE, once the frontend handles it (Stage 2).
 - **Layout latency dominates**: Claude takes ~32-64s to write a dense layout (measured 2026-11-01). Image generation now starts while it streams; further cuts (smaller prompts, splitting dense layouts) are open.
 - **PPTX export** — DONE (2026-11-02): `GET /:id/export/pptx`, measured ~2 s / ~4 MB for 9 real layered slides. Gradient text exports as the gradient's middle colour (pptxgenjs has no gradient text); frosted-glass blur exports as a translucent fill.
+
+## 23. Files attached to briefs — known limits (2026-11)
+
+- **Ingest runs on the request thread.** Parsing a 25 MB workbook or re-encoding 10 deck pictures blocks the event loop for up to ~1-2 s. Move to a worker thread if large files become common.
+- **Files go over the wire as base64 JSON** (one request per file, within the 50 MB body limit). A multipart endpoint would cut ~25% of the bytes and lift the ceiling.
+- **Ticking library files in add-slides / edits re-reads them with Claude** (PDFs in full, prompt-cached for ~5 min) — slower and costlier than relying on the deck's source pack; the UI says so. Web-photo search only runs at deck creation, not for added slides.
+- **Web photos**: Openverse coverage of brands/products is thin; Brave (`BRAVE_SEARCH_API_KEY`) covers more but returns no license info — only enable it after a legal decision. Credits are in speaker notes, not on the slide.
+- **No legacy formats** (.ppt/.xls/.doc, Keynote/Numbers/Pages) and no password-protected files — users are told to re-save. Slide-master placeholder text isn't extracted; EMF/WMF/SVG pictures inside decks are skipped.
+- **Source analysis / web-photo picks cost tokens but no credits** (like the outline). Credits are still only charged per built slide.

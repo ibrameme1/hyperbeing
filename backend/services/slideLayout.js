@@ -380,7 +380,9 @@ function normalizeIcon(l, base) {
 
 function normalizeLogo(l, base) {
   if (l.source === 'upload') {
-    const upload = num(l.upload, 0, 20, null);
+    // Deck uploads: the user's images, pictures from their files, photos found
+    // online, edit references — capped at MAX_DECK_UPLOADS (fileIngest.js).
+    const upload = num(l.upload, 0, 99, null);
     if (upload === null) return null;
     return { ...base, source: 'upload', upload, file: typeof l.file === 'string' ? l.file : undefined, src: typeof l.src === 'string' ? l.src : undefined };
   }
