@@ -296,7 +296,7 @@ function ChartControls({ layer, swatches, onPatch }) {
     <>
       <Row title="Chart type">
         <select value={layer.chart_type} onChange={e => onPatch({ chart_type: e.target.value })} className={inputCls}>
-          {['column', 'bar', 'line', 'area', 'pie', 'donut'].map(t => <option key={t} value={t}>{t}</option>)}
+          {['column', 'bar', 'line', 'area', 'pie', 'donut', 'waterfall'].map(t => <option key={t} value={t}>{t}</option>)}
         </select>
       </Row>
       <Row title="Data">

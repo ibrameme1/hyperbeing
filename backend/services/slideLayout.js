@@ -92,7 +92,7 @@ function anchorRef(a) {
   else if (a.anchor && typeof a.anchor === 'object') pt = [num(a.anchor.x, -0.5, 1.5, 0.5), num(a.anchor.y, -0.5, 1.5, 0.5)];
   return { layer: a.layer.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40), point: pt };
 }
-const CHART_TYPES = ['bar', 'column', 'line', 'area', 'pie', 'donut'];
+const CHART_TYPES = ['bar', 'column', 'line', 'area', 'pie', 'donut', 'waterfall'];
 const SHAPES = ['rect', 'ellipse', 'line'];
 
 // ── primitive sanitizers ────────────────────────────────────────────────────
@@ -247,6 +247,35 @@ function normalizeShape(l, base) {
   };
 }
 
+// "category" may be the category's label or its index.
+function chartAnnotations(v, cats, seriesCount) {
+  if (!Array.isArray(v)) return undefined;
+  const out = [];
+  for (const a of v.slice(0, 6)) {
+    const text = str(a?.text, 60).trim();
+    if (a?.kind === 'line' && text && Number.isFinite(Number(a.value))) {
+      out.push({ kind: 'line', value: Number(a.value), text, color: color(a.color) || undefined });
+      continue;
+    }
+    let index = typeof a?.category === 'number' ? a.category : cats.indexOf(String(a?.category ?? ''));
+    if (index < 0 && Number.isFinite(a?.index)) index = a.index;
+    if (!text || !(index >= 0 && index < cats.length)) continue;
+    out.push({
+      kind: a.kind === 'callout' ? 'callout' : 'marker', index: Math.round(index), text,
+      series: num(a.series, 0, Math.max(0, seriesCount - 1), 0),
+      color: color(a.color) || undefined, text_color: color(a.text_color) || undefined,
+    });
+  }
+  return out.length ? out : undefined;
+}
+
+function withAlpha(hex, alpha) {
+  const m = /^#([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return `rgba(255,255,255,${alpha})`;
+  const n = parseInt(m[1], 16);
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
 function normalizeChart(l, base, fonts) {
   const type = CHART_TYPES.includes(l.chart_type) ? l.chart_type : 'column';
   const categories = Array.isArray(l.categories) ? l.categories.map(c => str(String(c ?? ''), 60)).slice(0, 24) : [];
@@ -267,13 +296,15 @@ function normalizeChart(l, base, fonts) {
     categories: cats,
     series,
     options: {
-      show_values: !!l.options?.show_values,
+      show_values: type === 'waterfall' ? l.options?.show_values !== false : !!l.options?.show_values,
       show_legend: !!l.options?.show_legend,
       show_grid: l.options?.show_grid !== false,
       value_prefix: str(l.options?.value_prefix, 8),
       value_suffix: str(l.options?.value_suffix, 8),
-      axis_color: color(l.options?.axis_color, 'rgba(255,255,255,0.5)'),
-      label_color: color(l.options?.label_color, '#FFFFFF'),
+      // Defaults follow the deck's text colour, so a chart on a light deck
+      // is never white-on-white.
+      axis_color: color(l.options?.axis_color, withAlpha(fonts.text, 0.4)),
+      label_color: color(l.options?.label_color, fonts.text || '#FFFFFF'),
       font: font(l.options?.font, fonts.body),
       font_size: num(l.options?.font_size, 10, 48, 18),
       y_min: l.options?.y_min !== undefined ? num(l.options.y_min, -1e12, 1e12, undefined) : undefined,
@@ -281,6 +312,18 @@ function normalizeChart(l, base, fonts) {
       line_width: num(l.options?.line_width, 1, 16, 4),
       // Per-point colors (bars) — e.g. highlight one bar.
       point_colors: Array.isArray(l.options?.point_colors) ? l.options.point_colors.map(c => color(c) || null).slice(0, 24) : undefined,
+      // Exhibit furniture: stacked bars, a hidden value axis, the colour of
+      // labels drawn inside bars/slices, and annotations pinned to the data
+      // (a dashed marker at a category, or a callout on one point).
+      stacked: !!l.options?.stacked || undefined,
+      hide_axis: !!l.options?.hide_axis || undefined,
+      // Waterfall: which bars are totals (the first always is), and the
+      // colours of rises and falls.
+      totals: Array.isArray(l.options?.totals) ? l.options.totals.map(v => num(v, 0, 23, null)).filter(v => v !== null).slice(0, 8) : undefined,
+      positive_color: color(l.options?.positive_color) || undefined,
+      negative_color: color(l.options?.negative_color) || undefined,
+      value_color: color(l.options?.value_color) || undefined,
+      annotations: chartAnnotations(l.options?.annotations, cats, series.length),
     },
   };
 }
@@ -633,6 +676,9 @@ export function normalizeLayout(raw, { aspectRatio = '16:9', uploadCount = 0, de
   return {
     version: LAYOUT_VERSION,
     canvas,
+    // The slide's art-directed brief, written by Claude before the layers
+    // (kept for AI edits and for debugging what it was aiming at).
+    concept: str(raw.concept, 2000) || undefined,
     composition: ['scene', 'objects', 'editorial', 'native'].includes(raw.composition) ? raw.composition : 'objects',
     style_block: str(raw.style_block, 1500),
     fonts,

@@ -92,6 +92,7 @@ async function loadDeckContext(db, pres, userId) {
   const header = {
     presentation_title: plan.presentation_title || pres.title,
     theme: plan.theme,
+    register: plan.register,
     color_palette: plan.color_palette || {},
     design: plan.design,
   };
@@ -111,6 +112,8 @@ function outlineOf(slide) {
   return {
     slide_index: slide.index, type: slide.type, title: slide.title,
     subtitle: slide.subtitle ?? null, key_points: slide.key_points || [], speaker_note: slide.speaker_note || '',
+    // The outline's visual direction for the slide (developed by the layout call).
+    ...(slide.visual ? { visual: slide.visual } : {}),
     // From the user's files (redesign / data): needed when the slide is built later.
     ...(slide.source_slide ? { source_slide: slide.source_slide } : {}),
     ...(slide.source_doc ? { source_doc: slide.source_doc } : {}),
@@ -1591,7 +1594,7 @@ router.post('/:id/slides/:index/retry', authenticateToken, costScope('retry'), a
     if (slide_indexes.length > 1) prewarmLayoutCache({ aspectRatio: ctx.aspectRatio, userId: req.user.id });
       const result = await buildLayeredSlide({
         presentationId: req.params.id,
-        slide: { index: slide.index, type: slide.type, title: slide.title, subtitle: slide.subtitle, key_points: slide.key_points, speaker_note: slide.speaker_note },
+        slide: { index: slide.index, type: slide.type, title: slide.title, subtitle: slide.subtitle, key_points: slide.key_points, speaker_note: slide.speaker_note, visual: slide.visual },
         ...ctx,
         userId: req.user.id,
         onLayout: (layout) => broadcast(req.params.id, { type: 'slide_layout', index: targetIndex, layout }),
@@ -2115,6 +2118,7 @@ router.post('/:id/unlock-slides', authenticateToken, costScope('unlock'),
       const outline = {
         index: lockedSlide.slide_index, type: lockedSlide.type, title: lockedSlide.title,
         subtitle: lockedSlide.subtitle ?? null, key_points: lockedSlide.key_points || [], speaker_note: lockedSlide.speaker_note || '',
+        visual: lockedSlide.visual,
       };
       try {
         broadcast(req.params.id, { type: 'slide_generating', index: outline.index });

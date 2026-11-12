@@ -1,3 +1,4 @@
+import { chartGeometry, waterfallBars } from './chartGeometry.js';
 import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
@@ -229,7 +230,7 @@ async function addLayeredSlide(pptx, s, layout, { watermark, embeds }) {
           slide.addShape(pptx.ShapeType.roundRect, { ...common, rectRadius: inch(Math.min(l.radius, l.w / 2, l.h / 2)) });
         } else slide.addShape(pptx.ShapeType.rect, common);
       } else if (l.kind === 'chart') {
-        await addChart(pptx, slide, l, box);
+        await addChart(pptx, slide, l, box, pptxColor(bg.color || bg.gradient?.stops?.[0]?.color, '000000').hex);
       } else if (l.kind === 'icon' && l.source === 'lucide') {
         const data = await lucidePng(l.name, l.color || '#FFFFFF', Math.min(l.w, l.h));
         if (data) {
@@ -258,11 +259,31 @@ async function addLayeredSlide(pptx, s, layout, { watermark, embeds }) {
   if (s.speaker_note) slide.addNotes(s.speaker_note);
 }
 
-async function addChart(pptx, slide, l, box) {
+// PowerPoint (via pptxgenjs) has no waterfall: the classic build is a stacked
+// column whose lower series is painted in the slide's background colour.
+function addWaterfall(pptx, slide, l, box, bgHex) {
+  const o = l.options || {};
+  const bars = waterfallBars(l.series[0].values, o.totals).slice(0, l.categories.length);
+  const label = pptxColor(o.label_color, 'FFFFFF').hex;
+  slide.addChart(pptx.ChartType.bar, [
+    { name: 'Base', labels: l.categories, values: bars.map(b => Math.min(b.from, b.to)) },
+    { name: l.series[0].name, labels: l.categories, values: bars.map(b => Math.abs(b.to - b.from)) },
+  ], {
+    ...box, objectName: l.name || l.id, barDir: 'col', barGrouping: 'stacked', barGapWidthPct: 60,
+    chartColors: [bgHex, pptxColor(l.series[0].color || '#4FACFE').hex],
+    showLegend: false, showValue: false,
+    catAxisLabelColor: label, catAxisLabelFontFace: o.font, catAxisLabelFontSize: pt(o.font_size || 18),
+    valAxisLabelColor: label, valAxisLabelFontFace: o.font, valAxisLabelFontSize: pt(o.font_size || 18),
+    valAxisLineShow: false, valGridLine: { style: 'none' }, valAxisMinVal: o.y_min, valAxisMaxVal: o.y_max,
+  });
+}
+
+async function addChart(pptx, slide, l, box, bgHex = 'FFFFFF') {
   const o = l.options || {};
   const typeMap = { column: pptx.ChartType.bar, bar: pptx.ChartType.bar, line: pptx.ChartType.line, area: pptx.ChartType.area, pie: pptx.ChartType.pie, donut: pptx.ChartType.doughnut };
   const type = typeMap[l.chart_type] || pptx.ChartType.bar;
   const round = l.chart_type === 'pie' || l.chart_type === 'donut';
+  if (l.chart_type === 'waterfall') return addWaterfall(pptx, slide, l, box, bgHex);
   const data = (round ? l.series.slice(0, 1) : l.series).map(s => ({ name: s.name, labels: l.categories, values: s.values.map(v => (v === null ? null : v)) }));
   const palette = ['FF2E74', '00FFA3', 'FF8A1F', '4FACFE', 'FFD166', 'B388FF'];
   const colors = round
@@ -272,7 +293,7 @@ async function addChart(pptx, slide, l, box) {
   const axis = pptxColor(o.axis_color, '888888');
   slide.addChart(type, data, {
     ...box, objectName: l.name || l.id,
-    barDir: l.chart_type === 'bar' ? 'bar' : 'col', barGapWidthPct: 60,
+    barDir: l.chart_type === 'bar' ? 'bar' : 'col', barGapWidthPct: 60, barGrouping: o.stacked ? 'stacked' : undefined,
     chartColors: colors, chartColorsOpacity: l.chart_type === 'area' ? 35 : undefined,
     holeSize: l.chart_type === 'donut' ? 60 : undefined,
     showLegend: !!o.show_legend, legendColor: label, legendFontFace: o.font, legendFontSize: pt(o.font_size || 18),
@@ -285,6 +306,20 @@ async function addChart(pptx, slide, l, box) {
     valAxisMinVal: o.y_min, valAxisMaxVal: o.y_max,
     lineSize: Math.max(1, pt(o.line_width || 4)), lineDataSymbol: 'none', displayBlanksAs: 'gap',
   });
+  // Annotations (markers, callouts) have no PowerPoint chart equivalent: they
+  // go in as separate editable lines and text boxes where the app draws them.
+  for (const p of chartGeometry(l).filter(g => g.ann)) {
+    const c = pptxColor(p.t === 'line' ? p.stroke : p.fill, 'FFFFFF');
+    if (p.t === 'line') {
+      slide.addShape(pptx.ShapeType.line, { x: inch(l.x + p.x1), y: inch(l.y + p.y1), w: 0, h: inch(p.y2 - p.y1), line: { color: c.hex, width: 1, dashType: 'dash' } });
+    } else if (p.t === 'rect') {
+      slide.addShape(pptx.ShapeType.roundRect, { x: inch(l.x + p.x), y: inch(l.y + p.y), w: inch(p.w), h: inch(p.h), rectRadius: inch(6), fill: { color: c.hex }, line: { type: 'none' } });
+    } else if (p.t === 'text') {
+      const tw = String(p.text).length * p.size * 0.62 + 12;
+      const x = p.anchor === 'middle' ? p.x - tw / 2 : p.anchor === 'end' ? p.x - tw : p.x;
+      slide.addText(String(p.text), { x: inch(l.x + x), y: inch(l.y + p.y - p.size * 1.05), w: inch(tw), h: inch(p.size * 1.4), margin: 0, fontFace: o.font, fontSize: pt(p.size), bold: (p.weight || 400) >= 600, color: c.hex, align: p.anchor === 'middle' ? 'center' : p.anchor === 'end' ? 'right' : 'left', valign: 'middle', fit: 'shrink' });
+    }
+  }
 }
 
 // Builds the .pptx for a presentation row. Returns { buffer, slides, ms }.
