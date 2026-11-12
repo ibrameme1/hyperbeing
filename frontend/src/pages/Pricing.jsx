@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useInView } from 'framer-motion';
 import { Check, X, Sparkles, Zap, Crown, Rocket, ArrowRight, Loader2 } from 'lucide-react';
-import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Logo from '../components/Logo';
 import api from '../api/client';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
-import { savePlanIntent } from '../utils/planIntent';
 
 const sliderThumbStyle = `
   input[type='range'].ultra-slider::-webkit-slider-thumb {
@@ -49,7 +48,7 @@ const PLANS = [
     speed: { label: 'Standard Speed', emoji: '🐢', color: '#6b6490' },
     parallel: { label: '3 slides in parallel', emoji: '🔀' },
     features: [
-      'PowerPoint, PDF & PNG export',
+      'PDF & PNG export',
       'Add slides feature',
       'Reference image uploads',
       'Email support',
@@ -71,7 +70,7 @@ const PLANS = [
     parallel: { label: '6 slides in parallel', emoji: '🔀' },
     popular: true,
     features: [
-      'PowerPoint, PDF & PNG export',
+      'PDF & PNG export',
       'Add slides feature',
       'Reference image uploads',
       'Early feature access',
@@ -92,7 +91,7 @@ const PLANS = [
     parallel: { label: 'Unlimited parallel generation', emoji: '🔀' },
     bestValue: true,
     features: [
-      'PowerPoint, PDF & PNG export',
+      'PDF & PNG export',
       'Add slides feature',
       'Reference image uploads',
       'Early feature access',
@@ -131,15 +130,11 @@ export default function Pricing() {
   const { user, subscription: authSub } = useAuth();
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
-  // ?plan=pro&billing=annual&tier=1: the plan a visitor chose before signing
-  // in (landing page or this page), brought back so checkout is one click.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const chosenPlan = ['basic', 'pro', 'ultra'].includes(searchParams.get('plan')) ? searchParams.get('plan') : null;
-  const [billing, setBilling] = useState(() => (searchParams.get('billing') === 'monthly' ? 'monthly' : 'annual'));
+  const [billing, setBilling] = useState('annual');
   const [currentPlan, setCurrentPlan] = useState(() => authSub?.plan || 'free');
   const [creditsLeft, setCreditsLeft] = useState(() => authSub != null ? authSub.credits_remaining : null);
   const [loading, setLoading] = useState(null);
-  const [ultraTier, setUltraTier] = useState(() => Math.min(3, Math.max(0, parseInt(searchParams.get('tier') || '0', 10) || 0)));
+  const [ultraTier, setUltraTier] = useState(0);
   const [subInfo, setSubInfo] = useState(() => authSub || null);
   const [downgradeModal, setDowngradeModal] = useState(null);
   const [fetchError, setFetchError] = useState(false);
@@ -171,12 +166,7 @@ export default function Pricing() {
   }
 
   async function handleSubscribe(planKey) {
-    if (!user) {
-      // Keep the choice through sign-up: they come back to this plan.
-      savePlanIntent({ plan: planKey, billing, ultraTier });
-      navigate('/login');
-      return;
-    }
+    if (!user) { navigate('/login'); return; }
     // Allow re-subscribing to current plan only when cancelling a pending downgrade
     if (planKey === currentPlan && !subInfo?.pending_plan) return;
     setLoading(planKey);
@@ -303,7 +293,7 @@ export default function Pricing() {
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '32px' }}>
             {[
               { label: 'Product', href: '/#demo' },
-              { label: 'Examples', href: '/#examples' },
+              { label: 'Examples', href: '/#gallery' },
               { label: 'Pricing', href: '/pricing' },
               { label: 'Enterprise', href: 'mailto:team@hyperbeing.co?subject=Enterprise%20Enquiry' },
             ].map(({ label, href }) => (
@@ -404,7 +394,7 @@ export default function Pricing() {
           </Reveal>
           <Reveal delay={0.1}>
             <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '18px', fontWeight: 400, color: '#3d3660', maxWidth: '560px', margin: '0 auto 36px', lineHeight: 1.6 }}>
-              Every plan includes fully editable layered slides, PowerPoint and PDF export, and Nova's full art direction engine.
+              Every plan includes AI image generation, PDF export, and Nova's full art direction engine.
             </p>
           </Reveal>
 
@@ -442,28 +432,6 @@ export default function Pricing() {
       {/* ── PLAN CARDS ── */}
       <section style={{ padding: '40px 24px 0' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-          {/* The plan picked before signing in: one click to checkout. */}
-          {user && chosenPlan && !(chosenPlan === 'ultra' ? currentPlan?.startsWith('ultra') : currentPlan === chosenPlan) && (() => {
-            const plan = PLANS.find(p => p.key === chosenPlan);
-            return (
-              <div role="status" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', padding: '16px 20px', marginBottom: '24px', borderRadius: '12px', background: '#ededff', border: '0.5px solid rgba(91,80,255,0.28)' }}>
-                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', color: '#0d0b1a', margin: 0 }}>
-                  You picked <strong>{plan.name}</strong>: ${getPlanPrice(plan)} a month{billing === 'annual' ? ', billed yearly' : ''}, {getPlanCredits(plan).toLocaleString()} credits every month.
-                </p>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <button onClick={() => setSearchParams({}, { replace: true })}
-                    style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 500, color: '#3d3660', background: 'transparent', border: 'none', cursor: 'pointer', padding: '8px 10px' }}>
-                    Compare plans
-                  </button>
-                  <button onClick={() => handleSubscribe(chosenPlan)} disabled={loading === chosenPlan}
-                    style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', fontWeight: 600, color: '#fff', background: '#5B50FF', border: 'none', borderRadius: '6px', padding: '10px 18px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px', opacity: loading === chosenPlan ? 0.7 : 1 }}>
-                    {loading === chosenPlan ? <Loader2 size={14} className="animate-spin" /> : null}
-                    Continue to secure checkout <ArrowRight size={14} />
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
           <div className="pricing-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px', alignItems: 'start' }}>
             {PLANS.map((plan, i) => {
               const isCurrent = plan.key === 'ultra' ? currentPlan?.startsWith('ultra') : currentPlan === plan.key;

@@ -2,7 +2,7 @@
 title: "Marketing Decks — HyperBeing"
 description: "HyperBeing — AI-powered presentation maker"
 url: "https://www.hyperbeing.co/services/marketing-decks"
-last_updated: 2026-11-12
+last_updated: 2026-07-08
 ---
 
 # Marketing Decks

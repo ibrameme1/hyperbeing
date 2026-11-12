@@ -5,22 +5,21 @@ import { useAuth } from '../contexts/AuthContext';
 import TextRotate from '../components/TextRotate';
 import NovaMascot from '../components/NovaMascot';
 import Logo from '../components/Logo';
-import { BuildDemo, LayerExplorer, DeckShowcase, PricingTeaser, ClosingFilm, LandingSectionStyles } from '../components/landing/Sections';
 
 
 const FEATURES = [
-  { icon: '◈', title: 'Art-directed, then editable', desc: 'Every slide is designed as a whole, then delivered as layers: live text, native charts and separate pictures.', visual: 'slide-showcase' },
+  { icon: '◈', title: 'Art-directed images', desc: 'Each slide gets its own generated visual. Context-aware, brand-aware, purpose-built.', visual: 'slide-showcase' },
   { icon: '◎', title: 'Narrative intelligence', desc: 'Claude reads your entire outline before writing a single word. The story comes first.', visual: 'screenshot' },
   { icon: '▦', title: 'Slide map preview', desc: 'Approve the structure before the images generate. No surprises.', visual: 'slide-map' },
   { icon: '◉', title: 'Brand memory', desc: 'Upload your brand kit once. Every deck stays on-brand automatically.', soon: true, visual: 'brand-kit' },
-  { icon: '↗', title: 'Real PowerPoint export', desc: 'Text boxes, shapes, charts and pictures arrive in PowerPoint as native objects, not a screenshot. PDF and PNG too.', visual: 'export-panel' },
+  { icon: '↗', title: 'One-click export', desc: 'Download as PowerPoint, PDF, or shareable link. Integration-ready.', visual: 'export-panel' },
   { icon: '⬡', title: 'Enterprise grade', desc: 'SSO, audit logs, team workspaces, and volume pricing. Built to scale.', visual: 'enterprise' },
 ];
 
 const FAQ_ITEMS = [
   {
     q: 'What does HyperBeing do?',
-    a: "HyperBeing is an AI presentation maker that generates fully designed decks from a written brief. It reads the entire brief before building a slide plan, then designs each slide from scratch as editable layers (live text, native charts and shapes, separate pictures) instead of filling in a template. It's built for consultants, marketers, corporate teams, founders, and investment bankers.",
+    a: "HyperBeing is an AI presentation maker that generates fully designed decks from a written brief. It reads the entire brief before building a slide plan, then generates each slide as an art-directed image instead of filling in a template. It's built for consultants, marketers, corporate teams, founders, and investment bankers.",
   },
   {
     q: 'How much does HyperBeing cost?',
@@ -40,15 +39,11 @@ const FAQ_ITEMS = [
   },
   {
     q: 'What file formats can I export a deck to?',
-    a: "Decks export as PowerPoint (.pptx), PDF, or PNG. In PowerPoint, text boxes, shapes, charts and pictures arrive as native, editable objects. Exporting is free and doesn't require any file conversion on your end.",
-  },
-  {
-    q: 'Can I edit the slides after they are generated?',
-    a: 'Yes. Slides are built from layers, so you can retype any text, move, resize or delete any picture or shape, and change chart numbers directly in the editor at no cost. You can also describe a change in plain language and HyperBeing edits only the layers it needs to.',
+    a: "Decks export as PowerPoint (.pptx), PDF, or a shareable link. Exporting doesn't require any file conversion on your end.",
   },
   {
     q: 'Do I need design experience to use HyperBeing?',
-    a: 'No. Each slide is art-directed directly from your brief, without manual layout or design work. You write or paste the brief, and HyperBeing builds the deck. If you want to change something afterwards, every text box, picture and chart is its own editable layer.',
+    a: 'No. Each slide is generated as a fully art-directed image directly from your brief, without manual layout or design work. You write or paste the brief, and HyperBeing builds the deck.',
   },
   {
     q: 'How does HyperBeing handle a long, messy brief instead of losing detail?',
@@ -69,7 +64,7 @@ const FEATURE_SPLITS = [
   },
   {
     headline: 'The kind of slides that close deals.',
-    body: 'Every slide is art-directed from your content: real structure, real photographs of what you are talking about, a headline that lands. No clip art, no templates, and nothing baked into a flat image.',
+    body: 'Every slide is a fully art-directed image. No clip art, no templates. Consultants, VCs, and agency leads use HyperBeing for their highest-stakes presentations.',
     visual: 'slide-showcase',
     side: 'left',
   },
@@ -110,6 +105,146 @@ function Reveal({ children, delay = 0, className = '' }) {
       className={className}
     >
       {children}
+    </motion.div>
+  );
+}
+
+/* ─── Animated product mockup (demo section) ─── */
+function ProductMockup() {
+  const [phase, setPhase] = useState(0); // 0=typing, 1=plan, 2=generating, 3=done
+  const [typed, setTyped] = useState('');
+  const [visibleSlides, setVisibleSlides] = useState(0);
+  const prompt = 'Series A pitch deck for a fintech startup disrupting B2B payments';
+
+  useEffect(() => {
+    let timeout;
+    if (phase === 0) {
+      if (typed.length < prompt.length) {
+        timeout = setTimeout(() => setTyped(prompt.slice(0, typed.length + 1)), 40);
+      } else {
+        timeout = setTimeout(() => setPhase(1), 800);
+      }
+    } else if (phase === 1) {
+      timeout = setTimeout(() => setPhase(2), 1200);
+    } else if (phase === 2) {
+      if (visibleSlides < 6) {
+        timeout = setTimeout(() => setVisibleSlides(v => v + 1), 400);
+      } else {
+        timeout = setTimeout(() => setPhase(3), 600);
+      }
+    } else if (phase === 3) {
+      timeout = setTimeout(() => { setPhase(0); setTyped(''); setVisibleSlides(0); }, 3000);
+    }
+    return () => clearTimeout(timeout);
+  }, [phase, typed, visibleSlides]);
+
+  const slideColors = [
+    'linear-gradient(135deg, #1a1540 0%, #5B50FF 100%)',
+    'linear-gradient(135deg, #0f0f0f 0%, #1e1e1e 100%)',
+    'linear-gradient(135deg, #14102e 0%, #3B2FFF 100%)',
+    'linear-gradient(135deg, #080808 0%, #141414 100%)',
+    'linear-gradient(135deg, #0a0818 0%, #8B80FF 100%)',
+    'linear-gradient(135deg, #0f0f0f 0%, #2a2a2a 100%)',
+  ];
+
+  return (
+    <div style={{ background: '#0f0f0f', borderRadius: '8px', border: '0.5px solid #1e1e1e', overflow: 'hidden' }}>
+      {/* Top bar */}
+      <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #1e1e1e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1e1e1e' }} />
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1e1e1e' }} />
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1e1e1e' }} />
+        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#555', letterSpacing: '0.1em', marginLeft: '8px' }}>HYPERBEING STUDIO</span>
+      </div>
+      {/* Content area */}
+      <div style={{ padding: '24px' }}>
+        {/* Input */}
+        <div style={{ marginBottom: '20px' }}>
+          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '8px' }}>PROMPT</p>
+          <div style={{ background: '#141414', borderRadius: '6px', border: '0.5px solid #2a2a2a', padding: '12px 14px', minHeight: '48px' }}>
+            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#f0f0ee' }}>{typed}</span>
+            {phase === 0 && <span style={{ display: 'inline-block', width: '2px', height: '14px', background: '#5B50FF', marginLeft: '2px', verticalAlign: 'text-bottom', animation: 'blink 1s step-end infinite' }} />}
+          </div>
+        </div>
+
+        {/* Slide grid */}
+        <AnimatePresence>
+          {phase >= 1 && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+              <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '12px' }}>
+                {phase === 1 ? 'PLANNING STRUCTURE…' : phase === 2 ? 'GENERATING SLIDES…' : 'DECK COMPLETE'}
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <motion.div
+                    key={i}
+                    style={{ aspectRatio: '16/9', borderRadius: '4px', border: '0.5px solid #1e1e1e', overflow: 'hidden', position: 'relative' }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: i * 0.05 }}
+                  >
+                    {i < visibleSlides ? (
+                      <div style={{ width: '100%', height: '100%', background: slideColors[i], display: 'flex', alignItems: 'flex-end', padding: '6px' }}>
+                        <div style={{ width: '60%', height: '3px', background: 'rgba(255,255,255,0.3)', borderRadius: '2px' }} />
+                      </div>
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', background: '#141414', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {phase >= 2 && i <= visibleSlides && (
+                          <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '1.5px solid #5B50FF', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
+                        )}
+                      </div>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+              {phase >= 2 && (
+                <div style={{ marginTop: '12px' }}>
+                  <div style={{ height: '1.5px', background: '#1e1e1e', borderRadius: '1px', overflow: 'hidden' }}>
+                    <motion.div
+                      style={{ height: '100%', background: 'linear-gradient(90deg, #5B50FF, #8B80FF)', borderRadius: '1px' }}
+                      animate={{ width: `${Math.round((visibleSlides / 6) * 100)}%` }}
+                      transition={{ duration: 0.4 }}
+                    />
+                  </div>
+                  <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#555', marginTop: '6px' }}>
+                    slide_{String(visibleSlides).padStart(2, '0')}.visual.generating — {Math.round((visibleSlides / 6) * 100)}%
+                  </p>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Deck thumbnail card (gallery) ─── */
+function DeckCard({ title, category, gradient, delay = 0 }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: 20 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.5, delay }}
+      whileHover={{ y: -4, boxShadow: 'rgba(91,80,255,0.3) 0px 0px 24px 0px' }}
+      style={{ borderRadius: '8px', overflow: 'hidden', border: '0.5px solid #1e1e1e', cursor: 'pointer', flexShrink: 0, width: '280px' }}
+    >
+      <div style={{ aspectRatio: '16/9', background: gradient, position: 'relative', padding: '20px' }}>
+        <div style={{ position: 'absolute', bottom: '14px', left: '14px', right: '14px' }}>
+          <div style={{ height: '2px', background: 'rgba(255,255,255,0.2)', borderRadius: '1px', marginBottom: '8px' }} />
+          <div style={{ height: '2px', width: '60%', background: 'rgba(255,255,255,0.12)', borderRadius: '1px' }} />
+        </div>
+        <div style={{ position: 'absolute', top: '12px', left: '12px' }}>
+          <HBIcon size={18} />
+        </div>
+      </div>
+      <div style={{ padding: '12px 14px', background: '#0f0f0f' }}>
+        <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#8B80FF', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '4px' }}>{category}</p>
+        <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#f0f0ee', fontWeight: 500 }}>{title}</p>
+      </div>
     </motion.div>
   );
 }
@@ -188,14 +323,82 @@ function FeatureVisual({ type }) {
 
   /* ── Slide output showcase ── */
   if (type === 'slide-showcase') {
-    // Real slides from the example decks (public/showcase), not mock tiles.
-    const slides = ['rahi/s1', 'morrow/s0', 'rahi/s0', 'morrow/s1', 'rahi/s2'];
+    const slides = [
+      { g: 'linear-gradient(135deg, #0d0a2e 0%, #5B50FF 100%)', accent: '#8B80FF', n: '01' },
+      { g: 'linear-gradient(135deg, #06101e 0%, #0e4a7a 100%)', accent: '#38bdf8', n: '02' },
+      { g: 'linear-gradient(135deg, #0f0818 0%, #6d28d9 100%)', accent: '#a78bfa', n: '03', selected: true },
+      { g: 'linear-gradient(135deg, #050f0a 0%, #064e3b 100%)', accent: '#34d399', n: '04' },
+      { g: 'linear-gradient(135deg, #140904 0%, #9a3412 100%)', accent: '#fb923c', n: '05' },
+      { g: 'linear-gradient(135deg, #08080f 0%, #2d2b6e 100%)', accent: '#818cf8', n: '06' },
+    ];
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, background: '#080808', borderRadius: 12, padding: 10 }}>
-        {slides.map((sl, i) => (
-          <img key={sl} src={`/showcase/${sl}.jpg`} alt="" loading="lazy"
-            style={{ gridColumn: i < 2 ? 'span 3' : 'span 2', width: '100%', aspectRatio: '16 / 9', objectFit: 'cover', display: 'block', borderRadius: 6, border: '0.5px solid #1e1e1e' }} />
-        ))}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontFamily: 'Inter, sans-serif' }}>
+        {/* Deck meta row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#5B50FF', letterSpacing: '0.15em' }}>SERIES A PITCH · 12 SLIDES</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e' }} />
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#22c55e' }}>COMPLETE</span>
+          </div>
+        </div>
+
+        {/* 3×2 slide grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7 }}>
+          {slides.map(({ g, accent, n, selected }) => (
+            <div
+              key={n}
+              style={{
+                aspectRatio: '16/9', background: g, borderRadius: 6, overflow: 'hidden',
+                border: selected ? `1.5px solid ${accent}` : '0.5px solid #1a1a1a',
+                position: 'relative',
+                boxShadow: selected ? `0 0 16px rgba(167,139,250,0.22)` : 'none',
+              }}
+            >
+              {/* HB mark */}
+              <div style={{ position: 'absolute', top: 5, left: 5, width: 13, height: 13, background: '#5B50FF', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 900, fontSize: 6, color: '#fff', letterSpacing: '-0.1em' }}>HB</span>
+              </div>
+              {/* Slide index */}
+              <div style={{ position: 'absolute', bottom: 7, left: 7 }}>
+                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 7, color: accent, opacity: 0.9, marginBottom: 3 }}>{n}</div>
+                <div style={{ width: 36, height: 1.5, background: accent, opacity: 0.55, borderRadius: 1 }} />
+                <div style={{ width: 22, height: 1.5, background: accent, opacity: 0.25, borderRadius: 1, marginTop: 3 }} />
+              </div>
+              {/* Status dot */}
+              <div style={{ position: 'absolute', bottom: 6, right: 6, width: 5, height: 5, borderRadius: '50%', background: accent, opacity: 0.65 }} />
+              {/* Selected overlay ring */}
+              {selected && (
+                <div style={{ position: 'absolute', inset: 0, border: `1px solid ${accent}`, borderRadius: 5, opacity: 0.3, pointerEvents: 'none' }} />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Slide editor strip */}
+        <div style={{ background: '#0a0a0b', border: '0.5px solid #1a1a1a', borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ padding: '8px 12px', borderBottom: '0.5px solid #111', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#a78bfa' }}>slide_03 · Our Solution</span>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+              {['Regenerate', 'Edit prompt', 'Download'].map(a => (
+                <div key={a} style={{ background: '#161616', border: '0.5px solid #252525', borderRadius: 4, padding: '2px 7px' }}>
+                  <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, color: '#555' }}>{a}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1, height: 1, background: 'linear-gradient(to right, rgba(167,139,250,0.4), transparent)' }} />
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#333' }}>art-directed · Imagen 3</span>
+          </div>
+        </div>
+
+        {/* Export row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#0a0a0b', border: '0.5px solid #1a1a1a', borderRadius: 7, padding: '8px 12px' }}>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#444', flex: 1 }}>deck_series_a.pptx · 12 slides · 2.4 MB</span>
+          <div style={{ background: '#5B50FF', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>
+            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, fontWeight: 600, color: '#fff' }}>Export →</span>
+          </div>
+        </div>
       </div>
     );
   }
@@ -581,7 +784,7 @@ export default function Homepage() {
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '32px' }}>
             {[
               { label: 'Product', href: '#demo' },
-              { label: 'Examples', href: '#examples' },
+              { label: 'Examples', href: '#gallery' },
               { label: 'Pricing', href: '/pricing' },
               { label: 'Enterprise', href: 'mailto:team@hyperbeing.co?subject=Enterprise%20Enquiry' },
             ].map(({ label, href }) => (
@@ -679,8 +882,8 @@ export default function Homepage() {
             transition={{ duration: 0.6, delay: 0.25 }}
             style={{ fontFamily: 'Inter, sans-serif', fontSize: '18px', fontWeight: 400, color: '#3d3660', maxWidth: '560px', margin: '0 auto 36px', lineHeight: 1.6 }}
           >
-            HyperBeing art-directs every slide from your brief, then hands you each layer:{' '}
-            live text, real charts, separate pictures. No templates. Exports to PowerPoint.
+            HyperBeing generates each slide as a fully art-directed image.{' '}
+            No templates. No compromise. McKinsey substance, Apple finish.
           </motion.p>
 
           {/* CTA row */}
@@ -715,7 +918,7 @@ export default function Homepage() {
             transition={{ delay: 0.5 }}
             style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490' }}
           >
-            Your first three slides are free. No card required.
+            Used by brand teams, investors, analysts &amp; agencies at top-tier companies
           </motion.p>
         </div>
       </section>
@@ -742,7 +945,7 @@ export default function Homepage() {
                 Watch the blank become{' '}
                 <em>brilliant.</em>
               </h2>
-              <BuildDemo />
+              <ProductMockup />
             </div>
           </Reveal>
         </div>
@@ -782,11 +985,8 @@ export default function Homepage() {
       </motion.div>
       </div>
 
-      {/* ── 4b. EVERY LAYER IS EDITABLE (live slide) ── */}
-      <LayerExplorer />
-
       {/* ── 5. FEATURE SPLITS ── */}
-      <section style={{ background: '#ffffff', padding: '120px 24px', borderTop: '0.5px solid #e8e8f0' }}>
+      <section style={{ background: '#f5f5f5', padding: '120px 24px' }}>
         <div className="feature-split-list" style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '120px' }}>
           {FEATURE_SPLITS.map((f, i) => (
             <div key={i} className="feature-split-item" style={{ position: 'relative' }}>
@@ -815,8 +1015,27 @@ export default function Homepage() {
         </div>
       </section>
 
-      {/* ── 6. EXAMPLE DECKS ── */}
-      <DeckShowcase />
+      {/* ── 6. DECK GALLERY ── */}
+      <section style={{ background: '#080808', padding: '120px 0' }}>
+        <Reveal>
+          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase', marginBottom: '20px', textAlign: 'center' }}>MADE WITH HYPERBEING</p>
+          <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(36px, 5vw, 56px)', fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.03em', color: '#f0f0ee', textAlign: 'center', marginBottom: '64px' }}>
+            Decks that do the talking.
+          </h2>
+        </Reveal>
+        <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', padding: '0 48px 16px', scrollbarWidth: 'none' }}>
+          {[
+            { title: 'Series A Pitch', category: 'FINTECH · 2024', gradient: 'linear-gradient(135deg, #1a1040 0%, #5B50FF 100%)' },
+            { title: 'Board Update Q4', category: 'ENTERPRISE · 2024', gradient: 'linear-gradient(135deg, #0a1628 0%, #1e3a5f 100%)' },
+            { title: 'Agency Case Study', category: 'AGENCY · 2024', gradient: 'linear-gradient(135deg, #1a0a2e 0%, #4a1882 100%)' },
+            { title: 'Product Launch', category: 'SAAS · 2024', gradient: 'linear-gradient(135deg, #0a1a18 0%, #0d5c52 100%)' },
+            { title: 'Investor Deck', category: 'VC · 2024', gradient: 'linear-gradient(135deg, #1a1200 0%, #856512 100%)' },
+            { title: 'Sales Deck', category: 'SALES · 2024', gradient: 'linear-gradient(135deg, #1a0808 0%, #8B1a1a 100%)' },
+          ].map((deck, i) => (
+            <DeckCard key={deck.title} delay={i * 0.07} {...deck} />
+          ))}
+        </div>
+      </section>
 
       {/* ── 7. FEATURE GRID ── */}
       <section style={{ background: '#ffffff', padding: '120px 24px' }}>
@@ -887,9 +1106,6 @@ export default function Homepage() {
         </div>
       </section>
 
-      {/* ── 8. PRICING STRIP ── */}
-      <PricingTeaser user={user} />
-
       {/* ── 8b. FAQ ── */}
       <section style={{ background: '#ffffff', padding: '96px 24px', borderTop: '0.5px solid #e8e8f0' }}>
         <div style={{ maxWidth: '760px', margin: '0 auto' }}>
@@ -923,8 +1139,25 @@ export default function Homepage() {
       </section>
 
       {/* ── 9. FINAL CTA ── */}
-      <ClosingFilm onStart={goToApp} />
-      <LandingSectionStyles />
+      <section style={{ background: '#5B50FF', padding: '120px 24px', textAlign: 'center' }}>
+        <Reveal>
+          <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(36px, 5vw, 64px)', fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.03em', color: '#ffffff', marginBottom: '16px' }}>
+            Your next deck is{' '}
+            <em>3 minutes away.</em>
+          </h2>
+          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '18px', color: 'rgba(255,255,255,0.75)', marginBottom: '40px' }}>
+            No design experience needed. No templates. Just your ideas.
+          </p>
+          <button
+            onClick={goToApp}
+            style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 600, color: '#5B50FF', background: '#ffffff', border: 'none', borderRadius: '6px', padding: '14px 32px', cursor: 'pointer', transition: 'opacity 0.15s', boxShadow: 'rgba(0,0,0,0.2) 0px 4px 16px' }}
+            onMouseEnter={e => e.target.style.opacity = '0.9'}
+            onMouseLeave={e => e.target.style.opacity = '1'}
+          >
+            Start for free →
+          </button>
+        </Reveal>
+      </section>
 
       {/* ── 10. FOOTER ── */}
       <footer style={{ background: '#ffffff', borderTop: '0.5px solid #e8e8f0', padding: '64px 24px 40px' }}>
