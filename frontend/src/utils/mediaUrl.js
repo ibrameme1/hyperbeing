@@ -9,6 +9,9 @@
 export function mediaUrl(imageData) {
   if (!imageData) return imageData;
   if (imageData.startsWith('data:')) return imageData; // inline (placeholder/legacy)
+  // Static files of the site itself (the landing page's showcase slides under
+  // /showcase/) are public and served by the frontend host, not the API.
+  if (imageData.startsWith('/') && !imageData.startsWith('/api/')) return imageData;
   const base = import.meta.env.VITE_API_URL || '';
   const token = localStorage.getItem('hb_token') || '';
   const sep = imageData.includes('?') ? '&' : '?';

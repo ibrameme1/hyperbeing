@@ -2,7 +2,7 @@
 title: "Privacy Policy — HyperBeing"
 description: "HyperBeing — AI-powered presentation maker"
 url: "https://www.hyperbeing.co/privacy"
-last_updated: 2026-07-08
+last_updated: 2026-11-12
 ---
 
 HB

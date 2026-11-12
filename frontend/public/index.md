@@ -2,28 +2,188 @@
 title: "Presentations that make people go how? — HyperBeing"
 description: "HyperBeing — AI-powered presentation maker"
 url: "https://www.hyperbeing.co/"
-last_updated: 2026-07-08
+last_updated: 2026-11-12
 ---
 
 # Presentations that make people go how?
 
-HyperBeing generates each slide as a fully art-directed image. No templates. No compromise. McKinsey substance, Apple finish.
+HyperBeing art-directs every slide from your brief, then hands you each layer: live text, real charts, separate pictures. No templates. Exports to PowerPoint.
 
 Generate your first deck →[See examples](#demo)
 
-Used by brand teams, investors, analysts & agencies at top-tier companies
+Your first three slides are free. No card required.
 
 NOVA   HYPERBEING IN ACTION
 
 ## Watch the blank become *brilliant.*
 
-HYPERBEING STUDIO
+BriefReading
 
-PROMPT
+Shapes
 
-Series A
+Pictures and charts
+
+Text
+
+FIRST RIDE FREE. SECOND RIDE A HABIT.
+THIRD RIDE, THEY TELL A FRIEND.
+
+Three stages, one city, ninety days.
+
+STAGE 1   DAYS 1-30
+
+SEED
+
+campus captains and free first rides
+
+Campus captains
+
+Free first ride
+
+Hostel drops
+
+MAKE THE FIRST RIDE A STORY
+
+Every captain posts their first passenger's reaction.
+
+STAGE 2   DAYS 31-60
+
+HABIT
+
+commute passes and day streaks
+
+Commute pass
+
+Day streaks
+
+Same captain
+
+MAKE TUESDAY AUTOMATIC
+
+A pass costs less than the bus by the third ride.
+
+STAGE 3   DAYS 61-90
+
+SPREAD
+
+referrals and neighbourhood stops
+
+Invite codes
+
+Group rides
+
+Rahi stops
+
+LET RIDERS RECRUIT RIDERS
+
+Every invite pays both sides one free ride.
+
+40,000
+
+first rides, each one a rider who met a captain on campus
+
+12,000
+
+weekly riders by day 90, the number that makes a city viable
+
+THE DISCOUNT ENDS IN 30 DAYS. THE HABIT DOESN'T.
+
+They came for a free ride. They stayed for the captain who knows their gate.
+
+Waiting for the brief
 
 SCROLL
+
+Not a picture of a slide
+
+## Art-directed like an image. *Editable like a deck.*
+
+Most AI slides are one flat image: beautiful until you need to fix a number. HyperBeing designs the whole slide, then gives you every piece as its own layer. Retype a line, move a photo, change the chart. It exports to PowerPoint the same way.
+
+32text boxes you can retype
+
+9separate pictures
+
+18native shapes
+
+2icons
+
+This slide used **one image generation** for all nine photographs. Everything else is native, so edits to it are instant and free.
+
+Finished slideShow layersPull apartDrag anything
+
+Shapes
+
+Pictures and charts
+
+Text
+
+FIRST RIDE FREE. SECOND RIDE A HABIT.
+THIRD RIDE, THEY TELL A FRIEND.
+
+Three stages, one city, ninety days.
+
+STAGE 1   DAYS 1-30
+
+SEED
+
+campus captains and free first rides
+
+Campus captains
+
+Free first ride
+
+Hostel drops
+
+MAKE THE FIRST RIDE A STORY
+
+Every captain posts their first passenger's reaction.
+
+STAGE 2   DAYS 31-60
+
+HABIT
+
+commute passes and day streaks
+
+Commute pass
+
+Day streaks
+
+Same captain
+
+MAKE TUESDAY AUTOMATIC
+
+A pass costs less than the bus by the third ride.
+
+STAGE 3   DAYS 61-90
+
+SPREAD
+
+referrals and neighbourhood stops
+
+Invite codes
+
+Group rides
+
+Rahi stops
+
+LET RIDERS RECRUIT RIDERS
+
+Every invite pays both sides one free ride.
+
+40,000
+
+first rides, each one a rider who met a captain on campus
+
+12,000
+
+weekly riders by day 90, the number that makes a city viable
+
+THE DISCOUNT ENDS IN 30 DAYS. THE HABIT DOESN'T.
+
+They came for a free ride. They stayed for the captain who knows their gate.
+
+Example slide from a fictional launch plan.
 
 01 / 03
 
@@ -61,31 +221,7 @@ APPROVE →
 
 ### *The kind of slides that close deals.*
 
-Every slide is a fully art-directed image. No clip art, no templates. Consultants, VCs, and agency leads use HyperBeing for their highest-stakes presentations.
-
-SERIES A PITCH   12 SLIDES
-
-COMPLETE
-
-HB
-HB
-HB
-HB
-HB
-HB
-slide\_03   Our Solution
-
-Regenerate
-
-Edit prompt
-
-Download
-
-art-directed   Imagen 3
-
-deck\_series\_a.pptx   12 slides   2.4 MB
-
-Export →
+Every slide is art-directed from your content: real structure, real photographs of what you are talking about, a headline that lands. No clip art, no templates, and nothing baked into a flat image.
 
 03 / 03
 
@@ -119,81 +255,51 @@ Export ready
 
 12 slides   fully art-directed   export ready
 
-MADE WITH HYPERBEING
+From one brief
 
 ## Decks that do the talking.
 
-HB
+Two example decks, two visual languages. Nobody picked a template: the look comes from the brief.
 
-FINTECH   2024
+Campaign strategyInvestor pitch
 
-Series A Pitch
+![Rahi: a 90-day city launch, slide: Cover](/showcase/rahi/s0.jpg)
 
-HB
+Marketing team, launch plan
 
-ENTERPRISE   2024
+### Rahi: a 90-day city launch
 
-Board Update Q4
+The brief
 
-HB
+A 90-day launch plan for Rahi, a bike-taxi app, in Lahore. Three stages: seed on campuses with free first rides, build the commute habit with passes and streaks, then spread through referrals. Targets: 40,000 first rides and 12,000 weekly riders by day 90. Dark, bold, street-level.
 
-AGENCY   2024
+This slide
 
-Agency Case Study
+Cover
 
-HB
+One cinematic photograph with the headline as live text on top.
 
-SAAS   2024
+7
 
-Product Launch
+editable layers
 
-HB
+1
 
-VC   2024
+image generation
 
-Investor Deck
-
-HB
-
-SALES   2024
-
-Sales Deck
+Example deck for a fictional brand.
 
 FEATURES
 
 ## Everything you need. *Nothing you don't.*
 
-Art-directed images   IN ACTION
-
-SERIES A PITCH   12 SLIDES
-
-COMPLETE
-
-HB
-HB
-HB
-HB
-HB
-HB
-slide\_03   Our Solution
-
-Regenerate
-
-Edit prompt
-
-Download
-
-art-directed   Imagen 3
-
-deck\_series\_a.pptx   12 slides   2.4 MB
-
-Export →
+Art-directed, then editable   IN ACTION
 
 ◈
 
-### Art-directed images
+### Art-directed, then editable
 
-Each slide gets its own generated visual. Context-aware, brand-aware, purpose-built.
+Every slide is designed as a whole, then delivered as layers: live text, native charts and separate pictures.
 
 ◎
 
@@ -215,15 +321,79 @@ Upload your brand kit once. Every deck stays on-brand automatically.
 
 ↗
 
-### One-click export
+### Real PowerPoint export
 
-Download as PowerPoint, PDF, or shareable link. Integration-ready.
+Text boxes, shapes, charts and pictures arrive in PowerPoint as native objects, not a screenshot. PDF and PNG too.
 
 ⬡
 
 ### Enterprise grade
 
 SSO, audit logs, team workspaces, and volume pricing. Built to scale.
+
+Pricing
+
+## Pay for slides, *not seats.*
+
+A slide costs 18 credits. Moving, retyping and restyling layers is free. Exports are free.
+
+Free
+
+See your own brief as slides
+
+$0no card
+
+About 3 slides
+
+54 credits to start
+
+Start free
+
+Basic
+
+A few decks a month
+
+$25/ month
+
+$20 a month billed yearly
+
+About 66 slides a month
+
+1,200 credits every month
+
+Choose Basic
+
+Most popular
+
+Pro
+
+Decks every week
+
+$65/ month
+
+$52 a month billed yearly
+
+About 177 slides a month
+
+3,200 credits every month
+
+Choose Pro
+
+Ultra
+
+Agencies and power users
+
+from$149/ month
+
+$116 a month billed yearly
+
+About 444 slides a month
+
+8,000 credits every month
+
+Choose Ultra
+
+Cancel any time. Upgrade or downgrade from your account. [Compare every plan](/pricing)
 
 ## Frequently asked questions
 
@@ -239,17 +409,21 @@ What makes HyperBeing different from tools like Gamma or Canva?+
 
 What file formats can I export a deck to?+
 
+Can I edit the slides after they are generated?+
+
 Do I need design experience to use HyperBeing?+
 
 How does HyperBeing handle a long, messy brief instead of losing detail?+
 
 Do you offer enterprise features like SSO and audit logs?+
 
-## Your next deck is *3 minutes away.*
+## Your brief is already *a deck.*
 
-No design experience needed. No templates. Just your ideas.
+Paste it in and watch the first three slides build, free. No card, no template to pick.
 
-Start for free →
+ Build my first deck
+
+Cover photograph from the Rahi example deck
 
 We use a session cookie for authentication and [cookieless analytics](https://vercel.com/docs/analytics/privacy-policy) to improve the product. No tracking cookies. [Privacy policy](/privacy)
 

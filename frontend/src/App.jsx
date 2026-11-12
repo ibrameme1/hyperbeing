@@ -1,4 +1,5 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -20,6 +21,7 @@ import ServicePage from './pages/ServicePage';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import Profile from './pages/Profile';
 import CookieConsent from './components/CookieConsent';
+import { takePlanIntent } from './utils/planIntent';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -33,6 +35,21 @@ function PublicRoute({ children }) {
   return user ? <Navigate to="/dashboard" replace /> : children;
 }
 
+// A visitor who chose a plan before signing in lands on the dashboard after
+// login (or after onboarding). Send them back to that plan, once, so paying
+// is one more click instead of a hunt through the pricing page.
+function PlanIntentResume() {
+  const { user, loading } = useAuth();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (loading || !user || pathname !== '/dashboard') return;
+    const intent = takePlanIntent();
+    if (intent) navigate(`/pricing?plan=${intent.plan}&billing=${intent.billing}${intent.plan === 'ultra' ? `&tier=${intent.ultraTier}` : ''}`, { replace: true });
+  }, [user, loading, pathname, navigate]);
+  return null;
+}
+
 function wrap(element) {
   return <ErrorBoundary>{element}</ErrorBoundary>;
 }
@@ -41,6 +58,7 @@ export default function App() {
   return (
     <ThemeProvider>
     <AuthProvider>
+      <PlanIntentResume />
       <Routes>
         <Route path="/" element={wrap(<Homepage />)} />
         <Route path="/login" element={<PublicRoute>{wrap(<Login />)}</PublicRoute>} />

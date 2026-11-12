@@ -2,14 +2,14 @@
 title: "Pick your plan, start creating — HyperBeing"
 description: "HyperBeing — AI-powered presentation maker"
 url: "https://www.hyperbeing.co/pricing"
-last_updated: 2026-07-08
+last_updated: 2026-11-12
 ---
 
 Simple, transparent pricing
 
 # Pick your plan, *start creating*
 
-Every plan includes AI image generation, PDF export, and Nova's full art direction engine.
+Every plan includes fully editable layered slides, PowerPoint and PDF export, and Nova's full art direction engine.
 
 MonthlyAnnualSave up to 30%
 
@@ -29,7 +29,7 @@ Upgrade to Basic
 
 - 🐢Standard Speed
 - 🔀3 slides in parallel
-- PDF & PNG export
+- PowerPoint, PDF & PNG export
 - Add slides feature
 - Reference image uploads
 - Email support
@@ -55,7 +55,7 @@ Upgrade to Pro
 
 - ⚡Fast Generation
 - 🔀6 slides in parallel
-- PDF & PNG export
+- PowerPoint, PDF & PNG export
 - Add slides feature
 - Reference image uploads
 - Early feature access
@@ -87,7 +87,7 @@ Customize credits / month8,000
 
 - 🚀Fastest Generation
 - 🔀Unlimited parallel generation
-- PDF & PNG export
+- PowerPoint, PDF & PNG export
 - Add slides feature
 - Reference image uploads
 - Early feature access
