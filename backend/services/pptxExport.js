@@ -75,6 +75,26 @@ async function embedImage(file, boxW, boxH, { opaque = false } = {}) {
   return `${opaque ? 'image/jpeg' : 'image/png'};base64,${buf.toString('base64')}`;
 }
 
+// Photo tiles go in already cropped to their box with their rounded corners
+// and frame baked in: PowerPoint's own cover-crop needs the source size and
+// has no per-corner radius for pictures. Still one movable, replaceable picture.
+async function embedPhoto(file, l) {
+  const p = filePath(file);
+  if (!p) return null;
+  const w = Math.max(16, Math.round(l.w * 1.5)); const h = Math.max(16, Math.round(l.h * 1.5));
+  const k = w / Math.max(1, l.w);
+  const rx = Math.min(l.radius || 0, l.w / 2, l.h / 2) * k;
+  const bw = (l.border?.width || 0) * k;
+  const bc = l.border ? pptxColor(l.border.color, 'FFFFFF') : null;
+  const mask = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" rx="${rx}" fill="#fff"/></svg>`);
+  const layers = [{ input: mask, blend: 'dest-in' }];
+  if (bw > 0) {
+    layers.unshift({ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect x="${bw / 2}" y="${bw / 2}" width="${w - bw}" height="${h - bw}" rx="${Math.max(0, rx - bw / 2)}" fill="none" stroke="#${bc.hex}" stroke-opacity="${1 - bc.transparency / 100}" stroke-width="${bw}"/></svg>`) });
+  }
+  const buf = await sharp(p).resize(w, h, { fit: 'cover' }).ensureAlpha().composite(layers).png({ compressionLevel: 9 }).toBuffer();
+  return `image/png;base64,${buf.toString('base64')}`;
+}
+
 function shadowOf(s) {
   if (!s) return undefined;
   const c = pptxColor(s.color, '000000');
@@ -152,18 +172,20 @@ async function gradientBackground(g, canvas) {
 // All pictures of the deck are prepared in parallel up front (sharp runs on
 // the libuv threadpool), then the slides are assembled in order.
 function embedKey(file, w, h, opaque) { return `${file}|${Math.round(w)}|${Math.round(h)}|${opaque}`; }
+const isPhoto = (l) => l.kind === 'image' && l.role === 'photo';
+function photoKey(l) { return `photo|${l.file}|${Math.round(l.w)}|${Math.round(l.h)}|${l.radius || 0}|${l.border?.width || 0}|${l.border?.color || ''}`; }
 async function prepareEmbeds(slides, canvas) {
   const jobs = new Map();
-  const want = (file, w, h, opaque = false) => {
+  const want = (file, w, h, opaque = false, photo = null) => {
     if (!file) return;
-    const k = embedKey(file, w, h, opaque);
-    if (!jobs.has(k)) jobs.set(k, embedImage(file, w, h, { opaque }).catch(() => null));
+    const k = photo ? photoKey(photo) : embedKey(file, w, h, opaque);
+    if (!jobs.has(k)) jobs.set(k, (photo ? embedPhoto(file, photo) : embedImage(file, w, h, { opaque })).catch(() => null));
   };
   for (const s of slides) {
     if (!s.layout) { want(s.image_file, canvas.w / 1.5, canvas.h / 1.5, true); continue; }
     const L = s.layout;
     if (L.background?.type === 'image') want(L.background.file, canvas.w / 1.5, canvas.h / 1.5, true);
-    for (const l of L.layers || []) if (l.file && l.kind !== 'text') want(l.file, l.w, l.h);
+    for (const l of L.layers || []) if (l.file && l.kind !== 'text') want(l.file, l.w, l.h, false, isPhoto(l) ? l : null);
   }
   const keys = [...jobs.keys()];
   const values = await Promise.all(keys.map(k => jobs.get(k)));
@@ -217,6 +239,9 @@ async function addLayeredSlide(pptx, s, layout, { watermark, embeds }) {
       } else if (l.kind === 'logo' && !filePath(l.file)) {
         // No logo file was available: the brand name as a wordmark text box.
         slide.addText(l.brand || '', { ...box, margin: 0, fontFace: layout.fonts?.display, bold: true, color: pptxColor(l.color).hex, fontSize: pt(l.h * 0.7), fit: 'shrink' });
+      } else if (filePath(l.file) && isPhoto(l)) {
+        const data = embeds.get(photoKey(l));
+        if (data) slide.addImage({ data, ...box, rotate, flipH: !!l.flip, objectName: l.name || l.id, transparency: l.opacity < 1 ? Math.round((1 - l.opacity) * 100) : undefined });
       } else if (filePath(l.file)) {
         const img = { data: await embedImage(l.file, l.w, l.h), ...box, rotate, flipH: !!l.flip, objectName: l.name || l.id, transparency: l.opacity < 1 ? Math.round((1 - l.opacity) * 100) : undefined };
         if (l.fit === 'cover') img.sizing = { type: 'cover', w: box.w, h: box.h };

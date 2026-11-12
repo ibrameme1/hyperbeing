@@ -134,6 +134,10 @@ function ImageLayer({ layer: l }) {
         position: 'absolute', inset: 0, width: '100%', height: '100%',
         objectFit: l.fit === 'fill' ? 'fill' : l.fit === 'cover' ? 'cover' : 'contain',
         transform: l.flip ? 'scaleX(-1)' : undefined,
+        // Photo tiles: rounded corners and a hairline frame, like a card.
+        borderRadius: l.radius ? Math.min(l.radius, l.w / 2, l.h / 2) : undefined,
+        border: l.border?.width ? `${l.border.width}px solid ${l.border.color}` : undefined,
+        boxSizing: 'border-box',
         filter: fx ? `drop-shadow(${fx.dx}px ${fx.dy}px ${fx.blur / 2}px ${fx.color})` : undefined,
         userSelect: 'none', pointerEvents: 'none',
       }}

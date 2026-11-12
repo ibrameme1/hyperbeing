@@ -59,7 +59,7 @@ export function limiterStats() {
 // resolution (measured, high quality: 1536x1024 = 1372 output tokens,
 // 2048x1152 = 1413, 1024x1024 = 1756), so the long side is set by what the
 // layer needs to look crisp on a 1920x1080 slide.
-export const LONG_SIDE = { background: 2048, cluster: 2048, element: 1536 };
+export const LONG_SIDE = { background: 2048, cluster: 2048, element: 1536, photoSheet: 2048 };
 
 export function sizeForAspect(w, h, longSide = LONG_SIDE.element) {
   const r = Math.min(3, Math.max(1 / 3, w / h));
@@ -164,7 +164,7 @@ export async function generateLayerImage({ prompt, size = '1024x1024', transpare
       logger.info('layer image generated', { label, ms, size, quality, transparent, refs: refs.length, model: LAYER_IMAGE_MODEL, usage: json.usage || null });
       tracer.recordStep(_tid, stepName, 'completed', ms);
       recordImageCall({
-        call: transparent ? (mockSpec?.kind === 'cluster' ? 'image_cluster' : 'image_element') : 'image_background',
+        call: transparent ? (mockSpec?.kind === 'cluster' ? 'image_cluster' : 'image_element') : (mockSpec?.kind === 'photosheet' ? 'image_photo_sheet' : mockSpec?.photo ? 'image_photo' : 'image_background'),
         model: LAYER_IMAGE_MODEL, usage: json.usage, durationMs: ms,
         meta: { label, size, quality, refs: refs.length },
       });
@@ -196,6 +196,19 @@ async function mockLayerImage(size, transparent, spec) {
     // One shape per item at its declared position, so splitting is exercised in mock mode.
     const shapes = spec.items.map((it, i) => `<rect x="${it.box.x * w + 6}" y="${it.box.y * h + 6}" width="${Math.max(4, it.box.w * w - 12)}" height="${Math.max(4, it.box.h * h - 12)}" rx="${Math.min(it.box.w * w, it.box.h * h) * 0.15}" fill="${MOCK_HUES[i % MOCK_HUES.length]}"/>`).join('');
     svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${shapes}</svg>`;
+  } else if (spec.kind === 'photosheet') {
+    // A white contact sheet of flat colour panels, so slicing runs in mock mode.
+    const { cols, counts } = spec;
+    const rows = counts.length; const g = Math.round(Math.min(w, h) * 0.025);
+    const cw = (w - g * (cols + 1)) / cols; const ch = (h - g * (rows + 1)) / rows;
+    let cells = ''; let k = 0;
+    counts.forEach((n, r) => {
+      for (let c = 0; c < n; c++, k++) {
+        const x = g + c * (cw + g); const y = g + r * (ch + g);
+        cells += `<rect x="${x}" y="${y}" width="${cw}" height="${ch}" fill="${MOCK_HUES[k % MOCK_HUES.length]}"/><circle cx="${x + cw / 2}" cy="${y + ch / 2}" r="${Math.min(cw, ch) * 0.22}" fill="#14101c" fill-opacity="0.55"/>`;
+      }
+    });
+    svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="100%" height="100%" fill="#FFFFFF"/>${cells}</svg>`;
   } else if (spec.kind === 'sheet') {
     const { cols, rows } = spec;
     const cw = w / cols; const ch = h / rows;

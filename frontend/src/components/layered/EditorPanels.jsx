@@ -132,6 +132,12 @@ export function Inspector({ layer, layout, swatches, onPatch, onBox, onArrange, 
         <Row title="Image">
           <div className="flex gap-1.5">
             <IconButton title="Flip horizontally" active={!!layer.flip} onClick={() => onPatch({ flip: !layer.flip })}><FlipHorizontal size={14} /> Flip</IconButton>
+            {/* Photo tiles are framed pictures: their corner rounding is editable. */}
+            {layer.role === 'photo' && (
+              <div className="w-24">
+                <NumberField suffix="R" min={0} max={400} value={Math.round(layer.radius || 0)} onChange={v => onPatch({ radius: v })} title="Corner radius" />
+              </div>
+            )}
           </div>
         </Row>
       )}

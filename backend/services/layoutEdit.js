@@ -28,11 +28,11 @@ const EDITABLE = {
   shape: ['fill', 'gradient', 'radius', 'border', 'highlight', 'shadow'],
   chart: ['chart_type', 'categories', 'series', 'options'],
   icon: ['name', 'color', 'stroke'],
-  image: ['flip', 'fit'],
+  image: ['flip', 'fit', 'radius', 'border'],
   logo: ['flip'],
 };
 // Server-only fields that must survive a re-normalization untouched.
-const KEEP = ['screen_of', 'screen_norm', 'screen', 'cluster', 'merged', 'file', 'src', 'prompt', 'refs', 'role', 'source', 'brand', 'upload', 'items', 'from', 'to', 'around', 'medium', 'spread', 'glow', 'frosted', 'ui'];
+const KEEP = ['screen_of', 'screen_norm', 'screen', 'cluster', 'merged', 'file', 'src', 'prompt', 'refs', 'role', 'source', 'brand', 'upload', 'items', 'from', 'to', 'around', 'medium', 'spread', 'glow', 'frosted', 'ui', 'sheet'];
 
 function aspectOf(canvas) {
   return ASPECTS.find(a => { const c = canvasFor(a); return c.w === canvas.w && c.h === canvas.h; }) || '16:9';
@@ -90,6 +90,12 @@ function pickEdits(serverLayer, clientLayer, canvas) {
 function sanitizeImageLike(layer) {
   if ('flip' in layer) layer.flip = !!layer.flip;
   if ('fit' in layer && !['contain', 'cover', 'fill', undefined].includes(layer.fit)) delete layer.fit;
+  if ('radius' in layer) layer.radius = num(layer.radius, 0, 400, 0);
+  if ('border' in layer) {
+    const b = layer.border;
+    const ok = b && typeof b === 'object' && typeof b.color === 'string' && /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,]+\))$/i.test(b.color.trim());
+    if (ok) layer.border = { color: b.color.trim(), width: num(b.width, 0, 24, 1) }; else delete layer.border;
+  }
   return layer;
 }
 
