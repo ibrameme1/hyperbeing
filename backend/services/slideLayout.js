@@ -264,6 +264,7 @@ function chartAnnotations(v, cats, seriesCount) {
       kind: a.kind === 'callout' ? 'callout' : 'marker', index: Math.round(index), text,
       series: num(a.series, 0, Math.max(0, seriesCount - 1), 0),
       color: color(a.color) || undefined, text_color: color(a.text_color) || undefined,
+      sub: str(a.sub, 80).trim() || undefined, fill: color(a.fill) || undefined,
     });
   }
   return out.length ? out : undefined;
@@ -286,6 +287,8 @@ function normalizeChart(l, base, fonts) {
         ? s.values.slice(0, categories.length || 24).map(v => (v === null ? null : num(v, -1e12, 1e12, 0)))
         : [],
       color: color(s?.color) || undefined,
+      // Line charts: shade the area under this series only.
+      fill: s?.fill ? true : undefined,
     })).filter(s => s.values.length)
     : [];
   if (!series.length) return null;
@@ -306,10 +309,11 @@ function normalizeChart(l, base, fonts) {
       axis_color: color(l.options?.axis_color, withAlpha(fonts.text, 0.4)),
       label_color: color(l.options?.label_color, fonts.text || '#FFFFFF'),
       font: font(l.options?.font, fonts.body),
-      font_size: num(l.options?.font_size, 10, 48, 18),
+      // Charts are read from the back of a room: nothing under 20px on the canvas.
+      font_size: num(l.options?.font_size, 20, 48, 22),
       y_min: l.options?.y_min !== undefined ? num(l.options.y_min, -1e12, 1e12, undefined) : undefined,
       y_max: l.options?.y_max !== undefined ? num(l.options.y_max, -1e12, 1e12, undefined) : undefined,
-      line_width: num(l.options?.line_width, 1, 16, 4),
+      line_width: num(l.options?.line_width, 1, 16, 6),
       // Per-point colors (bars) — e.g. highlight one bar.
       point_colors: Array.isArray(l.options?.point_colors) ? l.options.point_colors.map(c => color(c) || null).slice(0, 24) : undefined,
       // Exhibit furniture: stacked bars, a hidden value axis, the colour of

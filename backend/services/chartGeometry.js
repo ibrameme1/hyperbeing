@@ -34,6 +34,18 @@ export function formatNumber(v) {
 
 const textW = (s, size) => String(s).length * size * 0.56;
 
+// Category labels wrap onto up to three lines inside their slot instead of
+// running into their neighbours ("Branch network consolidation").
+export function wrapLabel(text, maxChars) {
+  const words = String(text).split(/\s+/); const lines = []; let cur = '';
+  for (const w of words) {
+    if (cur && (cur + ' ' + w).length > maxChars) { lines.push(cur); cur = w; } else cur = cur ? `${cur} ${w}` : w;
+  }
+  if (cur) lines.push(cur);
+  if (lines.length > 3) { lines.length = 3; lines[2] = `${lines[2].slice(0, Math.max(1, maxChars - 1))}…`; }
+  return lines;
+}
+
 export function waterfallBars(values, totals) {
   const isTotal = (i) => i === 0 || (Array.isArray(totals) && totals.includes(i));
   let level = 0;
@@ -106,11 +118,16 @@ export function chartGeometry(layer) {
   // Room for what sits around the plot.
   const legendH = o.show_legend && series.length > 1 ? fs * 1.9 : 0;
   const catW = horizontal ? Math.min(w * 0.36, Math.max(...categories.map(c => textW(c, fs)), 30) + 14) : 0;
+  // Vertical charts: wrap category labels to their slot (estimated from the
+  // layer width; the axis gutter is small next to it).
+  const slotChars = Math.max(4, Math.floor(((w - 90) / n) / (fs * 0.56)) - 1);
+  const catLines = horizontal ? [] : categories.map(c => wrapLabel(c, slotChars));
+  const catRows = Math.max(1, ...catLines.map(l => l.length));
   const pad = {
     l: horizontal ? catW : (ticks.length ? Math.max(...tickLabels.map(t => textW(t, fs * 0.9))) + 16 : 8),
     r: horizontal ? textW(fmt(dataMax), fs) + 18 : 16,
-    t: legendH + (o.show_values || waterfall || (o.annotations || []).length ? fs * 1.5 : 10),
-    b: horizontal ? (ticks.length ? fs * 1.6 : 8) : fs * 1.9,
+    t: legendH + ((o.annotations || []).some(a => a.kind !== 'line') ? fs * 4.2 : (o.show_values || waterfall || (o.annotations || []).length ? fs * 1.5 : 10)),
+    b: horizontal ? (ticks.length ? fs * 1.6 : 8) : fs * (0.75 + 1.15 * catRows),
   };
   const px = pad.l; const py = pad.t; const pw = Math.max(10, w - pad.l - pad.r); const ph = Math.max(10, h - pad.t - pad.b);
   const frac = (v) => (v - yMin) / (yMax - yMin || 1);
@@ -146,7 +163,7 @@ export function chartGeometry(layer) {
   // Category labels.
   categories.forEach((c, i) => {
     if (horizontal) out.push({ t: 'text', x: px - 12, y: py + (i + 0.5) * (ph / n) + fs * 0.34, text: c, anchor: 'end', fill: label, size: fs });
-    else out.push({ t: 'text', x: catX(i), y: py + ph + fs * 1.35, text: c, anchor: 'middle', fill: label, size: fs });
+    else catLines[i].forEach((line, k) => out.push({ t: 'text', x: catX(i), y: py + ph + fs * (1.35 + 1.15 * k), text: line, anchor: 'middle', fill: label, size: fs }));
   });
 
   // point(si, i) → where that value is drawn (used by annotations).
@@ -157,7 +174,7 @@ export function chartGeometry(layer) {
     const base = series[0].color || CHART_PALETTE[0];
     wf.slice(0, n).forEach((b, i) => {
       const x = px + i * groupW + off;
-      const y0 = yPos(Math.max(b.from, b.to)); const y1 = yPos(Math.min(b.from, b.to));
+      const y0 = yPos(Math.max(b.from, b.to)); const y1 = yPos(Math.max(yMin, Math.min(b.from, b.to)));
       const c = o.point_colors?.[i] || (b.total ? base : (b.to < b.from ? (o.negative_color || base) : (o.positive_color || base)));
       out.push({ t: 'rect', x, y: y0, w: bw, h: Math.max(2, y1 - y0), rx: 2, fill: c, op: b.total || o.point_colors?.[i] ? 1 : 0.72 });
       points[0][i] = [x + bw / 2, y0];
@@ -180,14 +197,14 @@ export function chartGeometry(layer) {
       const last = !stacked || si === series.length - 1;
       if (horizontal) {
         const y = py + i * groupW + off + (stacked ? 0 : si * bw);
-        const x0 = xPos(Math.min(from, to)); const x1 = xPos(Math.max(from, to));
+        const x0 = xPos(Math.max(yMin, Math.min(from, to))); const x1 = xPos(Math.max(from, to));
         out.push({ t: 'rect', x: x0, y, w: Math.max(0, x1 - x0), h: bw, rx: stacked ? 0 : 4, fill: c });
         points[si][i] = [x1, y + bw / 2];
         if (o.show_values && last) out.push({ t: 'text', x: x1 + 8, y: y + bw / 2 + fs * 0.34, text: fmt(stacked ? stackTotals[i] : v), anchor: 'start', fill: label, size: fs, weight: 700 });
         else if (o.show_values && stacked && x1 - x0 > textW(fmt(v), fs * 0.85) + 8) out.push({ t: 'text', x: (x0 + x1) / 2, y: y + bw / 2 + fs * 0.3, text: fmt(v), anchor: 'middle', fill: o.value_color || '#FFFFFF', size: fs * 0.85, weight: 600 });
       } else {
         const x = px + i * groupW + off + (stacked ? 0 : si * bw);
-        const y0 = yPos(Math.max(from, to)); const y1 = yPos(Math.min(from, to));
+        const y0 = yPos(Math.max(from, to)); const y1 = yPos(Math.max(yMin, Math.min(from, to)));
         out.push({ t: 'rect', x, y: y0, w: bw, h: Math.max(0, y1 - y0), rx: stacked ? 0 : 4, fill: c });
         points[si][i] = [x + bw / 2, y0];
         if (o.show_values && last) out.push({ t: 'text', x: x + bw / 2, y: y0 - 8, text: fmt(stacked ? stackTotals[i] : v), anchor: 'middle', fill: label, size: fs, weight: 700 });
@@ -203,19 +220,24 @@ export function chartGeometry(layer) {
       for (const p of pts) { if (p) run.push(p); else if (run.length) { runs.push(run); run = []; } }
       if (run.length) runs.push(run);
       const col = colorOf(s, si);
+      const lw = o.line_width || 4;
+      const called = new Set((o.annotations || []).filter(a => a.kind === 'callout' && (a.series || 0) === si).map(a => a.index));
       for (const r of runs) {
-        if (type === 'area' && r.length > 1) out.push({ t: 'path', d: `M${r[0][0]},${py + ph} L${r.map(p => p.join(',')).join(' L')} L${r[r.length - 1][0]},${py + ph} Z`, fill: col, op: 0.22 });
-        out.push({ t: 'path', d: `M${r.map(p => p.join(',')).join(' L')}`, fill: 'none', stroke: col, sw: o.line_width || 4 });
+        if ((type === 'area' || s.fill) && r.length > 1) out.push({ t: 'path', d: `M${r[0][0]},${py + ph} L${r.map(p => p.join(',')).join(' L')} L${r[r.length - 1][0]},${py + ph} Z`, fill: col, op: 0.22 });
+        out.push({ t: 'path', d: `M${r.map(p => p.join(',')).join(' L')}`, fill: 'none', stroke: col, sw: lw });
       }
+      // A dot on every data point when there are few enough to read as points.
+      if (n <= 14) pts.forEach(p => { if (p) out.push({ t: 'circle', cx: p[0], cy: p[1], r: lw * 1.25, fill: col }); });
       if (o.show_values) {
         // Few points: label each one. Many: only where each run ends.
         const every = n <= 8;
         pts.forEach((p, i) => {
           if (!p) return;
           const end = i === pts.length - 1 || !pts[i + 1];
-          if (!every && !end) return;
-          out.push({ t: 'circle', cx: p[0], cy: p[1], r: (o.line_width || 4) * 1.1, fill: col });
-          out.push({ t: 'text', x: p[0], y: p[1] - fs * 0.7, text: fmt(s.values[i]), anchor: 'middle', fill: label, size: fs * 0.95, weight: 700 });
+          if ((!every && !end) || called.has(i)) return;
+          // A value repeated from the previous run (the joint of a segmented line) is labelled once.
+          if (out.some(q => q.t === 'text' && q.vl && Math.abs(q.x - p[0]) < 1 && Math.abs(q.y - (p[1] - fs * 0.8)) < 1)) return;
+          out.push({ vl: true, t: 'text', x: p[0], y: p[1] - fs * 0.8, text: fmt(s.values[i]), anchor: 'middle', fill: label, size: fs * 0.95, weight: 700 });
         });
       }
     });
@@ -240,21 +262,29 @@ export function chartGeometry(layer) {
       continue;
     }
     if (!(i >= 0 && i < n) || horizontal) continue;
-    const col = a.color || label; const size = fs * (a.kind === 'callout' ? 1.25 : 0.95);
-    const tw = textW(a.text, size) + 20;
+    const col = a.color || label;
     if (a.kind === 'callout') {
+      // The number the slide is about: a bold filled label above its point.
+      const size = fs * 1.7; const tw = textW(a.text, size) * 1.02 + 36; const bh = size * 1.7 + (a.sub ? fs * 1.3 : 0);
       const si = Math.min(series.length - 1, Math.max(0, a.series || 0));
       const p = points[si]?.[i] || points.find(ps => ps[i])?.[i];
       if (!p) continue;
-      const bx = Math.min(Math.max(p[0] - tw / 2, px), px + pw - tw); const by = Math.max(0, p[1] - size * 2.6);
-      out.push({ ann: true, t: 'circle', cx: p[0], cy: p[1], r: 7, fill: col });
-      out.push({ ann: true, t: 'rect', x: bx, y: by, w: tw, h: size * 1.7, rx: 6, fill: col });
+      const bx = Math.min(Math.max(p[0] - tw / 2, px), px + pw - tw);
+      const above = p[1] - bh - 22 >= -fs; const by = above ? Math.max(-fs, p[1] - bh - 22) : p[1] + 22;
+      out.push({ ann: true, t: 'line', x1: p[0], y1: p[1], x2: p[0], y2: above ? by + bh : by, stroke: col, sw: 2 });
+      out.push({ ann: true, t: 'circle', cx: p[0], cy: p[1], r: 9, fill: col });
+      out.push({ ann: true, t: 'rect', x: bx, y: by, w: tw, h: bh, rx: 8, fill: col });
       out.push({ ann: true, t: 'text', x: bx + tw / 2, y: by + size * 1.2, text: a.text, anchor: 'middle', fill: a.text_color || '#FFFFFF', size, weight: 800 });
+      if (a.sub) out.push({ ann: true, t: 'text', x: bx + tw / 2, y: by + size * 1.7 + fs * 0.75, text: a.sub, anchor: 'middle', fill: a.text_color || '#FFFFFF', size: fs * 0.9, weight: 500 });
     } else {
-      const x = catX(i);
-      out.push({ ann: true, t: 'line', x1: x, y1: py - fs * 0.2, x2: x, y2: py + ph, stroke: col, sw: 2, dash: '6 6' });
-      const left = x + tw + 8 > px + pw; // flip to the left near the right edge
-      out.push({ ann: true, t: 'text', x: left ? x - 10 : x + 10, y: py + size * 0.9, text: a.text, anchor: left ? 'end' : 'start', fill: col, size, weight: 700 });
+      // The event that changed the curve: a dashed line with a boxed label at its top.
+      const size = fs * 1.05; const x = catX(i);
+      const tw = Math.max(textW(a.text, size), a.sub ? textW(a.sub, fs * 0.9) : 0) + 28; const bh = size * 1.8 + (a.sub ? fs * 1.25 : 0);
+      const bx = Math.min(Math.max(x - tw / 2, px), px + pw - tw); const by = py - fs * 0.4;
+      out.push({ ann: true, t: 'line', x1: x, y1: by + bh, x2: x, y2: py + ph, stroke: col, sw: 2.5, dash: '7 7' });
+      out.push({ ann: true, t: 'rect', x: bx, y: by, w: tw, h: bh, rx: 6, fill: a.fill || '#FFFFFF', stroke: col, sw: 2 });
+      out.push({ ann: true, t: 'text', x: bx + tw / 2, y: by + size * 1.25, text: a.text, anchor: 'middle', fill: col, size, weight: 800 });
+      if (a.sub) out.push({ ann: true, t: 'text', x: bx + tw / 2, y: by + size * 1.8 + fs * 0.7, text: a.sub, anchor: 'middle', fill: col, size: fs * 0.9, weight: 400 });
     }
   }
   return out;

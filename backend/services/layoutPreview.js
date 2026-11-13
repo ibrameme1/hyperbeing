@@ -114,7 +114,7 @@ function chartSvg(l, uid) {
   const mask = hole ? ` mask="url(#dh${uid})"` : '';
   for (const p of prims) {
     if (p.t === 'line') out += `<line x1="${p.x1}" y1="${p.y1}" x2="${p.x2}" y2="${p.y2}" stroke="${esc(p.stroke)}" stroke-width="${p.sw}"${p.dash ? ` stroke-dasharray="${p.dash}"` : ''}${op(p)}/>`;
-    else if (p.t === 'rect') out += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="${p.rx || 0}" fill="${esc(p.fill)}"${op(p)}/>`;
+    else if (p.t === 'rect') out += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="${p.rx || 0}" fill="${esc(p.fill)}"${p.stroke ? ` stroke="${esc(p.stroke)}" stroke-width="${p.sw}"` : ''}${op(p)}/>`;
     else if (p.t === 'path') out += `<path d="${p.d}" fill="${esc(p.fill)}"${p.stroke ? ` stroke="${esc(p.stroke)}" stroke-width="${p.sw}" stroke-linejoin="round" stroke-linecap="round"` : ''}${op(p)}${mask}/>`;
     else if (p.t === 'circle') out += `<circle cx="${p.cx}" cy="${p.cy}" r="${p.r}" fill="${esc(p.fill)}"${mask}/>`;
     else if (p.t === 'text') out += `<text x="${p.x}" y="${p.y}" text-anchor="${p.anchor}" fill="${esc(p.fill)}" ${font} font-size="${p.size}" font-weight="${p.weight || 400}"${op(p)}>${esc(p.text)}</text>`;
