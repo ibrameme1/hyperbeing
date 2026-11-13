@@ -132,6 +132,12 @@ export function Inspector({ layer, layout, swatches, onPatch, onBox, onArrange, 
         <Row title="Image">
           <div className="flex gap-1.5">
             <IconButton title="Flip horizontally" active={!!layer.flip} onClick={() => onPatch({ flip: !layer.flip })}><FlipHorizontal size={14} /> Flip</IconButton>
+            {/* Photo tiles are framed pictures: their corner rounding is editable. */}
+            {layer.role === 'photo' && (
+              <div className="w-24">
+                <NumberField suffix="R" min={0} max={400} value={Math.round(layer.radius || 0)} onChange={v => onPatch({ radius: v })} title="Corner radius" />
+              </div>
+            )}
           </div>
         </Row>
       )}
@@ -290,7 +296,7 @@ function ChartControls({ layer, swatches, onPatch }) {
     <>
       <Row title="Chart type">
         <select value={layer.chart_type} onChange={e => onPatch({ chart_type: e.target.value })} className={inputCls}>
-          {['column', 'bar', 'line', 'area', 'pie', 'donut'].map(t => <option key={t} value={t}>{t}</option>)}
+          {['column', 'bar', 'line', 'area', 'pie', 'donut', 'waterfall'].map(t => <option key={t} value={t}>{t}</option>)}
         </select>
       </Row>
       <Row title="Data">

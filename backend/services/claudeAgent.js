@@ -422,10 +422,10 @@ const COMPACT_PLAN_PROMPT = `You are Nova. Generate a complete presentation outl
 Output format — CRITICAL. Output lines starting with HEADER: then SLIDE: for each slide. No other text, no markdown, no commentary.
 
 First output this header line:
-HEADER:{"presentation_title":"...","total_slides":N,"theme":"modern-minimal|bold-gradient|corporate|creative|tech","color_palette":{"primary":"#hex","secondary":"#hex","accent":"#hex"},"message":"Warm 1-sentence confirmation for the user"}
+HEADER:{"presentation_title":"...","total_slides":N,"register":"consulting exhibit|investor pitch|editorial campaign|product keynote|cinematic minimal|corporate report|teaching, or a short custom label","theme":"modern-minimal|bold-gradient|corporate|creative|tech","color_palette":{"primary":"#hex","secondary":"#hex","accent":"#hex"},"message":"Warm 1-sentence confirmation for the user"}
 
 Then immediately output one SLIDE: line per slide:
-SLIDE:{"index":N,"type":"cover|section|content|quote|data|image|conclusion","title":"Slide title","subtitle":"Subtitle or null","key_points":["Bullet ≤ 12 words"],"speaker_note":"What to say"}
+SLIDE:{"index":N,"type":"cover|section|content|quote|data|image|conclusion","title":"Slide title","subtitle":"Subtitle or null","key_points":["Bullet ≤ 12 words"],"visual":"What the audience SEES, in one or two sentences","speaker_note":"What to say"}
 
 Rules:
 - Output HEADER: first, then ALL SLIDE: lines — no other text
@@ -434,6 +434,8 @@ Rules:
 - total_slides in HEADER must equal the number of SLIDE: lines
 - Every slide except the cover (index 0) must have a KEY TAKEAWAY headline as its title — reading only titles should tell the full story
 - key_points ≤ 12 words each
+- "register": read the brief for who is in the room, the occasion, the industry and any style the user asked for ("consulting style", "like a keynote", "minimal", "bold"), and name the register that audience expects. Write EVERY title and key point in that register's voice and in the audience's own vocabulary: consulting = full-sentence action titles that state the so-what with its number, no slang; investor = a claim, then its proof; campaign = punchlines a copywriter would sign; keynote = short declaratives; teaching = plain and direct
+- "visual": the slide's visual idea as a top designer in that register would pitch it, specific enough to build: the photograph and its moment, the exhibit and what it highlights, the 3D object and what flows through it, the collage and who is in it, the columns and what fills them. Never a restatement of the title, never a generic stock idea. Vary the forms across the deck (not every slide a chart, not every slide a photo) and stage the argument where you can
 - When "PREFLIGHT ANSWERS:" is present, you have all needed info — generate immediately`;
 
 // Single-image era prompt (pre layered slides). No longer sent to Claude as a

@@ -61,14 +61,20 @@ const uploads = (spec.uploads || []).map(u => ({
   type: 'image', category: u.category || 'branding', name: path.basename(u.path), mimeType: 'image/png',
   data: `data:image/png;base64,${fs.readFileSync(path.resolve(path.dirname(briefsPath), u.path)).toString('base64')}`,
 }));
-const slides = spec.slides.map((s, i) => ({ index: i, type: s.type || 'content', title: s.title, key_points: [], brief: s.brief }));
+// A slide may be a full art-directed prompt ("brief") or an outline row as the
+// planner writes it (subtitle, key_points, visual, speaker_note) under one
+// deck-level "brief".
+const slides = spec.slides.map((s, i) => ({
+  index: i, type: s.type || 'content', title: s.title, subtitle: s.subtitle, key_points: s.key_points || [],
+  visual: s.visual, speaker_note: s.speaker_note, brief: s.brief || spec.brief || '',
+}));
 const claudeMock = !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'demo';
 
 console.log(`layered benchmark: ${slides.length} slide(s), images=${IMAGE_MOCK_MODE ? 'MOCK' : `${LAYER_IMAGE_MODEL} (backgrounds ${LAYER_IMAGE_QUALITY.background}, objects ${LAYER_IMAGE_QUALITY.objects})`}, claude=${claudeMock ? 'MOCK' : 'real'}`);
 
 const t0 = Date.now();
-const header = { presentation_title: spec.title || 'Benchmark deck' };
-const deckBrief = slides.map(s => `SLIDE ${s.index}: ${s.brief}`).join('\n\n');
+const header = { presentation_title: spec.title || 'Benchmark deck', register: spec.register, theme: spec.theme };
+const deckBrief = spec.brief || slides.map(s => `SLIDE ${s.index}: ${s.brief}`).join('\n\n');
 const tDeck = Date.now();
 const deckDesign = replayDir
   ? JSON.parse(fs.readFileSync(path.join(replayDir, 'deck.json'), 'utf8'))

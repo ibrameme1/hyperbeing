@@ -11,7 +11,7 @@ import { tracer } from './tracer.js';
 import { sanitizeDeep } from './claudeAgent.js';
 import { MINIMALISTIC_EXAMPLE_PROMPTS } from './minimalisticExamples.js';
 import { CLAUDE_MODEL, claudeRequest, toolInput, answeredBy, usesAutoTools, warmupMaxTokens, streamToolCall } from './claudeModel.js';
-import { FONT_NAMES, MAX_GENERATIONS_PER_SLIDE, MAX_LAYERS, MAX_SCREEN_LAYERS, MAX_SHEET_ICONS, canvasFor, extractCompletedLayoutParts } from './slideLayout.js';
+import { FONT_NAMES, MAX_GENERATIONS_PER_SLIDE, MAX_LAYERS, MAX_SCREEN_LAYERS, MAX_SHEET_ICONS, MAX_SHEET_PHOTOS, canvasFor, extractCompletedLayoutParts } from './slideLayout.js';
 
 // ─── Layered-slide agent ────────────────────────────────────────────────────
 // Three Claude calls drive a layered slide:
@@ -33,7 +33,7 @@ const MODEL = CLAUDE_MODEL;
 // Every ideal slide prompt the team supplied (prompts/layered_quality_examples.md
 // + the 12 minimalistic exemplars), sent VERBATIM to the deck-design and
 // layout calls so Claude knows the quality, specificity and voice expected.
-// ~12k tokens: it is the FIRST system block and marked for prompt caching, so
+// ~13k tokens: it is the FIRST system block and marked for prompt caching, so
 // after the first call it is billed at the cached rate and adds little latency.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const QUALITY_LIBRARY = `${fs.readFileSync(path.join(__dirname, '../prompts/layered_quality_examples.md'), 'utf8')}
@@ -58,7 +58,7 @@ const REFERENCE_SLIDES = (() => {
 
 function referenceSlideBlocks() {
   if (!REFERENCE_SLIDES.length) return [];
-  const blocks = [{ type: 'text', text: `QUALITY REFERENCE SLIDES (${REFERENCE_SLIDES.map(r => r.name).join(', ')}): finished slides at the bar this slide must meet. Study the hierarchy (one dominant takeaway), composition, how objects physically connect and sit on grounding elements, card anatomy and spacing. Never copy their content, brands or copy.` }];
+  const blocks = [{ type: 'text', text: `QUALITY REFERENCE SLIDES (${REFERENCE_SLIDES.map(r => r.name).join(', ')}): finished slides at the bar this slide must meet. Study the hierarchy (one dominant takeaway), composition, how objects physically connect and sit on grounding elements, card anatomy and spacing. The "editorial" reference shows the structured register: the content's own structure (three phases) drawn as aligned columns joined by arrows, every block carrying its own photo tiles, tags and takeaway line, closed by stat bars and a verdict strip, with no decorative hero object. Never copy their content, brands or copy.` }];
   REFERENCE_SLIDES.forEach((r, i) => {
     blocks.push(i === REFERENCE_SLIDES.length - 1 ? { ...r.block, cache_control: { type: 'ephemeral' } } : r.block);
   });
@@ -156,25 +156,31 @@ const ART_DIRECTION = `═══════════════════
 ONE HYPERBEING DESIGN SYSTEM
 ══════════════════════════════════════════
 
-There are no style presets. The quality library at the top of this prompt is the full range of ideal outputs the team has signed off:
-- EDITORIAL CAMPAIGN keynotes: bold condensed display headlines that land like a copywriter's punchline, culturally specific candid human moments, real phone and app UI, a verdict line.
-- 3D INFOGRAPHIC slides: premium isometric or product renders, frosted glass, floating cards, objects that physically connect (streams, pedestals, orbits), clean data.
-- CINEMATIC MINIMAL slides: one dramatic hero render or photograph, generous negative space, a single restrained headline.
+There are no style presets and no house look. The deck's visual language is chosen for THIS brief: who is in the room, what they must decide or feel, the conventions of their industry, the brand, the user's uploads, and any art direction the user wrote (that always wins). The quality library at the top of this prompt shows the BAR for craft in a few registers the team has signed off (concept, specificity, voice, finish). It is a bar, not a menu of looks: never their subjects, brands, copy or numbers, and never their look for a brief that calls for another.
 
-Choose the visual language for THIS deck from the brief: audience, brand, subject, tone, uploaded brand assets or moodboards, and any art direction the user wrote (that always wins). Then match the closest ideal outputs in quality, specificity and voice. Never their subjects, brands, copy or numbers. A deck may combine languages where the content calls for it (an editorial campaign deck with one 3D ecosystem slide), but one deck keeps ONE palette, ONE type pairing and ONE rendering language, set by the deck design system.
+REGISTERS. Pick the one this audience expects (or define a better-fitting one in the same detail). One deck keeps ONE register, ONE palette, ONE type pairing and ONE rendering language, set by the deck design system; inside it, slides vary in form.
+- CONSULTING / STRATEGY EXHIBIT (board papers, strategy reviews, market studies, due diligence, anything asked for in a "consulting", "McKinsey" or "BCG" style): white or very light background; one restrained brand colour plus greys, with a single highlight colour reserved for the point; a full-sentence ACTION TITLE top-left that states the so-what with its number; the body is an exhibit: a native chart with labelled axis, direct labels, one highlighted series and annotations on the data, or a table, a 2x2, a process; a "so what" strip or box; a source line bottom-left and a page number bottom-right. Dense but strictly ordered. No decorative imagery, gradients, glows or glass; a photograph only when it is evidence. A clean sans, or a classic serif for titles.
+- INVESTOR PITCH: confident and spare, one idea per slide; big proof numbers; the product shown for real (device UI, product photography); market and traction as native charts; light or dark by brand; restrained colour.
+- EDITORIAL CAMPAIGN (marketing, brand, agency, culture, audience insight): bold condensed display headlines that land like a copywriter's punchline, candid photography specific to the audience's culture, real phone and app UI, pills and strips, a verdict line.
+- PRODUCT KEYNOTE / 3D INFOGRAPHIC (platforms, ecosystems, mechanisms, tech launches): premium 3D or isometric renders, objects that physically connect (streams, pedestals, orbits), frosted or solid cards, clean data.
+- CINEMATIC MINIMAL (openings, vision, provocations, emotional beats): one dramatic photograph or render that IS the idea, large restrained type set into its negative space, almost nothing else.
+- CORPORATE REPORT / UPDATE (quarterly reviews, internal updates, operations, HR): calm and brand-led on a light background, clear sections, KPI tiles, native charts and tables, a few honest photographs.
+- TEACHING / EXPLAINER (training, education, how it works): generous type, one concept per slide, diagrams and steps, clear photography or friendly illustration.
+A deck may borrow a form from another register where the content calls for it (a cinematic opener in a consulting deck, one exhibit in a campaign deck) without leaving its palette and type.
 
-Tendencies, not rules (the brief wins): marketing / insight / campaign / audience slides lean editorial; ecosystem / architecture / moat / platform / data slides lean 3D infographic; openings, vision, brand moments and emotional beats lean cinematic minimal.
+VOICE follows the register and the user's industry. Consulting: precise, quantified, full sentences, no slang. Campaign: punchy, human, culturally fluent. Investor: claim, then proof. Keynote: short declaratives. Teaching: plain and direct. Use the audience's own vocabulary (a bank says cost-to-income, a retailer says sell-through, a clinician says outcomes). Never force a punchline, slang or a verdict strip onto a register that does not use them.
 
 ══════════════════════════════════════════
 CRAFT RULES FOR EVERY DECK
 ══════════════════════════════════════════
 
-- Background: a specific colour or scene, chosen for a stated reason that serves the slide's mood.
-- Headline: the slide's takeaway, written like a punchline, at most 2-3 short lines; one accent colour from the deck palette may mark the decisive line.
-- ONE dominant visual idea per slide: a hero photograph, a collage of real candid moments, structured columns or a grid, an isometric 3D render, or a single cinematic hero. Never several competing ideas.
+- Background: a specific colour or scene, chosen for a stated reason that serves the slide's mood and the register.
+- Headline: the slide's takeaway in the register's voice (a punchline, an action title, a claim), at most 2-3 short lines; one accent colour from the deck palette may mark the decisive line or number.
+- ONE dominant visual idea per slide: a hero photograph, a collage of real candid moments, structured columns or a grid, an exhibit (chart, table, 2x2), an isometric 3D render, or a single cinematic hero. Never several competing ideas.
+- The visual is the content, never decoration: every picture or object shows something this slide's copy names (the creator filming, the bundle screen, the receipt, the shelf). A symbolic prop (trophy, funnel, rocket, target, puzzle piece, lightbulb) is not a visual idea. A metaphor is welcome only when it is staged as a specific, directed scene that IS the argument (a chessboard closing in on one truck, a timeline of tombstones with one plot empty).
 - Callout cards: exact copy, border, tint and size relative to everything else.
-- When the slide argues something, end on a verdict line (a bottom strip or closing line): declarative, surprising, final.
-- Image prompts carry at least 3 sensory details (light, material, texture, expression), a named human emotional state when people appear, culturally specific markers for the audience (places, age groups, rituals, slang), and a moment of contrast or surprise where possible. Every stat is paired with what it means.
+- When the slide argues something, close the argument the way the register does: a verdict strip (campaign), a "so what" box (consulting), one line of subtext (cinematic minimal).
+- Image prompts carry at least 3 sensory details (light, material, texture, expression), a named human emotional state when people appear, markers specific to the audience's own place and culture (streets, dress, rituals, objects), and a moment of contrast or surprise where possible. Every stat is paired with what it means.
 - Typography: always specify weight, case, colour and placement through the native text layers; display type for headlines, a calm body face for everything else.
 - UI on phones, laptops and screens (chats, captions, view counts, timestamps, dashboards) is DRAWN BY THE IMAGE MODEL by default: describe it in the device prompt and quote its key copy exactly. Only the hero device of a slide whose on-screen copy is the point gets a few native editable screen layers (see the image rules).
 - If the user uploaded moodboards or reference images, say explicitly which colours, materials and mood from them carry into the slide.
@@ -189,6 +195,7 @@ const DECK_SYSTEM_TOOL = {
   input_schema: {
     type: 'object',
     properties: {
+      register: { type: 'string', description: 'The register chosen for this deck (e.g. "consulting exhibit", "editorial campaign", "investor pitch", "cinematic minimal", or a custom one) and, in a clause, why this audience expects it.' },
       style_block: { type: 'string', description: 'Shared rendering style prepended to EVERY image prompt in the deck (60-120 words).' },
       fonts: {
         type: 'object',
@@ -214,11 +221,12 @@ const DECK_SYSTEM_PROMPT = `You are Nova, the art director of a premium presenta
 
 Your job now: define the deck's shared design system so every layer of every slide looks like it came from one designer.
 
+- register: decide this FIRST, from the brief: the audience, the occasion, the industry and anything the user said about style ("consulting style", "like an Apple keynote", "minimal", "bold"). Everything below follows from it.
 - style_block: 60-120 words of rendering style that will be prepended to EVERY image prompt in the deck (backgrounds included — so it must never imply subjects, products or objects to depict): medium (3D render / photograph / illustration and its finish), lighting direction and quality (state ONE consistent key-light direction, e.g. "soft key light from upper-left"), color grade, material language, palette with hex values, level of detail, grain. It must make backgrounds and isolated elements match each other. Never put text, logos, layout or composition instructions in it.
 - fonts: choose the display and body fonts that do this deck justice, from the allowed list only.
-- palette: hex colors (or rgba for panel tints) for background, text, muted text, accent, accent2, and panel fill.
+- palette: hex colors (or rgba for panel tints) for background, text, muted text, accent, accent2, and panel fill. The background is light or dark as the register and brand demand (consulting, corporate and most investor decks are light; text then is near-black and panels are white or a pale tint). Text on background must pass WCAG AA.
 - gradient: optional signature gradient used for key words.
-- notes: first the visual language you chose for this deck from the brief (editorial campaign, 3D infographic, cinematic minimal, or a stated mix) and why in one sentence, then the conventions every slide follows (e.g. "logo small top-left at 64px margin; slide numbers grey bottom-right; headlines sentence case").
+- notes: the conventions every slide of this deck follows, concretely: where the title sits and how it is written (case, length, voice), the recurring furniture (logo, page number, source line, exhibit labels, verdict strip or "so what" box), card and chart styling, how photographs are treated, and the vocabulary and tone of the copy (e.g. "action titles top-left, sentence case, max two lines, always with the number; source line 16px grey bottom-left; page number bottom-right; charts: grey series with the one that matters in navy, direct labels, no legend when two series; no decorative imagery").
 
 If the user uploaded brand or moodboard images, the design system must follow them. If the brief names brand colors or fonts, use them (closest allowed font).
 
@@ -230,6 +238,7 @@ export async function designDeckSystem({ header, slides, brief, uploads = [], us
     const outline = slides.map(sl => `${sl.index}. [${sl.type}] ${sl.title}`).join('\n');
     const { response } = filesAgent('deck', { outline, brief: String(brief || '').slice(0, 20000) }, {
       tool: DECK_SYSTEM_TOOL, header, outline, brief: String(brief || '').slice(0, 20000), uploads: uploads.length,
+      system: systemBlocks(DECK_SYSTEM_PROMPT.replace('{ART_DIRECTION}', ART_DIRECTION)).map(b => b.text),
     });
     if (!response) throw new Error('deck design pending (files mode)');
     return sanitizeDeep(response);
@@ -239,7 +248,7 @@ export async function designDeckSystem({ header, slides, brief, uploads = [], us
   tracer.recordStep(_tid, 'claude_deck_design', 'started', 0);
   const outline = slides.map(s => `${s.index}. [${s.type}] ${s.title}`).join('\n');
   const content = [
-    { type: 'text', text: `PRESENTATION: ${header?.presentation_title || ''}\nTHEME HINT: ${header?.theme || ''}\nPALETTE HINT: ${JSON.stringify(header?.color_palette || {})}\n\nOUTLINE:\n${outline}\n\nORIGINAL BRIEF:\n${String(brief || '').slice(0, 20000)}` },
+    { type: 'text', text: `PRESENTATION: ${header?.presentation_title || ''}\nREGISTER HINT (from the outline): ${header?.register || ''}\nTHEME HINT: ${header?.theme || ''}\nPALETTE HINT: ${JSON.stringify(header?.color_palette || {})}\n\nOUTLINE:\n${outline}\n\nORIGINAL BRIEF:\n${String(brief || '').slice(0, 20000)}` },
     ...uploadsContent(uploads),
   ];
   // If the layout warm-up is running, let it finish: deck design then READS
@@ -269,10 +278,12 @@ const LAYOUT_TOOL = {
     // Property order matters: the app starts generating the background and
     // image layers while the rest of the layout is still streaming.
     properties: {
-      composition: { type: 'string', enum: ['scene', 'objects', 'native'] },
+      concept: { type: 'string', description: 'Written FIRST: the art-directed brief for this slide, 60-150 words in the voice of the quality library. The one visual idea, the structure block by block, what each picture shows, where the takeaway sits. The layers then build exactly this.' },
+      composition: { type: 'string', enum: ['scene', 'objects', 'editorial', 'native'] },
       style_block: { type: 'string' },
       brands: { type: 'array', items: { type: 'object' } },
       background: { type: 'object' },
+      photos: { type: 'integer', description: 'How many image layers with role "photo" this slide has (0 if none).' },
       layers: {
         type: 'array',
         items: {
@@ -291,11 +302,28 @@ const LAYOUT_SYSTEM_PROMPT = `You are Nova, a world-class presentation designer.
 CANVAS: {W}×{H} px. Origin top-left. All x, y, w, h are canvas pixels. Keep a ~{M}px outer margin for text. Layers are drawn in array order (first = just above the background, last = on top).
 
 ══════════════════════════════════════════
+STEP 0 — WRITE THE CONCEPT FIRST ("concept")
+══════════════════════════════════════════
+Before any coordinates, art-direct the slide in words, exactly as the prompts in the quality library do for a single image: 60-150 words that a designer could build from. Say what the ONE visual idea is and why it makes this slide's point for this audience (in the deck's register); the structure, block by block; what each picture or object shows, specifically; where the takeaway sits and how the eye travels; what makes it more than a template. If the outline gives a visual direction, develop it (or replace it with a stronger one that suits the deck). Push past the first idea: the library's best slides stage the argument (a chessboard closing in, a timeline of tombstones with one plot empty, a war-room map with three pins, a contact sheet of unbriefed reactions). Then build EXACTLY that concept as layers: the concept is the image you would have asked a single-image model for; the layers are that image, made editable.
+
+══════════════════════════════════════════
 STEP 1 — CHOOSE THE COMPOSITION (decide what does this slide's purpose justice)
 ══════════════════════════════════════════
 - "scene": the slide's visual is ONE continuous photograph or render where things interact (people in an environment, a cabin, an aerial view, a street, a room, a cityscape). The scene is the BACKGROUND image, generated with NO text, NO cards, NO UI overlays, with deliberate negative space where your text goes. Only text, cards, charts, logos (and optionally a few floating UI elements) sit on top. Never cut people or objects out of a photographic scene into separate elements — that looks pasted on.
 - "objects": a designed keynote slide — an atmospheric background (or flat color) plus 1-5 hero objects/illustrations/effects as SEPARATE transparent elements (a 3D phone, a glass controller, a coin stream, a wallet), plus native text/cards/charts.
-- "native": typography, data and structure carry the slide (charts, timelines, stat grids, quotes, tables). Background is a flat color/gradient or one subtle textured image; zero to two image elements.
+- "editorial": a STRUCTURED, information-rich slide: the right composition for most campaign, strategy, plan, audience, comparison and process slides. A flat colour or subtle gradient background (free), a headline block, then the content's OWN structure built from native blocks on one strict grid: columns for phases / platforms / segments, a row of steps joined by arrows, a mosaic of candid moments, a photograph beside a stack of journey cards, pods around a centre. EACH block carries its own evidence as photo tiles (image role "photo") with its tags, numbers and takeaway line; the slide closes on stat bars and/or a verdict strip. No floating hero object.
+- "native": typography and data carry the slide (charts, tables, a single quote, a big number). Background is a flat color/gradient or one subtle textured image; zero to two image elements.
+
+Choose from the SHAPE OF THE CONTENT, never from habit:
+  one idea, one claim, one emotion → "scene", or "objects" with a single hero that IS the idea
+  a product, an app, a mechanism where things flow into each other → "objects"
+  a sequence (phases, steps, a timeline, a funnel, before → after) → "editorial": blocks in order, joined by arrows
+  parallel things (platforms, segments, personas, features, markets, options) → "editorial": equal columns or a grid, a picture per item
+  evidence of people and behaviour (reactions, UGC, what happened) → "editorial": a mosaic of candid photo tiles
+  numbers that tell the story → "native": a real chart and one big stat
+  an exhibit (consulting, analyst, board, investor data) → "native": action title, annotated chart or table, "so what", source
+  a provocation or an emotional beat → "scene": one staged photograph or render with the line set into it
+Text rows on the left with a 3D object on the right is ONE layout among many, right only when a single object is the whole idea. Look at ALL SLIDES: a deck where slide after slide repeats it reads as a template. Vary the structure from slide to slide the way a designer would.
 
 ══════════════════════════════════════════
 STEP 2 — LAYER KINDS (JSON fields)
@@ -311,6 +339,9 @@ background (top-level object, not a layer), one of:
 image — a generated visual element:
   {"kind":"image","id":"phone","role":"hero|element|effect","prompt":"...","refs":[],"x":..,"y":..,"w":..,"h":..,"shadow":{"color":"rgba(0,0,0,0.55)","blur":60,"dx":0,"dy":30},"glow":{"color":"rgba(255,46,116,0.5)","blur":80}}
   - role "hero": the main visual of the slide (at most one). "element": any other object, illustration, product, person cut-out on a designed slide, sticker, prop. "effect": light-based effects ONLY (glows, light trails, sparks, aurora wisps, lens flares, luminous particles) — these are rendered on pure black and converted to transparency, so describe them as light on black.
+  - role "photo": a FRAMED PICTURE, the building block of editorial slides. An opaque rectangular photograph, render or screenshot that fills its box (cropped to cover it), with native rounded corners and an optional hairline border:
+      {"kind":"image","id":"p1","role":"photo","prompt":"...","radius":12,"border":{"color":"rgba(255,255,255,0.14)","width":1},"x":..,"y":..,"w":..,"h":..}
+    Use it for candid moments, proof, thumbnails, a creator's video frame, a product in context, a shop shelf, a screen seen in someone's hand. ALL photo layers of a slide are shot together as ONE contact sheet (one generation however many there are, max ${MAX_SHEET_PHOTOS}) and cut into separately editable pictures: they share one grade and light, and ten of them cost what one image costs. So prefer several specific pictures over one generic hero. Give a slide's tiles similar proportions (all landscape-ish or all portrait-ish: the sheet has one panel shape and each tile is cropped to its box). A photo larger than ~20% of the canvas is generated on its own and counts as a generation. Each prompt is ONE self-contained moment in 25-70 words: who (age, dress, place), doing what, the expression, the light, one or two culturally specific markers, subject centred. Short text that is physically in the picture (a phone screen, a sign, a pack) may be quoted, at most 6 words per photo. Never describe a frame, border, caption or layout in a photo prompt. Announce the count in the top-level "photos" field.
   - role "cluster" — THE DEFAULT FOR THE VISUAL ZONE OF AN OBJECTS SLIDE: all the objects that belong together (hero, secondary objects, the streams/trails linking them, companions orbiting it) are generated TOGETHER in ONE image on a transparent background — so they share light, perspective and physically connect — and the app then splits that image into separately editable layers, one per item, placed exactly where they appeared:
       {"kind":"image","id":"visual","role":"cluster","prompt":"how they relate, e.g. coins pour out of the phone's ad banner in an arc and drop into the open wallet","items":[
         {"id":"phone","name":"Game phone","prompt":"...","x":930,"y":60,"w":560,"h":880},
@@ -349,8 +380,12 @@ shape — native panels, cards, pills, strips, dividers, glass:
   - Cards, panels, tables, pills and strips on the slide itself are ALWAYS native shapes with native text on top — never generated images (they must stay editable and crisp). UI inside a device screen follows the device rules above.
 
 chart — real, editable data:
-  {"kind":"chart","id":"growth","chart_type":"column|bar|line|area|pie|donut","categories":["2000","2001"],"series":[{"name":"Volume","values":[100,108],"color":"#4FACFE"}],"options":{"show_values":true,"show_grid":false,"value_prefix":"","value_suffix":"%","axis_color":"rgba(255,255,255,0.4)","label_color":"#FFFFFF","font":"<font>","font_size":18,"y_min":0,"y_max":420,"line_width":5,"point_colors":["#FF2E74",null]},"x":..,"y":..,"w":..,"h":..}
-  - Any real numbers that belong in a chart go in a chart layer, never into an image prompt. Segment emphasis (e.g. a red plateau then a blue climb) = two series with null where the other segment is. Annotations/callouts = native text + shape layers placed over the chart.
+  {"kind":"chart","id":"growth","chart_type":"column|bar|line|area|pie|donut|waterfall","categories":["2000","2001"],"series":[{"name":"Volume","values":[100,108],"color":"#4FACFE"}],"options":{"show_values":true,"show_grid":false,"value_prefix":"","value_suffix":"%","axis_color":"rgba(255,255,255,0.4)","label_color":"#FFFFFF","font":"<font>","font_size":18,"y_min":0,"y_max":420,"line_width":5,"point_colors":["#FF2E74",null]},"x":..,"y":..,"w":..,"h":..}
+  - More options: "show_legend":true (a row above the plot; for pie/donut a list at the right), "show_grid":true (value gridlines; the value axis with round tick labels is always drawn unless "hide_axis":true), "show_values":true (bars: a label on every bar; lines: on every point up to 8 categories, otherwise on the last point), "stacked":true (column/bar), "value_color" (labels inside stacked segments and slices), and annotations PINNED TO THE DATA, which the app positions exactly:
+      "annotations":[{"kind":"marker","category":"2003","text":"GO-TO-MARKET RELAUNCH","sub":"Tier 2 and 3 mapped, distributors rebuilt","color":"#111827"},{"kind":"callout","category":"2007","series":1,"text":"4X VOLUME","color":"#1E5BFF","text_color":"#FFFFFF"}]
+    "marker" = a dashed vertical line at that category with a boxed label at its top ("sub" = an optional second, smaller line in the box); "callout" = a large bold filled label pinned above that series' point (its value label is hidden there); {"kind":"line","value":48,"text":"Target 48%"} = a dashed target or benchmark line at that value across the plot.
+    "waterfall" = a bridge from one total to another: ONE series whose first value is the starting total and whose following values are the changes (negative for reductions); list in "options":{"totals":[4]} the indices of bars that are totals again (set that value to the total itself). Each bar is labelled with its total or its signed change automatically; colour bars with "point_colors". Use them for the event that changed the curve and for the number the slide is about. NEVER place loose text or shape layers over a chart's plot area to label data: the app cannot keep them on the data and they collide with its own labels; everything on the plot is an annotation. A series may carry "fill":true to shade the area under that line only (the growth after the turning point). Give charts presence: "font_size" 22-26, "line_width" 6-8, and a chart box that fills its zone. Bar charts ("bar") draw their category labels at the left and values at the bar ends.
+  - Any real numbers that belong in a chart go in a chart layer, never into an image prompt. Segment emphasis (e.g. a red plateau then a blue climb) = two series with null where the other segment is (repeat the joining value in both so the line is continuous). Set chart colours for the deck: on a light deck "label_color" is near-black and "axis_color" a mid grey (the app defaults them to the deck's text colour). An exhibit highlights ONE series or bar in the accent and keeps the rest grey.
 
 icon — small symbols:
   {"kind":"icon","id":"ic_check","source":"lucide","name":"circle-check","color":"#00FFA3","stroke":2,"x":..,"y":..,"w":40,"h":40}   ← simple UI/line icons from the Lucide set (use exact Lucide names: check, circle-check, wallet, users, trophy, flame, map-pin, camera, heart, gift, crown, coffee, rocket, chart-line, shield-check, plane, play, clock, star, zap, globe, smartphone, qr-code, ...)
@@ -371,18 +406,32 @@ STEP 3 — IMAGE PROMPTS (the quality of the slide lives here)
 - Background prompts describe the environment/atmosphere ONLY. The app appends "no text, no letters, no logos, no UI, no cards". State exactly where the negative space is (e.g. "the left 45% falls off into clean near-black for text").
 - No text inside generated images. All words are native text layers. The exceptions: text physically printed on a real object inside a scene (a shop sign, a pack label), and the on-screen copy of a "ui":true device. Keep it short and quote it exactly.
 - refs: attach "upload:N" when an uploaded image should guide that layer (a product photo, a person, a moodboard look, a pack shot); attach "brand:<Name>" for a fetched brand logo.
-- Image generations are expensive: background image + image layers + one icon sheet ≤ ${MAX_GENERATIONS_PER_SLIDE} per slide. Most slides need 1-5. Repeated identical devices count once.
-- At most ${MAX_LAYERS} layers per slide; anything after that is discarded. Most slides need 10-30. Every layer is written by you, so spend layers on what the audience reads, not on decorative detail.
+- Image generations are expensive: background image + image layers + one icon sheet + the photo contact sheet ≤ ${MAX_GENERATIONS_PER_SLIDE} per slide. Most slides need 1-4. Repeated identical devices count once; all photo tiles together count once. An editorial slide on a flat background is ONE generation.
+- At most ${MAX_LAYERS} layers per slide; anything after that is discarded. Most slides need 15-40; a dense editorial slide may use 60-80. Every layer is written by you, so spend layers on what the audience reads, not on decorative detail.
 - OUTPUT ECONOMY (every character you write is paid for; the app fills these in): OMIT any field that equals its default. Defaults: role "body"; align "left"; valign "top"; italic, uppercase, flip false; rotation 0; opacity 1; line_height 1.15; letter_spacing 0; weight 700 for roles headline/display/stat and 400 otherwise; font = the deck's display font for roles headline/display/stat and the deck's body font otherwise; text colour = the deck palette's text colour. Write a field only when it differs. Ids are short and unique (h1, sub, t3, card1, phone); never add "name". Image prompts describe only the subject: the app already prepends the deck style_block and appends isolation, no-text and device-angle instructions, so never repeat those. Economy is only about defaults: never drop a design choice to save tokens (accent runs and gradients on key words, heavier weights, shadows, glows, letter spacing the art direction calls for).
 
 ══════════════════════════════════════════
 STEP 4 — DESIGN QUALITY BAR (the slide must look like a top keynote designer made it)
 ══════════════════════════════════════════
+- THE VISUAL IS THE CONTENT, NEVER DECORATION. Every generated picture or object shows something this slide's copy names. Test each one: could a line of this slide caption it? If not, cut it or replace it with the thing the copy is about. A slide about three phases shows the three phases (what happens in each), not a funnel or a trophy.
+- STRUCTURE MIRRORS MEANING. If the content has parts (3 phases, 4 platforms, 5 steps), the slide has that many equal blocks, in that order, each with the same anatomy. If it is a sequence, the order is drawn (arrows); if it is a comparison, the blocks sit side by side on shared baselines so the eye can compare row by row.
+- ONE GRID, EVERYTHING BELONGS. Lay the slide on one grid: equal column widths, equal gutters (16-32px), shared top and bottom edges. Every element sits inside exactly one block and aligns to that block's edges: a photo is exactly as wide as its block, or tiles it with 8-12px gaps; tags in a row share one y and height; block footers share one y and height across columns. Nothing straddles two blocks, nothing floats in a gap, and no card, stat or label is ever set on top of a generated object or over another block. Connection is DRAWN, not implied: a sequence gets a native rule with a chevron icon ("chevron-right" / "arrow-right") running from block to block; a group gets a shared panel or a shared accent colour.
+- EVIDENCE DENSITY (editorial slides). Per block: a small caps kicker, a display title, one line of support, 2-5 photo tiles, 2-4 tags (pills), a takeaway line in a bordered footer. Carry every fact the brief gives; when there is room, add proof (tiles, tags, a proof line), never padding or decoration. Density comes from structure, never from type below the readability floor.
+- EDITORIAL TYPE AND COLOUR. Condensed display caps for headline, block titles and big numbers; the decisive headline line in the accent; block kicker, rule and support line in the block's code colour (one palette colour per block or one for all); pills solid or outlined in palette colours with dark or white text; footers as thin-bordered panels; big numbers 72-110px in outlined stat bars with their meaning beside them; a full-width verdict strip at the bottom.
+- THE SINGLE-IMAGE TEST. Picture the slide as ONE image from a top image model given your concept: the subject would be large and close, the frame full to its edges, the type big enough to be the first thing read. A layered slide that is tidier but smaller, emptier or quieter than that has failed. Before submitting, compare against that imagined image and scale up.
+- SUBJECTS FILL THE FRAME. In a scene, the subject (the person, the object, the action) is LARGE and close: it occupies at least half the frame's height and reaches or bleeds off at least one edge. Never push it into a corner to make room for type. Ask the background for a quiet zone of at most ~35% of the frame (a wall, a sky, a dark ceiling, an out-of-focus depth) and let the type sit over it; where the picture behind the type is still busy, add a native gradient scrim (a rect shape whose gradient runs from the background's dark or light tone at 0.85 alpha to 0 alpha) rather than emptying the photograph.
+- A SUBJECT THAT LIVES IN A PLACE IS NEVER A CUT-OUT. A person, a vehicle, a room, a street, a rider in a city: generate subject AND environment together, either as the scene background or as ONE large "photo" layer that bleeds off the top, bottom and one side of the canvas (e.g. x 0, y 0, w 55% of the canvas, full height, radius 0), with a native gradient shape fading its inner edge into the text side. An illustrated character floating on an empty background with white space around it looks pasted on. Clusters and cut-out elements are for things that genuinely float: devices, products, icons, coins, 3D objects on a designed keynote slide.
+- OBJECTS THAT CARRY A LABEL CARRY IT ON THEM (the app keeps such text on its object: place it inside the object's box, above the object in z-order, and it moves and scales with wherever the object is actually drawn). This works ONLY for objects that are their own image layers (an element or a cluster item): the app cannot see where things land inside a background image. So an object that carries a native label (a pin's flag, a sign, a tag, a stone) is never part of the background scene; generate it as an element or cluster item over a background that holds only the setting (the map and table, the street, the room), and set the label on it. When the single-image version would engrave, print or paint words onto an object (a tombstone, a signboard, a card, a pin's flag, a pack, a floor), make the object big enough to read (at least ~22% of the canvas height each, in a row that spans the slide) and set its label as native text ON its face (centred on the object's box, sized to fit inside it, in a colour that reads as engraved or printed), never as a detached caption far below. Repeated objects in a row are evenly spaced across the full width unless the spacing itself is the data.
+- TYPE WITH PRESENCE. Size type for the back of the room, then one step bolder. Cinematic and campaign headlines 110-170px; keynote and 3D slides 84-120px; light corporate and teaching 72-100px; consulting action titles 40-52px. Subtext under a cinematic headline 34-44px. Text inside cards 28-34px with card titles 34-40px; a card is as tall as its text needs plus padding, and a stack of cards fills its column top to bottom. If a text column leaves more than ~12% of the canvas empty beside or below it, the type is too small: enlarge it.
+- EXHIBIT ANATOMY (consulting, analyst, board and investor data slides; composition "native", light background). Top-left: the action title, 38-48px, weight 700, sentence case, at most two lines, the full so-what with its number; an optional 20-22px grey kicker above it ("Exhibit 3 · Volume index, 2000 = 100"). The exhibit takes 60-75% of the canvas: ONE chart (or a table / 2x2 built from native shapes and text) on the page itself or a hairline-bordered white panel, with gridlines, direct labels, the series that matters in the accent and the rest in grey, and annotations pinned to the data. Beside or below it: a "so what" block of 2-3 short labelled insights ("DECISION / METHOD / RESULT") separated by hairline rules, or one tinted takeaway box. Bottom: a thin rule, the source line 16-18px grey at the left, the page number at the right. Nothing decorative; white space is deliberate; every element aligns to one left margin and one grid.
+- CINEMATIC MINIMAL ANATOMY (composition "scene"). The photograph or render IS the slide: one staged, specific scene, described with camera, lens, light and grade, full bleed as the background image. The subject stays large and close (see SUBJECTS FILL THE FRAME); the line is native type set INTO the picture: on a wall, a dark ceiling zone, a floor, a sky (say exactly where in the background prompt; that surface stays plain but the scene continues around and behind it), large condensed or elegant type, one line of subtext, nothing else: no cards, no pills, no strips, no icons. Words that the library's single-image prompts painted onto a wall or floor are native text placed over that surface. A second or third element (three phones, a map with pins) belongs IN the scene, not on top of it.
+- LIGHT DECKS. Cards are white (or a pale tint of the accent) with a hairline border in rgba of the text colour and a soft low shadow, never white-on-white glass; "frosted" and glow effects belong to dark decks. Text is the deck's near-black; muted text a mid grey; the accent is used sparingly.
+- EDITORIAL PATTERNS (pick the one the content is, vary across the deck): equal columns with header arrows · a mosaic of 6-10 candid tiles that fills the body edge to edge, in MIXED sizes (one or two large tiles, the rest smaller, never a uniform grid of equal boxes) around one callout; for a raw, "grabbed from a dozen phones" feel the tiles overlap by 10-20px and take a "rotation" of 1-3 degrees, alternating direction · one large photograph (left ~55%) beside a stack of 3-4 journey cards joined by a vertical rule · a 2x3 or 2x4 grid of pods (tile + title + stat) · a split comparison (two halves, mirrored anatomy, a divider) · a horizontal timeline whose every stop has a tile above and a label below.
 - CONNECTED, NOT FLOATING. Generate the visual zone as ONE "cluster" (see role "cluster") so it is literally one composed image, never separate stickers: every secondary object relates physically to the hero — linked by a connector (stream, beam, orbit), touching it, or overlapping its edge. The background's glow is placed behind the cluster so everything shares one light. Floating callout cards sit close to / slightly overlapping the cluster, with a glow shadow in the accent colour. Objects in the cluster share one light direction (the deck style's key light).
 - SCALE. The hero fills 60-85% of the canvas height in its zone (a phone ~550x850, a controller ~800x600), often tilted 8-15 degrees for energy (describe the angle in its prompt). Secondary objects are substantial (at least ~15% of canvas height; a wallet ~280x260), never tiny props. Callout cards ~340x240.
 - TYPE SCALE (1080p canvas): kicker/label 20-24px caps, letter_spacing 0.18-0.3 (em), accent colour or gradient · headline 76-110px weight 800, 2-4 lines, line_height 1.02-1.1 · big stat numbers 96-130px weight 800 filled with the deck's signature gradient · row titles 30-34px weight 700 · body 26-30px · footnotes 22-24px muted · slide number 64-80px weight 300 muted grey.
-- ROW / CARD ANATOMY (use for lists of 2-4 items): frosted card 820-840 wide, 125-150 tall, radius 26-32, "highlight":true, subtle gradient border. Inside, left to right with ≥28px padding: an icon badge (ellipse 76x76, transparent fill, 2px accent/gradient border, a Lucide icon 36px centred in it) → bold title → a 2px vertical divider (rect, 55% card height, rgba(255,255,255,0.18)) → body text. Stat rows use a big gradient number instead of badge+title.
-- FILL THE CANVAS WITH INTENT. Content column ~45% / visual zone ~55% unless briefed otherwise; no dead zone larger than ~15% of the canvas; small supporting lines (proof line with a shield-check icon, KPI line with a chart-line icon) anchor the bottom.
+- ROW / CARD ANATOMY (objects slides, for lists of 2-4 short items; an editorial slide uses its blocks instead): frosted card 820-840 wide, 125-150 tall, radius 26-32, "highlight":true, subtle gradient border. Inside, left to right with ≥28px padding: an icon badge (ellipse 76x76, transparent fill, 2px accent/gradient border, a Lucide icon 36px centred in it) → bold title → a 2px vertical divider (rect, 55% card height, rgba(255,255,255,0.18)) → body text. Stat rows use a big gradient number instead of badge+title.
+- FILL THE CANVAS WITH INTENT. On objects slides the content column is ~45% and the visual zone ~55% unless briefed otherwise (editorial slides use the full width for their blocks); no dead zone larger than ~15% of the canvas; small supporting lines (proof line with a shield-check icon, KPI line with a chart-line icon) anchor the bottom.
 - Logo top-left at the margin (height 56-72px). If the user uploaded a logo, use it (source "upload").
 - KEY TAKEAWAY FIRST: the headline/takeaway is the most prominent thing on the slide — largest type, clear space around it, nothing overlapping it. For campaign/insight slides with a dense visual, a centred full-width headline block above the visual (as in the device-collage reference) is often the strongest structure.
 - DEVICE COLLAGES: the primary conversation sits on ONE large device (landscape when it is a long chat thread), secondary devices are smaller and grouped tightly (side by side or stacked 2-up) next to it on a shared baseline. Size every device box to the device's true shape (portrait phone ≈ 1:2 width:height, landscape phone ≈ 2:1) so it fills its box, and keep secondary devices ≤ 40px apart (or slightly overlapping) so the group reads as one unit. Devices never overlap text and never scatter.
@@ -427,6 +476,39 @@ WORKED EXAMPLE (objects composition) — the quality bar. Brief: Simosa Door 6, 
 Notice: the phone, coin stream and wallet are ONE cluster (one image, perfectly connected, split into three editable layers); hero tilted and large; wallet substantial and logo-branded; the background's blooms are placed behind the phone and the wallet; the earnings card glows and sits by the cluster; rows have badge + title + divider + body; gradient stat; logo, proof line and KPI line anchor the corners. Apply the same standard to every composition (scene slides: the scene background carries the visual, cards and text are native; native slides: charts and type carry it).
 
 ══════════════════════════════════════════
+WORKED EXAMPLE 2 (editorial composition): one pattern of several, shown for its grid and anatomy. Brief: Rahi bike-taxi, a 90-day city launch in three stages. Deck: near-black #0B0B0C, lime #B6FF3C, coral #FF5A4E; Anton display, Inter body.
+══════════════════════════════════════════
+{"composition":"editorial","background":{"type":"color","color":"#0B0B0C"},"photos":9,
+"layers":[
+{"kind":"image","id":"p1","role":"photo","prompt":"A 20-year-old student in a faded university hoodie outside a Lahore campus gate at dusk, straddling a parked motorbike and grinning as he hands a spare helmet to a classmate, warm tungsten street light, a chai stall glowing behind them","radius":10,"x":48,"y":418,"w":192,"h":240},
+{"kind":"image","id":"p2","role":"photo","prompt":"Close on a young woman's hands holding a phone on a crowded campus lawn, the screen showing a ride app with a large button reading \"FIRST RIDE FREE\", friends leaning in to look, soft overcast light","radius":10,"x":248,"y":418,"w":192,"h":240},
+{"kind":"image","id":"p3","role":"photo","prompt":"Two hostel roommates laughing on a motorbike in evening traffic on Canal Road, the passenger filming a selfie video with one arm out, motion blur on the trees, golden backlight","radius":10,"x":448,"y":418,"w":192,"h":240},
+… p4-p6 (column 2, x 664 / 864 / 1064) and p7-p9 (column 3, x 1280 / 1480 / 1680): same boxes, each a different moment of that stage …
+{"kind":"text","id":"h1","role":"headline","text":"FIRST RIDE FREE. SECOND RIDE A HABIT.\nTHIRD RIDE, THEY TELL A FRIEND.","runs":[{"text":"THIRD RIDE, THEY TELL A FRIEND.","color":"#B6FF3C"}],"size":66,"uppercase":true,"align":"center","line_height":1.04,"x":120,"y":36,"w":1680,"h":144},
+{"kind":"text","id":"sub","text":"Three stages, one city, ninety days.","size":26,"italic":true,"align":"center","x":460,"y":186,"w":1000,"h":36},
+{"kind":"shape","id":"r1","shape":"line","fill":"#B6FF3C","x":48,"y":250,"w":566,"h":3},
+{"kind":"icon","id":"a1","name":"chevron-right","color":"#B6FF3C","stroke":3,"x":604,"y":236,"w":30,"h":30},
+{"kind":"text","id":"k1","role":"label","text":"STAGE 1 · DAYS 1-30","size":20,"weight":700,"letter_spacing":0.14,"color":"#B6FF3C","x":48,"y":266,"w":592,"h":28},
+{"kind":"text","id":"t1","role":"headline","text":"SEED","size":72,"x":48,"y":296,"w":592,"h":76},
+{"kind":"text","id":"s1","text":"campus captains and free first rides","size":24,"weight":600,"color":"#B6FF3C","x":48,"y":376,"w":592,"h":34},
+{"kind":"shape","id":"g1","shape":"rect","fill":"#B6FF3C","radius":20,"x":48,"y":670,"w":192,"h":40},
+{"kind":"text","id":"g1t","role":"label","text":"Campus captains","size":19,"weight":700,"color":"#0B0B0C","align":"center","valign":"middle","x":48,"y":670,"w":192,"h":40},
+… two more pills at x 248 and 448 (same y, w, h) …
+{"kind":"shape","id":"f1","shape":"rect","fill":"rgba(182,255,60,0.07)","border":{"color":"rgba(182,255,60,0.5)","width":1.5},"radius":10,"x":48,"y":724,"w":592,"h":104},
+{"kind":"text","id":"f1t","role":"headline","text":"MAKE THE FIRST RIDE A STORY","size":28,"align":"center","x":64,"y":736,"w":560,"h":36},
+{"kind":"text","id":"f1b","text":"Every captain posts their first passenger's reaction.","size":20,"align":"center","x":64,"y":776,"w":560,"h":44},
+… column 2 (x 664, "STAGE 2 · DAYS 31-60", "HABIT") and column 3 (x 1280, "STAGE 3 · DAYS 61-90", "SPREAD", coral code colour) repeat column 1 exactly with x offsets; the last column's rule has no chevron …
+{"kind":"shape","id":"st1","shape":"rect","fill":"transparent","border":{"color":"#B6FF3C","width":3},"radius":8,"x":48,"y":846,"w":900,"h":104},
+{"kind":"text","id":"st1n","role":"stat","text":"40,000","size":84,"color":"#B6FF3C","valign":"middle","x":72,"y":850,"w":330,"h":96},
+{"kind":"text","id":"st1l","text":"first rides, each one a rider who met a captain on campus","size":22,"valign":"middle","x":420,"y":856,"w":510,"h":84},
+… second stat bar at x 972 in coral …
+{"kind":"shape","id":"strip","shape":"rect","fill":"#16210A","x":0,"y":966,"w":1920,"h":114},
+{"kind":"text","id":"v","role":"headline","text":"THE DISCOUNT ENDS IN 30 DAYS. THE HABIT DOESN'T.","size":40,"align":"center","valign":"middle","x":60,"y":972,"w":1800,"h":50},
+{"kind":"text","id":"v2","role":"caption","text":"They came for a free ride. They stayed for the captain who knows their gate.","size":22,"italic":true,"color":"#B6FF3C","align":"center","x":60,"y":1024,"w":1800,"h":30}
+]}
+Notice: no hero object and no generated background, so the whole slide is ONE generation (nine tiles, one contact sheet); three equal columns (592 wide, 24 gutters) with identical anatomy on shared y positions; the stage order is drawn by rules and chevrons; every tile shows what its stage's copy says, with people, place and light; tiles, pills and footers align to their column's edges; stat numbers sit beside what they mean; the verdict strip closes the argument. Other editorial slides use the other patterns (mosaic, photo + journey cards, pod grid, split, timeline) with the same discipline.
+
+══════════════════════════════════════════
 STEP 5 — LAYOUT, HIERARCHY, READABILITY
 ══════════════════════════════════════════
 - One clear focal point, one reading order. Align to a grid (e.g. 12 columns, 24px gutters); align text edges with each other and with cards.
@@ -437,9 +519,11 @@ STEP 5 — LAYOUT, HIERARCHY, READABILITY
 - Copy belongs to THIS slide only: never reuse another slide's title or lines (the slide list is context, not copy). If the brief gives no line for a strip/caption, write one for this slide's own point.
 - Honor every explicit placement in the brief ("bottom-right corner empty", "logo small top-left", "slide number '09' grey bottom-right").
 - Image elements never cover text boxes (connectors and glows may pass BEHIND cards). Keep image boxes inside the canvas (a small deliberate bleed off an edge is fine; a phone half off-screen is not). Stacked/fanned devices overlap each other by at most ~20%.
+- Text keeps clear of the canvas edge: no text box within 20px of the top or bottom edge or 40px of the sides (the app pushes it back in, which can land it on its neighbour). A bottom strip's last line ends by y = {H} - 20.
+- Stacked text boxes never share pixels: the next box starts at or below the previous box's y + h (a kicker above a title, a title above its support line, two lines in a strip).
 - Before submitting, check every box: x ≥ 0, y ≥ 0, x + w ≤ {W}, y + h ≤ {H} for text and cards; no text box intersects another text box or an image element.
 
-OUTPUT ORDER: write the tool input keys in this order — composition, style_block, brands, background, layers — and inside "layers" put the image layers (background-most first) as early as the z-order allows, because generation of each image starts the moment its JSON is complete.
+OUTPUT ORDER: write the tool input keys in this order — concept, composition, style_block, brands, background, photos, layers — and inside "layers" put the image layers (background-most first) as early as the z-order allows, because generation of each image starts the moment its JSON is complete. "photos" is the number of role "photo" layers (0 or omit when there are none): write ALL photo layers consecutively at the start of "layers" (after any panel they sit on), since their contact sheet starts generating the moment the last one is complete.
 
 ══════════════════════════════════════════
 ART DIRECTION FOR THIS DECK
@@ -558,6 +642,7 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
     slide.subtitle ? `Subtitle: ${slide.subtitle}` : null,
     slide.key_points?.length ? `Key points: ${slide.key_points.join(' | ')}` : null,
     slide.speaker_note ? `Speaker note: ${slide.speaker_note}` : null,
+    slide.visual ? `Visual direction from the outline (a starting point: develop it, or better it): ${slide.visual}` : null,
     instruction ? `\nSPECIFIC DIRECTION FOR THIS SLIDE: ${instruction}` : null,
     '',
     slide.source_content ? `\nTHE USER'S ORIGINAL VERSION OF THIS SLIDE (from the deck they asked to redesign; positions are % of their slide). Keep its content, facts and intent. REDESIGN it, don't restyle it: design this slide exactly as you would a brand-new slide held to the quality library and reference slides above (one dominant visual idea, a takeaway headline that lands, art-directed generated imagery, native charts for its numbers, premium composition). Never reproduce the old template's look, bullet layout or clip art; keep only true brand identity (logo, brand colours) and the user's real photos where they matter:\n${String(slide.source_content).slice(0, 4500)}` : null,
@@ -570,6 +655,10 @@ export async function designSlideLayout({ slide, header, deckDesign, brief, uplo
   if (FILES_MODE) {
     const { response } = filesAgent('layout', { title: slide.title, brief: String(brief || '').slice(0, 20000), instruction, deck: deckDesign }, {
       tool: LAYOUT_TOOL.name, canvas, user_message: text, uploads: uploads.length,
+      // The exact system prompt and tool schema the API call would carry, so
+      // whoever answers the request file answers the real question.
+      system: layoutPrefix(aspectRatio).system.map(b => b.text), input_schema: LAYOUT_TOOL.input_schema,
+      reference_slides: REFERENCE_SLIDES.map(r => path.join(REFERENCE_DIR, `${r.name}.jpg`)),
     });
     if (!response) throw new Error('slide layout pending (files mode)');
     const out = sanitizeDeep(response);
@@ -645,6 +734,7 @@ Find and fix only real problems:
 - elements overlapping in ugly ways, awkward gaps, misalignment, an element covering the focal point;
 - a generated element that looks wrongly sized or placed for the composition;
 - cards that don't contain their text with comfortable padding;
+- a card, stat or label sitting on top of a generated object or photo it does not belong to, or an element straddling two blocks of a grid (move it into its own block or the nearest clear space; photo tiles themselves stay on their grid: fix them only by equalising edges with their neighbours);
 - anything outside the canvas that shouldn't be.
 
 Return small, surgical fixes (move/resize/recolor/resize-font/reorder, or remove a broken decorative element). Never change text content. If the slide already looks right, return an empty fixes list. Coordinates are canvas pixels.`;
@@ -744,6 +834,7 @@ Carry out the user's instruction with the SMALLEST set of operations:
 - Text, colours, sizes, fonts, positions, chart numbers, icons, card styles → "update" the existing layers natively. Never regenerate an image to change text or colour that is a native layer.
 - A different or changed OBJECT/PICTURE (e.g. "make the phone a laptop", "the coins should be gold", "add a rocket") → "regenerate" that image layer with a complete new prompt in the same rendering style as the other prompts (or "add" a new image layer with role "element" and a prompt). Prompts describe only the object, never text, except a "ui":true device whose on-screen copy lives in its prompt: to change that copy, "regenerate" the device with its full prompt and the new copy quoted exactly. A device with a native "screen" keeps its copy in its in_screen layers.
 - A different mood/scene → "background" with a full new prompt (keep its negative space where the text sits), or a native color/gradient.
+- A different PHOTO TILE (role "photo": a framed picture) → "regenerate" it with a complete new prompt for that one picture (same people-place-light register as the others), or "add" one with role "photo", a box on the slide's grid and the same "radius" as its neighbours. Its corner radius and border are native ("update").
 - Removing something → "remove". Layering → "reorder".
 - Keep the deck's palette and fonts unless the user asks otherwise. Keep everything readable (WCAG AA contrast) and inside the canvas; when you move or resize, keep alignment with the surrounding layers.
 - Use the user's exact wording for any new copy. Never invent statistics.
@@ -826,6 +917,9 @@ function mockLayout(slide, header, deck, aspectRatio, uploads) {
   const d = deck || mockDeckDesign();
   const m = Math.round(W * 0.05);
   const points = (slide.key_points || []).slice(0, 3);
+  // Every third slide is an editorial one, so photo tiles (one contact sheet,
+  // sliced) are exercised in mock mode too.
+  if (slide.index % 3 === 1) return mockEditorialLayout(slide, d, W, H, m);
   const layers = [];
   const logoIdx = uploads.findIndex(u => u?.category === 'branding');
   if (logoIdx !== -1) layers.push({ kind: 'logo', id: 'logo', name: 'Logo', source: 'upload', upload: logoIdx, x: m, y: m * 0.6, w: 200, h: 56 });
@@ -854,4 +948,19 @@ function mockLayout(slide, header, deck, aspectRatio, uploads) {
     brands: [],
     layers,
   };
+}
+
+function mockEditorialLayout(slide, d, W, H, m) {
+  const points = (slide.key_points?.length ? slide.key_points : ['First', 'Second', 'Third']).slice(0, 3);
+  const gap = Math.round(W * 0.0125); const cw = Math.round((W - 2 * m - 2 * gap) / 3);
+  const layers = [];
+  points.forEach((_, i) => layers.push({ kind: 'image', id: `p${i + 1}`, role: 'photo', prompt: `a candid documentary photograph for "${slide.title}", moment ${i + 1}`, radius: 12, x: m + i * (cw + gap), y: H * 0.36, w: cw, h: H * 0.3 }));
+  layers.push({ kind: 'text', id: 'headline', role: 'headline', text: slide.title || 'Untitled', font: d.fonts.display, size: 64, weight: 800, align: 'center', line_height: 1.06, x: m, y: H * 0.08, w: W - 2 * m, h: H * 0.2 });
+  points.forEach((p, i) => {
+    const x = m + i * (cw + gap);
+    layers.push({ kind: 'shape', id: `rule_${i + 1}`, shape: 'line', fill: d.palette.accent, x, y: H * 0.32, w: cw - 24, h: 3 });
+    layers.push({ kind: 'shape', id: `foot_${i + 1}`, shape: 'rect', fill: d.palette.panel || 'rgba(255,255,255,0.07)', border: { color: 'rgba(255,255,255,0.2)', width: 1.5 }, radius: 10, x, y: H * 0.69, w: cw, h: H * 0.14 });
+    layers.push({ kind: 'text', id: `point_${i + 1}`, text: p, font: d.fonts.body, size: 24, align: 'center', valign: 'middle', x: x + 20, y: H * 0.69 + 10, w: cw - 40, h: H * 0.14 - 20 });
+  });
+  return { composition: 'editorial', style_block: '', background: { type: 'color', color: d.palette.background }, photos: points.length, brands: [], layers };
 }

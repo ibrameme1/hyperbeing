@@ -1,3 +1,4 @@
+import { chartGeometry } from './chartGeometry.js';
 import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
@@ -101,79 +102,22 @@ function textLayerSvg(l, defs, uid) {
   return `${out}</text>`;
 }
 
-function chartSvg(l) {
-  const { categories, series, options, chart_type: type } = l;
-  const pad = { l: 56, r: 16, t: 16, b: 40 };
-  const fs = options.font_size;
-  const font = `font-family="'${esc(options.font)}', Inter, sans-serif" font-size="${fs}"`;
-  const palette = ['#FF2E74', '#00FFA3', '#FF8A1F', '#4FACFE', '#FFD166', '#B388FF'];
-  const colorOf = (s, i) => s.color || palette[i % palette.length];
-  let out = `<g${rotateAttr(l)} opacity="${l.opacity}">`;
-
-  if (type === 'pie' || type === 'donut') {
-    const vals = series[0].values.map(v => Math.max(0, v || 0));
-    const sum = vals.reduce((a, b) => a + b, 0) || 1;
-    const cx = l.x + l.w / 2; const cy = l.y + l.h / 2; const r = Math.min(l.w, l.h) / 2 - 8;
-    let a0 = -Math.PI / 2;
-    vals.forEach((v, i) => {
-      const a1 = a0 + (v / sum) * Math.PI * 2;
-      const large = a1 - a0 > Math.PI ? 1 : 0;
-      const c = options.point_colors?.[i] || palette[i % palette.length];
-      out += `<path d="M${cx},${cy} L${cx + r * Math.cos(a0)},${cy + r * Math.sin(a0)} A${r},${r} 0 ${large} 1 ${cx + r * Math.cos(a1)},${cy + r * Math.sin(a1)} Z" fill="${esc(c)}"/>`;
-      a0 = a1;
-    });
-    if (type === 'donut') out += `<circle cx="${cx}" cy="${cy}" r="${r * 0.6}" fill="#000" fill-opacity="0.85"/>`;
-    return `${out}</g>`;
-  }
-
-  const all = series.flatMap(s => s.values).filter(v => v !== null);
-  const yMin = options.y_min ?? Math.min(0, ...all);
-  const yMax = options.y_max ?? (Math.max(...all) * 1.1 || 1);
-  const horizontal = type === 'bar';
-  const px = l.x + pad.l; const py = l.y + pad.t; const pw = l.w - pad.l - pad.r; const ph = l.h - pad.t - pad.b;
-  const n = categories.length;
-  const yPos = (v) => py + ph - ((v - yMin) / (yMax - yMin || 1)) * ph;
-
-  out += `<line x1="${px}" y1="${py + ph}" x2="${px + pw}" y2="${py + ph}" stroke="${esc(options.axis_color)}" stroke-width="2"/>`;
-  if (!horizontal) {
-    categories.forEach((c, i) => {
-      out += `<text x="${px + (i + 0.5) * (pw / n)}" y="${py + ph + fs + 8}" text-anchor="middle" fill="${esc(options.label_color)}" ${font}>${esc(c)}</text>`;
-    });
-  }
-
-  if (type === 'column' || type === 'bar') {
-    const groupW = (horizontal ? ph : pw) / n; const bw = (groupW * 0.7) / series.length;
-    series.forEach((s, si) => {
-      s.values.forEach((v, i) => {
-        if (v === null) return;
-        const c = options.point_colors?.[i] || colorOf(s, si);
-        if (horizontal) {
-          const w = ((v - yMin) / (yMax - yMin || 1)) * pw;
-          out += `<rect x="${px}" y="${py + i * groupW + groupW * 0.15 + si * bw}" width="${w}" height="${bw}" rx="4" fill="${esc(c)}"/>`;
-        } else {
-          const y = yPos(v);
-          out += `<rect x="${px + i * groupW + groupW * 0.15 + si * bw}" y="${y}" width="${bw}" height="${py + ph - y}" rx="4" fill="${esc(c)}"/>`;
-          if (options.show_values) out += `<text x="${px + i * groupW + groupW * 0.15 + si * bw + bw / 2}" y="${y - 8}" text-anchor="middle" fill="${esc(options.label_color)}" ${font}>${esc(options.value_prefix + v + options.value_suffix)}</text>`;
-        }
-      });
-    });
-  } else {
-    series.forEach((s, si) => {
-      const pts = s.values.map((v, i) => (v === null ? null : [px + (i + 0.5) * (pw / n), yPos(v)]));
-      // Break the path at nulls (segmented series, e.g. red plateau → blue climb).
-      let d = ''; let penDown = false;
-      for (const p of pts) {
-        if (!p) { penDown = false; continue; }
-        d += `${penDown ? ' L' : ' M'}${p[0]},${p[1]}`;
-        penDown = true;
-      }
-      d = d.trim();
-      if (type === 'area') {
-        const valid = pts.filter(Boolean);
-        if (valid.length > 1) out += `<path d="M${valid[0][0]},${py + ph} L${valid.map(p => p.join(',')).join(' L')} L${valid[valid.length - 1][0]},${py + ph} Z" fill="${esc(colorOf(s, si))}" fill-opacity="0.25"/>`;
-      }
-      out += `<path d="${d}" fill="none" stroke="${esc(colorOf(s, si))}" stroke-width="${options.line_width}" stroke-linejoin="round" stroke-linecap="round"/>`;
-    });
+function chartSvg(l, uid) {
+  // Same primitives the web renderer draws (chartGeometry), offset to the layer.
+  const prims = chartGeometry(l);
+  if (!prims.length) return '';
+  const font = `font-family="'${esc(l.options.font)}', Inter, sans-serif"`;
+  const hole = prims.find(p => p.t === 'hole');
+  const op = (p) => (p.op !== undefined ? ` opacity="${p.op}"` : '');
+  let out = `<g transform="translate(${l.x} ${l.y})${l.rotation ? ` rotate(${l.rotation} ${l.w / 2} ${l.h / 2})` : ''}" opacity="${l.opacity}">`;
+  if (hole) out += `<mask id="dh${uid}"><rect width="${l.w}" height="${l.h}" fill="#fff"/><circle cx="${hole.cx}" cy="${hole.cy}" r="${hole.r}" fill="#000"/></mask>`;
+  const mask = hole ? ` mask="url(#dh${uid})"` : '';
+  for (const p of prims) {
+    if (p.t === 'line') out += `<line x1="${p.x1}" y1="${p.y1}" x2="${p.x2}" y2="${p.y2}" stroke="${esc(p.stroke)}" stroke-width="${p.sw}"${p.dash ? ` stroke-dasharray="${p.dash}"` : ''}${op(p)}/>`;
+    else if (p.t === 'rect') out += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="${p.rx || 0}" fill="${esc(p.fill)}"${p.stroke ? ` stroke="${esc(p.stroke)}" stroke-width="${p.sw}"` : ''}${op(p)}/>`;
+    else if (p.t === 'path') out += `<path d="${p.d}" fill="${esc(p.fill)}"${p.stroke ? ` stroke="${esc(p.stroke)}" stroke-width="${p.sw}" stroke-linejoin="round" stroke-linecap="round"` : ''}${op(p)}${mask}/>`;
+    else if (p.t === 'circle') out += `<circle cx="${p.cx}" cy="${p.cy}" r="${p.r}" fill="${esc(p.fill)}"${mask}/>`;
+    else if (p.t === 'text') out += `<text x="${p.x}" y="${p.y}" text-anchor="${p.anchor}" fill="${esc(p.fill)}" ${font} font-size="${p.size}" font-weight="${p.weight || 400}"${op(p)}>${esc(p.text)}</text>`;
   }
   return `${out}</g>`;
 }
@@ -191,16 +135,17 @@ export async function renderLayoutPreview(layout, loadFile, { width = 1920 } = {
   // JPEG (it's opaque) and referenced via <use> by frosted cards.
   const scale = width / canvas.w;
   const hrefCache = new Map();
-  const imgHref = async (file, w, h, { jpeg = false } = {}) => {
+  const imgHref = async (file, w, h, { jpeg = false, cover = false } = {}) => {
     if (!file) return null;
-    const key = `${file}|${Math.round(w)}|${Math.round(h)}|${jpeg}`;
+    const key = `${file}|${Math.round(w)}|${Math.round(h)}|${jpeg}|${cover}`;
     if (!hrefCache.has(key)) {
       hrefCache.set(key, (async () => {
         const buf = await loadFile(file);
         if (!buf) return null;
         const tw = Math.max(8, Math.min(2400, Math.ceil(w * scale * 1.1)));
         const th = Math.max(8, Math.min(2400, Math.ceil(h * scale * 1.1)));
-        const img = sharp(buf).resize(tw, th, { fit: 'inside', withoutEnlargement: true });
+        // A cover-cropped picture must still fill its box after the crop.
+        const img = sharp(buf).resize(tw, th, { fit: cover ? 'outside' : 'inside', withoutEnlargement: true });
         const out = jpeg ? await img.jpeg({ quality: 88 }).toBuffer() : await img.png({ compressionLevel: 9 }).toBuffer();
         return `data:image/${jpeg ? 'jpeg' : 'png'};base64,${out.toString('base64')}`;
       })());
@@ -256,7 +201,7 @@ export async function renderLayoutPreview(layout, loadFile, { width = 1920 } = {
     } else if (l.kind === 'text') {
       body.push(textLayerSvg(l, defs, id));
     } else if (l.kind === 'chart') {
-      body.push(chartSvg(l));
+      body.push(chartSvg(l, id));
     } else if (l.kind === 'icon' && l.source === 'lucide') {
       const inner = lucideSvg(l.name);
       if (!inner) continue;
@@ -267,7 +212,8 @@ export async function renderLayoutPreview(layout, loadFile, { width = 1920 } = {
       const size = Math.min(l.h * 0.8, (l.w / Math.max(1, l.brand?.length || 1)) * 1.6);
       body.push(`<text x="${l.x}" y="${l.y + l.h * 0.75}" font-family="'${esc(layout.fonts.display)}', Inter, sans-serif" font-weight="800" font-size="${size}" fill="${esc(l.color || '#fff')}">${esc(l.brand || '')}</text>`);
     } else if (l.file) {
-      const href = await imgHref(l.file, l.w, l.h);
+      const opaquePhoto = l.role === 'photo';
+      const href = await imgHref(l.file, l.w, l.h, { cover: l.fit === 'cover', jpeg: opaquePhoto });
       if (!href) continue;
       const filter = (l.shadow || l.glow) ? (() => {
         const s = l.shadow || { dx: 0, dy: 0, blur: l.glow.blur, color: l.glow.color };
@@ -275,7 +221,17 @@ export async function renderLayoutPreview(layout, loadFile, { width = 1920 } = {
         return ` filter="url(#is${id})"`;
       })() : '';
       const flip = l.flip ? ` transform="translate(${2 * l.x + l.w} 0) scale(-1 1)"` : '';
-      body.push(`<g opacity="${l.opacity}"${rotateAttr(l)}><image href="${href}" x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" preserveAspectRatio="${l.fit === 'fill' ? 'none' : `xMidYMid ${l.fit === 'cover' ? 'slice' : 'meet'}`}"${filter}${flip}/></g>`);
+      // Photo tiles: rounded corners (clip) and a hairline frame.
+      const rx = l.radius ? Math.min(l.radius, l.w / 2, l.h / 2) : 0;
+      let clip = '';
+      if (rx) {
+        defs.push(`<clipPath id="ic${id}"><rect x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" rx="${rx}"/></clipPath>`);
+        clip = ` clip-path="url(#ic${id})"`;
+      }
+      const frame = l.border?.width
+        ? `<rect x="${l.x + l.border.width / 2}" y="${l.y + l.border.width / 2}" width="${l.w - l.border.width}" height="${l.h - l.border.width}" rx="${Math.max(0, rx - l.border.width / 2)}" fill="none" stroke="${esc(l.border.color)}" stroke-width="${l.border.width}"/>`
+        : '';
+      body.push(`<g opacity="${l.opacity}"${rotateAttr(l)}${filter}><g${clip}><image href="${href}" x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" preserveAspectRatio="${l.fit === 'fill' ? 'none' : `xMidYMid ${l.fit === 'cover' ? 'slice' : 'meet'}`}"${flip}/></g>${frame}</g>`);
     }
   }
 

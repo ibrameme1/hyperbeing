@@ -4,11 +4,11 @@ import sharp from 'sharp';
 import * as imageStore from './imageStore.js';
 import { logger } from './logger.js';
 import { designSlideLayout, reviewSlideLayout } from './layoutAgent.js';
-import { normalizeLayout, fitLayout, layoutFiles, canvasFor, MAX_GENERATIONS_PER_SLIDE, resolveCollisions, resolveImageOverlaps, tightenDeviceRows } from './slideLayout.js';
+import { normalizeLayout, fitLayout, layoutFiles, canvasFor, MAX_GENERATIONS_PER_SLIDE, resolveCollisions, resolveImageOverlaps, tightenDeviceRows, planPhotoSheets, inkBox } from './slideLayout.js';
 import { generateLayerImage, scheduleImageJob, sizeForAspect, IMAGE_MOCK_MODE, LONG_SIDE, LAYER_IMAGE_QUALITY } from './openaiImages.js';
 import {
   coverToAspect, ensureTransparent, unscreen, trimTransparent, extractScreen,
-  sliceSheet, containRect, normalizeReference, splitCluster,
+  sliceSheet, containRect, normalizeReference, splitCluster, slicePhotoSheet,
 } from './layerImaging.js';
 import { renderLayoutPreview } from './layoutPreview.js';
 import { enforceTextContrast } from './textContrast.js';
@@ -59,6 +59,10 @@ const HERO_REF_NOTE = 'The attached reference image shows the slide\'s main obje
 const CLUSTER_SUFFIX = 'Objects that interact physically connect (for example a stream flowing from one object into another). Apart from those physical connections, leave a thin gap of empty transparent space between separate objects so each can be lifted out cleanly. Isolated on a transparent background: no background, no floor, no surface, no cast shadow, no text, no letters, no frame or border.';
 const CLUSTER_UI_SUFFIX = 'Objects that interact physically connect (for example a stream flowing from one object into another). Apart from those physical connections, leave a thin gap of empty transparent space between separate objects so each can be lifted out cleanly. Isolated on a transparent background: no background, no floor, no surface, no cast shadow, no frame or border. The only words anywhere are the on-screen interface copy quoted for the devices, spelled exactly and legible; no other text or letters.';
 const EMPTY_BG_SUFFIX = 'This is an EMPTY backdrop: absolutely no objects of any kind (no devices, phones, products, coins, glass panels, cards, people, shapes or props). Only light, colour, atmosphere and texture. No text, no letters, no logos, no UI.';
+// Photo tiles: opaque, full-frame pictures. Short text that is physically part
+// of the picture (a screen, a sign, a pack) is allowed when the prompt quotes it.
+const PHOTO_SUFFIX = 'A single full-frame picture that fills the whole image edge to edge: no border, no frame, no rounded corners, no collage, no split screen, no captions or overlaid graphics, no watermark. The only words anywhere are those quoted in the description (on a screen, sign or label inside the scene), spelled exactly; otherwise no text.';
+const PHOTO_SHEET_SUFFIX = 'The page between and around the photographs is flat pure white (#FFFFFF) and completely empty: no captions, no numbers, no labels, no borders, no frames, no drop shadows, no rounded corners, no tape, no page texture. The only words anywhere are those quoted inside a photograph\'s description (on a screen, sign or label within that picture), spelled exactly; otherwise no text.';
 const BG_SUFFIX = 'No overlaid text, no captions, no letters or numbers, no logos, no watermarks, no UI, no cards, no panels, no buttons, no frames, no borders. Leave the described negative space genuinely clean.';
 
 // objectOnly: for transparent object/cluster/icon layers. The deck style block
@@ -141,6 +145,66 @@ export function clusterPlan(l, deckDesign, styleBlock) {
   const body = `ONE cohesive composition containing exactly these ${items.length} objects, all lit by the same light, sharing one perspective and one colour grade, arranged in the frame as follows (positions measured from the top-left of the frame):\n${lines}${l.prompt ? `\n\nHow they relate: ${l.prompt}` : ''}`;
   const prompt = composePrompt(deckDesign, { style_block: styleBlock }, body, items.some(it => it.ui) ? CLUSTER_UI_SUFFIX : CLUSTER_SUFFIX, { objectOnly: true });
   return { box, size, frac, prompt };
+}
+
+// One contact sheet: a strict grid of equal photographs on a white page.
+// The page is generated at the exact aspect of the grid (gutters included) so
+// every panel comes out at the tiles' own proportions.
+const SHEET_GUTTER = 0.03; // of the page's short side
+export function photoSheetPlan(sheet, deckDesign, styleBlock) {
+  const { layers, cols, rows, aspect } = sheet;
+  const cellH = 1; const cellW = aspect; const g = SHEET_GUTTER * Math.min(cols * cellW, rows * cellH);
+  const size = sizeForAspect(cols * cellW + (cols + 1) * g, rows * cellH + (rows + 1) * g, LONG_SIDE.photoSheet);
+  const counts = Array.from({ length: rows }, (_, r) => Math.min(cols, layers.length - r * cols)).filter(n => n > 0);
+  const shape = aspect > 1.15 ? `landscape (about ${aspect.toFixed(2)} times wider than tall)` : aspect < 0.87 ? `portrait (about ${(1 / aspect).toFixed(2)} times taller than wide)` : 'square';
+  const short = counts[counts.length - 1] < cols
+    ? ` The last row holds only ${counts[counts.length - 1]} photograph${counts[counts.length - 1] > 1 ? 's' : ''}, the same size as the others and aligned to the left; the rest of that row is empty white page.` : '';
+  const list = layers.map((l, i) => `${i + 1}) ${l.prompt}`).join('\n');
+  const body = `A photographer's contact sheet: ${layers.length} separate photographs laid out in a strict grid of ${cols} column${cols > 1 ? 's' : ''} and ${counts.length} row${counts.length > 1 ? 's' : ''} on a pure white (#FFFFFF) page. Every photograph is the same size, a sharp-cornered ${shape} rectangle, separated from its neighbours by straight, even, pure white gutters, with the same white margin around the whole page.${short} Each photograph is a complete, self-contained picture of its own scene with its subject centred and nothing important near its edges; photographs never overlap, merge or cross a gutter. All of them share one colour grade and one quality of light, so they read as one series shot for the same campaign.\n\nThe photographs, in reading order (left to right, top to bottom):\n${list}`;
+  const style = [deckDesign?.style_block, styleBlock].filter(v => v && String(v).trim()).join('\n\n');
+  const prompt = [
+    style ? `Rendering style: apply it inside the photographs only (ignore any background, backdrop or vignette directions in it; the page itself stays pure white):\n${style}` : '',
+    body, PHOTO_SHEET_SUFFIX,
+  ].filter(Boolean).join('\n\n');
+  return { size, counts, cols, prompt };
+}
+
+// Lettering, badges and marks Claude placed ON a generated object (an
+// engraving on a tombstone, a word on a sign, a flag on a pin) were placed on
+// the box it ASKED for. The image model never puts an object exactly there,
+// so each such layer is carried along with its object: same relative position
+// inside the object, scaled with it. A layer belongs to an object when it is
+// drawn above it and sits (mostly) inside the object's requested box, and the
+// object is the smallest one that holds it. Big objects (over 45% of the
+// canvas: scenes, hero renders that text merely overlays) are left alone.
+export function anchorToObjects(layout, moves) {
+  const canvasArea = layout.canvas.w * layout.canvas.h;
+  const area = (r) => Math.max(0, r.w) * Math.max(0, r.h);
+  const inter = (a, b) => area({ w: Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), h: Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) });
+  const usable = moves.filter(m => m.layer && area(m.from) > 0 && area(m.from) <= 0.45 * canvasArea
+    && (Math.abs(m.from.x - m.layer.x) > 2 || Math.abs(m.from.y - m.layer.y) > 2 || Math.abs(m.from.w - m.layer.w) > 2 || Math.abs(m.from.h - m.layer.h) > 2));
+  if (!usable.length) return [];
+  const moved = [];
+  for (const t of layout.layers) {
+    if (!['text', 'icon', 'shape'].includes(t.kind) || t.screen_of || t.in_screen) continue;
+    const zt = layout.layers.indexOf(t);
+    const box = t.kind === 'text' ? inkBox(t) : t;
+    const need = t.kind === 'text' ? 0.6 : 0.85; // shapes/icons must sit fully on it
+    const hosts = usable.filter(m => layout.layers.indexOf(m.layer) < zt
+      && inter(box, m.from) >= need * area(box) && area(box) <= 0.6 * area(m.from));
+    if (!hosts.length) continue;
+    const m = hosts.reduce((a, b) => (area(a.from) <= area(b.from) ? a : b));
+    const to = m.layer;
+    const k = Math.min(1.6, Math.max(0.5, Math.min(to.w / m.from.w, to.h / m.from.h)));
+    const cx = to.x + ((t.x + t.w / 2 - m.from.x) / m.from.w) * to.w;
+    const cy = to.y + ((t.y + t.h / 2 - m.from.y) / m.from.h) * to.h;
+    t.w = Math.round(t.w * k); t.h = Math.round(t.h * k);
+    t.x = Math.round(cx - t.w / 2); t.y = Math.round(cy - t.h / 2);
+    if (t.kind === 'text') t.size = Math.max(8, Math.round(t.size * k));
+    if (t.kind === 'shape' && t.radius) t.radius = Math.round(t.radius * k);
+    moved.push(t.id);
+  }
+  return moved;
 }
 
 export async function loadStoredFile(file) {
@@ -326,18 +390,22 @@ async function buildLayeredSlideInner({
     const connector = l.role === 'connector';
     const lightConnector = connector && l.medium === 'light';
     const effect = l.role === 'effect' || lightConnector;
-    const screenImage = l.role === 'screen_image';
+    // A solo photo tile is an opaque full-frame picture, handled like a
+    // screen image: never keyed, never trimmed, cropped to fill its box.
+    const photo = l.role === 'photo';
+    const screenImage = l.role === 'screen_image' || photo;
     const size = geometry?.size || sizeForAspect(l.w, l.h);
     let suffix;
     if (connector) suffix = `${geometry.sentence} ${lightConnector ? EFFECT_SUFFIX : CONNECTOR_OBJECTS_SUFFIX}`;
     else if (effect) suffix = EFFECT_SUFFIX;
+    else if (photo) suffix = PHOTO_SUFFIX;
     else if (screenImage) suffix = SCREEN_IMAGE_SUFFIX;
     else if (l.ui) suffix = UI_DEVICE_SUFFIX;
     else suffix = `${l.screen ? `${deviceOrientation(l)}${SCREEN_SUFFIX} ` : ''}${ELEMENT_SUFFIX}`;
     const usesHeroRef = l.role === 'element' && !!heroAssetPromise;
     const waitForHero = usesHeroRef ? heroAssetPromise : Promise.resolve(null);
 
-    const promise = waitForHero.then(heroAsset => scheduleImageJob(l.role === 'hero' ? 1 : 2, async () => {
+    const promise = waitForHero.then(heroAsset => scheduleImageJob(l.role === 'hero' || photo ? 1 : 2, async () => {
       const references = await resolveRefs(l.refs);
       let prompt = composePrompt(deckDesign, { style_block: styleBlock }, l.prompt, suffix, { objectOnly: !effect && !screenImage });
       if (heroAsset?.file) {
@@ -349,7 +417,7 @@ async function buildLayeredSlideInner({
       }
       const res = await generateLayerImage({
         prompt, size, transparent: !effect && !screenImage, references,
-        label: `s${slide.index}_${l.id}`, mockSpec: { label: l.id, screen: !!l.screen, effect },
+        label: `s${slide.index}_${l.id}`, mockSpec: { label: l.id, screen: !!l.screen, effect, photo },
       });
       stats.images.push({ id: l.id, ms: res?.ms ?? null, usage: res?.usage ?? null, ok: !!res, size, role: l.role, hero_ref: !!heroAsset?.file });
       if (!res) return null;
@@ -443,6 +511,33 @@ async function buildLayeredSlideInner({
     return { key, promise };
   }
 
+  // ONE generation for every photo tile of a sheet, sliced into one picture
+  // per tile (see planPhotoSheets / photoSheetPlan).
+  function startPhotoSheet(sheet) {
+    const plan = photoSheetPlan(sheet, deckDesign, styleBlock);
+    const refTokens = [...new Set(sheet.layers.flatMap(l => l.refs || []))].slice(0, 4);
+    const key = `photosheet|${plan.size}|${plan.cols}|${JSON.stringify(sheet.layers.map(l => l.prompt))}|${refTokens.join(',')}`;
+    if (assets.has(key)) return { key, promise: assets.get(key) };
+    if (generationsStarted >= MAX_GENERATIONS_PER_SLIDE) return { key, promise: Promise.resolve(null) };
+    generationsStarted++; noteStart();
+    const promise = scheduleImageJob(1, async () => {
+      const res = await generateLayerImage({
+        prompt: plan.prompt, size: plan.size, transparent: false, references: await resolveRefs(refTokens),
+        label: `s${slide.index}_photos`, mockSpec: { kind: 'photosheet', cols: plan.cols, counts: plan.counts, label: 'photos' },
+      });
+      stats.images.push({ id: 'photo_sheet', ms: res?.ms ?? null, usage: res?.usage ?? null, ok: !!res, size: plan.size, role: 'photo_sheet', photos: sheet.layers.length });
+      if (!res) return null;
+      const tiles = await slicePhotoSheet(res.buffer, plan.counts);
+      if (tiles.length !== sheet.layers.length) return null;
+      const files = [];
+      for (const t of tiles) { const file = await storeBuffer(t.buffer); created.push(file); files.push({ file, width: t.width, height: t.height }); }
+      logger.info('photo sheet sliced', { slideIndex: slide.index, photos: tiles.length, grid: plan.counts.join('+'), detected: tiles.detected });
+      return { tiles: files };
+    }).catch(err => { logger.warn('photo sheet job failed', { errorMessage: err.message }); return null; });
+    assets.set(key, promise);
+    return { key, promise };
+  }
+
   // While the layout streams: start every image whose JSON is complete.
   const onPartial = (parts) => {
     if (typeof parts.style_block === 'string' && !styleBlock) styleBlock = parts.style_block;
@@ -453,8 +548,16 @@ async function buildLayeredSlideInner({
     try {
       const early = normalizeLayout({ background: parts.background || { type: 'color' }, layers: parts.layers || [] }, { aspectRatio, uploadCount: uploads.length, deck: deckDesign });
       if (parts.background && early.background.type === 'image') startBackground(early.background);
+      // Photo tiles share contact sheets, so they can only start once ALL of
+      // them are known: Claude announces the count up front ("photos": N).
+      const earlyPhotos = early.layers.filter(l => l.kind === 'image' && l.role === 'photo');
+      if (Number.isFinite(parts.photos) && parts.photos > 0 && earlyPhotos.length >= parts.photos) {
+        const plan = planPhotoSheets(earlyPhotos, canvas);
+        plan.sheets.forEach(startPhotoSheet);
+        plan.solos.forEach(l => startImage(l));
+      }
       for (const l of early.layers) {
-        if (l.kind !== 'image') continue;
+        if (l.kind !== 'image' || l.role === 'photo') continue;
         // Connectors need their endpoints' final boxes; secondary elements
         // want the hero as a reference — both wait for the final layout
         // unless the hero has already started.
@@ -519,6 +622,10 @@ async function buildLayeredSlideInner({
     // ── 2. apply assets to the final layout ───────────────────────────────
     const failures = [];
     const usedKeys = new Set();
+    // Where each generated object was REQUESTED vs where it actually LANDED
+    // (cluster pieces are found in the drawn image; single elements are
+    // fitted to their aspect). Text and marks Claude set ON an object follow it.
+    const objectMoves = [];
     const waits = [];
 
     const bg = layout.background;
@@ -544,6 +651,7 @@ async function buildLayeredSlideInner({
         if (!asset || !asset.parts.length) { failures.push({ id: l.id, critical: true, layer: l }); return; }
         const sx = asset.box.w / asset.genW; const sy = asset.box.h / asset.genH;
         const itemLayers = [];
+        const requested = new Map(l.items.map(it => [it.id, { x: it.x, y: it.y, w: it.w, h: it.h }]));
         l.items.forEach((it, i) => {
           const part = asset.parts.find(pp => pp.id === it.id);
           if (!part) return;
@@ -574,7 +682,11 @@ async function buildLayeredSlideInner({
         for (const il of itemLayers) { if (taken.has(il.id)) il.id = `${l.id}_${il.id}`; taken.add(il.id); }
         const at = layout.layers.indexOf(l);
         layout.layers.splice(at, 1, ...itemLayers);
-        for (const il of itemLayers) onLayer(il);
+        for (const il of itemLayers) {
+          const from = requested.get(il.id) || requested.get(il.id.replace(`${l.id}_`, ''));
+          if (from) objectMoves.push({ layer: il, from });
+          onLayer(il);
+        }
       })();
       applied.set(l.id, p);
       // Connectors may anchor on individual cluster items.
@@ -582,18 +694,46 @@ async function buildLayeredSlideInner({
       waits.push(p);
     }
 
+    // Photo tiles: contact sheets → one picture per tile. They are the
+    // slide's evidence, so a failed sheet fails the slide (refund + retry)
+    // rather than leaving a grid of empty frames.
+    const photoPlan = planPhotoSheets(layout.layers.filter(x => x.kind === 'image' && x.role === 'photo' && !x.file), canvas);
+    const sheetIds = new Set();
+    photoPlan.sheets.forEach((sheet, si) => {
+      sheet.layers.forEach(l => sheetIds.add(l.id));
+      const { key, promise } = startPhotoSheet(sheet);
+      usedKeys.add(key);
+      const p = (async () => {
+        const asset = await promise;
+        if (!asset) { failures.push({ id: `photo_sheet_${si + 1}`, critical: true }); return; }
+        sheet.layers.forEach((l, i) => {
+          l.file = asset.tiles[i].file;
+          l.src = assetUrl(presentationId, l.file);
+          l.fit = 'cover';
+          l.sheet = `sheet${si + 1}`;
+          onLayer(l);
+        });
+      })();
+      for (const l of sheet.layers) applied.set(l.id, p);
+      waits.push(p);
+    });
+
     // Hero first, so secondary elements can reference it.
-    const imageLayers = layout.layers.filter(x => x.kind === 'image' && !x.file && x.role !== 'cluster');
+    const imageLayers = layout.layers.filter(x => x.kind === 'image' && !x.file && x.role !== 'cluster' && !sheetIds.has(x.id));
     imageLayers.sort((x, y) => (x.role === 'hero' ? -1 : 0) - (y.role === 'hero' ? -1 : 0));
     for (const l of imageLayers.filter(x => x.role !== 'connector')) {
       usedKeys.add(imageKey(l));
       const p = (async () => {
         const asset = await startImage(l);
-        if (!asset) { failures.push({ id: l.id, critical: l.role === 'hero', layer: l }); return; }
+        if (!asset) { failures.push({ id: l.id, critical: l.role === 'hero' || l.role === 'photo', layer: l }); return; }
         l.file = asset.file;
         l.src = assetUrl(presentationId, asset.file);
-        if (l.role === 'screen_image') l.fit = 'cover';
-        else Object.assign(l, containRect(asset.width, asset.height, l));
+        if (l.role === 'screen_image' || l.role === 'photo') l.fit = 'cover';
+        else {
+          const from = { x: l.x, y: l.y, w: l.w, h: l.h };
+          Object.assign(l, containRect(asset.width, asset.height, l));
+          objectMoves.push({ layer: l, from });
+        }
         if (l.screen) {
           const sx = l.w / asset.width; const sy = l.h / asset.height;
           const rect = asset.screenRect
@@ -660,6 +800,8 @@ async function buildLayeredSlideInner({
     }
 
     await Promise.all(waits);
+    const anchored = anchorToObjects(layout, objectMoves);
+    if (anchored.length) logger.info('labels moved onto their objects', { slideIndex: slide.index, layers: anchored.length });
 
     // Early-started jobs the final layout doesn't use (Claude revised a
     // layer after it streamed) — wait for them and discard their files.
@@ -667,6 +809,8 @@ async function buildLayeredSlideInner({
       if (usedKeys.has(key)) continue;
       const asset = await promise;
       if (asset?.file) imageStore.remove(asset.file);
+      for (const t of asset?.tiles || []) imageStore.remove(t.file);
+      for (const part of asset?.parts || []) imageStore.remove(part.file);
     }
 
     // ── 3. failure policy ──────────────────────────────────────────────────
@@ -732,7 +876,7 @@ async function buildLayeredSlideInner({
   } catch (err) {
     logger.error('layered slide build errored', { presentationId, slideIndex: slide.index, errorMessage: err.message, stack: err.stack?.split('\n').slice(0, 3).join('\n') });
     // In-flight early jobs may still write files — clean those up when they land.
-    for (const promise of assets.values()) promise.then(a => { if (a?.file) imageStore.remove(a.file); }).catch(() => {});
+    for (const promise of assets.values()) promise.then(a => { if (a?.file) imageStore.remove(a.file); for (const t of a?.tiles || []) imageStore.remove(t.file); }).catch(() => {});
     for (const f of created) imageStore.remove(f);
     return null;
   }

@@ -181,6 +181,66 @@ export async function sliceSheet(buffer, cols, rows) {
   return out;
 }
 
+// Cuts a photo contact sheet (a grid of equal photographs on a white page,
+// see layeredSlide PHOTO_SHEET) into one opaque picture per panel, in reading
+// order. `counts` = panels expected in each row (the last row may be short).
+// Image models never draw the grid to the pixel, so the panels are FOUND, not
+// assumed: white gutter rows split the page into row bands, then each band is
+// split on its own white gutter columns (rows may not share column positions).
+// A band or row that can't be found falls back to an even split with the
+// gutter cropped away, so a sloppy sheet still yields usable tiles.
+export async function slicePhotoSheet(buffer, counts) {
+  const { data, info } = await sharp(buffer).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const W = info.width; const H = info.height;
+  const white = (x, y) => { const i = (y * W + x) * 3; return data[i] > 228 && data[i + 1] > 228 && data[i + 2] > 228; };
+  // Runs of content (non-gutter lines) along one axis inside a window.
+  const bands = (len, lineIsGutter, expect) => {
+    const runs = []; let start = -1;
+    for (let p = 0; p <= len; p++) {
+      const g = p === len || lineIsGutter(p);
+      if (!g && start === -1) start = p;
+      if (g && start !== -1) { runs.push([start, p]); start = -1; }
+    }
+    // Hairline "gutters" inside a picture (a white wall, a window) are noise:
+    // join runs separated by less than 0.6% of the axis.
+    const joined = [];
+    for (const r of runs) {
+      const last = joined[joined.length - 1];
+      if (last && r[0] - last[1] < len * 0.006) last[1] = r[1]; else joined.push([...r]);
+    }
+    const real = joined.filter(r => r[1] - r[0] > (len / expect) * 0.45);
+    return real.length === expect ? real : null;
+  };
+  const even = (len, expect) => Array.from({ length: expect }, (_, i) => {
+    const cell = len / expect; const inset = cell * 0.045;
+    return [Math.round(i * cell + inset), Math.round((i + 1) * cell - inset)];
+  });
+  const step = Math.max(1, Math.round(Math.min(W, H) / 700));
+  const rowGutter = (y) => { let n = 0; let t = 0; for (let x = 0; x < W; x += step) { t++; if (white(x, y)) n++; } return n / t > 0.93; };
+  const rowBands = bands(H, rowGutter, counts.length) || even(H, counts.length);
+  const detected = { rows: rowBands.length === counts.length, cols: true };
+  const out = [];
+  for (let r = 0; r < counts.length; r++) {
+    const [y0, y1] = rowBands[r];
+    const colGutter = (x) => { let n = 0; let t = 0; for (let y = y0; y < y1; y += step) { t++; if (white(x, y)) n++; } return n / t > 0.93; };
+    let cols = bands(W, colGutter, counts[r]);
+    if (!cols) {
+      detected.cols = false;
+      // Even split of the widest full row's pitch, left-aligned (a short last row).
+      const full = Math.max(...counts);
+      cols = even(W, full).slice(0, counts[r]);
+    }
+    for (const [x0, x1] of cols) {
+      // 2px in from every edge: the anti-aliased seam between photo and page.
+      const left = Math.min(W - 8, x0 + 2); const top = Math.min(H - 8, y0 + 2);
+      const width = Math.max(8, Math.min(W - left, x1 - x0 - 4)); const height = Math.max(8, Math.min(H - top, y1 - y0 - 4));
+      out.push({ buffer: await sharp(buffer).removeAlpha().extract({ left, top, width, height }).png().toBuffer(), width, height });
+    }
+  }
+  out.detected = detected;
+  return out;
+}
+
 // Largest rect with the image's aspect that fits inside `box`, centered.
 export function containRect(imgW, imgH, box) {
   const scale = Math.min(box.w / imgW, box.h / imgH);
@@ -227,6 +287,7 @@ export function hexToRgb(hex) {
 // items: [{ id, box: {x,y,w,h} as 0-1 fractions of the cluster image }]
 // Returns [{ id, buffer, x, y, w, h (pixels in the cluster image), pixels }]
 // for every item that received at least one component.
+const VISIBLE_ALPHA = 26;
 export async function splitCluster(buffer, requested, { minAlpha = 4, seedAlpha = 160, seedCore = 0.5, mergeLevel = 110 } = {}) {
   const { data, width, height } = await raw(buffer);
   const N = width * height;
@@ -378,12 +439,17 @@ export async function splitCluster(buffer, requested, { minAlpha = 4, seedAlpha 
   for (let i = 0; i < items.length; i++) {
     if (repOf[i] !== i) continue;
     let minX = width; let minY = height; let maxX = -1; let maxY = -1; let pixels = 0;
+    // The piece's box is measured on pixels you can actually see. A model
+    // often leaves a near-invisible haze (alpha under ~10%) between objects
+    // on a "transparent" background; counting it stretched every box across
+    // its neighbours, so the pieces were placed shrunken and out of position.
     for (let k = 0; k < N; k++) {
       if (label[k] !== i) continue;
+      pixels++;
+      if (A(k) < VISIBLE_ALPHA) continue;
       const x = k % width; const y = (k - x) / width;
       if (x < minX) minX = x; if (x > maxX) maxX = x;
       if (y < minY) minY = y; if (y > maxY) maxY = y;
-      pixels++;
     }
     // Ignore crumbs (a few stray halo pixels) — not a real object.
     if (maxX < 0 || pixels < N * 0.0004) continue;

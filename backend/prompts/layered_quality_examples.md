@@ -8,9 +8,16 @@ copy their brands, products, places, statistics or copy into a user's deck.
 
 How to read them as layers: every quoted word becomes native text; cards,
 pills, strips, stat rows and tables become native shapes + text; charts become
-native charts; the hero object and its companions become one "cluster"; a
-photographic scene becomes the background; glows/aurora/haze live inside the
-background image.
+native charts; the hero object and its companions become one "cluster"; ONE
+photographic scene that fills the slide becomes the background; glows/aurora/
+haze live inside the background image. Every other picture these prompts ask
+for (a collage of candid moments, the photo collage inside a column, a centre
+photograph, thumbnails, poster variations, a video placeholder frame, a pack
+shot in a card corner) becomes a "photo" tile: a framed picture placed on the
+grid. A slide's photo tiles are shot together as one contact sheet, so a
+prompt with eight moments is still one generation. The structure these
+prompts describe (columns, phases, journeys, card stacks, strips) is the
+layout: keep it, block for block.
 
 ---
 

@@ -32,7 +32,13 @@ export function canvasFor(aspectRatio) {
 // Hard ceiling on image generations per slide (background + image layers +
 // one icon sheet). Bounds cost and rate-limit pressure; Claude is told the same.
 export const MAX_GENERATIONS_PER_SLIDE = 7;
-export const MAX_LAYERS = 60;
+// Dense editorial slides (columns of photo tiles, tags and footers) need more
+// layers than a text-rows + hero slide; photo tiles share one generation, so
+// the extra layers cost Claude output only (~50 tokens each).
+export const MAX_LAYERS = 90;
+// Photo tiles (image role "photo") per slide. All of them are generated
+// together as ONE contact sheet and sliced, so they cost one generation.
+export const MAX_SHEET_PHOTOS = 12;
 // Native (editable) layers inside device screens, per slide. Screen UI is
 // normally drawn by the image model (a device layer with "ui": true); only a
 // hero device whose on-screen copy IS the point of the slide gets native
@@ -71,7 +77,7 @@ export const FONT_NAMES = Object.keys(FONTS);
 const DEFAULT_FONT = 'Inter';
 
 const LAYER_KINDS = ['image', 'text', 'shape', 'chart', 'icon', 'logo'];
-const IMAGE_ROLES = ['hero', 'element', 'effect', 'screen_image', 'connector', 'cluster'];
+const IMAGE_ROLES = ['hero', 'element', 'effect', 'screen_image', 'connector', 'cluster', 'photo'];
 const ANCHORS = {
   center: [0.5, 0.5], top: [0.5, 0], bottom: [0.5, 1], left: [0, 0.5], right: [1, 0.5],
   'top-left': [0, 0], 'top-right': [1, 0], 'bottom-left': [0, 1], 'bottom-right': [1, 1],
@@ -86,7 +92,7 @@ function anchorRef(a) {
   else if (a.anchor && typeof a.anchor === 'object') pt = [num(a.anchor.x, -0.5, 1.5, 0.5), num(a.anchor.y, -0.5, 1.5, 0.5)];
   return { layer: a.layer.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40), point: pt };
 }
-const CHART_TYPES = ['bar', 'column', 'line', 'area', 'pie', 'donut'];
+const CHART_TYPES = ['bar', 'column', 'line', 'area', 'pie', 'donut', 'waterfall'];
 const SHAPES = ['rect', 'ellipse', 'line'];
 
 // ── primitive sanitizers ────────────────────────────────────────────────────
@@ -241,6 +247,36 @@ function normalizeShape(l, base) {
   };
 }
 
+// "category" may be the category's label or its index.
+function chartAnnotations(v, cats, seriesCount) {
+  if (!Array.isArray(v)) return undefined;
+  const out = [];
+  for (const a of v.slice(0, 6)) {
+    const text = str(a?.text, 60).trim();
+    if (a?.kind === 'line' && text && Number.isFinite(Number(a.value))) {
+      out.push({ kind: 'line', value: Number(a.value), text, color: color(a.color) || undefined });
+      continue;
+    }
+    let index = typeof a?.category === 'number' ? a.category : cats.indexOf(String(a?.category ?? ''));
+    if (index < 0 && Number.isFinite(a?.index)) index = a.index;
+    if (!text || !(index >= 0 && index < cats.length)) continue;
+    out.push({
+      kind: a.kind === 'callout' ? 'callout' : 'marker', index: Math.round(index), text,
+      series: num(a.series, 0, Math.max(0, seriesCount - 1), 0),
+      color: color(a.color) || undefined, text_color: color(a.text_color) || undefined,
+      sub: str(a.sub, 80).trim() || undefined, fill: color(a.fill) || undefined,
+    });
+  }
+  return out.length ? out : undefined;
+}
+
+function withAlpha(hex, alpha) {
+  const m = /^#([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return `rgba(255,255,255,${alpha})`;
+  const n = parseInt(m[1], 16);
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
 function normalizeChart(l, base, fonts) {
   const type = CHART_TYPES.includes(l.chart_type) ? l.chart_type : 'column';
   const categories = Array.isArray(l.categories) ? l.categories.map(c => str(String(c ?? ''), 60)).slice(0, 24) : [];
@@ -251,6 +287,8 @@ function normalizeChart(l, base, fonts) {
         ? s.values.slice(0, categories.length || 24).map(v => (v === null ? null : num(v, -1e12, 1e12, 0)))
         : [],
       color: color(s?.color) || undefined,
+      // Line charts: shade the area under this series only.
+      fill: s?.fill ? true : undefined,
     })).filter(s => s.values.length)
     : [];
   if (!series.length) return null;
@@ -261,20 +299,35 @@ function normalizeChart(l, base, fonts) {
     categories: cats,
     series,
     options: {
-      show_values: !!l.options?.show_values,
+      show_values: type === 'waterfall' ? l.options?.show_values !== false : !!l.options?.show_values,
       show_legend: !!l.options?.show_legend,
       show_grid: l.options?.show_grid !== false,
       value_prefix: str(l.options?.value_prefix, 8),
       value_suffix: str(l.options?.value_suffix, 8),
-      axis_color: color(l.options?.axis_color, 'rgba(255,255,255,0.5)'),
-      label_color: color(l.options?.label_color, '#FFFFFF'),
+      // Defaults follow the deck's text colour, so a chart on a light deck
+      // is never white-on-white.
+      axis_color: color(l.options?.axis_color, withAlpha(fonts.text, 0.4)),
+      label_color: color(l.options?.label_color, fonts.text || '#FFFFFF'),
       font: font(l.options?.font, fonts.body),
-      font_size: num(l.options?.font_size, 10, 48, 18),
+      // Charts are read from the back of a room: nothing under 20px on the canvas.
+      font_size: num(l.options?.font_size, 20, 48, 22),
       y_min: l.options?.y_min !== undefined ? num(l.options.y_min, -1e12, 1e12, undefined) : undefined,
       y_max: l.options?.y_max !== undefined ? num(l.options.y_max, -1e12, 1e12, undefined) : undefined,
-      line_width: num(l.options?.line_width, 1, 16, 4),
+      line_width: num(l.options?.line_width, 1, 16, 6),
       // Per-point colors (bars) — e.g. highlight one bar.
       point_colors: Array.isArray(l.options?.point_colors) ? l.options.point_colors.map(c => color(c) || null).slice(0, 24) : undefined,
+      // Exhibit furniture: stacked bars, a hidden value axis, the colour of
+      // labels drawn inside bars/slices, and annotations pinned to the data
+      // (a dashed marker at a category, or a callout on one point).
+      stacked: !!l.options?.stacked || undefined,
+      hide_axis: !!l.options?.hide_axis || undefined,
+      // Waterfall: which bars are totals (the first always is), and the
+      // colours of rises and falls.
+      totals: Array.isArray(l.options?.totals) ? l.options.totals.map(v => num(v, 0, 23, null)).filter(v => v !== null).slice(0, 8) : undefined,
+      positive_color: color(l.options?.positive_color) || undefined,
+      negative_color: color(l.options?.negative_color) || undefined,
+      value_color: color(l.options?.value_color) || undefined,
+      annotations: chartAnnotations(l.options?.annotations, cats, series.length),
     },
   };
 }
@@ -303,6 +356,58 @@ function clusterItems(v, canvas) {
   }).filter(it => it.prompt);
 }
 
+function imageBorder(b) {
+  if (!b || typeof b !== 'object') return undefined;
+  const width = num(b.width, 0, 24, 1);
+  return width > 0 ? { color: color(b.color, 'rgba(255,255,255,0.2)'), width } : undefined;
+}
+
+// ── photo tiles → contact sheets ────────────────────────────────────────────
+// Every photo tile of a slide is generated in ONE image: a strict grid of
+// equal panels on a white page, sliced back into one picture per tile. That
+// keeps a 10-photo editorial slide at one generation and gives every tile the
+// same grade and light. A photo that is big on the slide (a hero picture)
+// is generated on its own at its exact aspect so it stays sharp.
+//   → { solos: [layer], sheets: [{ layers, cols, rows, aspect }] }
+// `aspect` is the w/h of one panel; tiles are cover-cropped into their boxes.
+export const SOLO_PHOTO_AREA = 0.2; // share of the canvas
+export function planPhotoSheets(photos, canvas) {
+  const list = (photos || []).filter(l => l && l.w > 0 && l.h > 0);
+  const area = canvas.w * canvas.h;
+  const solos = []; let rest = [];
+  for (const l of list) {
+    if (solos.length < 2 && (l.w * l.h) / area >= SOLO_PHOTO_AREA) solos.push(l); else rest.push(l);
+  }
+  if (rest.length === 1) { solos.push(rest[0]); rest = []; }
+  const sheets = [];
+  const ratios = rest.map(l => l.w / l.h);
+  const groups = [];
+  if (rest.length) {
+    const spread = Math.max(...ratios) / Math.min(...ratios);
+    const tall = rest.filter(l => l.w / l.h < 1); const wide = rest.filter(l => l.w / l.h >= 1);
+    // Portrait and landscape tiles on one sheet would each lose half their
+    // picture to the crop: give each orientation its own sheet when both
+    // groups are worth one.
+    if (spread > 2 && tall.length >= 2 && wide.length >= 2) groups.push(tall, wide); else groups.push(rest);
+  }
+  for (const g of groups) {
+    const sorted = g.map(l => l.w / l.h).sort((a, b) => a - b);
+    const aspect = Math.min(2.2, Math.max(0.5, sorted[Math.floor(sorted.length / 2)]));
+    const n = g.length;
+    let best = null;
+    for (let cols = 1; cols <= n; cols++) {
+      const rows = Math.ceil(n / cols);
+      const sheetAspect = (cols * aspect) / rows;
+      if (sheetAspect > 2.6 || sheetAspect < 1 / 2.6) continue;
+      const score = Math.abs(Math.log(sheetAspect / 1.45)) + 0.3 * (cols * rows - n);
+      if (!best || score < best.score) best = { cols, rows, score };
+    }
+    if (!best) best = { cols: Math.ceil(Math.sqrt(n)), rows: Math.ceil(n / Math.ceil(Math.sqrt(n))) };
+    sheets.push({ layers: g, cols: best.cols, rows: best.rows, aspect });
+  }
+  return { solos, sheets };
+}
+
 function normalizeImage(l, base, canvas) {
   const prompt = str(l.prompt, 3000).trim();
   const role = IMAGE_ROLES.includes(l.role) ? l.role : 'element';
@@ -315,6 +420,25 @@ function normalizeImage(l, base, canvas) {
     return { ...base, x: x0, y: y0, w: x1 - x0, h: y1 - y0, role, prompt, refs: refs(l.refs), items };
   }
   if (!prompt && !l.file) return null;
+  if (role === 'photo') {
+    // A framed, opaque picture (photograph / render / screenshot) cropped to
+    // fill its box: the editorial building block. Never trimmed or keyed.
+    return {
+      ...base,
+      role,
+      prompt,
+      refs: refs(l.refs),
+      fit: 'cover',
+      radius: num(l.radius, 0, 400, 0),
+      border: imageBorder(l.border),
+      shadow: shadow(l.shadow) || undefined,
+      flip: !!l.flip,
+      // Set by the builder on tiles that came out of a shared contact sheet.
+      sheet: typeof l.sheet === 'string' ? l.sheet.slice(0, 40) : undefined,
+      file: typeof l.file === 'string' ? l.file : undefined,
+      src: typeof l.src === 'string' ? l.src : undefined,
+    };
+  }
   if (l.screen || l.ui) Object.assign(base, conformPhoneBox(base, prompt));
   return {
     ...base,
@@ -458,6 +582,17 @@ export function normalizeLayout(raw, { aspectRatio = '16:9', uploadCount = 0, de
   const background = normalizeBackground(raw.background);
   let generations = background.type === 'image' && !background.file ? 1 : 0;
   let sheetIcons = 0;
+  // Photo tiles share contact sheets: reserve their generations up front (the
+  // tiles themselves don't count one each).
+  const rawPhotos = (Array.isArray(raw.layers) ? raw.layers : [])
+    .filter(l => l && l.kind === 'image' && l.role === 'photo' && !l.file && typeof l.prompt === 'string' && l.prompt.trim())
+    .slice(0, MAX_SHEET_PHOTOS)
+    .map(l => ({ w: num(l.w, 4, canvas.w * 2, canvas.w * 0.3), h: num(l.h, 4, canvas.h * 2, canvas.h * 0.2) }));
+  if (rawPhotos.length) {
+    const plan = planPhotoSheets(rawPhotos, canvas);
+    generations += plan.solos.length + plan.sheets.length;
+  }
+  let photos = 0;
 
   const idMap = new Map(); // Claude id → normalized id (for in_screen references)
   const layers = [];
@@ -474,6 +609,10 @@ export function normalizeLayout(raw, { aspectRatio = '16:9', uploadCount = 0, de
       case 'chart': layer = normalizeChart(l, base, fonts); break;
       case 'image': {
         layer = normalizeImage(l, base, canvas);
+        if (layer?.role === 'photo') {
+          if (!layer.file && ++photos > MAX_SHEET_PHOTOS) layer = null;
+          break;
+        }
         if (layer && !layer.file) {
           if (generations >= MAX_GENERATIONS_PER_SLIDE) layer = null;
           else generations++;
@@ -541,7 +680,10 @@ export function normalizeLayout(raw, { aspectRatio = '16:9', uploadCount = 0, de
   return {
     version: LAYOUT_VERSION,
     canvas,
-    composition: ['scene', 'objects', 'native'].includes(raw.composition) ? raw.composition : 'objects',
+    // The slide's art-directed brief, written by Claude before the layers
+    // (kept for AI edits and for debugging what it was aiming at).
+    concept: str(raw.concept, 2000) || undefined,
+    composition: ['scene', 'objects', 'editorial', 'native'].includes(raw.composition) ? raw.composition : 'objects',
     style_block: str(raw.style_block, 1500),
     fonts,
     background,
@@ -759,6 +901,8 @@ export function fitLayout(layout) {
         const iy = Math.min(t.y + t.h, im.y + im.h) - Math.max(t.y, im.y);
         if (ix * iy <= 0.1 * t.w * t.h) continue;
         const above = layout.layers.indexOf(im) > layout.layers.indexOf(t);
+        // A caption or tag set on a photo tile is a deliberate design move.
+        if (!above && im.role === 'photo') continue;
         warnings.push(above
           ? `image "${im.id}" covers part of text "${t.id}"`
           : `text "${t.id}" sits on top of image "${im.id}" (check it stays legible)`);
@@ -796,7 +940,9 @@ export function layoutFiles(layout) {
 // Count of image generations the layout still needs (used for stats/logging).
 export function pendingGenerations(layout) {
   let n = layout.background?.type === 'image' && !layout.background.file ? 1 : 0;
-  for (const l of layout.layers) if (l.kind === 'image' && !l.file) n++;
+  for (const l of layout.layers) if (l.kind === 'image' && !l.file && l.role !== 'photo') n++;
+  const plan = planPhotoSheets(layout.layers.filter(l => l.kind === 'image' && l.role === 'photo' && !l.file), layout.canvas);
+  n += plan.solos.length + plan.sheets.length;
   if (layout.layers.some(l => l.kind === 'icon' && l.source === 'sheet' && !l.file)) n++;
   return n;
 }
@@ -817,6 +963,11 @@ function scanValueEnd(text, start) {
       if (text[i] === '"') return i + 1;
     }
     return -1;
+  }
+  // A bare number ("photos": 9) is complete once something follows it.
+  if (/[-\d]/.test(open || '')) {
+    const m = /^-?\d+(\.\d+)?/.exec(text.slice(start, start + 24));
+    return m && start + m[0].length < text.length ? start + m[0].length : -1;
   }
   let depth = 0; let inStr = false;
   for (let i = start; i < text.length; i++) {
@@ -890,7 +1041,7 @@ function decodePartialString(text, start) {
 
 export function extractCompletedLayoutParts(text) {
   const out = { layers: [] };
-  for (const key of ['style_block', 'background', 'brands', 'composition']) {
+  for (const key of ['style_block', 'background', 'brands', 'composition', 'photos']) {
     const at = findTopLevelKey(text, key);
     if (at === -1) continue;
     const end = scanValueEnd(text, at);
@@ -961,11 +1112,18 @@ export function resolveCollisions(layout) {
       for (let j = i + 1; j < list.length; j++) {
         const hi = list[i]; const lo = list[j];
         if (!overlaps(hi, lo)) continue;
+        // Boxes that merely brush (a title box ending a few px into the line
+        // below it on a tight grid) are not a collision: moving one tears the
+        // block apart for nothing.
+        const ix = Math.min(hi.x + hi.w, lo.x + lo.w) - Math.max(hi.x, lo.x);
+        const iy = Math.min(hi.y + hi.h, lo.y + lo.h) - Math.max(hi.y, lo.y);
+        if (iy <= Math.max(4, 0.12 * Math.min(hi.h, lo.h)) || ix <= Math.max(4, 0.04 * Math.min(hi.w, lo.w))) continue;
         const group = groupOf(lo);
         if (group.includes(hi)) continue; // same card — a fit problem, not a collision
         const g = bbox(group);
         const gap = 20;
-        const others = layout.layers.filter(l => !group.includes(l) && (l.kind === 'text' || (l.kind === 'shape' && l.shape === 'rect' && l.w < canvas.w * 0.95)) && !l.screen_of);
+        // Photo tiles are obstacles too: displaced text must not land on a picture.
+        const others = layout.layers.filter(l => !group.includes(l) && (l.kind === 'text' || (l.kind === 'shape' && l.shape === 'rect' && l.w < canvas.w * 0.95) || (l.kind === 'image' && l.role === 'photo')) && !l.screen_of);
         const candidates = [
           { dx: 0, dy: hi.y + hi.h + gap - g.y },
           { dx: 0, dy: hi.y - gap - (g.y + g.h) },
@@ -1097,10 +1255,17 @@ export function resolveImageOverlaps(layout) {
   // several items, so their bounding box naturally reaches the labels Claude
   // set beside each item; moving the whole group would tear the composition
   // apart (it used to push the rider/stream piece off the canvas). Leave them.
-  for (const img of layout.layers.filter(l => l.kind === 'image' && !['effect', 'screen_image', 'connector'].includes(l.role) && !l.screen_of && !l.merged?.length)) {
+  // Photo tiles are grid-aligned pictures: text set on one (a caption chip) is
+  // deliberate, and nudging a single tile would break the grid.
+  for (const img of layout.layers.filter(l => l.kind === 'image' && !['effect', 'screen_image', 'connector', 'photo'].includes(l.role) && !l.screen_of && !l.merged?.length)) {
     const group = [img, ...layout.layers.filter(l => l.screen_of === img.id)];
     // Judge against the glyphs, not the (often much wider) text boxes.
-    const texts = layout.layers.filter(t => isObstacleText(t) && !group.includes(t)).map(inkBox);
+    // Lettering set ON an object (drawn above it and sitting inside its box:
+    // an engraving on a stone, a word on a sign) is deliberate, not a
+    // collision; moving or shrinking the object would strip it of its label.
+    const zImg = layout.layers.indexOf(img);
+    const onObject = (t) => layout.layers.indexOf(t) > zImg && area(inter(inkBox(t), img)) >= 0.5 * area(inkBox(t));
+    const texts = layout.layers.filter(t => isObstacleText(t) && !group.includes(t) && !onObject(t)).map(inkBox);
     const conflicts = texts.filter(t => overlaps(t, img) && area(inter(t, img)) > 0.05 * area(t));
     if (!conflicts.length) continue;
 

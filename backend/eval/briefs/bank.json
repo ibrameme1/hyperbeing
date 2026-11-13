@@ -1,0 +1,73 @@
+{
+ "title": "Closing the Efficiency Gap: Cost-to-Income to 48% by 2028",
+ "register": "consulting exhibit",
+ "theme": "corporate",
+ "brief": "Board presentation in a consulting style for Meridian Gulf Bank, a mid-size retail bank in the UAE. Topic: how we bring our cost-to-income ratio down from 58% to 48% by 2028. Audience: the board of directors and the CFO. Facts to use: our cost-to-income ratio is 58% today; the peer median is 49% and the best-in-class regional bank is at 41%. Three levers: branch network consolidation (-4.0 points), digital migration of service transactions (-3.5 points), procurement and vendor consolidation (-2.5 points). Phasing: 2026 design and quick wins (58% to 55%), 2027 scale (55% to 51%), 2028 run-rate (51% to 48%). One-off investment AED 420 million over three years; run-rate savings AED 310 million a year from 2028. Generate EXACTLY 5 slides.\n\nPREFLIGHT ANSWERS:\n- Tone: formal, analytical, board-ready\n- Visual style: clean consulting style, light background, charts over imagery\n- Brand colour: deep teal",
+ "slides": [
+  {
+   "index": 0,
+   "type": "cover",
+   "title": "Meridian Gulf Bank: Bringing Cost-to-Income from 58% to 48% by 2028",
+   "subtitle": "Board of Directors | Efficiency programme recommendation",
+   "key_points": [],
+   "visual": "Clean light cover with a deep teal band and a single thin line sweeping down from 58 to 48 across the page, the two numbers set large at either end, with the bank's name in small caps above.",
+   "speaker_note": "Today we ask the board to endorse a three-year programme that closes our efficiency gap to peers and sets us up to lead the region."
+  },
+  {
+   "index": 1,
+   "type": "data",
+   "title": "At 58%, we spend 9 points more than the peer median and 17 more than the best regional bank",
+   "subtitle": "Cost-to-income ratio, retail banks in the region",
+   "key_points": [
+    "Meridian Gulf Bank: 58% today",
+    "Peer median: 49%, a 9-point gap",
+    "Best-in-class regional bank: 41%, a 17-point gap",
+    "Closing to 48% puts us at peer level by 2028"
+   ],
+   "visual": "A horizontal bar exhibit of three bars on a light background: Meridian at 58% in deep teal, peer median at 49% and best-in-class at 41% in muted grey, with bracketed callouts marking the 9-point and 17-point gaps and a dashed target line at 48%.",
+   "speaker_note": "We are not an outlier by accident. Each point of ratio is real money, and the gap to the median is the first thing to close. Our target of 48% takes us just inside the peer median."
+  },
+  {
+   "index": 2,
+   "type": "data",
+   "title": "Three levers deliver the 10-point reduction, led by branch consolidation at 4.0 points",
+   "subtitle": "Cost-to-income reduction by lever, percentage points",
+   "key_points": [
+    "Branch network consolidation: minus 4.0 points",
+    "Digital migration of service transactions: minus 3.5 points",
+    "Procurement and vendor consolidation: minus 2.5 points",
+    "Together: minus 10.0 points, from 58% to 48%"
+   ],
+   "visual": "A waterfall exhibit stepping down from 58% through three teal-toned bars of 4.0, 3.5 and 2.5 points to a final 48% bar, each step labelled with its lever name and value, the total drop bracketed on the right.",
+   "speaker_note": "The programme rests on three levers, each with a clear owner. Branch consolidation is the largest, digital migration is the most scalable, and procurement is the fastest to start."
+  },
+  {
+   "index": 3,
+   "type": "content",
+   "title": "We get there in three phases: 55% in 2026, 51% in 2027, 48% in 2028",
+   "subtitle": "Programme phasing and ratio milestones",
+   "key_points": [
+    "2026 design and quick wins: 58% to 55%",
+    "2027 scale: 55% to 51%",
+    "2028 run-rate: 51% to 48%",
+    "Each phase has a board checkpoint before the next begins"
+   ],
+   "visual": "Three columns on a horizontal timeline, one per year, each topped by a large ratio figure in teal (55%, 51%, 48%) and a short list beneath of what happens that year, linked by a descending line that connects the milestones.",
+   "speaker_note": "The path is front-loaded with quick wins to build credibility, then scales through 2027 and reaches run-rate in 2028. The board sees progress against each milestone annually."
+  },
+  {
+   "index": 4,
+   "type": "conclusion",
+   "title": "AED 420 million invested over three years returns AED 310 million a year from 2028",
+   "subtitle": "Decision requested from the board",
+   "key_points": [
+    "One-off investment: AED 420 million across 2026 to 2028",
+    "Run-rate savings: AED 310 million every year from 2028",
+    "Payback in roughly 16 months of run-rate savings",
+    "Request: approve the programme and the 2026 phase budget"
+   ],
+   "visual": "Two large teal figures side by side, AED 420m one-off investment on the left and AED 310m annual run-rate savings on the right, joined by a bold arrow, with a slim decision box along the bottom stating the approval requested.",
+   "speaker_note": "The investment is one-off and the savings recur every year. We ask the board to approve the programme today so that design and quick wins can start in 2026."
+  }
+ ]
+}
