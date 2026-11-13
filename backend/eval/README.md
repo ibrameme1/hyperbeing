@@ -51,24 +51,24 @@ flat image vs layered:
 | PSO rider | **Slightly behind.** Card text too small for the column; flat version has more presence. |
 | tombstones | **Behind.** Lettering is native and placed by Claude on the requested boxes; the cluster image never puts objects exactly where asked, so text and stones misalign. |
 
+## Round 2 (2026-11-13, after the fixes)
+
+- Tombstones: FIXED in code (`anchorToObjects` in `layeredSlide.js`): text on a
+  generated object follows the object to where it was drawn. Tested.
+- Scene backgrounds (`briefs/scenes.json`, 3 cinematic slides): subjects stay
+  large and close, type sits in the reserved zone; the airplane slide matches
+  the flat version. Found: labels meant for objects drawn INSIDE a background
+  (the map's pin flags) miss them, because the app can't locate them. Prompt
+  now says labelled objects must be element/cluster layers over a setting-only
+  background; NOT yet re-verified on the map slide.
+- Owner's call: collages and card text sizes are fine as they are.
+
 ## Open problems, in priority order
 
-1. **Text that belongs on a generated object** (engravings, signs, flags,
-   labels on pins). Native text is placed on the *requested* box; the
-   generated object lands elsewhere. Fix idea: after `splitCluster`, re-anchor
-   text layers whose ink box sat inside a cluster item's requested box to the
-   placed piece (same relative position/scale). Code: `layeredSlide.js`
-   cluster apply step (search `itemLayers.push`).
-2. **Collages are too orderly.** Prompt asks for mixed sizes + slight rotation,
-   but photo tiles from one contact sheet share one aspect; allow 2 sheets
-   (big + small tiles) or let `planPhotoSheets` mix aspects.
-3. **Type scale in card columns** still drifts small on light illustrative
-   slides (PSO). `fitLayout` shrinks but never grows; consider growing text to
-   fill a card when the card has >40% empty height.
-4. **Scene backgrounds with reserved empty zones** shrink the subject. The
-   prompt now says ≤35% quiet zone + native scrim; verify on more slides.
-5. Check the same set on **Sonnet 5.5 for real** (prod model) once: a short
-   run with real keys, 2-3 decks, to confirm files-mode findings.
+1. Re-run `scenes` slide 3 (map with three labelled pins) to confirm the new
+   "labelled objects are their own layers" rule.
+2. The owner runs the real-keys check (Sonnet 5.5 + gpt-image-2.5-flare).
+   Compare against the files-mode results in this folder.
 
 ## Where things live
 
