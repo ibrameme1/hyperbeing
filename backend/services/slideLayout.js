@@ -1260,7 +1260,12 @@ export function resolveImageOverlaps(layout) {
   for (const img of layout.layers.filter(l => l.kind === 'image' && !['effect', 'screen_image', 'connector', 'photo'].includes(l.role) && !l.screen_of && !l.merged?.length)) {
     const group = [img, ...layout.layers.filter(l => l.screen_of === img.id)];
     // Judge against the glyphs, not the (often much wider) text boxes.
-    const texts = layout.layers.filter(t => isObstacleText(t) && !group.includes(t)).map(inkBox);
+    // Lettering set ON an object (drawn above it and sitting inside its box:
+    // an engraving on a stone, a word on a sign) is deliberate, not a
+    // collision; moving or shrinking the object would strip it of its label.
+    const zImg = layout.layers.indexOf(img);
+    const onObject = (t) => layout.layers.indexOf(t) > zImg && area(inter(inkBox(t), img)) >= 0.5 * area(inkBox(t));
+    const texts = layout.layers.filter(t => isObstacleText(t) && !group.includes(t) && !onObject(t)).map(inkBox);
     const conflicts = texts.filter(t => overlaps(t, img) && area(inter(t, img)) > 0.05 * area(t));
     if (!conflicts.length) continue;
 

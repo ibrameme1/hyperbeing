@@ -8,6 +8,7 @@
 // text box is sampled, and a failing colour is swapped for the closest deck
 // palette colour that passes (falling back to white / near-black).
 import sharp from 'sharp';
+import { inkBox } from './slideLayout.js';
 
 const SAMPLE_WIDTH = 480;
 
@@ -88,8 +89,12 @@ export async function enforceTextContrast(layout, render, palette = {}) {
       ? { r: stops.reduce((t, c) => t + c.r, 0) / stops.length, g: stops.reduce((t, c) => t + c.g, 0) / stops.length, b: stops.reduce((t, c) => t + c.b, 0) / stops.length, a: 1 }
       : parseColor(l.color);
     if (!color) continue;
-    const x0 = Math.max(0, Math.floor(l.x * k)); const y0 = Math.max(0, Math.floor(l.y * k));
-    const x1 = Math.min(info.width, Math.ceil((l.x + l.w) * k)); const y1 = Math.min(info.height, Math.ceil((l.y + l.h) * k));
+    // Sample behind the glyphs, not the whole box: a short word centred in a
+    // wide box over a narrow object (lettering on a stone, a number on a
+    // badge) would otherwise be judged against the page around the object.
+    const ink = inkBox(l);
+    const x0 = Math.max(0, Math.floor(ink.x * k)); const y0 = Math.max(0, Math.floor(ink.y * k));
+    const x1 = Math.min(info.width, Math.ceil((ink.x + ink.w) * k)); const y1 = Math.min(info.height, Math.ceil((ink.y + ink.h) * k));
     if (x1 <= x0 || y1 <= y0) continue;
     // Mean colour behind the box. (Text boxes are larger than the glyphs and
     // often straddle a card edge, so per-pixel extremes mislead.)

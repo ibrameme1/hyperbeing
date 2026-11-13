@@ -287,6 +287,7 @@ export function hexToRgb(hex) {
 // items: [{ id, box: {x,y,w,h} as 0-1 fractions of the cluster image }]
 // Returns [{ id, buffer, x, y, w, h (pixels in the cluster image), pixels }]
 // for every item that received at least one component.
+const VISIBLE_ALPHA = 26;
 export async function splitCluster(buffer, requested, { minAlpha = 4, seedAlpha = 160, seedCore = 0.5, mergeLevel = 110 } = {}) {
   const { data, width, height } = await raw(buffer);
   const N = width * height;
@@ -438,12 +439,17 @@ export async function splitCluster(buffer, requested, { minAlpha = 4, seedAlpha 
   for (let i = 0; i < items.length; i++) {
     if (repOf[i] !== i) continue;
     let minX = width; let minY = height; let maxX = -1; let maxY = -1; let pixels = 0;
+    // The piece's box is measured on pixels you can actually see. A model
+    // often leaves a near-invisible haze (alpha under ~10%) between objects
+    // on a "transparent" background; counting it stretched every box across
+    // its neighbours, so the pieces were placed shrunken and out of position.
     for (let k = 0; k < N; k++) {
       if (label[k] !== i) continue;
+      pixels++;
+      if (A(k) < VISIBLE_ALPHA) continue;
       const x = k % width; const y = (k - x) / width;
       if (x < minX) minX = x; if (x > maxX) maxX = x;
       if (y < minY) minY = y; if (y > maxY) maxY = y;
-      pixels++;
     }
     // Ignore crumbs (a few stray halo pixels) — not a real object.
     if (maxX < 0 || pixels < N * 0.0004) continue;
