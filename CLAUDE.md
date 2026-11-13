@@ -32,6 +32,7 @@ node backend/scripts/cost-report.js [--from YYYY-MM-DD --to YYYY-MM-DD | --deck 
 # Credit-free testing: CLAUDE_PROVIDER=files CLAUDE_FILES_DIR=dir (Claude requests → dir/requests, answers read from dir/<kind>_<key>.json)
 #                      LAYER_IMAGE_PROVIDER=files LAYER_IMAGE_FILES_DIR=dir (same for layer images). Test-only; never in prod.
 python3 scripts/generate_markdown_mirrors.py   # regenerates frontend/public/**/index.md
+backend/eval/run.sh <deck>                      # layered-slide QUALITY eval (credit-free); read backend/eval/README.md first
 ```
 
 Backend tests live in `backend/test/` (credit ledger, streaming parser, SSRF guard, layered-slide layout/imaging) — run them before pushing backend changes. There is still **no linter and no CI** (GAPS #4). Beyond tests, verify by running the app; with no API keys set (or keys = `demo`) every AI service runs in **mock mode** with canned plans and SVG placeholder images — that's the intended way to exercise the pipeline locally (a mock deck generates 3 slides + 7 locked on the free plan; the "error" states + refunds are the documented placeholder quirk).
