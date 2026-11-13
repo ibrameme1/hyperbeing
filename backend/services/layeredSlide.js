@@ -4,7 +4,7 @@ import sharp from 'sharp';
 import * as imageStore from './imageStore.js';
 import { logger } from './logger.js';
 import { designSlideLayout, reviewSlideLayout } from './layoutAgent.js';
-import { normalizeLayout, fitLayout, layoutFiles, canvasFor, MAX_GENERATIONS_PER_SLIDE, resolveCollisions, resolveImageOverlaps, tightenDeviceRows, planPhotoSheets } from './slideLayout.js';
+import { normalizeLayout, fitLayout, layoutFiles, canvasFor, MAX_GENERATIONS_PER_SLIDE, resolveCollisions, resolveImageOverlaps, tightenDeviceRows, planPhotoSheets, inkBox } from './slideLayout.js';
 import { generateLayerImage, scheduleImageJob, sizeForAspect, IMAGE_MOCK_MODE, LONG_SIDE, LAYER_IMAGE_QUALITY } from './openaiImages.js';
 import {
   coverToAspect, ensureTransparent, unscreen, trimTransparent, extractScreen,
@@ -167,6 +167,44 @@ export function photoSheetPlan(sheet, deckDesign, styleBlock) {
     body, PHOTO_SHEET_SUFFIX,
   ].filter(Boolean).join('\n\n');
   return { size, counts, cols, prompt };
+}
+
+// Lettering, badges and marks Claude placed ON a generated object (an
+// engraving on a tombstone, a word on a sign, a flag on a pin) were placed on
+// the box it ASKED for. The image model never puts an object exactly there,
+// so each such layer is carried along with its object: same relative position
+// inside the object, scaled with it. A layer belongs to an object when it is
+// drawn above it and sits (mostly) inside the object's requested box, and the
+// object is the smallest one that holds it. Big objects (over 45% of the
+// canvas: scenes, hero renders that text merely overlays) are left alone.
+export function anchorToObjects(layout, moves) {
+  const canvasArea = layout.canvas.w * layout.canvas.h;
+  const area = (r) => Math.max(0, r.w) * Math.max(0, r.h);
+  const inter = (a, b) => area({ w: Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), h: Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) });
+  const usable = moves.filter(m => m.layer && area(m.from) > 0 && area(m.from) <= 0.45 * canvasArea
+    && (Math.abs(m.from.x - m.layer.x) > 2 || Math.abs(m.from.y - m.layer.y) > 2 || Math.abs(m.from.w - m.layer.w) > 2 || Math.abs(m.from.h - m.layer.h) > 2));
+  if (!usable.length) return [];
+  const moved = [];
+  for (const t of layout.layers) {
+    if (!['text', 'icon', 'shape'].includes(t.kind) || t.screen_of || t.in_screen) continue;
+    const zt = layout.layers.indexOf(t);
+    const box = t.kind === 'text' ? inkBox(t) : t;
+    const need = t.kind === 'text' ? 0.6 : 0.85; // shapes/icons must sit fully on it
+    const hosts = usable.filter(m => layout.layers.indexOf(m.layer) < zt
+      && inter(box, m.from) >= need * area(box) && area(box) <= 0.6 * area(m.from));
+    if (!hosts.length) continue;
+    const m = hosts.reduce((a, b) => (area(a.from) <= area(b.from) ? a : b));
+    const to = m.layer;
+    const k = Math.min(1.6, Math.max(0.5, Math.min(to.w / m.from.w, to.h / m.from.h)));
+    const cx = to.x + ((t.x + t.w / 2 - m.from.x) / m.from.w) * to.w;
+    const cy = to.y + ((t.y + t.h / 2 - m.from.y) / m.from.h) * to.h;
+    t.w = Math.round(t.w * k); t.h = Math.round(t.h * k);
+    t.x = Math.round(cx - t.w / 2); t.y = Math.round(cy - t.h / 2);
+    if (t.kind === 'text') t.size = Math.max(8, Math.round(t.size * k));
+    if (t.kind === 'shape' && t.radius) t.radius = Math.round(t.radius * k);
+    moved.push(t.id);
+  }
+  return moved;
 }
 
 export async function loadStoredFile(file) {
@@ -584,6 +622,10 @@ async function buildLayeredSlideInner({
     // ── 2. apply assets to the final layout ───────────────────────────────
     const failures = [];
     const usedKeys = new Set();
+    // Where each generated object was REQUESTED vs where it actually LANDED
+    // (cluster pieces are found in the drawn image; single elements are
+    // fitted to their aspect). Text and marks Claude set ON an object follow it.
+    const objectMoves = [];
     const waits = [];
 
     const bg = layout.background;
@@ -609,6 +651,7 @@ async function buildLayeredSlideInner({
         if (!asset || !asset.parts.length) { failures.push({ id: l.id, critical: true, layer: l }); return; }
         const sx = asset.box.w / asset.genW; const sy = asset.box.h / asset.genH;
         const itemLayers = [];
+        const requested = new Map(l.items.map(it => [it.id, { x: it.x, y: it.y, w: it.w, h: it.h }]));
         l.items.forEach((it, i) => {
           const part = asset.parts.find(pp => pp.id === it.id);
           if (!part) return;
@@ -639,7 +682,11 @@ async function buildLayeredSlideInner({
         for (const il of itemLayers) { if (taken.has(il.id)) il.id = `${l.id}_${il.id}`; taken.add(il.id); }
         const at = layout.layers.indexOf(l);
         layout.layers.splice(at, 1, ...itemLayers);
-        for (const il of itemLayers) onLayer(il);
+        for (const il of itemLayers) {
+          const from = requested.get(il.id) || requested.get(il.id.replace(`${l.id}_`, ''));
+          if (from) objectMoves.push({ layer: il, from });
+          onLayer(il);
+        }
       })();
       applied.set(l.id, p);
       // Connectors may anchor on individual cluster items.
@@ -682,7 +729,11 @@ async function buildLayeredSlideInner({
         l.file = asset.file;
         l.src = assetUrl(presentationId, asset.file);
         if (l.role === 'screen_image' || l.role === 'photo') l.fit = 'cover';
-        else Object.assign(l, containRect(asset.width, asset.height, l));
+        else {
+          const from = { x: l.x, y: l.y, w: l.w, h: l.h };
+          Object.assign(l, containRect(asset.width, asset.height, l));
+          objectMoves.push({ layer: l, from });
+        }
         if (l.screen) {
           const sx = l.w / asset.width; const sy = l.h / asset.height;
           const rect = asset.screenRect
@@ -749,6 +800,8 @@ async function buildLayeredSlideInner({
     }
 
     await Promise.all(waits);
+    const anchored = anchorToObjects(layout, objectMoves);
+    if (anchored.length) logger.info('labels moved onto their objects', { slideIndex: slide.index, layers: anchored.length });
 
     // Early-started jobs the final layout doesn't use (Claude revised a
     // layer after it streamed) — wait for them and discard their files.
