@@ -599,8 +599,8 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
 
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <div className="w-7 h-7 flex items-center justify-center flex-shrink-0"
-               style={{ background: '#0297DE', clipPath: 'polygon(0 0, 100% 0, 100% 78%, 78% 100%, 0 100%)' }}>
-            <span style={{ fontFamily: 'Inter, Arial, sans-serif', fontWeight: 900, color: '#fff', fontSize: 13, letterSpacing: '-0.1em', paddingRight: '0.1em', display: 'block', lineHeight: 1 }}>HB</span>
+               style={{ background: '#F1F6F9', clipPath: 'polygon(0 0, 100% 0, 100% 78%, 78% 100%, 0 100%)' }}>
+            <span style={{ fontFamily: 'Inter, Arial, sans-serif', fontWeight: 900, color: '#02070A', fontSize: 13, letterSpacing: '-0.1em', paddingRight: '0.1em', display: 'block', lineHeight: 1 }}>HB</span>
           </div>
 
           {/* Editable title */}
@@ -687,7 +687,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 top-10 bg-white dark:bg-[#08131A] shadow-ios-xl border border-gray-100 dark:border-[#0F1F28] py-2 w-56 z-50"
+                className="absolute right-0 top-10 bg-white dark:bg-[#111417] shadow-ios-xl border border-gray-100 dark:border-[#1C2024] py-2 w-56 z-50"
                 style={{ borderRadius: 12 }}
               >
                 <button onClick={handleExportImages} className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-sm text-gray-800 dark:text-[#f0f0ee]">
@@ -706,7 +706,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
             )}
           </AnimatePresence>
           {exportError && (
-            <p role="alert" className="absolute right-0 top-10 w-64 text-xs px-3 py-2 bg-white dark:bg-[#08131A] border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 z-40" style={{ borderRadius: 8 }}>
+            <p role="alert" className="absolute right-0 top-10 w-64 text-xs px-3 py-2 bg-white dark:bg-[#111417] border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 z-40" style={{ borderRadius: 8 }}>
               {exportError}
             </p>
           )}
@@ -1002,7 +1002,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       </div>
 
       {/* ── Bottom panel ─────────────────────────────────────── */}
-      <div className="flex-shrink-0 bg-white dark:bg-[#08131A] border-t border-gray-200 dark:border-[#0F1F28]">
+      <div className="flex-shrink-0 bg-white dark:bg-[#111417] border-t border-gray-200 dark:border-[#1C2024]">
 
         {/* Filmstrip */}
         <Reorder.Group
@@ -1219,9 +1219,9 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-              className="fixed top-0 right-0 h-full w-full sm:w-96 bg-white dark:bg-[#08131A] border-l border-gray-200 dark:border-[#0F1F28] z-50 flex flex-col"
+              className="fixed top-0 right-0 h-full w-full sm:w-96 bg-white dark:bg-[#111417] border-l border-gray-200 dark:border-[#1C2024] z-50 flex flex-col"
             >
-              <div className="flex items-center justify-between px-4 h-14 border-b border-gray-200 dark:border-[#0F1F28] flex-shrink-0">
+              <div className="flex items-center justify-between px-4 h-14 border-b border-gray-200 dark:border-[#1C2024] flex-shrink-0">
                 <h3 className="font-semibold text-sm text-gray-900 dark:text-zinc-100 flex items-center gap-2">
                   <History size={15} style={{ color: '#4CB8F0' }} />
                   Version history

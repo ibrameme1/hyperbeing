@@ -20,10 +20,10 @@
 
   /* Dark surfaces */
   --void:    #02070A;
-  --base:    #050D12;
-  --raised:  #08131A;
-  --border:  #0F1F28;
-  --border2: #18292F;
+  --base:    #0A0C0E;
+  --raised:  #111417;
+  --border:  #1C2024;
+  --border2: #272C31;
   --muted-bg:#3a3a3a;
 
   /* Dark text */
@@ -106,10 +106,10 @@
   --text-primary:   var(--t-full);
   --text-secondary: var(--t-high);
   --text-muted:     var(--t-mid);
-  --border:         #0F1F28;
+  --border:         #1C2024;
   --border-input:   var(--border2);
-  --skeleton-from:  #0F1F28;
-  --skeleton-to:    #18292F;
+  --skeleton-from:  #1C2024;
+  --skeleton-to:    #272C31;
 }
 
 [data-theme="light"] {
@@ -144,7 +144,9 @@
     background-color: var(--bg-page);
     color: var(--text-primary);
     transition: background-color 0.4s ease, color 0.4s ease;
-    overflow-x: hidden;
+    /* clip, not hidden: hidden on html+body turns body into its own scroll
+       container, which breaks every position:sticky (the landing page pins) */
+    overflow-x: clip;
     max-width: 100%;
   }
 }

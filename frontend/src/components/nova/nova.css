@@ -20,10 +20,6 @@
 
 .nova .nova-eyes { transform-origin: center; animation: nova-blink 5.2s infinite; }
 .nova .nova-eyes g { transition: transform .18s ease-out; }
-.nova .nova-cheek { opacity: .32; transition: opacity .3s; }
-.nova--shy .nova-cheek,
-.nova--happy .nova-cheek,
-.nova--wave .nova-cheek { opacity: .62; }
 .nova .nova-z { animation: nova-z 2.4s ease-in-out infinite; }
 
 @keyframes nova-bob   { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-5px) } }

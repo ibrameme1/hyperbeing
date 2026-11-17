@@ -5,7 +5,7 @@ import { VIDEO_IMAGE_ROLE_LABELS } from '../utils/designMode';
 // across re-renders.
 function Segmented({ isDark, value, items, onPick, ariaLabel }) {
   return (
-    <div role="group" aria-label={ariaLabel} style={{ display: 'flex', gap: 2, background: isDark ? '#050D12' : '#f0f0f0', borderRadius: 10, padding: 3, flexShrink: 0 }}>
+    <div role="group" aria-label={ariaLabel} style={{ display: 'flex', gap: 2, background: isDark ? '#0A0C0E' : '#f0f0f0', borderRadius: 10, padding: 3, flexShrink: 0 }}>
       {items.map(({ key, text, disabled }) => {
         const active = value === key;
         return (
@@ -18,7 +18,7 @@ function Segmented({ isDark, value, items, onPick, ariaLabel }) {
             style={{
               padding: '4px 9px', borderRadius: 7, border: 'none', cursor: disabled ? 'not-allowed' : 'pointer',
               fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif', opacity: disabled ? 0.35 : 1,
-              background: active ? (isDark ? '#0F1F28' : '#fff') : 'transparent',
+              background: active ? (isDark ? '#1C2024' : '#fff') : 'transparent',
               boxShadow: active && !isDark ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
               color: active ? '#0297DE' : (isDark ? '#999' : '#555'),
             }}
@@ -44,7 +44,7 @@ export default function DesignVideoControls({ isDark, options, settings, onChang
 
   const pill = {
     display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-    background: isDark ? '#050D12' : '#f0f0f0', borderRadius: 10, padding: '6px 10px',
+    background: isDark ? '#0A0C0E' : '#f0f0f0', borderRadius: 10, padding: '6px 10px',
   };
   const label = { fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif', color: isDark ? '#999' : '#555', whiteSpace: 'nowrap' };
   const select = {

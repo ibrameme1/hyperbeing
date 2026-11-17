@@ -30,7 +30,7 @@ function ShaderBackground() {
   if (!MeshGradient) {
     return (
       <div className="absolute inset-0" style={{
-        background: 'linear-gradient(135deg, #02070A 0%, #050D12 33%, #0B2A3D 66%, #0297DE 100%)'
+        background: 'linear-gradient(135deg, #02070A 0%, #0A0C0E 33%, #3A1A0E 66%, #0297DE 100%)'
       }} />
     );
   }
@@ -38,7 +38,7 @@ function ShaderBackground() {
     <>
       <MeshGradient
         className="absolute inset-0 w-full h-full"
-        colors={['#02070A', '#050D12', '#0B2A3D', '#0297DE']}
+        colors={['#02070A', '#0A0C0E', '#3A1A0E', '#0297DE']}
         speed={0.4}
         backgroundColor="#02070A"
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
@@ -116,7 +116,7 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
 
         {/* Progress bar */}
         {totalSlides > 0 ? (
-          <div className="w-64 h-px overflow-hidden" style={{ background: '#18292F' }}>
+          <div className="w-64 h-px overflow-hidden" style={{ background: '#272C31' }}>
             <motion.div
               className="h-full"
               style={{ background: 'linear-gradient(90deg, #0297DE, #4CB8F0)' }}
@@ -125,7 +125,7 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
             />
           </div>
         ) : (
-          <div className="w-64 h-px overflow-hidden relative" style={{ background: '#0F1F28' }}>
+          <div className="w-64 h-px overflow-hidden relative" style={{ background: '#1C2024' }}>
             <motion.div
               className="absolute inset-y-0 w-1/3"
               style={{ background: 'linear-gradient(90deg, transparent, #0297DE, #4CB8F0, transparent)' }}
@@ -155,7 +155,7 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
                   animate={{ opacity: 1, scale: 1, x: 0 }}
                   transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                   className="flex-shrink-0 w-28 overflow-hidden"
-                  style={{ aspectRatio: '16/9', borderRadius: '6px', border: '0.5px solid #0F1F28' }}
+                  style={{ aspectRatio: '16/9', borderRadius: '6px', border: '0.5px solid #1C2024' }}
                 >
                   {slide.image_data ? (
                     <img src={mediaUrl(slide.image_data)} alt={slide.title} className="w-full h-full object-cover" />

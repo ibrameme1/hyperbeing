@@ -154,7 +154,7 @@ export default function Onboarding() {
   const credits = subscription?.credits_remaining;
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'radial-gradient(ellipse at 50% 110%, rgba(252,115,77,0.16), transparent 45%), radial-gradient(ellipse at 50% 85%, rgba(2,151,222,0.22), transparent 60%), #02070A', color: '#F1F6F9' }}>
+    <div className="min-h-screen flex flex-col" style={{ background: 'radial-gradient(ellipse 55% 38% at 50% 108%, rgba(252,115,77,0.28), transparent 70%), radial-gradient(ellipse 70% 60% at 50% 100%, rgba(2,151,222,0.16), transparent 70%), #02070A', color: '#F1F6F9' }}>
       <header className="flex items-center justify-between px-4 sm:px-8 h-16">
         <div className="flex items-center gap-2" aria-label="Progress">
           {STEPS.map((s, i) => (
@@ -190,7 +190,7 @@ export default function Onboarding() {
                 <button
                   type="button" autoFocus onClick={() => setStep(1)}
                   className="mt-8 inline-flex items-center gap-2 h-12 px-7 rounded-full font-semibold text-[15px] transition-transform hover:-translate-y-0.5 active:scale-[0.98]"
-                  style={{ background: '#F1F6F9', color: '#02070A', boxShadow: '0 0 0 6px rgba(255,255,255,0.06), 0 0 50px rgba(169,221,247,0.35)' }}
+                  style={{ background: '#F1F6F9', color: '#02070A' }}
                 >
                   Let&apos;s make it <ArrowRight size={16} />
                 </button>
@@ -230,7 +230,7 @@ export default function Onboarding() {
                     : <>Tell me the topic in a sentence or two. <b>I&apos;ll fill in the rest.</b></>}
                 </Say>
                 <div className="mt-6 rounded-2xl p-1.5" style={{ background: 'linear-gradient(180deg, rgba(76,184,240,0.35), rgba(190,225,245,0.08))' }}>
-                  <div className="rounded-[14px] p-4" style={{ background: '#08131A' }}>
+                  <div className="rounded-[14px] p-4" style={{ background: '#111417' }}>
                     <label htmlFor="first-brief" className="block text-[11px] tracking-[0.14em] uppercase mb-2" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#5E717D' }}>
                       {useCase?.label || 'Your deck'}
                     </label>
@@ -253,7 +253,7 @@ export default function Onboarding() {
                   <button
                     type="button" onClick={create} disabled={creating}
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-2 h-12 px-7 rounded-full font-semibold text-[15px] transition-transform hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-80"
-                    style={{ background: '#F1F6F9', color: '#02070A', boxShadow: '0 0 0 6px rgba(255,255,255,0.06), 0 0 50px rgba(169,221,247,0.35)' }}
+                    style={{ background: '#F1F6F9', color: '#02070A' }}
                   >
                     {creating ? <><Loader2 size={16} className="animate-spin" /> Starting…</> : <>Make my deck <ArrowRight size={16} /></>}
                   </button>

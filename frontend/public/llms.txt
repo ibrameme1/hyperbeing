@@ -13,6 +13,8 @@ HyperBeing is an AI presentation maker built for hyper-personalized, large-conte
 New accounts get 54 free credits, enough for a first 3-slide deck, with no card required. A slide costs 18 credits.
 
 ## Services and Pricing
+Plans and checkout are on the homepage: https://www.hyperbeing.co/#pricing
+
 Monthly billing (monthly credits in brackets):
 - Basic: $25/month (1,200 credits)
 - Pro: $65/month (3,200 credits)
@@ -47,7 +49,6 @@ Worldwide
 ## Markdown Mirrors (Clean AI-Readable Versions)
 Every page on this site has a plain markdown mirror. Add /index.md to any URL to get the clean content without navigation, scripts, or layout chrome.
 - https://www.hyperbeing.co/index.md
-- https://www.hyperbeing.co/pricing/index.md
 - https://www.hyperbeing.co/services/marketing-decks/index.md
 - https://www.hyperbeing.co/services/consulting-decks/index.md
 - https://www.hyperbeing.co/terms/index.md

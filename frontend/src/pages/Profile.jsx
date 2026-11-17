@@ -327,13 +327,13 @@ export default function Profile() {
                   {!isPaid && (
                     <div className="flex items-start gap-2">
                       <Zap size={12} className="mt-0.5 flex-shrink-0" style={{ color: '#f59e0b' }} />
-                      <span>Free plan — <button onClick={() => navigate('/pricing')} className="underline" style={{ color: '#A9DDF7' }}>upgrade to unlock more</button></span>
+                      <span>Free plan — <button onClick={() => navigate('/#pricing')} className="underline" style={{ color: '#A9DDF7' }}>upgrade to unlock more</button></span>
                     </div>
                   )}
                 </div>
 
                 <button
-                  onClick={() => navigate('/pricing')}
+                  onClick={() => navigate('/#pricing')}
                   className="w-full mt-4 py-2.5 rounded-xl text-xs font-bold transition-opacity hover:opacity-80"
                   style={{ background: 'rgba(2,151,222,0.15)', color: '#A9DDF7', border: '1px solid rgba(2,151,222,0.2)' }}
                 >
@@ -732,7 +732,7 @@ export default function Profile() {
               </div>
 
               <p className="text-sm mb-5" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                All your presentations, credits, and billing data will be permanently deleted. If you have an active subscription, cancel it first via <button onClick={() => { setShowDeleteModal(false); navigate('/pricing'); }} className="underline" style={{ color: '#A9DDF7' }}>Manage subscription</button> before deleting.
+                All your presentations, credits, and billing data will be permanently deleted. If you have an active subscription, cancel it first via <button onClick={() => { setShowDeleteModal(false); navigate('/#pricing'); }} className="underline" style={{ color: '#A9DDF7' }}>Manage subscription</button> before deleting.
               </p>
 
               <div className="mb-5">

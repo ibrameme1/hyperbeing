@@ -237,11 +237,11 @@ function AttachZone({ label, icon: Icon, accentColor, files, onFile, onRemove, i
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept, multiple: true });
   const muted = isDark ? '#555555' : '#888888';
-  const border = isDark ? '#18292F' : '#e8e8e8';
+  const border = isDark ? '#272C31' : '#e8e8e8';
 
   return (
     <div style={{
-      background: isDark ? '#08131A' : '#fff',
+      background: isDark ? '#111417' : '#fff',
       borderRadius: 8,
       overflow: 'hidden',
       border: '0.5px solid',
@@ -285,7 +285,7 @@ function AttachZone({ label, icon: Icon, accentColor, files, onFile, onRemove, i
                     position: 'absolute', top: -8, right: -8, width: 20, height: 20,
                     background: '#02070A', color: '#fff', borderRadius: '50%',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    border: '1px solid #18292F', cursor: 'pointer', opacity: 0,
+                    border: '1px solid #272C31', cursor: 'pointer', opacity: 0,
                   }}
                   className="group-hover:opacity-100 focus:opacity-100 transition-opacity"
                 >
@@ -322,7 +322,7 @@ function AttachZone({ label, icon: Icon, accentColor, files, onFile, onRemove, i
             <div style={{
               height: 56, width: 56, borderRadius: 8,
               border: '1.5px dashed',
-              borderColor: isDark ? '#18292F' : '#d0d0d0',
+              borderColor: isDark ? '#272C31' : '#d0d0d0',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: isDark ? '#555555' : '#999999',
             }}>
@@ -905,11 +905,11 @@ export default function Dashboard() {
         currentPlan={currentPlan}
         isAdmin={isAdmin}
         onLogout={logout}
-        onUpgrade={() => navigate('/pricing')}
+        onUpgrade={() => navigate('/#pricing')}
       />
 
       {/* Hero gradient section */}
-      <div style={{ background: isDark ? '#050D12' : '#f5f5f5' }}>
+      <div style={{ background: isDark ? '#0A0C0E' : '#f5f5f5' }}>
         <div className="max-w-3xl mx-auto px-4 pt-8 pb-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -936,7 +936,7 @@ export default function Dashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div style={{ background: isDark ? '#08131A' : '#fff', borderRadius: 16, boxShadow: isDark ? '0 4px 24px rgba(0,0,0,0.4)' : '0 4px 24px rgba(0,0,0,0.1)', overflow: 'hidden', border: isDark ? '0.5px solid #18292F' : '0.5px solid #e8e8e8' }}>
+            <div style={{ background: isDark ? '#111417' : '#fff', borderRadius: 16, boxShadow: isDark ? '0 4px 24px rgba(0,0,0,0.4)' : '0 4px 24px rgba(0,0,0,0.1)', overflow: 'hidden', border: isDark ? '0.5px solid #272C31' : '0.5px solid #e8e8e8' }}>
               <div className="p-5">
                 <style>{`.hb-ta::placeholder{color:${isDark ? '#555555' : '#aaaaaa'}}`}</style>
                 <textarea
@@ -959,7 +959,7 @@ export default function Dashboard() {
                 />
               </div>
 
-              <div style={{ padding: '4px 20px 20px', borderTop: isDark ? '0.5px solid #18292F' : '0.5px solid #e8e8e8' }}>
+              <div style={{ padding: '4px 20px 20px', borderTop: isDark ? '0.5px solid #272C31' : '0.5px solid #e8e8e8' }}>
                 {/* Controls row */}
                 <div className="flex items-center gap-2 py-2 flex-wrap">
                   {/* Web search toggle — when on, Nova researches the brief online */}
@@ -974,8 +974,8 @@ export default function Dashboard() {
                       display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
                       padding: '8px 12px', borderRadius: 10, cursor: 'pointer',
                       fontSize: 11, fontWeight: 600, fontFamily: 'Inter,sans-serif',
-                      border: webSearchEnabled ? '1px solid rgba(2,151,222,0.4)' : (isDark ? '1px solid #18292F' : '1px solid #e8e8e8'),
-                      background: webSearchEnabled ? 'rgba(2,151,222,0.12)' : (isDark ? '#050D12' : '#f0f0f0'),
+                      border: webSearchEnabled ? '1px solid rgba(2,151,222,0.4)' : (isDark ? '1px solid #272C31' : '1px solid #e8e8e8'),
+                      background: webSearchEnabled ? 'rgba(2,151,222,0.12)' : (isDark ? '#0A0C0E' : '#f0f0f0'),
                       color: webSearchEnabled ? '#0297DE' : (isDark ? '#777' : '#888'),
                       transition: 'background 0.15s, color 0.15s, border-color 0.15s',
                     }}
@@ -985,7 +985,7 @@ export default function Dashboard() {
                     {/* Track */}
                     <span style={{
                       position: 'relative', width: 26, height: 15, borderRadius: 999,
-                      background: webSearchEnabled ? '#0297DE' : (isDark ? '#18292F' : '#ccc'),
+                      background: webSearchEnabled ? '#0297DE' : (isDark ? '#272C31' : '#ccc'),
                       transition: 'background 0.18s', flexShrink: 0,
                     }}>
                       <span style={{
@@ -1051,7 +1051,7 @@ export default function Dashboard() {
                       display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'Inter,sans-serif',
                       fontWeight: 500, fontSize: 13, padding: '6px 12px', borderRadius: 8,
                       border: '0.5px solid', cursor: 'pointer', transition: 'all 0.15s',
-                      borderColor: (showZones || totalAttachments > 0) ? 'rgba(2,151,222,0.4)' : (isDark ? '#18292F' : '#e0e0e0'),
+                      borderColor: (showZones || totalAttachments > 0) ? 'rgba(2,151,222,0.4)' : (isDark ? '#272C31' : '#e0e0e0'),
                       background: (showZones || totalAttachments > 0) ? 'rgba(2,151,222,0.1)' : 'transparent',
                       color: (showZones || totalAttachments > 0) ? '#4CB8F0' : (isDark ? '#888' : '#555'),
                     }}

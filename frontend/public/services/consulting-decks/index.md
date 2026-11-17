@@ -32,7 +32,7 @@ Individual consultants typically use Basic ($25/month, or $20/month billed annua
 
 Consulting teams producing decks for multiple clients or engagements at once tend to use one of the four Ultra tiers ($149-$299/month, or $116-$209/month billed annually).
 
-See the full breakdown on the [pricing page](/pricing).
+See the full breakdown on the [pricing section](/#pricing).
 
 ## How long it takes
 

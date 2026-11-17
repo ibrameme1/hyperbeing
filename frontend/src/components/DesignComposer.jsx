@@ -49,9 +49,9 @@ export default function DesignComposer({
     <div {...getRootProps()} style={{ position: 'relative' }}>
       <input {...getInputProps()} />
       <div style={{
-        background: isDark ? '#08131A' : '#fff', borderRadius: 16,
+        background: isDark ? '#111417' : '#fff', borderRadius: 16,
         boxShadow: isDark ? '0 4px 24px rgba(0,0,0,0.4)' : '0 4px 24px rgba(0,0,0,0.1)',
-        overflow: 'hidden', border: isDark ? '0.5px solid #18292F' : '0.5px solid #e8e8e8',
+        overflow: 'hidden', border: isDark ? '0.5px solid #272C31' : '0.5px solid #e8e8e8',
         outline: isDragActive ? '2px solid rgba(2,151,222,0.5)' : 'none', outlineOffset: -2,
       }}>
         {/* Editing banner */}
@@ -102,7 +102,7 @@ export default function DesignComposer({
             {attachments.map(f => (
               <div key={f.id} style={{ position: 'relative' }} className="group">
                 <img src={f.data} alt={f.name}
-                     style={{ height: 48, width: 48, borderRadius: 8, objectFit: 'cover', border: '0.5px solid', borderColor: isDark ? '#18292F' : '#e8e8e8', display: 'block' }} />
+                     style={{ height: 48, width: 48, borderRadius: 8, objectFit: 'cover', border: '0.5px solid', borderColor: isDark ? '#272C31' : '#e8e8e8', display: 'block' }} />
                 <button
                   onClick={() => onRemoveAttachment(f.id)}
                   aria-label={`Remove ${f.name}`}
@@ -110,7 +110,7 @@ export default function DesignComposer({
                     position: 'absolute', top: -6, right: -6, width: 18, height: 18,
                     background: '#02070A', color: '#fff', borderRadius: '50%',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    border: '1px solid #18292F', cursor: 'pointer',
+                    border: '1px solid #272C31', cursor: 'pointer',
                   }}
                 >
                   <X size={9} />
@@ -120,7 +120,7 @@ export default function DesignComposer({
           </div>
         )}
 
-        <div style={{ padding: '4px 20px 20px', borderTop: isDark ? '0.5px solid #18292F' : '0.5px solid #e8e8e8' }}>
+        <div style={{ padding: '4px 20px 20px', borderTop: isDark ? '0.5px solid #272C31' : '0.5px solid #e8e8e8' }}>
           {/* Image / Video switch */}
           <div className="flex items-center gap-2 pt-2" role="group" aria-label="What to generate">
             {[
@@ -137,7 +137,7 @@ export default function DesignComposer({
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 9999,
                     fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif', cursor: 'pointer',
-                    border: '0.5px solid', borderColor: active ? 'rgba(2,151,222,0.5)' : (isDark ? '#18292F' : '#e0e0e0'),
+                    border: '0.5px solid', borderColor: active ? 'rgba(2,151,222,0.5)' : (isDark ? '#272C31' : '#e0e0e0'),
                     background: active ? 'rgba(2,151,222,0.12)' : 'transparent',
                     color: active ? '#0297DE' : (isDark ? '#999' : '#555'),
                   }}
@@ -163,7 +163,7 @@ export default function DesignComposer({
             {/* Image count slider */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-              background: isDark ? '#050D12' : '#f0f0f0', borderRadius: 10, padding: '6px 12px',
+              background: isDark ? '#0A0C0E' : '#f0f0f0', borderRadius: 10, padding: '6px 12px',
             }}>
               <span style={{ fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif', color: isDark ? '#888' : '#666', whiteSpace: 'nowrap' }}>
                 {imageCount} image{imageCount !== 1 ? 's' : ''}
@@ -182,7 +182,7 @@ export default function DesignComposer({
 
             {/* Craft mode split — the transparent Nova loop animation plays inside
                 the "Let Nova craft" segment whenever it's the active option. */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: isDark ? '#050D12' : '#f0f0f0', borderRadius: 10, padding: 4, flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: isDark ? '#0A0C0E' : '#f0f0f0', borderRadius: 10, padding: 4, flexShrink: 0 }}>
               {[
                 { key: 'nova', label: 'Let Nova craft' },
                 { key: 'own', label: 'My prompts' },
@@ -199,7 +199,7 @@ export default function DesignComposer({
                       padding: isNova && active ? '4px 12px 4px 8px' : '6px 10px',
                       borderRadius: 7, cursor: 'pointer', border: 'none',
                       fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif',
-                      background: active ? (isDark ? '#0F1F28' : '#fff') : 'transparent',
+                      background: active ? (isDark ? '#1C2024' : '#fff') : 'transparent',
                       boxShadow: active ? (isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.1)') : 'none',
                       color: active ? '#0297DE' : (isDark ? '#888' : '#666'),
                       whiteSpace: 'nowrap',
@@ -227,7 +227,7 @@ export default function DesignComposer({
                 display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, fontFamily: 'Inter,sans-serif',
                 fontWeight: 500, fontSize: 13, padding: '6px 10px', borderRadius: 8,
                 border: '0.5px solid', cursor: 'pointer',
-                borderColor: attachments.length > 0 ? 'rgba(2,151,222,0.4)' : (isDark ? '#18292F' : '#e0e0e0'),
+                borderColor: attachments.length > 0 ? 'rgba(2,151,222,0.4)' : (isDark ? '#272C31' : '#e0e0e0'),
                 background: attachments.length > 0 ? 'rgba(2,151,222,0.1)' : 'transparent',
                 color: attachments.length > 0 ? '#4CB8F0' : (isDark ? '#888' : '#555'),
               }}

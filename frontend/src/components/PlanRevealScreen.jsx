@@ -15,14 +15,14 @@ function ShaderBackground() {
   if (!MeshGradient) {
     return (
       <div className="absolute inset-0" style={{
-        background: 'linear-gradient(135deg, #02070A 0%, #050D12 33%, #0B2A3D 66%, #0297DE 100%)'
+        background: 'linear-gradient(135deg, #02070A 0%, #0A0C0E 33%, #3A1A0E 66%, #0297DE 100%)'
       }} />
     );
   }
   return (
     <MeshGradient
       className="absolute inset-0 w-full h-full"
-      colors={['#02070A', '#050D12', '#0B2A3D', '#0297DE']}
+      colors={['#02070A', '#0A0C0E', '#3A1A0E', '#0297DE']}
       speed={0.4}
       backgroundColor="#02070A"
       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
@@ -171,7 +171,7 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
                 className="flex items-center gap-3 px-4 py-3"
                 style={{
                   background: 'rgba(255,255,255,0.04)',
-                  border: '0.5px solid #0F1F28',
+                  border: '0.5px solid #1C2024',
                   borderRadius: 8,
                 }}
               >
