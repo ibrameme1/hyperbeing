@@ -49,7 +49,7 @@ export default function ModeSwitcher({ mode, onChange, isDark, designEnabled = t
                 padding: '8px 16px', borderRadius: 9, border: 'none', cursor: 'pointer',
                 fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600,
                 background: isActive ? '#0297DE' : 'transparent',
-                color: isActive ? '#fff' : (isDark ? '#888' : '#666'),
+                color: isActive ? '#02070A' : (isDark ? '#888' : '#666'),
                 transition: 'background 0.15s, color 0.15s',
               }}
             >
