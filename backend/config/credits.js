@@ -128,6 +128,7 @@ export const DESIGN_VIDEO_MODELS = {
   'seedance-2.0': {
     label: 'Seedance 2.0',
     description: 'High quality, up to 15s',
+    adminOnly: true,
     creditsPerSecond: { '480p': 12, '720p': 24, '1080p': 58 },
     minDuration: 4, maxDuration: 15,
     maxReferenceImages: 4,
@@ -135,6 +136,7 @@ export const DESIGN_VIDEO_MODELS = {
   'seedance-2.0-fast': {
     label: 'Seedance 2.0 Fast',
     description: 'Quicker and cheaper, up to 720p',
+    adminOnly: true,
     creditsPerSecond: { '480p': 9, '720p': 19 },
     minDuration: 4, maxDuration: 15,
     maxReferenceImages: 4,
@@ -142,13 +144,23 @@ export const DESIGN_VIDEO_MODELS = {
   'seedance-2.0-mini': {
     label: 'Seedance 2.0 Mini',
     description: 'Cheapest, good for previews',
+    adminOnly: true,
     creditsPerSecond: { '480p': 6, '720p': 12 },
     minDuration: 4, maxDuration: 15,
     maxReferenceImages: 4,
   },
 };
 
-export const DESIGN_VIDEO_DEFAULT_MODEL = 'seedance-2.0';
+// Customers get the Seedance 2.5 family only; the 2.0 models (adminOnly) stay
+// available to admins for testing and comparison. Hidden from everyone else in
+// GET /video/options and refused by the generate/retry routes.
+export const DESIGN_VIDEO_DEFAULT_MODEL = 'seedance-2.5';
+
+// Can this user generate with this model? (admins: every model)
+export function canUseVideoModel(modelKey, admin) {
+  const m = DESIGN_VIDEO_MODELS[modelKey];
+  return !!m && (admin || !m.adminOnly);
+}
 export const DESIGN_VIDEO_RATIOS = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', 'adaptive'];
 // How attached images are used: start frame, start + end frames, or free
 // references (Seedance "omni reference"). The provider refuses mixing them.

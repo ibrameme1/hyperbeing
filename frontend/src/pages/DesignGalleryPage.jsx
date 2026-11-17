@@ -116,7 +116,7 @@ export default function DesignGalleryPage() {
   // Video mode (Seedance). Limits + prices come from the backend.
   const [media, setMedia] = useState('image');
   const [videoSettings, setVideoSettings] = useState({
-    model: 'seedance-2.0', resolution: '720p', ratio: '16:9', duration: 5, audio: true, imageRole: 'reference',
+    model: 'seedance-2.5', resolution: '720p', ratio: '16:9', duration: 5, audio: true, imageRole: 'reference',
   });
   const { data: videoOptions } = useQuery({
     queryKey: ['designVideoOptions'],

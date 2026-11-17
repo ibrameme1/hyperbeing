@@ -62,3 +62,13 @@ describe('design mode plan gate', () => {
     expect(canUseDesignMode('basic')).toBe(false);
   });
 });
+
+describe('video model access', () => {
+  it('customers get only the Seedance 2.5 family; admins get everything', async () => {
+    const { canUseVideoModel, DESIGN_VIDEO_DEFAULT_MODEL } = await import('../config/credits.js');
+    const keys = Object.keys(DESIGN_VIDEO_MODELS);
+    expect(keys.filter(k => canUseVideoModel(k, false))).toEqual(['seedance-2.5', 'seedance-2.5-flash']);
+    expect(keys.every(k => canUseVideoModel(k, true))).toBe(true);
+    expect(canUseVideoModel(DESIGN_VIDEO_DEFAULT_MODEL, false)).toBe(true);
+  });
+});

@@ -17,7 +17,7 @@ import {
 import {
   DESIGN_MAX_PARALLEL_GENERATIONS, DESIGN_MAX_IMAGES_PER_BATCH,
   DESIGN_VIDEO_MODELS, DESIGN_VIDEO_DEFAULT_MODEL, DESIGN_VIDEO_RATIOS, DESIGN_VIDEO_IMAGE_ROLES,
-  DESIGN_MAX_PARALLEL_VIDEOS, videoCreditCost, canUseDesignMode, DESIGN_MODE_MIN_PLAN,
+  DESIGN_MAX_PARALLEL_VIDEOS, videoCreditCost, canUseVideoModel, canUseDesignMode, DESIGN_MODE_MIN_PLAN,
 } from '../config/credits.js';
 import {
   VIDEO_MOCK_MODE, PROVIDER_MODEL_IDS, createVideoTask, waitForVideoTask, downloadVideo,
@@ -341,21 +341,24 @@ router.get('/video/options', authenticateToken, requireDesignPlan, (req, res) =>
     imageRoles: DESIGN_VIDEO_IMAGE_ROLES,
     maxParallel: DESIGN_MAX_PARALLEL_VIDEOS,
     mock: VIDEO_MOCK_MODE,
-    models: Object.entries(DESIGN_VIDEO_MODELS).map(([key, m]) => ({
-      key,
-      label: m.label,
-      description: m.description,
-      resolutions: Object.keys(m.creditsPerSecond),
-      creditsPerSecond: m.creditsPerSecond,
-      minDuration: m.minDuration,
-      maxDuration: m.maxDuration,
-      maxReferenceImages: m.maxReferenceImages,
-    })),
+    models: Object.entries(DESIGN_VIDEO_MODELS)
+      .filter(([key]) => canUseVideoModel(key, isAdmin(req.user.id)))
+      .map(([key, m]) => ({
+        key,
+        // Admins see the 2.0 models too; the tag keeps it obvious they're not customer-facing.
+        label: m.adminOnly ? `${m.label} (admin only)` : m.label,
+        description: m.description,
+        resolutions: Object.keys(m.creditsPerSecond),
+        creditsPerSecond: m.creditsPerSecond,
+        minDuration: m.minDuration,
+        maxDuration: m.maxDuration,
+        maxReferenceImages: m.maxReferenceImages,
+      })),
   });
 });
 
 // Validates a video request body → { settings, images } or { error }.
-function parseVideoRequest(body) {
+function parseVideoRequest(body, { admin = false } = {}) {
   const {
     prompt = '', attachments = [], model = DESIGN_VIDEO_DEFAULT_MODEL,
     resolution = '720p', ratio = '16:9', duration = 5, audio = true, imageRole = 'reference',
@@ -367,7 +370,7 @@ function parseVideoRequest(body) {
   if (prompt.length > 4000) return { error: 'Prompt too long for video (max 4,000 characters).' };
 
   const spec = DESIGN_VIDEO_MODELS[model];
-  if (!spec) return { error: 'Unknown video model.' };
+  if (!spec || !canUseVideoModel(model, admin)) return { error: 'That video model isn\'t available. Choose Seedance 2.5 or 2.5 Flash.' };
   if (!spec.creditsPerSecond[resolution]) {
     return { error: `${spec.label} supports ${Object.keys(spec.creditsPerSecond).join(', ')}.` };
   }
@@ -421,7 +424,7 @@ function videoDescription(s) {
 
 // ─── POST /api/design/video/generate — start one video clip ───────────────
 router.post('/video/generate', authenticateToken, requireDesignPlan, costScope('design_video'), designGenerationLimiter, (req, res) => {
-  const parsed = parseVideoRequest(req.body);
+  const parsed = parseVideoRequest(req.body, { admin: isAdmin(req.user.id) });
   if (parsed.error) return res.status(400).json({ error: parsed.error });
   const { prompt, attachments, settings } = parsed;
 
@@ -456,7 +459,9 @@ function retryVideo(req, res, row) {
   const db = getDb();
   const settings = safeJsonParse(row.settings, {});
   const cost = videoCreditCost(settings.model, settings.resolution, settings.duration);
-  if (!cost) return res.status(400).json({ error: 'This video model is no longer available. Start a new video instead.' });
+  if (!cost || !canUseVideoModel(settings.model, isAdmin(req.user.id))) {
+    return res.status(400).json({ error: 'This video model is no longer available. Start a new video instead.' });
+  }
 
   if (inFlightCount(db, req.user.id, 'video') + 1 > DESIGN_MAX_PARALLEL_VIDEOS) {
     return res.status(429).json({
