@@ -5,6 +5,8 @@ url: "https://www.hyperbeing.co/services/marketing-decks"
 last_updated: 2026-11-17
 ---
 
+Use case
+
 # Marketing Decks
 
 HyperBeing turns a marketing brief into a fully designed deck, so your team spends time on the campaign strategy instead of formatting slides.
@@ -32,7 +34,7 @@ Individual marketers and small teams typically use Basic ($25/month, or $20/mont
 
 Agencies and marketing teams producing decks for multiple clients or campaigns tend to use one of the four Ultra tiers ($149-$299/month, or $116-$209/month billed annually), which cover higher deck volume.
 
-See the full breakdown on the [pricing section](/#pricing).
+See every plan in the [pricing section](/#pricing).
 
 ## How long it takes
 
@@ -82,6 +84,10 @@ Yes. Once a deck is generated you can regenerate or edit the prompt behind any i
 ## Related
 
 [← Back to homepage](/)[Consulting Decks →](/services/consulting-decks)
+
+Your next deck is minutes away.
+
+[Start free →](/login?mode=signup)
 
 We use a session cookie for authentication and [cookieless analytics](https://vercel.com/docs/analytics/privacy-policy) to improve the product. No tracking cookies. [Privacy policy](/privacy)
 

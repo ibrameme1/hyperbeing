@@ -5,9 +5,7 @@ url: "https://www.hyperbeing.co/terms"
 last_updated: 2026-11-17
 ---
 
-HB
-
-HyperBeing
+Legal
 
 # Terms of Service
 
@@ -37,6 +35,15 @@ Paid plans are billed on a recurring monthly or annual basis via Stripe. Credits
 
 Credits are consumed when you generate presentations, add slides, or regenerate slides. Credits expire at the end of each billing period and cannot be transferred. Free credits granted upon signup are also subject to expiry.
 
+## 7. Acceptable Use
+
+You agree not to use HyperBeing to:
+
+- Generate content that is illegal, harmful, threatening, or defamatory
+- Infringe the intellectual property rights of others
+- Attempt to reverse engineer or scrape the Service
+- Use the Service for any purpose that violates applicable law
+
 ## 8. Intellectual Property
 
 You own the presentations you create. By using the Service, you grant HyperBeing a limited licence to process your inputs solely to provide the Service. HyperBeing retains all rights to its platform, models, and proprietary technology.
@@ -52,15 +59,6 @@ To the maximum extent permitted by law, HyperBeing's total liability for any cla
 ## 11. Changes to Terms
 
 We may update these Terms at any time. Continued use of the Service after changes constitutes acceptance of the revised Terms. We will notify you of material changes via email or a notice within the platform.
-
-## 7. Acceptable Use
-
-You agree not to use HyperBeing to:
-
-- Generate content that is illegal, harmful, threatening, or defamatory
-- Infringe the intellectual property rights of others
-- Attempt to reverse engineer or scrape the Service
-- Use the Service for any purpose that violates applicable law
 
 ## 12. Contact
 
