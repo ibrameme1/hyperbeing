@@ -5,6 +5,8 @@ url: "https://www.hyperbeing.co/services/consulting-decks"
 last_updated: 2026-11-17
 ---
 
+Use case
+
 # Consulting Decks
 
 HyperBeing generates consulting decks from a full engagement brief, keeping the narrative and data intact instead of flattening it into a generic template.
@@ -32,7 +34,7 @@ Individual consultants typically use Basic ($25/month, or $20/month billed annua
 
 Consulting teams producing decks for multiple clients or engagements at once tend to use one of the four Ultra tiers ($149-$299/month, or $116-$209/month billed annually).
 
-See the full breakdown on the [pricing section](/#pricing).
+See every plan in the [pricing section](/#pricing).
 
 ## How long it takes
 
@@ -82,6 +84,10 @@ Yes. Once a deck is generated you can regenerate or edit the prompt behind any i
 ## Related
 
 [← Back to homepage](/)[Marketing Decks →](/services/marketing-decks)
+
+Your next deck is minutes away.
+
+[Start free →](/login?mode=signup)
 
 We use a session cookie for authentication and [cookieless analytics](https://vercel.com/docs/analytics/privacy-policy) to improve the product. No tracking cookies. [Privacy policy](/privacy)
 

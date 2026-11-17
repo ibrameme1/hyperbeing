@@ -5,9 +5,7 @@ url: "https://www.hyperbeing.co/privacy"
 last_updated: 2026-11-17
 ---
 
-HB
-
-HyperBeing
+Legal
 
 # Privacy Policy
 

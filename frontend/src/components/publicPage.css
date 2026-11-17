@@ -1,0 +1,44 @@
+/* Public reading pages (PublicPage.jsx), on the landing page's .lp tokens. */
+.lp.lp-public{min-height:100vh;position:relative;isolation:isolate}
+.lp-public .pub-light{position:absolute;inset:0 0 auto;height:560px;z-index:-1;pointer-events:none;
+  background:radial-gradient(ellipse 60% 70% at 50% -10%,rgba(2,151,222,.16),transparent 70%),
+             radial-gradient(ellipse 35% 40% at 50% -5%,rgba(252,115,77,.10),transparent 70%)}
+.lp-public .pub-nav{position:sticky;top:0;z-index:50;background:rgba(2,7,10,.78);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);border-bottom:1px solid var(--line)}
+.lp-public .pub-nav .wrap{display:flex;align-items:center;justify-content:space-between;height:68px;gap:16px}
+.lp-public .pub-links{display:flex;gap:30px;font-size:14px;color:var(--muted)}
+.lp-public .pub-links a:hover,.lp-public .pub-signin:hover{color:var(--fg)}
+.lp-public .pub-right{display:flex;align-items:center;gap:14px;font-size:14px}
+.lp-public .pub-right .btn{min-height:40px;padding:0 18px;font-size:13px}
+.lp-public .pub-signin{color:var(--muted)}
+.lp-public .pub-main{max-width:calc(760px + var(--gut) + var(--gut-r));padding-top:clamp(56px,9vw,104px);padding-bottom:96px;display:grid;gap:18px}
+.lp-public .pub-main>h1{font-size:clamp(40px,6vw,72px);line-height:1.02;letter-spacing:-.03em}
+.lp-public .pub-meta{margin:0;font:400 12px/1.5 var(--mono);letter-spacing:.08em;color:var(--muted)}
+.lp-public .pub-body{margin-top:18px;color:#B8C4CC;font-size:16px;line-height:1.75}
+.lp-public .pub-body p{margin:0 0 16px}
+.lp-public .pub-body .lede{color:var(--muted);font-size:clamp(17px,1.6vw,19px);line-height:1.6;max-width:none}
+.lp-public .pub-body h2{font:400 clamp(24px,3vw,32px)/1.15 var(--display);color:var(--fg);letter-spacing:-.01em;margin:48px 0 14px}
+.lp-public .pub-body h3{font:600 16px/1.4 var(--body);color:var(--fg);margin:0 0 8px}
+.lp-public .pub-body ul,.lp-public .pub-body ol{margin:0 0 16px;padding-left:22px;display:grid;gap:8px}
+.lp-public .pub-body li::marker{color:var(--blue-hi)}
+.lp-public .pub-body a:not(.btn){color:var(--blue-hi)}
+.lp-public .pub-body a:not(.btn):hover{color:var(--ice)}
+.lp-public .pub-body strong,.lp-public .pub-body b{color:var(--fg);font-weight:600}
+.lp-public .pub-body section{padding-top:8px}
+.lp-public .pub-faq details{border-bottom:1px solid var(--line);padding:18px 0}
+.lp-public .pub-faq summary{cursor:pointer;color:var(--fg);font-weight:600;list-style:none;display:flex;justify-content:space-between;gap:16px}
+.lp-public .pub-faq summary::-webkit-details-marker{display:none}
+.lp-public .pub-faq summary::after{content:"+";color:var(--muted);font-weight:400;transition:transform .25s}
+.lp-public .pub-faq details[open] summary::after{transform:rotate(45deg)}
+.lp-public .pub-faq details p{margin:10px 0 0;color:var(--muted);font-size:15px}
+.lp-public .pub-chips{display:flex;flex-wrap:wrap;gap:10px}
+.lp-public .pub-chips a{display:inline-flex;align-items:center;min-height:40px;padding:0 16px;border-radius:999px;border:1px solid var(--line-2);background:rgba(255,255,255,.03);color:var(--fg);font-size:14px;transition:background .2s}
+.lp-public .pub-chips a:hover{background:rgba(255,255,255,.08);color:var(--fg)}
+.lp-public .pub-cta{margin-top:56px;padding:28px;border-radius:20px;border:1px solid var(--line-2);background:var(--panel);display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px}
+.lp-public .pub-cta p{margin:0;color:var(--fg);font:400 clamp(22px,2.6vw,28px)/1.2 var(--display)}
+@media (max-width:760px){
+  .lp-public .pub-links,.lp-public .pub-signin{display:none}
+  .lp-public .pub-body{font-size:15.5px}
+}
+.lp-public .pub-legal{display:grid;gap:36px}
+.lp-public .pub-legal section>p:last-child{margin-bottom:0}
+.lp-public .pub-legal h2{font:600 17px/1.4 var(--body);letter-spacing:0;margin:0 0 8px}
