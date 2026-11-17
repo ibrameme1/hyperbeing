@@ -153,6 +153,34 @@ export function recordImageCall({ call, model, usage, durationMs = null, userId,
   });
 }
 
+// Seedance video (BytePlus ModelArk): USD per million output tokens by model
+// and resolution (no video input). Tokens ≈ w × h × 24fps × seconds / 1024 and
+// the task response reports them as usage.completion_tokens.
+export const VIDEO_PRICES = {
+  'seedance-2.5':       { '480p': 10.7, '720p': 10.7, '1080p': 11.7 },
+  'seedance-2.5-flash': { '480p': 7.0, '720p': 7.0 },
+  'seedance-2.0':       { '480p': 7.0, '720p': 7.0, '1080p': 7.7 },
+  'seedance-2.0-fast':  { '480p': 5.6, '720p': 5.6 },
+  'seedance-2.0-mini':  { '480p': 3.5, '720p': 3.5 },
+};
+
+export function videoCost(modelKey, resolution, completionTokens) {
+  const rate = VIDEO_PRICES[modelKey]?.[resolution] ?? 0;
+  return ((completionTokens || 0) * rate) / 1e6;
+}
+
+/** One Seedance video task (usage = the finished task's `usage`). */
+export function recordVideoCall({ call = 'seedance_video', modelKey, providerModel, resolution, usage, durationMs = null, userId, operation, meta } = {}) {
+  if (!usage) return; // mock mode reports no usage → no cost
+  insert({
+    provider: 'byteplus', model: providerModel || modelKey, call, userId, operation,
+    output_tokens: usage.completion_tokens || usage.total_tokens || 0,
+    cost_usd: videoCost(modelKey, resolution, usage.completion_tokens || usage.total_tokens),
+    duration_ms: durationMs,
+    meta: { resolution, ...meta },
+  });
+}
+
 /** One Gemini image edit (flat price per image). */
 export function recordGeminiImageCall({ call, model, durationMs = null, userId, operation, slideIndex, meta } = {}) {
   insert({ provider: 'google', model, call, userId, operation, slideIndex, images: 1, cost_usd: GEMINI_IMAGE_PER_CALL, estimated: true, duration_ms: durationMs, meta });

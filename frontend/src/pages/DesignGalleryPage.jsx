@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, AlertTriangle, Sparkles, ImageOff } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { Loader2, AlertTriangle, Sparkles, ImageOff, Play, Volume2 } from 'lucide-react';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import { useDesigns, useSubscription, queryKeys } from '../api/queries';
 import { openAuthedEventSource } from '../utils/sse';
@@ -15,9 +15,12 @@ import DesignDetailModal from '../components/DesignDetailModal';
 import OutOfCreditsModal from '../components/OutOfCreditsModal';
 import FeedbackButton from '../components/FeedbackButton';
 import { capture } from '../utils/posthog';
+import { mediaUrl } from '../utils/mediaUrl';
+import { estimateVideoCredits, normalizeVideoSettings } from '../utils/designMode';
 
 function GalleryCell({ gen, onClick, isDark }) {
-  const isComplete = gen.status === 'complete' && gen.image_data;
+  const isVideo = gen.kind === 'video';
+  const isComplete = gen.status === 'complete' && (isVideo ? gen.video_url : gen.image_data);
   const isError = gen.status === 'error';
   const isWorking = gen.status === 'pending' || gen.status === 'generating';
   const isClickable = isComplete || isError;
@@ -35,7 +38,33 @@ function GalleryCell({ gen, onClick, isDark }) {
       className={`aspect-[16/9] rounded-lg overflow-hidden relative ${isClickable ? 'cursor-pointer group focus:outline-none focus-visible:ring-2 focus-visible:ring-uv' : ''}`}
       style={{ background: 'var(--bg-card)', border: '0.5px solid var(--border)', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
     >
-      {isComplete && (
+      {isComplete && isVideo && (
+        // Muted preview that plays on hover; the detail view has the real player with sound.
+        <video
+          src={mediaUrl(gen.video_url)}
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          onMouseEnter={e => e.currentTarget.play().catch(() => {})}
+          onMouseLeave={e => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
+          className="w-full h-full object-cover"
+          style={{ background: '#000' }}
+        />
+      )}
+
+      {isComplete && isVideo && (
+        <div className="absolute bottom-2 left-2 flex items-center gap-1.5 px-2 py-0.5 rounded-lg pointer-events-none"
+             style={{ background: 'rgba(0,0,0,0.6)' }}>
+          <Play size={10} style={{ color: '#fff' }} fill="#fff" />
+          <span style={{ fontSize: 10, fontWeight: 600, color: '#fff' }}>
+            {gen.settings?.duration}s · {gen.settings?.resolution}
+          </span>
+          {gen.settings?.audio && <Volume2 size={10} style={{ color: '#fff' }} />}
+        </div>
+      )}
+
+      {isComplete && !isVideo && (
         <img src={gen.image_data} alt="" loading="lazy" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
       )}
 
@@ -43,7 +72,7 @@ function GalleryCell({ gen, onClick, isDark }) {
         <div className="w-full h-full skeleton flex flex-col items-center justify-center gap-2">
           <Loader2 size={20} className="animate-spin" style={{ color: '#8B80FF' }} />
           <span className="text-xs" style={{ color: isDark ? '#888' : '#999' }}>
-            {gen.status === 'pending' ? 'Queued…' : 'Generating…'}
+            {gen.status === 'pending' ? 'Queued…' : isVideo ? 'Rendering video… (usually 1–5 min)' : 'Generating…'}
           </span>
         </div>
       )}
@@ -83,6 +112,38 @@ export default function DesignGalleryPage() {
   const [editingReference, setEditingReference] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+
+  // Video mode (Seedance). Limits + prices come from the backend.
+  const [media, setMedia] = useState('image');
+  const [videoSettings, setVideoSettings] = useState({
+    model: 'seedance-2.0', resolution: '720p', ratio: '16:9', duration: 5, audio: true, imageRole: 'reference',
+  });
+  const { data: videoOptions } = useQuery({
+    queryKey: ['designVideoOptions'],
+    queryFn: async () => (await api.get('/design/video/options')).data,
+    enabled: !!user?.id && media === 'video',
+    staleTime: 10 * 60_000,
+  });
+  // First load: adopt the backend default model; afterwards keep the
+  // settings valid for whichever model is selected.
+  useEffect(() => {
+    if (!videoOptions) return;
+    setVideoSettings(prev => normalizeVideoSettings(videoOptions, prev));
+  }, [videoOptions]);
+  const handleVideoSettingsChange = useCallback((next) => {
+    setVideoSettings(normalizeVideoSettings(videoOptions, next));
+  }, [videoOptions]);
+  const videoCost = estimateVideoCredits(videoOptions, videoSettings);
+
+  // Keep the image role consistent with how many images are attached.
+  useEffect(() => {
+    setVideoSettings(prev => {
+      if (prev.imageRole === 'first_frame' && attachments.length !== 1) return { ...prev, imageRole: 'reference' };
+      if (prev.imageRole === 'first_last' && attachments.length !== 2) return { ...prev, imageRole: 'reference' };
+      if (prev.ratio === 'adaptive' && attachments.length === 0) return { ...prev, ratio: '16:9' };
+      return prev;
+    });
+  }, [attachments.length]);
 
   const { data: subscription } = useSubscription({ enabled: !!user?.id, refetchInterval: 30_000 });
   const credits = subscription?.credits_remaining ?? null;
@@ -176,10 +237,46 @@ export default function DesignGalleryPage() {
     }
   }
 
+  async function handleSubmitVideo() {
+    capture('design_video_submitted', {
+      model: videoSettings.model, resolution: videoSettings.resolution, ratio: videoSettings.ratio,
+      duration: videoSettings.duration, audio: videoSettings.audio,
+      image_role: attachments.length ? videoSettings.imageRole : null, has_attachments: attachments.length > 0,
+    });
+    const { data } = await api.post('/design/video/generate', {
+      prompt: prompt.trim(),
+      ...videoSettings,
+      attachments: attachments.map(a => ({ type: 'image', name: a.name, data: a.data, mimeType: a.mimeType })),
+    });
+    upsertGeneration(data.generation);
+    setCreditsRemaining(data.creditsRemaining);
+    setPrompt('');
+    setAttachments([]);
+    setEditingReference(null);
+  }
+
   async function handleSubmit() {
     if (!prompt.trim() && attachments.length === 0) return;
     setSubmitting(true);
     setSubmitError('');
+
+    if (media === 'video') {
+      try {
+        await handleSubmitVideo();
+      } catch (err) {
+        const status = err.response?.status;
+        if (status === 402) {
+          setOutOfCreditsDetails(err.response.data || null);
+          setShowOutOfCredits(true);
+          capture('out_of_credits', { page: 'design_gallery', action_type: 'design_video' });
+        } else {
+          setSubmitError(err.response?.data?.error || 'Failed to start the video. Please try again.');
+        }
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
 
     capture('design_generation_submitted', {
       mode: craftMode,
@@ -253,7 +350,7 @@ export default function DesignGalleryPage() {
             </div>
             <p className="font-bold text-lg mb-2" style={{ color: 'var(--text-primary)' }}>Your gallery is empty</p>
             <p className="text-sm max-w-xs mx-auto leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-              Describe a design below — packaging, mockups, social creatives — and Nova will bring it to life.
+              Describe a design below — packaging, mockups, social creatives, or a short video clip — and Nova will bring it to life.
             </p>
           </motion.div>
         ) : (
@@ -289,6 +386,12 @@ export default function DesignGalleryPage() {
             submitting={submitting}
             editingReference={editingReference}
             onClearEditing={handleClearEditing}
+            media={media}
+            onMediaChange={setMedia}
+            videoOptions={videoOptions}
+            videoSettings={videoSettings}
+            onVideoSettingsChange={handleVideoSettingsChange}
+            videoCost={videoCost}
           />
         </div>
       </div>

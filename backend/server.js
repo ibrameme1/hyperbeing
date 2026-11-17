@@ -18,7 +18,7 @@ import analyticsRoutes from './routes/analytics.js';
 import adminRoutes from './routes/admin.js';
 import adminDashboardRouter from './routes/adminDashboard.js';
 import feedbackRoutes from './routes/feedback.js';
-import designRoutes from './routes/design.js';
+import designRoutes, { resumeVideoJobs } from './routes/design.js';
 import iconRoutes from './routes/icons.js';
 import assetRoutes from './routes/assets.js';
 import { requestLogger } from './middleware/requestLogger.js';
@@ -180,6 +180,8 @@ initDatabase();
 // Anything still marked in-flight at boot was killed mid-run — mark it errored
 // and refund so users aren't stuck with charged, never-finishing generations.
 try { sweepStaleWork(); } catch (err) { logger.error('startup sweep failed', { errorMessage: err.message }); }
+// Seedance clips already submitted to BytePlus keep running there — resume polling.
+try { resumeVideoJobs(); } catch (err) { logger.error('video resume failed', { errorMessage: err.message }); }
 // Delete image files no row references anymore (crash-looped migration leftovers,
 // generations killed mid-flight). Age-guarded so it never touches in-flight work.
 try { sweepOrphanImages(); } catch (err) { logger.error('orphan image sweep failed', { errorMessage: err.message }); }

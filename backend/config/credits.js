@@ -83,3 +83,73 @@ export function novaInsufficientCredits({ creditsRemaining, creditsNeeded, actio
     upgrade_url: '/pricing',
   };
 }
+
+// ─── Design mode: video (Seedance via BytePlus ModelArk) ───────────────────
+// Video is billed PER SECOND OF OUTPUT, priced by model × resolution. The
+// provider bills tokens = width × height × 24fps × seconds / 1024, so cost is
+// linear in seconds and ~flat across aspect ratios at a given resolution.
+//
+// Credit prices target ≥2× gross margin at the CHEAPEST revenue per credit we
+// sell (Ultra 4 annual: $209 / 16,000 ≈ $0.0131/credit), ≈3.2× on Basic
+// monthly ($0.0208/credit). Provider $/s at 16:9 (BytePlus list, 2026-11):
+//   Seedance 2.5        480p $0.104  720p $0.231  1080p $0.569
+//   Seedance 2.5 Flash  480p $0.068  720p $0.151
+//   Seedance 2.0        480p $0.068  720p $0.151  1080p $0.374
+//   Seedance 2.0 Fast   480p $0.054  720p $0.121
+//   Seedance 2.0 Mini   480p $0.034  720p $0.076
+// Audio is not billed separately by the provider, so it costs no extra credits.
+// If BytePlus changes prices, change these numbers — never the formula.
+export const DESIGN_VIDEO_MODELS = {
+  'seedance-2.5': {
+    label: 'Seedance 2.5',
+    description: 'Best quality, longest clips',
+    creditsPerSecond: { '480p': 16, '720p': 36, '1080p': 88 },
+    minDuration: 4, maxDuration: 30,
+    maxReferenceImages: 4,
+  },
+  'seedance-2.5-flash': {
+    label: 'Seedance 2.5 Flash',
+    description: 'Fast drafts, up to 720p',
+    creditsPerSecond: { '480p': 12, '720p': 24 },
+    minDuration: 4, maxDuration: 30,
+    maxReferenceImages: 4,
+  },
+  'seedance-2.0': {
+    label: 'Seedance 2.0',
+    description: 'High quality, up to 15s',
+    creditsPerSecond: { '480p': 12, '720p': 24, '1080p': 58 },
+    minDuration: 4, maxDuration: 15,
+    maxReferenceImages: 4,
+  },
+  'seedance-2.0-fast': {
+    label: 'Seedance 2.0 Fast',
+    description: 'Quicker and cheaper, up to 720p',
+    creditsPerSecond: { '480p': 9, '720p': 19 },
+    minDuration: 4, maxDuration: 15,
+    maxReferenceImages: 4,
+  },
+  'seedance-2.0-mini': {
+    label: 'Seedance 2.0 Mini',
+    description: 'Cheapest, good for previews',
+    creditsPerSecond: { '480p': 6, '720p': 12 },
+    minDuration: 4, maxDuration: 15,
+    maxReferenceImages: 4,
+  },
+};
+
+export const DESIGN_VIDEO_DEFAULT_MODEL = 'seedance-2.0';
+export const DESIGN_VIDEO_RATIOS = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', 'adaptive'];
+// How attached images are used: start frame, start + end frames, or free
+// references (Seedance "omni reference"). The provider refuses mixing them.
+export const DESIGN_VIDEO_IMAGE_ROLES = ['first_frame', 'first_last', 'reference'];
+
+// Videos take minutes, so they get their own (smaller) in-flight cap and do
+// not consume the 8-image cap above.
+export const DESIGN_MAX_PARALLEL_VIDEOS = 3;
+
+// Credits for one clip, or null when the model/resolution combo doesn't exist.
+export function videoCreditCost(modelKey, resolution, durationSeconds) {
+  const perSecond = DESIGN_VIDEO_MODELS[modelKey]?.creditsPerSecond?.[resolution];
+  if (!perSecond || !Number.isInteger(durationSeconds) || durationSeconds <= 0) return null;
+  return perSecond * durationSeconds;
+}

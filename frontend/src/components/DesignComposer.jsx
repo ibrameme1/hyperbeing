@@ -1,7 +1,8 @@
 import { useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
-import { Send, ImageIcon, X, Sparkles, Wand2 } from 'lucide-react';
+import { Send, ImageIcon, X, Sparkles, Wand2, Image as ImageGlyph, Clapperboard } from 'lucide-react';
+import DesignVideoControls from './DesignVideoControls';
 import NovaMascot from './NovaMascot';
 import { fileToImageAttachment } from '../utils/imageAttachment';
 import { DESIGN_CREDIT_COSTS, DESIGN_MAX_IMAGES_PER_BATCH } from '../utils/designMode';
@@ -19,7 +20,11 @@ export default function DesignComposer({
   onSubmit, submitting,
   editingReference, onClearEditing,
   textareaRef,
+  // Video mode (Seedance). media: 'image' | 'video'.
+  media = 'image', onMediaChange,
+  videoOptions, videoSettings, onVideoSettingsChange, videoCost,
 }) {
+  const isVideo = media === 'video';
   const onDrop = useCallback(accepted => {
     accepted.forEach(async file => {
       try {
@@ -37,8 +42,8 @@ export default function DesignComposer({
   });
 
   const costPerImage = DESIGN_CREDIT_COSTS[craftMode];
-  const totalCost = costPerImage * imageCount;
-  const canSubmit = !submitting && (prompt.trim() || attachments.length > 0);
+  const totalCost = isVideo ? (videoCost ?? 0) : costPerImage * imageCount;
+  const canSubmit = !submitting && (prompt.trim() || attachments.length > 0) && (!isVideo || videoCost != null);
 
   return (
     <div {...getRootProps()} style={{ position: 'relative' }}>
@@ -75,7 +80,9 @@ export default function DesignComposer({
             ref={textareaRef}
             value={prompt}
             onChange={e => onPromptChange(e.target.value)}
-            placeholder={craftMode === 'nova'
+            placeholder={isVideo
+              ? 'Describe the shot: subject, action, camera move, mood, and what we hear, e.g. "Slow dolly-in on a ceramic mug on a sunlit desk, steam rising, soft café ambience". Attach an image to animate it…'
+              : craftMode === 'nova'
               ? 'Describe the design you want — Nova will craft the design for you…'
               : 'Describe exactly what to generate, e.g. "A minimalist fox logo, geometric lines, navy on white background". Attach inspiration images below for style reference…'}
             aria-label="Design brief"
@@ -114,7 +121,45 @@ export default function DesignComposer({
         )}
 
         <div style={{ padding: '4px 20px 20px', borderTop: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8' }}>
+          {/* Image / Video switch */}
+          <div className="flex items-center gap-2 pt-2" role="group" aria-label="What to generate">
+            {[
+              { key: 'image', label: 'Image', Icon: ImageGlyph },
+              { key: 'video', label: 'Video', Icon: Clapperboard },
+            ].map(({ key, label, Icon }) => {
+              const active = media === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onMediaChange?.(key)}
+                  aria-pressed={active}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 9999,
+                    fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif', cursor: 'pointer',
+                    border: '0.5px solid', borderColor: active ? 'rgba(91,80,255,0.5)' : (isDark ? '#2a2a2a' : '#e0e0e0'),
+                    background: active ? 'rgba(91,80,255,0.12)' : 'transparent',
+                    color: active ? '#5B50FF' : (isDark ? '#999' : '#555'),
+                  }}
+                >
+                  <Icon size={13} /> {label}
+                </button>
+              );
+            })}
+          </div>
+
+          {isVideo && (
+            <DesignVideoControls
+              isDark={isDark}
+              options={videoOptions}
+              settings={videoSettings}
+              onChange={onVideoSettingsChange}
+              attachmentCount={attachments.length}
+            />
+          )}
+
           <div className="flex items-center gap-2 py-2 flex-wrap">
+            {!isVideo && (<>
             {/* Image count slider */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
@@ -171,11 +216,13 @@ export default function DesignComposer({
               })}
             </div>
 
+            </>)}
+
             {/* Attach references — icon-only to keep the controls on one line */}
             <button
               onClick={open}
-              aria-label="Attach reference images"
-              title="Attach reference images"
+              aria-label={isVideo ? 'Attach images to animate or use as references' : 'Attach reference images'}
+              title={isVideo ? 'Attach images to animate or use as references' : 'Attach reference images'}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, fontFamily: 'Inter,sans-serif',
                 fontWeight: 500, fontSize: 13, padding: '6px 10px', borderRadius: 8,
@@ -202,7 +249,7 @@ export default function DesignComposer({
                 className="py-2 px-5 text-sm font-semibold text-white rounded-btn flex items-center gap-2 disabled:opacity-40"
                 style={{ background: '#5B50FF', border: 'none', cursor: 'pointer' }}
               >
-                <Send size={15} /> Generate
+                <Send size={15} /> {isVideo ? 'Generate video' : 'Generate'}
               </button>
             </div>
           </div>

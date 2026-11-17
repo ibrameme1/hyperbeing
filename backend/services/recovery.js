@@ -55,16 +55,23 @@ export function sweepStaleWork() {
   }
 
   // ── Design generations stuck in pending/generating ─────────────────────────
+  // Videos whose provider task was already submitted are NOT swept: the task
+  // keeps running at BytePlus (and is paid for), so routes/design.js
+  // resumeVideoJobs() picks them back up after this sweep.
   const stuckDesigns = db.prepare(
-    "SELECT id, user_id, mode FROM design_generations WHERE status IN ('pending', 'generating')"
+    `SELECT id, user_id, mode, kind, credits_charged FROM design_generations
+     WHERE status IN ('pending', 'generating')
+       AND NOT (COALESCE(kind, 'image') = 'video' AND external_task_id IS NOT NULL)`
   ).all();
 
   for (const gen of stuckDesigns) {
-    const cost = gen.mode === 'own' ? CREDIT_COSTS.DESIGN_IMAGE_OWN_PROMPT : CREDIT_COSTS.DESIGN_IMAGE_NOVA_PROMPT;
+    const isVideo = gen.kind === 'video';
+    const cost = isVideo ? (gen.credits_charged || 0)
+      : gen.mode === 'own' ? CREDIT_COSTS.DESIGN_IMAGE_OWN_PROMPT : CREDIT_COSTS.DESIGN_IMAGE_NOVA_PROMPT;
     db.prepare(
       "UPDATE design_generations SET status = 'error', error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
     ).run('Generation was interrupted by a server restart. Your credits have been refunded.', gen.id);
-    refundCredits(gen.user_id, cost, 'design_generation_refund',
+    refundCredits(gen.user_id, cost, isVideo ? 'design_video_refund' : 'design_generation_refund',
       'Server restarted mid-generation — refunded', null, { swept: true, generationId: gen.id });
     logger.warn('swept stale design generation on startup', { generationId: gen.id, userId: gen.user_id });
   }

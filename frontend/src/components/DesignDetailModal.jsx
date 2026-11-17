@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Download, Copy, Check, ImagePlus, Pencil, Sparkles, Wand2, AlertCircle, RotateCcw, Loader2 } from 'lucide-react';
+import { X, Download, Copy, Check, ImagePlus, Pencil, Sparkles, Wand2, AlertCircle, RotateCcw, Loader2, Volume2, VolumeX } from 'lucide-react';
+import { mediaUrl } from '../utils/mediaUrl';
 
 // ─── Design generation detail view ─────────────────────────────────────────
 // Shown when a user clicks a completed image in the design gallery —
@@ -12,6 +13,7 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
   if (!generation) return null;
 
   const isError = generation.status === 'error';
+  const isVideo = generation.kind === 'video';
 
   async function handleRetry() {
     setRetrying(true);
@@ -33,8 +35,10 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
 
   function handleDownload() {
     const a = document.createElement('a');
-    a.href = generation.image_data;
-    a.download = `design-${generation.id}.png`;
+    // Videos: the server sets Content-Disposition (?download=1); a[download]
+    // is ignored cross-origin, which the API is in production.
+    a.href = isVideo ? mediaUrl(`${generation.video_url}?download=1`) : generation.image_data;
+    a.download = isVideo ? `video-${generation.id}.mp4` : `design-${generation.id}.png`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -63,7 +67,16 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
       >
         {/* Image */}
         <div className="flex-1 flex items-center justify-center p-4 md:p-6" style={{ background: isDark ? '#080808' : '#f5f5f5', minHeight: 280 }}>
-          {generation.status === 'complete' && generation.image_data ? (
+          {isVideo && generation.status === 'complete' && generation.video_url ? (
+            <video
+              src={mediaUrl(generation.video_url)}
+              controls
+              autoPlay
+              playsInline
+              className="max-w-full max-h-full rounded-xl"
+              style={{ maxHeight: '78vh', background: '#000' }}
+            />
+          ) : generation.status === 'complete' && generation.image_data ? (
             <img src={generation.image_data} alt="" className="max-w-full max-h-full rounded-xl object-contain" style={{ maxHeight: '78vh' }} />
           ) : isError ? (
             <div className="flex flex-col items-center gap-3 text-center px-6" style={{ color: isDark ? '#888' : '#999' }}>
@@ -82,7 +95,7 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
           ) : (
             <div className="flex flex-col items-center gap-2 text-center px-6" style={{ color: isDark ? '#666' : '#999' }}>
               <AlertCircle size={28} />
-              <p className="text-sm">{generation.error_message || 'This image is still generating.'}</p>
+              <p className="text-sm">{generation.error_message || (isVideo ? 'This video is still rendering.' : 'This image is still generating.')}</p>
             </div>
           )}
         </div>
@@ -90,7 +103,7 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
         {/* Side panel */}
         <div className="w-full md:w-80 flex flex-col" style={{ borderTop: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8', borderLeft: 'none' }}>
           <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8' }}>
-            <span style={{ fontFamily: 'Inter,sans-serif', fontWeight: 700, fontSize: 14, color: isDark ? '#f0f0ee' : '#0d0b1a' }}>Design details</span>
+            <span style={{ fontFamily: 'Inter,sans-serif', fontWeight: 700, fontSize: 14, color: isDark ? '#f0f0ee' : '#0d0b1a' }}>{isVideo ? 'Video details' : 'Design details'}</span>
             <button onClick={onClose} aria-label="Close" style={{ color: isDark ? '#888' : '#666' }}>
               <X size={18} />
             </button>
@@ -107,6 +120,20 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
                 {generation.mode === 'nova' ? <Sparkles size={11} /> : <Wand2 size={11} />}
                 {generation.mode === 'nova' ? 'Nova-crafted prompt' : 'Your prompt'}
               </span>
+              {isVideo && [
+                settings.model && settings.model.replace('seedance-', 'Seedance ').replace('-', ' '),
+                settings.duration && `${settings.duration}s`,
+              ].filter(Boolean).map(t => (
+                <span key={t} style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 6, fontFamily: 'Inter,sans-serif', background: isDark ? '#1e1e1e' : '#f0f0f0', color: isDark ? '#888' : '#666', textTransform: 'capitalize' }}>
+                  {t}
+                </span>
+              ))}
+              {isVideo && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 6, fontFamily: 'Inter,sans-serif', background: isDark ? '#1e1e1e' : '#f0f0f0', color: isDark ? '#888' : '#666' }}>
+                  {settings.audio ? <Volume2 size={11} /> : <VolumeX size={11} />}
+                  {settings.audio ? 'Sound' : 'Silent'}
+                </span>
+              )}
               {settings.aspectRatio && (
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 6, fontFamily: 'Inter,sans-serif', background: isDark ? '#1e1e1e' : '#f0f0f0', color: isDark ? '#888' : '#666' }}>
                   {settings.aspectRatio}
@@ -114,7 +141,7 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
               )}
               {settings.resolution && (
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 6, fontFamily: 'Inter,sans-serif', background: isDark ? '#1e1e1e' : '#f0f0f0', color: isDark ? '#888' : '#666' }}>
-                  {settings.resolution.toUpperCase()}
+                  {isVideo ? settings.resolution : settings.resolution.toUpperCase()}
                 </span>
               )}
             </div>
@@ -148,6 +175,7 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
             >
               {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Copy prompt'}
             </button>
+            {!isVideo && (<>
             <button
               onClick={() => onReference(generation)}
               disabled={generation.status !== 'complete'}
@@ -164,6 +192,7 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
             >
               <Pencil size={14} /> Edit
             </button>
+            </>)}
           </div>
         </div>
       </motion.div>

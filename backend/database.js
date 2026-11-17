@@ -312,6 +312,18 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_design_gen_status ON design_generations(status);
   `);
 
+  // Design mode video (Seedance): one row per clip. `kind` separates images from
+  // videos; `external_task_id` is the BytePlus task id, persisted BEFORE polling
+  // so a restart can resume the paid task instead of paying for it twice.
+  for (const sql of [
+    "ALTER TABLE design_generations ADD COLUMN kind TEXT DEFAULT 'image'",
+    'ALTER TABLE design_generations ADD COLUMN video_file TEXT',
+    'ALTER TABLE design_generations ADD COLUMN external_task_id TEXT',
+    'ALTER TABLE design_generations ADD COLUMN credits_charged INTEGER',
+  ]) {
+    try { db.exec(sql); } catch { /* column exists */ }
+  }
+
   // Actual AI spend: one row per Claude / image-model call (services/aiCosts.js).
   db.exec(`
     CREATE TABLE IF NOT EXISTS ai_costs (
