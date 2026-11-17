@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import { Send, ImageIcon, X, Sparkles, Wand2, Image as ImageGlyph, Clapperboard } from 'lucide-react';
 import DesignVideoControls from './DesignVideoControls';
-import NovaMascot from './NovaMascot';
+import Nova from './nova/Nova';
 import { fileToImageAttachment } from '../utils/imageAttachment';
 import { DESIGN_CREDIT_COSTS, DESIGN_MAX_IMAGES_PER_BATCH } from '../utils/designMode';
 
@@ -49,10 +49,10 @@ export default function DesignComposer({
     <div {...getRootProps()} style={{ position: 'relative' }}>
       <input {...getInputProps()} />
       <div style={{
-        background: isDark ? '#141414' : '#fff', borderRadius: 16,
+        background: isDark ? '#08131A' : '#fff', borderRadius: 16,
         boxShadow: isDark ? '0 4px 24px rgba(0,0,0,0.4)' : '0 4px 24px rgba(0,0,0,0.1)',
-        overflow: 'hidden', border: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8',
-        outline: isDragActive ? '2px solid rgba(91,80,255,0.5)' : 'none', outlineOffset: -2,
+        overflow: 'hidden', border: isDark ? '0.5px solid #18292F' : '0.5px solid #e8e8e8',
+        outline: isDragActive ? '2px solid rgba(2,151,222,0.5)' : 'none', outlineOffset: -2,
       }}>
         {/* Editing banner */}
         <AnimatePresence>
@@ -90,7 +90,7 @@ export default function DesignComposer({
             className="hb-ta w-full resize-none bg-transparent"
             style={{
               border: 'none', outline: 'none', fontSize: 15, lineHeight: 1.7,
-              color: isDark ? '#f0f0ee' : '#0d0b1a',
+              color: isDark ? '#f0f0ee' : '#02070A',
               fontFamily: 'Inter, sans-serif',
             }}
           />
@@ -102,15 +102,15 @@ export default function DesignComposer({
             {attachments.map(f => (
               <div key={f.id} style={{ position: 'relative' }} className="group">
                 <img src={f.data} alt={f.name}
-                     style={{ height: 48, width: 48, borderRadius: 8, objectFit: 'cover', border: '0.5px solid', borderColor: isDark ? '#2a2a2a' : '#e8e8e8', display: 'block' }} />
+                     style={{ height: 48, width: 48, borderRadius: 8, objectFit: 'cover', border: '0.5px solid', borderColor: isDark ? '#18292F' : '#e8e8e8', display: 'block' }} />
                 <button
                   onClick={() => onRemoveAttachment(f.id)}
                   aria-label={`Remove ${f.name}`}
                   style={{
                     position: 'absolute', top: -6, right: -6, width: 18, height: 18,
-                    background: '#080808', color: '#fff', borderRadius: '50%',
+                    background: '#02070A', color: '#fff', borderRadius: '50%',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    border: '1px solid #2a2a2a', cursor: 'pointer',
+                    border: '1px solid #18292F', cursor: 'pointer',
                   }}
                 >
                   <X size={9} />
@@ -120,7 +120,7 @@ export default function DesignComposer({
           </div>
         )}
 
-        <div style={{ padding: '4px 20px 20px', borderTop: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8' }}>
+        <div style={{ padding: '4px 20px 20px', borderTop: isDark ? '0.5px solid #18292F' : '0.5px solid #e8e8e8' }}>
           {/* Image / Video switch */}
           <div className="flex items-center gap-2 pt-2" role="group" aria-label="What to generate">
             {[
@@ -137,9 +137,9 @@ export default function DesignComposer({
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 9999,
                     fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif', cursor: 'pointer',
-                    border: '0.5px solid', borderColor: active ? 'rgba(91,80,255,0.5)' : (isDark ? '#2a2a2a' : '#e0e0e0'),
-                    background: active ? 'rgba(91,80,255,0.12)' : 'transparent',
-                    color: active ? '#5B50FF' : (isDark ? '#999' : '#555'),
+                    border: '0.5px solid', borderColor: active ? 'rgba(2,151,222,0.5)' : (isDark ? '#18292F' : '#e0e0e0'),
+                    background: active ? 'rgba(2,151,222,0.12)' : 'transparent',
+                    color: active ? '#0297DE' : (isDark ? '#999' : '#555'),
                   }}
                 >
                   <Icon size={13} /> {label}
@@ -163,7 +163,7 @@ export default function DesignComposer({
             {/* Image count slider */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-              background: isDark ? '#0f0f0f' : '#f0f0f0', borderRadius: 10, padding: '6px 12px',
+              background: isDark ? '#050D12' : '#f0f0f0', borderRadius: 10, padding: '6px 12px',
             }}>
               <span style={{ fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif', color: isDark ? '#888' : '#666', whiteSpace: 'nowrap' }}>
                 {imageCount} image{imageCount !== 1 ? 's' : ''}
@@ -176,13 +176,13 @@ export default function DesignComposer({
                 value={imageCount}
                 onChange={e => onImageCountChange(parseInt(e.target.value, 10))}
                 aria-label="Number of images to generate"
-                style={{ width: 90, accentColor: '#5B50FF' }}
+                style={{ width: 90, accentColor: '#0297DE' }}
               />
             </div>
 
             {/* Craft mode split — the transparent Nova loop animation plays inside
                 the "Let Nova craft" segment whenever it's the active option. */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: isDark ? '#0f0f0f' : '#f0f0f0', borderRadius: 10, padding: 4, flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: isDark ? '#050D12' : '#f0f0f0', borderRadius: 10, padding: 4, flexShrink: 0 }}>
               {[
                 { key: 'nova', label: 'Let Nova craft' },
                 { key: 'own', label: 'My prompts' },
@@ -199,15 +199,15 @@ export default function DesignComposer({
                       padding: isNova && active ? '4px 12px 4px 8px' : '6px 10px',
                       borderRadius: 7, cursor: 'pointer', border: 'none',
                       fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif',
-                      background: active ? (isDark ? '#1e1e1e' : '#fff') : 'transparent',
+                      background: active ? (isDark ? '#0F1F28' : '#fff') : 'transparent',
                       boxShadow: active ? (isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.1)') : 'none',
-                      color: active ? '#5B50FF' : (isDark ? '#888' : '#666'),
+                      color: active ? '#0297DE' : (isDark ? '#888' : '#666'),
                       whiteSpace: 'nowrap',
                     }}
                   >
                     {isNova
                       ? (active
-                          ? <NovaMascot size={22} className="-my-1 shrink-0" />
+                          ? <Nova size={22} mood="idle" follow={false} float={false} glow={false} className="-my-1 shrink-0" />
                           : <Sparkles size={12} />)
                       : <Wand2 size={12} />}
                     {label}
@@ -227,14 +227,14 @@ export default function DesignComposer({
                 display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, fontFamily: 'Inter,sans-serif',
                 fontWeight: 500, fontSize: 13, padding: '6px 10px', borderRadius: 8,
                 border: '0.5px solid', cursor: 'pointer',
-                borderColor: attachments.length > 0 ? 'rgba(91,80,255,0.4)' : (isDark ? '#2a2a2a' : '#e0e0e0'),
-                background: attachments.length > 0 ? 'rgba(91,80,255,0.1)' : 'transparent',
-                color: attachments.length > 0 ? '#8B80FF' : (isDark ? '#888' : '#555'),
+                borderColor: attachments.length > 0 ? 'rgba(2,151,222,0.4)' : (isDark ? '#18292F' : '#e0e0e0'),
+                background: attachments.length > 0 ? 'rgba(2,151,222,0.1)' : 'transparent',
+                color: attachments.length > 0 ? '#4CB8F0' : (isDark ? '#888' : '#555'),
               }}
             >
               <ImageIcon size={14} />
               {attachments.length > 0 && (
-                <span style={{ background: '#5B50FF', color: '#fff', borderRadius: 9999, fontSize: 11, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+                <span style={{ background: '#0297DE', color: '#fff', borderRadius: 9999, fontSize: 11, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
                   {attachments.length}
                 </span>
               )}
@@ -247,7 +247,7 @@ export default function DesignComposer({
                 onClick={onSubmit}
                 disabled={!canSubmit}
                 className="py-2 px-5 text-sm font-semibold text-white rounded-btn flex items-center gap-2 disabled:opacity-40"
-                style={{ background: '#5B50FF', border: 'none', cursor: 'pointer' }}
+                style={{ background: '#0297DE', border: 'none', cursor: 'pointer' }}
               >
                 <Send size={15} /> {isVideo ? 'Generate video' : 'Generate'}
               </button>

@@ -12,7 +12,7 @@ const USE_CASES = ['Investor pitches', 'Sales decks', 'Internal reports', 'Clien
 function PlanBadge({ plan }) {
   const styles = {
     free:   { bg: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.5)', label: 'Free' },
-    basic:  { bg: 'rgba(139,92,246,0.15)',  color: '#C4B5FD', label: 'Basic' },
+    basic:  { bg: 'rgba(2,151,222,0.15)',  color: '#A9DDF7', label: 'Basic' },
     pro:    { bg: 'rgba(0,240,255,0.12)',   color: '#00F0FF', label: 'Pro' },
     ultra:  { bg: 'rgba(251,191,36,0.15)',  color: '#FCD34D', label: 'Ultra' },
     ultra1: { bg: 'rgba(251,191,36,0.15)',  color: '#FCD34D', label: 'Ultra 1' },
@@ -273,7 +273,7 @@ export default function Profile() {
                   <div className="mb-4">
                     <div className="flex justify-between text-xs mb-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
                       <span>Credits</span>
-                      <span style={{ color: creditsPct <= 20 ? '#f87171' : '#C4B5FD' }}>
+                      <span style={{ color: creditsPct <= 20 ? '#f87171' : '#A9DDF7' }}>
                         {creditsLeft.toLocaleString()} / {creditsTotal.toLocaleString()}
                       </span>
                     </div>
@@ -284,7 +284,7 @@ export default function Profile() {
                           width: `${creditsPct}%`,
                           background: creditsPct <= 20
                             ? 'linear-gradient(90deg, #f87171 0%, #fca5a5 100%)'
-                            : 'linear-gradient(90deg, #8B5CF6 0%, #00F0FF 100%)',
+                            : 'linear-gradient(90deg, #0297DE 0%, #00F0FF 100%)',
                         }}
                       />
                     </div>
@@ -309,7 +309,7 @@ export default function Profile() {
                   )}
                   {isPaid && !isCancelled && !isCancelling && periodEnd && (
                     <div className="flex items-start gap-2">
-                      <Calendar size={12} className="mt-0.5 flex-shrink-0" style={{ color: '#8B5CF6' }} />
+                      <Calendar size={12} className="mt-0.5 flex-shrink-0" style={{ color: '#0297DE' }} />
                       <span>
                         {pendingPlan
                           ? <>On <span className="text-white/70 capitalize">{sub.plan}</span> until <span className="text-white/70">{periodEnd}</span>, then switches to <span className="text-white/70 capitalize">{pendingPlan}</span></>
@@ -327,7 +327,7 @@ export default function Profile() {
                   {!isPaid && (
                     <div className="flex items-start gap-2">
                       <Zap size={12} className="mt-0.5 flex-shrink-0" style={{ color: '#f59e0b' }} />
-                      <span>Free plan — <button onClick={() => navigate('/pricing')} className="underline" style={{ color: '#C4B5FD' }}>upgrade to unlock more</button></span>
+                      <span>Free plan — <button onClick={() => navigate('/pricing')} className="underline" style={{ color: '#A9DDF7' }}>upgrade to unlock more</button></span>
                     </div>
                   )}
                 </div>
@@ -335,7 +335,7 @@ export default function Profile() {
                 <button
                   onClick={() => navigate('/pricing')}
                   className="w-full mt-4 py-2.5 rounded-xl text-xs font-bold transition-opacity hover:opacity-80"
-                  style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.2)' }}
+                  style={{ background: 'rgba(2,151,222,0.15)', color: '#A9DDF7', border: '1px solid rgba(2,151,222,0.2)' }}
                 >
                   {isPaid ? 'Manage subscription' : 'View plans'}
                 </button>
@@ -372,7 +372,7 @@ export default function Profile() {
               <div className="rounded-2xl p-6" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white flex-shrink-0"
-                       style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
+                       style={{ background: 'linear-gradient(135deg, #0297DE 0%, #00F0FF 100%)' }}>
                     {(name || user?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
                   <div>
@@ -476,7 +476,7 @@ export default function Profile() {
                       type="submit"
                       disabled={saving || !!nameError}
                       className="px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-80 disabled:opacity-50 flex items-center gap-2"
-                      style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+                      style={{ background: 'linear-gradient(135deg, #0297DE 0%, #00F0FF 100%)' }}
                     >
                       {saving ? <Loader2 size={14} className="animate-spin" /> : null}
                       Save profile
@@ -498,8 +498,8 @@ export default function Profile() {
               <div className="rounded-2xl p-6" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
                 <div className="flex items-center gap-3 mb-1">
                   <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                       style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.2)' }}>
-                    <KeyRound size={16} style={{ color: '#C4B5FD' }} />
+                       style={{ background: 'rgba(2,151,222,0.12)', border: '1px solid rgba(2,151,222,0.2)' }}>
+                    <KeyRound size={16} style={{ color: '#A9DDF7' }} />
                   </div>
                   <div>
                     <p className="font-semibold text-white text-sm">Password</p>
@@ -512,7 +512,7 @@ export default function Profile() {
                     <button
                       onClick={() => { setPwSaved(false); setPwStep('verify'); }}
                       className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-80"
-                      style={{ background: 'rgba(139,92,246,0.15)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.2)' }}
+                      style={{ background: 'rgba(2,151,222,0.15)', color: '#A9DDF7', border: '1px solid rgba(2,151,222,0.2)' }}
                     >
                       Change password
                     </button>
@@ -550,7 +550,7 @@ export default function Profile() {
                         type="submit"
                         disabled={pwBusy || !currentPw}
                         className="px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-80 disabled:opacity-50 flex items-center gap-2"
-                        style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+                        style={{ background: 'linear-gradient(135deg, #0297DE 0%, #00F0FF 100%)' }}
                       >
                         {pwBusy ? <Loader2 size={14} className="animate-spin" /> : null}
                         Continue
@@ -569,7 +569,7 @@ export default function Profile() {
                       onClick={handleForgotCurrentPw}
                       disabled={pwBusy}
                       className="text-xs underline transition-opacity hover:opacity-70 disabled:opacity-50"
-                      style={{ fontFamily: 'Inter, sans-serif', color: '#C4B5FD' }}
+                      style={{ fontFamily: 'Inter, sans-serif', color: '#A9DDF7' }}
                     >
                       Forgot your password? Email me a reset code instead
                     </button>
@@ -625,7 +625,7 @@ export default function Profile() {
                         type="submit"
                         disabled={pwBusy || pwCode.length < 6 || !newPw || !confirmPw}
                         className="px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-80 disabled:opacity-50 flex items-center gap-2"
-                        style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+                        style={{ background: 'linear-gradient(135deg, #0297DE 0%, #00F0FF 100%)' }}
                       >
                         {pwBusy ? <Loader2 size={14} className="animate-spin" /> : null}
                         Reset password
@@ -644,7 +644,7 @@ export default function Profile() {
                       onClick={handleForgotCurrentPw}
                       disabled={pwBusy}
                       className="text-xs underline transition-opacity hover:opacity-70 disabled:opacity-50"
-                      style={{ fontFamily: 'Inter, sans-serif', color: '#C4B5FD' }}
+                      style={{ fontFamily: 'Inter, sans-serif', color: '#A9DDF7' }}
                     >
                       Resend code
                     </button>
@@ -684,7 +684,7 @@ export default function Profile() {
                         type="submit"
                         disabled={pwBusy || !newPw || !confirmPw}
                         className="px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-80 disabled:opacity-50 flex items-center gap-2"
-                        style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+                        style={{ background: 'linear-gradient(135deg, #0297DE 0%, #00F0FF 100%)' }}
                       >
                         {pwBusy ? <Loader2 size={14} className="animate-spin" /> : null}
                         Update password
@@ -732,7 +732,7 @@ export default function Profile() {
               </div>
 
               <p className="text-sm mb-5" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                All your presentations, credits, and billing data will be permanently deleted. If you have an active subscription, cancel it first via <button onClick={() => { setShowDeleteModal(false); navigate('/pricing'); }} className="underline" style={{ color: '#C4B5FD' }}>Manage subscription</button> before deleting.
+                All your presentations, credits, and billing data will be permanently deleted. If you have an active subscription, cancel it first via <button onClick={() => { setShowDeleteModal(false); navigate('/pricing'); }} className="underline" style={{ color: '#A9DDF7' }}>Manage subscription</button> before deleting.
               </p>
 
               <div className="mb-5">

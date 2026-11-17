@@ -4,8 +4,22 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="HyperBeing — AI-powered presentation maker" />
-    <title>HyperBeing</title>
+    <title>HyperBeing: AI presentations that make people go how?</title>
+    <meta name="description" content="HyperBeing is an AI presentation maker. Give Nova your brief, files or old deck and every slide comes back art-directed, with a real argument and editable text. Export to PowerPoint, PDF or PNG. 54 free credits, no card required." />
+    <meta name="theme-color" content="#02070A" />
+    <link rel="canonical" href="https://www.hyperbeing.co/" />
+    <link rel="alternate" type="text/markdown" href="https://www.hyperbeing.co/index.md" title="Markdown version for AI readers" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="HyperBeing" />
+    <meta property="og:url" content="https://www.hyperbeing.co/" />
+    <meta property="og:title" content="HyperBeing: AI presentations that make people go how?" />
+    <meta property="og:description" content="Give Nova your brief. Every slide comes back art-directed, with a real argument, an agency finish and text you can still edit. No templates." />
+    <meta property="og:image" content="https://www.hyperbeing.co/og-image.jpg" />
+    <meta property="og:image:alt" content="A HyperBeing campaign slide: launched at 30,000 feet" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="HyperBeing: AI presentations that make people go how?" />
+    <meta name="twitter:description" content="Give Nova your brief. Every slide comes back art-directed, with editable text. Export to PowerPoint, PDF or PNG." />
+    <meta name="twitter:image" content="https://www.hyperbeing.co/og-image.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -15,7 +29,8 @@
     <!-- Apply theme class before React mounts to prevent flash of light mode -->
     <script>
       (function() {
-        var t = localStorage.getItem('hb_theme') || 'dark';
+        var t = 'dark';
+        try { t = localStorage.getItem('hb_theme') || 'dark'; } catch (e) {}
         if (t === 'dark') document.documentElement.classList.add('dark');
       })();
     </script>
@@ -27,7 +42,8 @@
       "@type": "Organization",
       "name": "HyperBeing",
       "url": "https://www.hyperbeing.co",
-      "description": "AI presentation maker that creates hyper-personalized, large-context decks, built for teams who want to spend less time formatting slides and more time on strategy.",
+      "description": "AI presentation maker that turns a written brief, files or an old deck into art-directed slides with editable text, built for teams who want to spend less time formatting slides and more time on strategy.",
+      "logo": "https://www.hyperbeing.co/icon.svg",
       "areaServed": "Worldwide"
     }
     </script>

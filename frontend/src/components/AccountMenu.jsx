@@ -21,7 +21,7 @@ export default function AccountMenu({ user, credits, currentPlan, isAdmin, onLog
   const pct = isAdmin ? 100 : planMax > 0 ? Math.min(100, Math.round((credits / planMax) * 100)) : 0;
   const low = !isAdmin && credits !== null && credits < 18;
 
-  const ringColor = isAdmin ? '#8B5CF6'
+  const ringColor = isAdmin ? '#0297DE'
     : pct <= 20 ? '#f87171'
     : pct <= 50 ? '#f59e0b'
     : '#22c55e';
@@ -35,7 +35,7 @@ export default function AccountMenu({ user, credits, currentPlan, isAdmin, onLog
         aria-label={`Account menu for ${user?.name || 'your account'}`}
         aria-expanded={open}
         className="relative w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white transition-all duration-200 hover:scale-105"
-        style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}
+        style={{ background: 'linear-gradient(135deg, #0297DE 0%, #00F0FF 100%)' }}
       >
         {/* Credit ring */}
         <svg className="absolute inset-0 w-10 h-10 -rotate-90" viewBox="0 0 40 40">
@@ -69,7 +69,7 @@ export default function AccountMenu({ user, credits, currentPlan, isAdmin, onLog
             <div className="px-5 pt-5 pb-4">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white flex-shrink-0"
-                     style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>
+                     style={{ background: 'linear-gradient(135deg, #0297DE 0%, #00F0FF 100%)' }}>
                   {initials}
                 </div>
                 <div className="min-w-0">
@@ -78,7 +78,7 @@ export default function AccountMenu({ user, credits, currentPlan, isAdmin, onLog
                 </div>
                 {isAdmin && (
                   <span className="text-xs font-bold px-2 py-0.5 rounded-lg text-white flex-shrink-0"
-                        style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #00F0FF 100%)' }}>Admin</span>
+                        style={{ background: 'linear-gradient(135deg, #0297DE 0%, #00F0FF 100%)' }}>Admin</span>
                 )}
               </div>
 
@@ -87,7 +87,7 @@ export default function AccountMenu({ user, credits, currentPlan, isAdmin, onLog
                 <div className="rounded-xl p-3" style={{ background: 'var(--bg-input)' }}>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Credits remaining</span>
-                    <span className="text-xs font-bold" style={{ color: low ? '#f87171' : '#8B5CF6' }}>
+                    <span className="text-xs font-bold" style={{ color: low ? '#f87171' : '#0297DE' }}>
                       {isAdmin ? '∞' : credits.toLocaleString()} / {isAdmin ? '∞' : planMax.toLocaleString()}
                     </span>
                   </div>
@@ -98,7 +98,7 @@ export default function AccountMenu({ user, credits, currentPlan, isAdmin, onLog
                         width: `${pct}%`,
                         background: low
                           ? 'linear-gradient(90deg, #f87171 0%, #fca5a5 100%)'
-                          : 'linear-gradient(90deg, #8B5CF6 0%, #00F0FF 100%)',
+                          : 'linear-gradient(90deg, #0297DE 0%, #00F0FF 100%)',
                       }}
                     />
                   </div>
@@ -112,7 +112,7 @@ export default function AccountMenu({ user, credits, currentPlan, isAdmin, onLog
                     <button
                       onClick={() => { onUpgrade(); setOpen(false); }}
                       className="text-xs font-semibold transition-colors hover:opacity-80"
-                      style={{ color: '#8B5CF6' }}
+                      style={{ color: '#0297DE' }}
                     >
                       {currentPlan === 'free' ? 'Upgrade →' : 'Manage plan →'}
                     </button>
@@ -148,7 +148,7 @@ export default function AccountMenu({ user, credits, currentPlan, isAdmin, onLog
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:opacity-80 text-left"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                <CreditCard size={15} style={{ color: '#8B5CF6' }} />
+                <CreditCard size={15} style={{ color: '#0297DE' }} />
                 {currentPlan === 'free' ? 'Upgrade plan' : 'Billing & plans'}
               </button>
               <button

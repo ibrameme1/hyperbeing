@@ -1,595 +1,271 @@
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight, ArrowLeft, Sparkles, CheckCircle2 } from 'lucide-react';
+import {
+  ArrowRight, ArrowLeft, Loader2, Rocket, Handshake, Megaphone, GraduationCap, Users, Sparkles,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
-import Logo from '../components/Logo';
-import NovaMascot from '../components/NovaMascot';
+import Nova from '../components/nova/Nova';
+
+// New-user onboarding: Nova walks you straight to your first deck.
+//
+// The old version was an eight-question survey before you ever saw a slide.
+// This one gets to the "aha" (watching your own deck appear) in three short
+// steps: hello -> what is it for -> one-line brief (prefilled, editable).
+// The deck is created right here (POST /presentations) and the presentation
+// page picks up with ?welcome=1, where Nova narrates the build.
+//
+// The brief ends with "PREFLIGHT ANSWERS:" on purpose: that magic string tells
+// Nova's planner to skip its clarifying questions and generate now. The deck
+// is kept to 3 slides so a new account's free credits (54 = 3 x 18) cover all
+// of it and nothing comes back locked.
 
 const EASE = [0.16, 1, 0.3, 1];
+const FIRST_DECK_SLIDES = 3;
 
-const QUESTIONS = [
+const USE_CASES = [
   {
-    id: 'use_case',
-    emoji: '🎯',
-    novaLine: "Okay, let's start with the big one.",
-    question: "What's the most important deck you need to make right now?",
-    subtext: "Be honest — this is the one Nova will obsess over first.",
-    mood: 'idle',
-    options: [
-      { value: 'fundraising', label: '💰 Raise money', desc: 'Investor pitch. I need this to be perfect.' },
-      { value: 'product_launch', label: '🚀 Launch something', desc: 'Product or service. The world needs to know.' },
-      { value: 'sales', label: '📣 Win clients', desc: 'Proposal or sales deck. Closing time.' },
-      { value: 'school', label: '🎓 Ace an assignment', desc: 'Class presentation. Due very soon.' },
-      { value: 'internal', label: '🧑‍💼 Convince my team', desc: 'Internal deck. Lots of stakeholders.' },
-    ],
+    value: 'fundraising', label: 'Investor pitch', Icon: Rocket, audience: 'Early-stage investors',
+    example: 'Seed pitch for Loop, an app that turns grocery receipts into weekly meal plans. We have 4,000 beta users and 38% week-4 retention, and we are raising $1.5M.',
   },
   {
-    id: 'presenter_type',
-    emoji: '🎭',
-    novaLine: "Got it — I'll keep that in mind. Now, who am I working with?",
-    question: 'What kind of presenter are you?',
-    subtext: "Be honest. We won't judge.",
-    mood: 'thinking',
-    options: [
-      { value: 'last-minute', label: '🔥 Last-minute legend', desc: 'I work best under pressure. Or so I tell myself.' },
-      { value: 'data-nerd', label: '📊 Spreadsheet soul', desc: 'Data is my love language. Charts are my poetry.' },
-      { value: 'performer', label: '🎤 Natural performer', desc: "I've rehearsed this. Multiple times. In the shower." },
-      { value: 'beginner', label: '🐣 Total beginner', desc: 'Send help. And maybe a template.' },
-    ],
+    value: 'sales', label: 'Sales proposal', Icon: Handshake, audience: 'A prospective client',
+    example: 'Proposal to a 200-person logistics company for our route-planning software. It cuts fuel costs by about 12%. The goal is to book a 60-day pilot.',
   },
   {
-    id: 'design_vibe',
-    emoji: '✨',
-    novaLine: "Love it. Let's make sure your slides match your energy.",
-    question: 'Your ideal design vibe is...',
-    subtext: 'This shapes how Nova art-directs your slides.',
-    mood: 'idle',
-    options: [
-      { value: 'dark-editorial', label: '🖤 Dark & editorial', desc: 'Like a luxury fashion magazine. Moody. Precise.' },
-      { value: 'clean-minimal', label: '🤍 Clean & minimal', desc: 'Less is everything. White space is the message.' },
-      { value: 'bold-punchy', label: '💥 Bold & punchy', desc: 'I want reactions. Gasps accepted.' },
-      { value: 'colorful', label: '🌈 Colourful & playful', desc: "Life's too short for boring slides." },
-    ],
+    value: 'product_launch', label: 'Product launch', Icon: Megaphone, audience: 'Retail partners and press',
+    example: 'Launch deck for Refill, a reusable coffee cup that tracks how much plastic you have saved. Launching in 40 cafes this spring.',
   },
   {
-    id: 'priority',
-    emoji: '⚡',
-    novaLine: 'One more thing before I lock in your settings —',
-    question: 'What matters most to you?',
-    subtext: "Nova will optimise for this above everything else.",
-    mood: 'thinking',
-    options: [
-      { value: 'speed', label: '⚡ Speed', desc: 'I needed this yesterday. Literally.' },
-      { value: 'quality', label: '💎 Quality', desc: 'It has to be beautiful. No exceptions.' },
-      { value: 'storytelling', label: '🎯 Storytelling', desc: 'The narrative is everything. Slides are just proof.' },
-      { value: 'automation', label: '🤖 Full automation', desc: 'AI does it, I approve it. Perfect.' },
-    ],
+    value: 'school', label: 'Class presentation', Icon: GraduationCap, audience: 'Classmates and a teacher',
+    example: 'Why coral reefs are bleaching, why it matters for the ocean and for people, and what can still be done about it.',
   },
   {
-    id: 'role',
-    emoji: '🏷️',
-    novaLine: 'Okay, almost there. Just a couple quick ones.',
-    question: 'What best describes your role?',
-    subtext: 'Helps us tailor the experience to how you actually work.',
-    mood: 'idle',
-    options: [
-      { value: 'founder', label: '🚀 Founder / CEO', desc: 'Building something from scratch.' },
-      { value: 'marketing', label: '📣 Marketing / Growth', desc: 'Campaigns, content, and conversions.' },
-      { value: 'student', label: '🎓 Student', desc: 'Assignments, projects, and presentations.' },
-      { value: 'freelancer', label: '💼 Freelancer / Consultant', desc: 'Pitching clients and delivering work.' },
-    ],
+    value: 'internal', label: 'Team update', Icon: Users, audience: 'My team and leadership',
+    example: 'Quarterly update: revenue up 18%, two key hires, one launch that slipped by three weeks, and our three priorities for next quarter.',
   },
   {
-    id: 'frequency',
-    emoji: '📅',
-    novaLine: 'Good to know.',
-    question: 'How often do you make presentations?',
-    subtext: "Frequency helps us calibrate Nova's pace for you.",
-    mood: 'thinking',
-    options: [
-      { value: 'daily', label: '😰 Almost every day', desc: 'This is my whole personality now. Help.' },
-      { value: 'weekly', label: '😅 Once a week or so', desc: "I'm fine. Everything is fine." },
-      { value: 'monthly', label: '😬 Every few months', desc: 'But when I do it, it\'s ALWAYS a crisis.' },
-      { value: 'first-time', label: '🙋 This is my first one', desc: 'Nervous laugh. But optimistic.' },
-    ],
-  },
-  {
-    id: 'team_size',
-    emoji: '👥',
-    novaLine: 'Makes sense.',
-    question: 'How big is your team or organisation?',
-    subtext: 'Just you, or a whole operation?',
-    mood: 'idle',
-    options: [
-      { value: 'solo', label: '🙋 Just me', desc: 'Solo operator. All decisions, all glory.' },
-      { value: 'small', label: '🤝 2–10 people', desc: 'Small team, big ambitions.' },
-      { value: 'medium', label: '🏢 11–50 people', desc: 'Growing fast, need to move faster.' },
-      { value: 'large', label: '🏛️ 50+ people', desc: 'Enterprise scale. Lots of stakeholders.' },
-    ],
-  },
-  {
-    id: 'referral',
-    emoji: '📡',
-    novaLine: "Last one, I promise.",
-    question: 'How did you hear about HyperBeing?',
-    subtext: "We're genuinely curious.",
-    mood: 'idle',
-    options: [
-      { value: 'social', label: '📱 Social media', desc: 'TikTok, Instagram, X, or LinkedIn.' },
-      { value: 'search', label: '🔍 Google / search', desc: 'Found us while looking for something.' },
-      { value: 'friend', label: '🗣️ Friend or colleague', desc: 'Someone who has taste sent me here.' },
-      { value: 'other', label: '✨ Somewhere else', desc: 'The internet is a wild place.' },
-    ],
+    value: 'other', label: 'Something else', Icon: Sparkles, audience: '',
+    example: '',
   },
 ];
 
-const CALIBRATION_INDEX = 3; // after 'priority' (0-indexed), before 'role'
+const STEPS = ['hello', 'what', 'brief'];
 
-const COMPLETION_MESSAGES = {
-  presenter_type: {
-    'last-minute': "Nova works fast. You'll love each other.",
-    'data-nerd': "Nova speaks fluent data. You're going to get along.",
-    'performer': 'Nova will make sure your visuals match your energy.',
-    'beginner': "Nova will hold your hand. Gently. The whole time.",
-  },
-  design_vibe: {
-    'dark-editorial': 'dark editorial masterpieces',
-    'clean-minimal': 'beautifully minimal slides',
-    'bold-punchy': 'punchy, high-impact visuals',
-    'colorful': 'vibrant, joyful designs',
-  },
-};
-
-const USE_CASE_LABELS = {
-  fundraising: 'investor-ready pitch',
-  product_launch: 'launch deck',
-  sales: 'proposal',
-  school: 'presentation',
-  internal: 'internal deck',
-};
-
-function getUpgradeSeed(answers) {
-  if (answers.role === 'founder') {
-    return { text: 'Founders on Pro get 5,000 credits/month — enough for fundraise season.', trigger: 'role:founder' };
-  }
-  if (answers.frequency === 'daily') {
-    return { text: "Making decks daily? Pro members get priority generation — no waiting.", trigger: 'frequency:daily' };
-  }
-  if (answers.team_size === 'medium' || answers.team_size === 'large') {
-    return { text: 'Your team would love shared brand kits — coming to Ultra.', trigger: `team_size:${answers.team_size}` };
-  }
-  return { text: '10x the decks. Upgrade to Pro for 5,000 credits/month.', trigger: 'default' };
-}
-
-/* Speech bubble that sits next to/under Nova */
-function NovaSpeech({ children }) {
+function Say({ children }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8, scale: 0.96 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.4, ease: EASE, delay: 0.15 }}
-      className="relative"
-      style={{
-        background: 'rgba(255,255,255,0.06)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 16,
-        padding: '10px 16px',
-        maxWidth: 320,
-        margin: '0 auto',
-      }}
+    <motion.p
+      key={String(children).slice(0, 40)}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: EASE }}
+      className="nova-say text-center mx-auto"
+      style={{ maxWidth: 360 }}
     >
-      <p className="text-white/70 text-sm text-center leading-snug">{children}</p>
-      <div
-        style={{
-          position: 'absolute',
-          top: -6,
-          left: '50%',
-          transform: 'translateX(-50%) rotate(45deg)',
-          width: 12,
-          height: 12,
-          background: 'rgba(255,255,255,0.06)',
-          borderLeft: '1px solid rgba(255,255,255,0.08)',
-          borderTop: '1px solid rgba(255,255,255,0.08)',
-        }}
-      />
-    </motion.div>
+      {children}
+    </motion.p>
   );
 }
 
 export default function Onboarding() {
-  const [phase, setPhase] = useState('welcome'); // welcome | question | calibration | done
-  const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState({});
-  const [selected, setSelected] = useState(null);
-  const [direction, setDirection] = useState(1);
-  const [saveError, setSaveError] = useState('');
+  const { user, subscription } = useAuth();
   const navigate = useNavigate();
-  const { user } = useAuth();
-
-  const stepStartRef = useRef(Date.now());
-  const flowStartRef = useRef(Date.now());
+  const [step, setStep] = useState(0);
+  const [useCase, setUseCase] = useState(null);
+  const [brief, setBrief] = useState('');
+  const [typing, setTyping] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState('');
+  const typingTimer = useRef(0);
+  const firstName = (user?.name || '').trim().split(/\s+/)[0];
 
   useEffect(() => {
-    stepStartRef.current = Date.now();
-  }, [step, phase]);
-
-  const q = QUESTIONS[step];
-  const isLast = step === QUESTIONS.length - 1;
-  const firstName = user?.name?.split(' ')[0] || 'there';
-
-  function handleStart() {
     track('onboarding_started');
     capture('onboarding_started');
-    setPhase('question');
+  }, []);
+  useEffect(() => () => clearTimeout(typingTimer.current), []);
+
+  function pick(uc) {
+    setUseCase(uc);
+    setBrief(uc.example);
+    setError('');
+    track('onboarding_use_case_selected', { use_case: uc.value });
+    capture('onboarding_use_case_selected', { use_case: uc.value });
+    setStep(2);
   }
 
-  function handleSelect(value) {
-    setSelected(value);
+  function onBriefChange(v) {
+    setBrief(v);
+    setTyping(true);
+    clearTimeout(typingTimer.current);
+    typingTimer.current = setTimeout(() => setTyping(false), 700);
   }
 
-  async function handleNext() {
-    if (!selected) return;
-    const newAnswers = { ...answers, [q.id]: selected };
-    setAnswers(newAnswers);
-    track('onboarding_question_answered', {
-      step,
-      question_id: q.id,
-      answer: selected,
-      time_on_step_ms: Date.now() - stepStartRef.current,
-    });
+  function skip() {
+    track('onboarding_skipped', { step: STEPS[step] });
+    capture('onboarding_skipped', { step: STEPS[step] });
+    navigate('/dashboard');
+  }
 
-    if (isLast) {
-      localStorage.setItem('hb_prefs', JSON.stringify(newAnswers));
-      setSaveError('');
-      try {
-        await api.post('/auth/onboarding', newAnswers);
-        const seed = getUpgradeSeed(newAnswers);
-        track('onboarding_completed', {
-          answers_summary: newAnswers,
-          total_time_ms: Date.now() - flowStartRef.current,
-        });
-        capture('onboarding_completed', {
-          answers_summary: newAnswers,
-          total_time_ms: Date.now() - flowStartRef.current,
-        });
-        track('onboarding_upgrade_seed_shown', { seed_variant: seed.trigger, trigger_answer: seed.trigger });
-        setPhase('done');
-      } catch {
-        setSaveError('Something went wrong saving your preferences. Try again.');
+  async function create() {
+    const text = brief.trim();
+    if (text.length < 8) { setError('Give me a sentence or two to work with.'); return; }
+    setCreating(true);
+    setError('');
+    // Saved for personalization; never blocks the deck.
+    api.post('/auth/onboarding', { use_case: useCase?.value || 'other' }).catch(() => {});
+
+    const answers = [
+      `- What is this deck for?: ${useCase?.label || 'Something else'}`,
+      useCase?.audience ? `- Who is the audience?: ${useCase.audience}` : null,
+      '- Anything else?: This is my first HyperBeing deck. Make it look exceptional.',
+    ].filter(Boolean).join('\n');
+    const message = `${text}\n\nPREFLIGHT ANSWERS:\n${answers}\n\nCreate exactly ${FIRST_DECK_SLIDES} slides: this is a short first deck.`;
+
+    try {
+      const { data } = await api.post('/presentations', { message, attachments: [], aspectRatio: '16:9' });
+      const id = data.presentation.id;
+      track('onboarding_completed', { use_case: useCase?.value });
+      capture('onboarding_completed', { use_case: useCase?.value });
+      track('presentation_created', { presentation_id: id, aspect_ratio: '16:9', source: 'onboarding' });
+      capture('presentation_created', { presentation_id: id, aspect_ratio: '16:9', source: 'onboarding' });
+      navigate(`/presentations/${id}?welcome=1`, { replace: true });
+    } catch (err) {
+      setCreating(false);
+      const status = err.response?.status;
+      if (status === 402) {
+        // Out of credits (e.g. an older account): the dashboard explains plans.
+        navigate('/dashboard');
+        return;
       }
-    } else if (step === CALIBRATION_INDEX) {
-      track('onboarding_calibration_seen');
-      setPhase('calibration');
-      setTimeout(() => {
-        setDirection(1);
-        setStep(s => s + 1);
-        setSelected(null);
-        setPhase('question');
-      }, 1800);
-    } else {
-      setDirection(1);
-      setStep(s => s + 1);
-      setSelected(null);
+      setError(
+        err.response?.data?.error ||
+        (status === 429 ? 'Too many decks at once. Give me a minute and try again.' :
+         status === 503 ? 'My design engine is busy right now. Please try again in a moment.' :
+         'I could not start your deck. Please try again.'),
+      );
     }
   }
 
-  function handleBack() {
-    if (step === 0) return;
-    setDirection(-1);
-    setStep(s => s - 1);
-    setSelected(answers[QUESTIONS[step - 1].id] || null);
-  }
-
-  function handleFinish() {
-    navigate('/dashboard');
-  }
-
-  function handleSkip() {
-    track('onboarding_skipped', { step, phase });
-    capture('onboarding_skipped', { step, phase });
-    navigate('/dashboard');
-  }
-
-  function handleUpgradeSeedClick(seed) {
-    track('onboarding_upgrade_seed_clicked', { seed_variant: seed.trigger });
-    capture('onboarding_upgrade_seed_clicked', { seed_variant: seed.trigger });
-    navigate('/pricing');
-  }
-
-  const vibeLabel = COMPLETION_MESSAGES.design_vibe[answers.design_vibe] || 'stunning slides';
-  const presenterMsg = COMPLETION_MESSAGES.presenter_type[answers.presenter_type] || '';
-  const useCaseLabel = USE_CASE_LABELS[answers.use_case] || 'first deck';
-  const upgradeSeed = getUpgradeSeed(answers);
+  const mood = creating ? 'happy' : error ? 'sad' : step === 0 ? 'wave' : step === 1 ? 'idle' : typing ? 'think' : 'happy';
+  const credits = subscription?.credits_remaining;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden"
-         style={{ background: '#080808' }}>
+    <div className="min-h-screen flex flex-col" style={{ background: 'radial-gradient(ellipse at 50% 110%, rgba(252,115,77,0.16), transparent 45%), radial-gradient(ellipse at 50% 85%, rgba(2,151,222,0.22), transparent 60%), #02070A', color: '#F1F6F9' }}>
+      <header className="flex items-center justify-between px-4 sm:px-8 h-16">
+        <div className="flex items-center gap-2" aria-label="Progress">
+          {STEPS.map((s, i) => (
+            <span
+              key={s}
+              className="h-1.5 rounded-full transition-all duration-500"
+              style={{ width: i === step ? 28 : 10, background: i <= step ? '#4CB8F0' : 'rgba(190,225,245,0.16)' }}
+            />
+          ))}
+        </div>
+        {!creating && (
+          <button type="button" onClick={skip} className="text-sm px-3 py-2 rounded-lg hover:bg-white/5 transition-colors" style={{ color: '#9AAAB5' }}>
+            Skip for now
+          </button>
+        )}
+      </header>
 
-      {/* Aurora background */}
-      <div className="absolute top-0 left-1/4 w-[600px] h-[600px] rounded-full pointer-events-none"
-           style={{ background: 'radial-gradient(circle, rgba(91,80,255,0.18) 0%, transparent 65%)', filter: 'blur(60px)' }} />
-      <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] rounded-full pointer-events-none"
-           style={{ background: 'radial-gradient(circle, rgba(91,80,255,0.10) 0%, transparent 65%)', filter: 'blur(60px)' }} />
-
-      {/* Logo */}
-      <div className="absolute top-6 left-6">
-        <Logo dark height={37} />
-      </div>
-
-      {/* Skip */}
-      {phase !== 'done' && (
-        <button
-          onClick={handleSkip}
-          className="absolute top-6 right-6 text-white/30 hover:text-white/60 text-sm transition-colors"
-        >
-          Skip for now →
-        </button>
-      )}
-
-      <AnimatePresence mode="wait">
-        {phase === 'welcome' ? (
-          /* ── Welcome screen ── */
-          <motion.div
-            key="welcome"
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.96 }}
-            transition={{ duration: 0.5, ease: EASE }}
-            className="relative z-10 text-center max-w-md w-full flex flex-col items-center"
-          >
-            <div className="mb-6">
-              <NovaMascot size={140} />
-            </div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2, duration: 0.5 }}
-            >
-              <h1 className="font-display text-3xl font-bold text-white mb-3">
-                Hey {firstName}, I'm Nova 👋
-              </h1>
-              <p className="text-white/55 text-base leading-relaxed mb-1 max-w-sm mx-auto">
-                I turn ideas into stunning decks in seconds.
-              </p>
-              <p className="text-white/55 text-base leading-relaxed mb-10 max-w-sm mx-auto">
-                But first, let me actually get to know you — so I can be <span className="text-white font-semibold">your</span> Nova, not just anyone's.
-              </p>
-
-              <button onClick={handleStart} className="hb-btn text-base px-8 py-4 w-full">
-                <Sparkles size={18} />
-                Let's do it
-                <ArrowRight size={16} />
-              </button>
-            </motion.div>
+      <main className="flex-1 flex flex-col items-center justify-center px-4 pb-12">
+        <div className="w-full max-w-[560px] flex flex-col items-center">
+          <motion.div layout transition={{ duration: 0.5, ease: EASE }} className="mb-4">
+            <Nova size={step === 0 ? 170 : 120} mood={mood} />
           </motion.div>
 
-        ) : phase === 'calibration' ? (
-          /* ── Calibration interstitial ── */
-          <motion.div
-            key="calibration"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.4, ease: EASE }}
-            className="relative z-10 text-center max-w-md w-full flex flex-col items-center"
-          >
-            <div className="mb-8">
-              <NovaMascot size={130} />
-            </div>
-            <motion.h2
-              key="cal-text"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4 }}
-              className="font-display text-2xl font-bold"
-              style={{ color: '#8B80FF' }}
-            >
-              Absorbing your vibe...
-            </motion.h2>
-          </motion.div>
-
-        ) : phase === 'done' ? (
-          /* ── Completion screen ── */
-          <motion.div
-            key="done"
-            initial={{ opacity: 0, scale: 0.92 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5, ease: EASE }}
-            className="relative z-10 text-center max-w-md w-full"
-          >
-            <div className="flex justify-center mb-6">
-              <NovaMascot size={130} />
-            </div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3, duration: 0.5 }}
-            >
-              <h2 className="font-display text-3xl font-bold text-white mb-3">
-                You're all set, {firstName}!
-              </h2>
-              <p className="text-white/50 text-base leading-relaxed mb-2">
-                Nova's calibrated and ready to build your {useCaseLabel} — with {vibeLabel}.
-              </p>
-              {presenterMsg && (
-                <p className="text-white/35 text-sm mb-8 italic">"{presenterMsg}"</p>
-              )}
-
-              {/* Summary pills */}
-              <div className="flex flex-wrap gap-2 justify-center mb-8">
-                {Object.entries(answers).map(([key, val]) => {
-                  const question = QUESTIONS.find(qq => qq.id === key);
-                  const option = question?.options.find(o => o.value === val);
-                  if (!option) return null;
-                  return (
-                    <span
-                      key={key}
-                      className="px-3 py-1.5 rounded-xl text-xs font-semibold"
-                      style={{ background: 'rgba(91,80,255,0.15)', color: '#8B80FF', border: '1px solid rgba(91,80,255,0.3)' }}
-                    >
-                      {option.label}
-                    </span>
-                  );
-                })}
-              </div>
-
-              {/* Credits + upgrade seed */}
-              <div
-                className="mb-6 text-left"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 16 }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-white/70 text-sm font-semibold">Your starter credits</span>
-                  <span className="text-sm font-bold" style={{ color: '#8B80FF' }}>54 free credits</span>
-                </div>
-                <div className="h-1.5 rounded-full overflow-hidden mb-3" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                  <div className="h-full rounded-full" style={{ width: '100%', background: 'linear-gradient(90deg, #5B50FF, #8B80FF)' }} />
-                </div>
+          <AnimatePresence mode="wait">
+            {step === 0 && (
+              <motion.section key="hello" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.4, ease: EASE }} className="text-center w-full">
+                <h1 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.05 }} className="text-[36px] sm:text-[48px]">
+                  Hi{firstName ? ` ${firstName}` : ''}, I&apos;m <em style={{ color: '#4CB8F0' }}>Nova.</em>
+                </h1>
+                <p className="mt-4 text-[15px] sm:text-base mx-auto" style={{ color: '#9AAAB5', maxWidth: 400, lineHeight: 1.6 }}>
+                  I design presentations. Let&apos;s make your first one together, right now. It takes about a minute, and it&apos;s on me.
+                </p>
                 <button
-                  onClick={() => handleUpgradeSeedClick(upgradeSeed)}
-                  className="text-xs text-white/45 hover:text-white/75 transition-colors text-left w-full"
+                  type="button" autoFocus onClick={() => setStep(1)}
+                  className="mt-8 inline-flex items-center gap-2 h-12 px-7 rounded-full font-semibold text-[15px] transition-transform hover:-translate-y-0.5 active:scale-[0.98]"
+                  style={{ background: '#F1F6F9', color: '#02070A', boxShadow: '0 0 0 6px rgba(255,255,255,0.06), 0 0 50px rgba(169,221,247,0.35)' }}
                 >
-                  💡 {upgradeSeed.text} <span style={{ color: '#8B80FF' }}>See plans →</span>
+                  Let&apos;s make it <ArrowRight size={16} />
                 </button>
-              </div>
-
-              <button
-                onClick={handleFinish}
-                className="hb-btn text-base px-8 py-4 w-full"
-              >
-                <Sparkles size={18} />
-                Make my first deck
-                <ArrowRight size={16} />
-              </button>
-            </motion.div>
-          </motion.div>
-
-        ) : (
-          /* ── Question screen ── */
-          <motion.div
-            key={step}
-            initial={{ opacity: 0, x: direction * 60 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: direction * -60 }}
-            transition={{ duration: 0.35, ease: EASE }}
-            className="relative z-10 w-full max-w-lg"
-          >
-            {/* Progress */}
-            <div className="flex items-center gap-2 mb-8">
-              {QUESTIONS.map((_, i) => (
-                <div
-                  key={i}
-                  className="h-1 rounded-full flex-1 transition-all duration-500"
-                  style={{
-                    background: i <= step
-                      ? 'linear-gradient(90deg, #5B50FF, #8B80FF)'
-                      : 'rgba(255,255,255,0.10)',
-                  }}
-                />
-              ))}
-            </div>
-
-            {/* Nova + speech */}
-            <div className="flex flex-col items-center mb-6">
-              <div className="mb-3">
-                <NovaMascot size={84} />
-              </div>
-              <NovaSpeech>{q.novaLine}</NovaSpeech>
-            </div>
-
-            {/* Question */}
-            <div className="text-center mb-8">
-              <div className="text-4xl mb-3">{q.emoji}</div>
-              <h2 className="font-display text-2xl font-bold text-white mb-2">{q.question}</h2>
-              <p className="text-white/40 text-sm">{q.subtext}</p>
-            </div>
-
-            {/* Options */}
-            <div className="space-y-3 mb-8">
-              {q.options.map((opt, i) => (
-                <motion.button
-                  key={opt.value}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.06, duration: 0.35 }}
-                  onClick={() => handleSelect(opt.value)}
-                  className={`hb-chip w-full text-left flex items-start gap-3 ${selected === opt.value ? 'selected' : ''}`}
-                >
-                  <div className="flex-1">
-                    <p className="font-semibold text-sm">{opt.label}</p>
-                    <p className="text-xs mt-0.5 opacity-60">{opt.desc}</p>
-                  </div>
-                  {selected === opt.value && (
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
-                      style={{ background: '#5B50FF' }}
-                    >
-                      <CheckCircle2 size={12} className="text-white" />
-                    </motion.div>
-                  )}
-                </motion.button>
-              ))}
-            </div>
-
-            {/* Nav buttons */}
-            <div className="flex items-center gap-3">
-              {step > 0 && (
-                <button
-                  onClick={handleBack}
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-200 flex-shrink-0"
-                  style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}
-                >
-                  <ArrowLeft size={18} />
-                </button>
-              )}
-              <button
-                onClick={handleNext}
-                disabled={!selected}
-                className="flex-1 py-3.5 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] disabled:opacity-30"
-                style={{
-                  background: selected ? '#5B50FF' : 'rgba(255,255,255,0.08)',
-                  boxShadow: selected ? '0 4px 24px rgba(91,80,255,0.35)' : 'none',
-                }}
-              >
-                {isLast ? (
-                  <><Sparkles size={15} /> Let's go</>
-                ) : (
-                  <>Continue <ArrowRight size={15} /></>
-                )}
-              </button>
-            </div>
-
-            {saveError && (
-              <p style={{
-                fontFamily: 'Inter, sans-serif',
-                fontSize: 13,
-                color: '#f87171',
-                textAlign: 'center',
-                marginTop: 12,
-                padding: '8px 12px',
-                background: 'rgba(239,68,68,0.08)',
-                border: '1px solid rgba(239,68,68,0.2)',
-                borderRadius: 8,
-              }}>
-                {saveError}
-              </p>
+              </motion.section>
             )}
 
-            <p className="text-center text-white/20 text-xs mt-5">
-              {step + 1} of {QUESTIONS.length}
-            </p>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            {step === 1 && (
+              <motion.section key="what" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.4, ease: EASE }} className="w-full">
+                <Say>What should our first deck be about?</Say>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-6" role="list">
+                  {USE_CASES.map((uc) => (
+                    <button
+                      key={uc.value} type="button" role="listitem" onClick={() => pick(uc)}
+                      className="group flex flex-col items-start gap-3 p-4 rounded-2xl text-left transition-all duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4CB8F0]"
+                      style={{ background: 'rgba(8,19,26,0.85)', border: '1px solid rgba(190,225,245,0.12)' }}
+                    >
+                      <span className="w-9 h-9 rounded-xl grid place-items-center transition-colors group-hover:text-[#02070A] group-hover:bg-[#4CB8F0]" style={{ background: 'rgba(2,151,222,0.14)', color: '#4CB8F0' }}>
+                        <uc.Icon size={18} />
+                      </span>
+                      <span className="text-[14px] font-medium leading-tight">{uc.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex justify-center mt-6">
+                  <button type="button" onClick={() => setStep(0)} className="inline-flex items-center gap-1.5 text-sm" style={{ color: '#9AAAB5' }}>
+                    <ArrowLeft size={14} /> Back
+                  </button>
+                </div>
+              </motion.section>
+            )}
+
+            {step === 2 && (
+              <motion.section key="brief" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.4, ease: EASE }} className="w-full">
+                <Say>
+                  {creating ? 'On it! Opening your studio…'
+                    : useCase?.example ? <>Here&apos;s a starter. <b>Make it yours</b>, or just hit go.</>
+                    : <>Tell me the topic in a sentence or two. <b>I&apos;ll fill in the rest.</b></>}
+                </Say>
+                <div className="mt-6 rounded-2xl p-1.5" style={{ background: 'linear-gradient(180deg, rgba(76,184,240,0.35), rgba(190,225,245,0.08))' }}>
+                  <div className="rounded-[14px] p-4" style={{ background: '#08131A' }}>
+                    <label htmlFor="first-brief" className="block text-[11px] tracking-[0.14em] uppercase mb-2" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#5E717D' }}>
+                      {useCase?.label || 'Your deck'}
+                    </label>
+                    <textarea
+                      id="first-brief" autoFocus rows={4} value={brief} disabled={creating}
+                      onChange={(e) => onBriefChange(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) create(); }}
+                      placeholder="e.g. A pitch for my bakery's new subscription box, for local investors."
+                      className="w-full bg-transparent resize-none text-[15px] leading-relaxed focus:outline-none placeholder:text-[#5E717D]"
+                      style={{ color: '#F1F6F9' }}
+                      maxLength={2000}
+                    />
+                  </div>
+                </div>
+                {error && <p role="alert" className="mt-3 text-sm text-center" style={{ color: '#FFB49C' }}>{error}</p>}
+                <div className="mt-6 flex flex-col-reverse sm:flex-row items-center justify-between gap-3">
+                  <button type="button" disabled={creating} onClick={() => setStep(1)} className="inline-flex items-center gap-1.5 text-sm disabled:opacity-40" style={{ color: '#9AAAB5' }}>
+                    <ArrowLeft size={14} /> Pick another
+                  </button>
+                  <button
+                    type="button" onClick={create} disabled={creating}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 h-12 px-7 rounded-full font-semibold text-[15px] transition-transform hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-80"
+                    style={{ background: '#F1F6F9', color: '#02070A', boxShadow: '0 0 0 6px rgba(255,255,255,0.06), 0 0 50px rgba(169,221,247,0.35)' }}
+                  >
+                    {creating ? <><Loader2 size={16} className="animate-spin" /> Starting…</> : <>Make my deck <ArrowRight size={16} /></>}
+                  </button>
+                </div>
+                <p className="mt-5 text-center text-xs" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#5E717D' }}>
+                  {FIRST_DECK_SLIDES} slides{credits != null ? ` · ${credits} free credits in your account` : ' · covered by your free credits'}
+                </p>
+              </motion.section>
+            )}
+          </AnimatePresence>
+        </div>
+      </main>
     </div>
   );
 }

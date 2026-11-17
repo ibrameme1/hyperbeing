@@ -428,7 +428,7 @@ export default function SlideEditor({ slide, presentationId, onClose, onSaved, o
           <div style={{ width: 'min(100%, calc((100vh - 140px) * 16 / 9))', userSelect: 'none', WebkitUserSelect: 'none' }} className="shadow-2xl rounded-lg overflow-hidden">
             <LayeredSlide ref={stageRef} layout={layout} renderLayer={renderLayer} onStageScale={setScale}>
               {hover && !hover.hidden && (
-                <div style={{ position: 'absolute', left: hover.x, top: hover.y, width: hover.w, height: hover.h, transform: hover.rotation ? `rotate(${hover.rotation}deg)` : undefined, outline: `${1.5 * k}px solid rgba(91,80,255,0.7)`, pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', left: hover.x, top: hover.y, width: hover.w, height: hover.h, transform: hover.rotation ? `rotate(${hover.rotation}deg)` : undefined, outline: `${1.5 * k}px solid rgba(2,151,222,0.7)`, pointerEvents: 'none' }} />
               )}
               {selected && !selected.hidden && !editingId && (
                 <SelectionBox layer={selected} k={k} onResize={startResize} onRotate={startRotate} />
@@ -436,13 +436,13 @@ export default function SlideEditor({ slide, presentationId, onClose, onSaved, o
               {groupBox && (
                 <>
                   {selectedLayers.map(l => (
-                    <div key={l.id} style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h, transform: l.rotation ? `rotate(${l.rotation}deg)` : undefined, outline: `${1.5 * k}px solid rgba(91,80,255,0.85)`, pointerEvents: 'none' }} />
+                    <div key={l.id} style={{ position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h, transform: l.rotation ? `rotate(${l.rotation}deg)` : undefined, outline: `${1.5 * k}px solid rgba(2,151,222,0.85)`, pointerEvents: 'none' }} />
                   ))}
                   <SelectionBox layer={{ ...groupBox, rotation: 0 }} k={k} onResize={startResize} dashed />
                 </>
               )}
               {marquee && (
-                <div style={{ position: 'absolute', left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h, background: 'rgba(91,80,255,0.12)', outline: `${k}px solid rgba(91,80,255,0.9)`, pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h, background: 'rgba(2,151,222,0.12)', outline: `${k}px solid rgba(2,151,222,0.9)`, pointerEvents: 'none' }} />
               )}
               {guides.map((g, i) => (
                 <div key={i} style={{
@@ -532,15 +532,15 @@ function SelectionBox({ layer: l, k, onResize, onRotate, dashed = false }) {
     <div style={{
       position: 'absolute', left: l.x, top: l.y, width: l.w, height: l.h,
       transform: l.rotation ? `rotate(${l.rotation}deg)` : undefined,
-      outline: `${2 * k}px ${dashed ? 'dashed' : 'solid'} #5B50FF`, pointerEvents: 'none',
+      outline: `${2 * k}px ${dashed ? 'dashed' : 'solid'} #0297DE`, pointerEvents: 'none',
     }}>
       {handles.map(d => (
         <div key={d} data-handle onPointerDown={e => onResize(e, d)}
-          style={{ position: 'absolute', ...pos(d), width: hs, height: hs, background: '#fff', border: `${1.5 * k}px solid #5B50FF`, borderRadius: 2 * k, cursor: handleCursor(d, l.rotation || 0), pointerEvents: 'auto' }} />
+          style={{ position: 'absolute', ...pos(d), width: hs, height: hs, background: '#fff', border: `${1.5 * k}px solid #0297DE`, borderRadius: 2 * k, cursor: handleCursor(d, l.rotation || 0), pointerEvents: 'auto' }} />
       ))}
       {onRotate && (
         <div data-handle onPointerDown={onRotate} title="Rotate (Shift snaps to 15°)"
-          style={{ position: 'absolute', left: l.w / 2 - hs / 2, top: -hs * 3, width: hs, height: hs, borderRadius: '50%', background: '#fff', border: `${1.5 * k}px solid #5B50FF`, cursor: 'grab', pointerEvents: 'auto' }} />
+          style={{ position: 'absolute', left: l.w / 2 - hs / 2, top: -hs * 3, width: hs, height: hs, borderRadius: '50%', background: '#fff', border: `${1.5 * k}px solid #0297DE`, cursor: 'grab', pointerEvents: 'auto' }} />
       )}
     </div>
   );
@@ -574,7 +574,7 @@ function InlineTextEditor({ layer, onDone }) {
         onBlur={e => onDone(e.currentTarget)}
         onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); } e.stopPropagation(); }}
         onPaste={e => { e.preventDefault(); document.execCommand('insertText', false, e.clipboardData.getData('text/plain')); }}
-        style={{ ...style, outline: 'none', caretColor: '#5B50FF', minHeight: '1em', userSelect: 'text', WebkitUserSelect: 'text' }}
+        style={{ ...style, outline: 'none', caretColor: '#0297DE', minHeight: '1em', userSelect: 'text', WebkitUserSelect: 'text' }}
       >
         {layer.text}
       </div>

@@ -1,0 +1,63 @@
+/* Nova's motion. Kept in plain CSS (not Framer) so it also runs in the
+   prerendered landing HTML before React boots. */
+.nova { overflow: visible; display: block; }
+.nova .nova-body,
+.nova .nova-fin,
+.nova .nova-eyes,
+.nova .nova-floor,
+.nova .nova-belly { transform-box: fill-box; }
+
+.nova--float .nova-body { animation: nova-bob 3.6s ease-in-out infinite; transform-origin: center; }
+.nova--float .nova-floor { animation: nova-floor 3.6s ease-in-out infinite; transform-origin: center; }
+.nova .nova-belly { animation: nova-pulse 3.6s ease-in-out infinite; transform-origin: center; }
+
+.nova .nova-fin--l { transform-origin: 100% 30%; animation: nova-flap-l 3.6s ease-in-out infinite; }
+.nova .nova-fin--r { transform-origin: 0% 30%;   animation: nova-flap-r 3.6s ease-in-out infinite; }
+.nova--wave .nova-fin--r { animation: nova-wave .7s ease-in-out infinite; }
+.nova--happy .nova-fin--l { animation-duration: .9s; }
+.nova--happy .nova-fin--r { animation-duration: .9s; }
+.nova--happy.nova--float .nova-body { animation: nova-hop .9s cubic-bezier(.3,.7,.4,1) infinite; }
+
+.nova .nova-eyes { transform-origin: center; animation: nova-blink 5.2s infinite; }
+.nova .nova-eyes g { transition: transform .18s ease-out; }
+.nova .nova-cheek { opacity: .32; transition: opacity .3s; }
+.nova--shy .nova-cheek,
+.nova--happy .nova-cheek,
+.nova--wave .nova-cheek { opacity: .62; }
+.nova .nova-z { animation: nova-z 2.4s ease-in-out infinite; }
+
+@keyframes nova-bob   { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-5px) } }
+@keyframes nova-hop   { 0%,100% { transform: translateY(0) scale(1,1) } 30% { transform: translateY(-9px) scale(.98,1.03) } 60% { transform: translateY(0) scale(1.03,.97) } }
+@keyframes nova-floor { 0%,100% { transform: scale(1); opacity: 1 } 50% { transform: scale(.86); opacity: .7 } }
+@keyframes nova-pulse { 0%,100% { opacity: 1 } 50% { opacity: .75 } }
+@keyframes nova-flap-l { 0%,100% { transform: rotate(0) } 50% { transform: rotate(7deg) } }
+@keyframes nova-flap-r { 0%,100% { transform: rotate(0) } 50% { transform: rotate(-7deg) } }
+@keyframes nova-wave  { 0%,100% { transform: rotate(-4deg) } 50% { transform: rotate(-20deg) } }
+@keyframes nova-blink { 0%,93%,100% { transform: scaleY(1) } 95% { transform: scaleY(.1) } }
+@keyframes nova-z     { 0% { opacity: 0; transform: translate(0,4px) } 40% { opacity: 1 } 100% { opacity: 0; transform: translate(6px,-8px) } }
+
+@media (prefers-reduced-motion: reduce) {
+  .nova *, .nova { animation: none !important; transition: none !important; }
+}
+
+/* Speech bubble used wherever Nova talks */
+.nova-say {
+  position: relative;
+  background: rgba(8, 19, 26, .92);
+  color: #F1F6F9;
+  border: 1px solid rgba(190, 225, 245, .16);
+  border-radius: 14px;
+  padding: 10px 14px;
+  font: 500 13.5px/1.45 Inter, system-ui, sans-serif;
+  box-shadow: 0 12px 40px -12px rgba(2, 151, 222, .45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.nova-say--light {
+  background: #fff;
+  color: #02070A;
+  border-color: #DCE7EE;
+  box-shadow: 0 12px 32px -14px rgba(2, 7, 10, .25);
+}
+.nova-say b { color: #4CB8F0; font-weight: 600; }
+.nova-say--light b { color: #0277B3; }

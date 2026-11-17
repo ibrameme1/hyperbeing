@@ -69,18 +69,18 @@ function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDe
           {slide.status === 'locked' && (
             <div className="absolute inset-0 flex items-center justify-center rounded-lg"
                  style={{ background: 'rgba(10,10,15,0.7)' }}>
-              <Lock size={18} style={{ color: '#8B80FF' }} />
+              <Lock size={18} style={{ color: '#4CB8F0' }} />
             </div>
           )}
           {slide.status !== 'generating' && slide.status !== 'error' && slide.status !== 'locked' && slide.status !== 'loading' &&
            (!slide.image_data || slide.image_data === '' || slide.image_data?.startsWith('data:image/svg+xml')) && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 rounded-lg"
-                 style={{ background: 'rgba(91,80,255,0.15)' }}>
-              <ImageIcon size={16} style={{ color: '#8B80FF' }} />
+                 style={{ background: 'rgba(2,151,222,0.15)' }}>
+              <ImageIcon size={16} style={{ color: '#4CB8F0' }} />
               <button
                 onPointerUp={e => { e.stopPropagation(); if (!wasDragging.current) onRetry(idx); }}
                 className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold text-white"
-                style={{ background: '#5B50FF' }}
+                style={{ background: '#0297DE' }}
               >
                 <RefreshCw size={9} /> Retry
               </button>
@@ -99,7 +99,7 @@ function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDe
       </div>
       <span
         className={`text-xs font-medium transition-colors select-none ${isCurrent ? '' : 'text-gray-400 dark:text-zinc-500'}`}
-        style={isCurrent ? { color: '#8B80FF' } : undefined}
+        style={isCurrent ? { color: '#4CB8F0' } : undefined}
       >
         {idx + 1}
       </span>
@@ -599,7 +599,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
 
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <div className="w-7 h-7 flex items-center justify-center flex-shrink-0"
-               style={{ background: '#5B50FF', clipPath: 'polygon(0 0, 100% 0, 100% 78%, 78% 100%, 0 100%)' }}>
+               style={{ background: '#0297DE', clipPath: 'polygon(0 0, 100% 0, 100% 78%, 78% 100%, 0 100%)' }}>
             <span style={{ fontFamily: 'Inter, Arial, sans-serif', fontWeight: 900, color: '#fff', fontSize: 13, letterSpacing: '-0.1em', paddingRight: '0.1em', display: 'block', lineHeight: 1 }}>HB</span>
           </div>
 
@@ -630,7 +630,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
             <div className="flex items-center gap-1.5 min-w-0">
               <button
                 onClick={() => setTitleEditing(true)}
-                className="font-semibold text-gray-900 dark:text-zinc-100 text-sm truncate transition-colors group flex items-center gap-1 hover:text-[#6E63FF] dark:hover:text-[#8B80FF]"
+                className="font-semibold text-gray-900 dark:text-zinc-100 text-sm truncate transition-colors group flex items-center gap-1 hover:text-[#1AA6E8] dark:hover:text-[#4CB8F0]"
                 title="Click to rename"
               >
                 {titleValue}
@@ -667,7 +667,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
             disabled={exportingPDF || exportingImages || exportingPPTX}
             className="export-cta-btn flex items-center gap-1.5 px-3 py-1.5 text-white transition-all duration-150 active:scale-95"
             style={{
-              background: '#5B50FF',
+              background: '#0297DE',
               borderRadius: 6,
               fontFamily: 'Inter, sans-serif',
               fontWeight: 600,
@@ -687,26 +687,26 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 top-10 bg-white dark:bg-[#141414] shadow-ios-xl border border-gray-100 dark:border-[#1e1e1e] py-2 w-56 z-50"
+                className="absolute right-0 top-10 bg-white dark:bg-[#08131A] shadow-ios-xl border border-gray-100 dark:border-[#0F1F28] py-2 w-56 z-50"
                 style={{ borderRadius: 12 }}
               >
                 <button onClick={handleExportImages} className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-sm text-gray-800 dark:text-[#f0f0ee]">
-                  <Images size={15} style={{ color: '#8B80FF' }} />
+                  <Images size={15} style={{ color: '#4CB8F0' }} />
                   Download as Images
                 </button>
                 <button onClick={handleExportPDF} className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-sm text-gray-800 dark:text-[#f0f0ee]">
-                  <FileDown size={15} style={{ color: '#8B80FF' }} />
+                  <FileDown size={15} style={{ color: '#4CB8F0' }} />
                   Export as PDF
                 </button>
                 <button onClick={handleExportPPTX} className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-sm text-gray-800 dark:text-[#f0f0ee]">
-                  <Presentation size={15} style={{ color: '#8B80FF' }} />
+                  <Presentation size={15} style={{ color: '#4CB8F0' }} />
                   Export as PowerPoint
                 </button>
               </motion.div>
             )}
           </AnimatePresence>
           {exportError && (
-            <p role="alert" className="absolute right-0 top-10 w-64 text-xs px-3 py-2 bg-white dark:bg-[#141414] border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 z-40" style={{ borderRadius: 8 }}>
+            <p role="alert" className="absolute right-0 top-10 w-64 text-xs px-3 py-2 bg-white dark:bg-[#08131A] border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 z-40" style={{ borderRadius: 8 }}>
               {exportError}
             </p>
           )}
@@ -811,7 +811,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                           <button
                             onClick={() => { setShowEditConfirm(false); setEditorOpen(true); }}
                             className="px-3 py-1.5 rounded-full text-xs font-bold text-white"
-                            style={{ background: '#5B50FF' }}
+                            style={{ background: '#0297DE' }}
                           >
                             Edit layers
                           </button>
@@ -819,7 +819,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                         <button
                           onClick={() => { setShowEditConfirm(false); setShowEditPrompt(true); }}
                           className={canEditLayers ? 'px-3 py-1.5 rounded-full text-xs font-bold text-[#1a1a2e] border border-gray-200 hover:bg-gray-50' : 'px-3 py-1.5 rounded-full text-xs font-bold text-white'}
-                          style={canEditLayers ? undefined : { background: '#5B50FF' }}
+                          style={canEditLayers ? undefined : { background: '#0297DE' }}
                         >
                           {canEditLayers ? 'Describe a change' : 'Edit'}
                         </button>
@@ -907,15 +907,15 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                           aria-label="Use the deck's files for this edit"
                           aria-expanded={showEditFiles}
                         >
-                          <FileText size={13} className={editAssetIds.length ? 'text-[#8B80FF]' : 'text-white/40'} />
-                          {editAssetIds.length > 0 && <span className="text-[10px] font-bold text-[#8B80FF]">{editAssetIds.length}</span>}
+                          <FileText size={13} className={editAssetIds.length ? 'text-[#4CB8F0]' : 'text-white/40'} />
+                          {editAssetIds.length > 0 && <span className="text-[10px] font-bold text-[#4CB8F0]">{editAssetIds.length}</span>}
                         </button>
                       </div>
                       <button
                         onClick={handleEditSubmit}
                         disabled={!editInstruction.trim() || editLoading || isUpdating}
                         className="w-9 h-9 rounded-2xl flex items-center justify-center text-white transition-all duration-150 active:scale-95 disabled:opacity-40 flex-shrink-0"
-                        style={{ background: '#5B50FF' }}
+                        style={{ background: '#0297DE' }}
                       >
                         {editLoading ? <Loader2 size={15} className="animate-spin" /> : <Send size={14} />}
                       </button>
@@ -939,13 +939,13 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               {/* Missing image overlay */}
               {isMissingImage && (
                 <div className="absolute inset-0 rounded-xl flex flex-col items-center justify-center gap-3"
-                     style={{ background: 'rgba(91,80,255,0.12)', backdropFilter: 'blur(2px)' }}>
-                  <ImageIcon size={28} style={{ color: 'rgba(91,80,255,0.6)' }} />
-                  <p className="text-sm font-semibold" style={{ color: '#5B50FF' }}>Image not generated</p>
+                     style={{ background: 'rgba(2,151,222,0.12)', backdropFilter: 'blur(2px)' }}>
+                  <ImageIcon size={28} style={{ color: 'rgba(2,151,222,0.6)' }} />
+                  <p className="text-sm font-semibold" style={{ color: '#0297DE' }}>Image not generated</p>
                   <button
                     onClick={() => handleRetrySlide(current)}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-colors active:scale-95"
-                    style={{ background: '#5B50FF' }}
+                    style={{ background: '#0297DE' }}
                   >
                     <RefreshCw size={13} /> Regenerate
                   </button>
@@ -1002,7 +1002,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
       </div>
 
       {/* ── Bottom panel ─────────────────────────────────────── */}
-      <div className="flex-shrink-0 bg-white dark:bg-[#141414] border-t border-gray-200 dark:border-[#1e1e1e]">
+      <div className="flex-shrink-0 bg-white dark:bg-[#08131A] border-t border-gray-200 dark:border-[#0F1F28]">
 
         {/* Filmstrip */}
         <Reorder.Group
@@ -1064,7 +1064,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               <div className="flex items-center justify-between px-6 pt-6 pb-4">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 flex items-center justify-center"
-                       style={{ background: '#5B50FF', borderRadius: 12 }}>
+                       style={{ background: '#0297DE', borderRadius: 12 }}>
                     <Plus size={15} className="text-white" />
                   </div>
                   <div>
@@ -1091,7 +1091,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                             ? 'border-transparent text-white'
                             : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-400 bg-gray-50 dark:bg-zinc-800 hover:border-gray-300 dark:hover:border-zinc-600'
                         }`}
-                        style={addCount === n ? { background: '#5B50FF' } : {}}
+                        style={addCount === n ? { background: '#0297DE' } : {}}
                       >
                         {n}
                       </button>
@@ -1103,7 +1103,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                           ? 'border-transparent text-white'
                           : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-400 bg-gray-50 dark:bg-zinc-800 hover:border-gray-300 dark:hover:border-zinc-600'
                       }`}
-                      style={addCount === 'auto' ? { background: '#5B50FF' } : {}}
+                      style={addCount === 'auto' ? { background: '#0297DE' } : {}}
                     >
                       ✦ Nova decides
                     </button>
@@ -1159,7 +1159,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   )}
                   <button
                     onClick={() => addFileRef.current?.click()}
-                    className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-zinc-400 transition-colors hover:text-[#6E63FF] dark:hover:text-[#8B80FF]"
+                    className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-zinc-400 transition-colors hover:text-[#1AA6E8] dark:hover:text-[#4CB8F0]"
                   >
                     <Paperclip size={12} />
                     Attach reference images
@@ -1170,7 +1170,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   onClick={handleAddSlides}
                   disabled={!addDesc.trim() || addLoading}
                   className="w-full py-3 rounded-2xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-40"
-                  style={{ background: '#5B50FF' }}
+                  style={{ background: '#0297DE' }}
                 >
                   {addLoading ? (
                     <><Loader2 size={16} className="animate-spin" /> Generating…</>
@@ -1219,11 +1219,11 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-              className="fixed top-0 right-0 h-full w-full sm:w-96 bg-white dark:bg-[#141414] border-l border-gray-200 dark:border-[#1e1e1e] z-50 flex flex-col"
+              className="fixed top-0 right-0 h-full w-full sm:w-96 bg-white dark:bg-[#08131A] border-l border-gray-200 dark:border-[#0F1F28] z-50 flex flex-col"
             >
-              <div className="flex items-center justify-between px-4 h-14 border-b border-gray-200 dark:border-[#1e1e1e] flex-shrink-0">
+              <div className="flex items-center justify-between px-4 h-14 border-b border-gray-200 dark:border-[#0F1F28] flex-shrink-0">
                 <h3 className="font-semibold text-sm text-gray-900 dark:text-zinc-100 flex items-center gap-2">
-                  <History size={15} style={{ color: '#8B80FF' }} />
+                  <History size={15} style={{ color: '#4CB8F0' }} />
                   Version history
                 </h3>
                 <button

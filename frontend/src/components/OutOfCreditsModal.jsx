@@ -92,7 +92,7 @@ export default function OutOfCreditsModal({ currentPlan = 'free', details = null
           exit={{ opacity: 0, scale: 0.95, y: 16 }}
           transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
           className="w-full max-w-md overflow-hidden"
-          style={{ background: '#141414', border: '0.5px solid #1e1e1e', borderRadius: 12, padding: 28 }}
+          style={{ background: '#08131A', border: '0.5px solid #0F1F28', borderRadius: 12, padding: 28 }}
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
@@ -140,8 +140,8 @@ export default function OutOfCreditsModal({ currentPlan = 'free', details = null
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         padding: 16,
-                        background: isPopular ? 'rgba(91,80,255,0.06)' : '#0f0f0f',
-                        border: isPopular ? '0.5px solid rgba(91,80,255,0.4)' : '0.5px solid #1e1e1e',
+                        background: isPopular ? 'rgba(2,151,222,0.06)' : '#050D12',
+                        border: isPopular ? '0.5px solid rgba(2,151,222,0.4)' : '0.5px solid #0F1F28',
                         borderRadius: 8,
                         cursor: loading ? 'not-allowed' : 'pointer',
                         opacity: loading ? 0.5 : 1,
@@ -149,8 +149,8 @@ export default function OutOfCreditsModal({ currentPlan = 'free', details = null
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{ width: 32, height: 32, borderRadius: 6, background: 'rgba(91,80,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {loading === key ? <Loader2 size={14} style={{ color: '#8B80FF' }} className="animate-spin" /> : <Icon size={14} style={{ color: '#8B80FF' }} />}
+                        <div style={{ width: 32, height: 32, borderRadius: 6, background: 'rgba(2,151,222,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {loading === key ? <Loader2 size={14} style={{ color: '#4CB8F0' }} className="animate-spin" /> : <Icon size={14} style={{ color: '#4CB8F0' }} />}
                         </div>
                         <div style={{ textAlign: 'left' }}>
                           <p style={{ fontFamily: 'Inter,sans-serif', fontSize: 11, color: '#888888', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>{name}</p>
@@ -161,7 +161,7 @@ export default function OutOfCreditsModal({ currentPlan = 'free', details = null
                         <button
                           onClick={e => { e.stopPropagation(); handleUpgrade(key); }}
                           disabled={!!loading}
-                          style={{ background: '#5B50FF', borderRadius: 6, color: '#fff', fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600, padding: '8px 16px', border: 'none', cursor: 'pointer' }}
+                          style={{ background: '#0297DE', borderRadius: 6, color: '#fff', fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600, padding: '8px 16px', border: 'none', cursor: 'pointer' }}
                         >
                           Upgrade
                         </button>
@@ -176,9 +176,9 @@ export default function OutOfCreditsModal({ currentPlan = 'free', details = null
             {currentPlan !== 'free' && (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0' }}>
-                  <div style={{ flex: 1, height: 1, background: '#1e1e1e' }} />
+                  <div style={{ flex: 1, height: 1, background: '#0F1F28' }} />
                   <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 12, color: '#555555' }}>or</span>
-                  <div style={{ flex: 1, height: 1, background: '#1e1e1e' }} />
+                  <div style={{ flex: 1, height: 1, background: '#0F1F28' }} />
                 </div>
                 <button
                   onClick={handlePortal}
@@ -189,8 +189,8 @@ export default function OutOfCreditsModal({ currentPlan = 'free', details = null
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: 16,
-                    background: '#0f0f0f',
-                    border: '0.5px solid #1e1e1e',
+                    background: '#050D12',
+                    border: '0.5px solid #0F1F28',
                     borderRadius: 8,
                     cursor: loading ? 'not-allowed' : 'pointer',
                     opacity: loading ? 0.5 : 1,

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import NovaMascot from './NovaMascot';
+import Nova from './nova/Nova';
 import { mediaUrl } from '../utils/mediaUrl';
 
 const PLANNING_MESSAGES = [
@@ -30,7 +30,7 @@ function ShaderBackground() {
   if (!MeshGradient) {
     return (
       <div className="absolute inset-0" style={{
-        background: 'linear-gradient(135deg, #080808 0%, #0f0f0f 33%, #1a1540 66%, #5B50FF 100%)'
+        background: 'linear-gradient(135deg, #02070A 0%, #050D12 33%, #0B2A3D 66%, #0297DE 100%)'
       }} />
     );
   }
@@ -38,17 +38,17 @@ function ShaderBackground() {
     <>
       <MeshGradient
         className="absolute inset-0 w-full h-full"
-        colors={['#080808', '#0f0f0f', '#1a1540', '#5B50FF']}
+        colors={['#02070A', '#050D12', '#0B2A3D', '#0297DE']}
         speed={0.4}
-        backgroundColor="#080808"
+        backgroundColor="#02070A"
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
       />
       {DotOrbit && (
         <div className="absolute inset-0 opacity-20">
           <DotOrbit
             className="w-full h-full"
-            dotColor="#5B50FF"
-            orbitColor="#8B80FF"
+            dotColor="#0297DE"
+            orbitColor="#4CB8F0"
             speed={0.6}
             intensity={0.8}
             style={{ width: '100%', height: '100%' }}
@@ -82,10 +82,10 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
         className="relative z-10 flex flex-col items-center gap-6 px-6 text-center"
       >
         {/* Nova mascot */}
-        <NovaMascot size={160} />
+        <Nova size={160} mood="think" />
 
         {/* Status label */}
-        <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#8B80FF', textTransform: 'uppercase' }}>
+        <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#4CB8F0', textTransform: 'uppercase' }}>
           {isGenerating
             ? `Generating slide ${Math.min(completedSlides.length + 1, totalSlides)} of ${totalSlides}`
             : 'Planning deck'}
@@ -116,19 +116,19 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
 
         {/* Progress bar */}
         {totalSlides > 0 ? (
-          <div className="w-64 h-px overflow-hidden" style={{ background: '#2a2a2a' }}>
+          <div className="w-64 h-px overflow-hidden" style={{ background: '#18292F' }}>
             <motion.div
               className="h-full"
-              style={{ background: 'linear-gradient(90deg, #5B50FF, #8B80FF)' }}
+              style={{ background: 'linear-gradient(90deg, #0297DE, #4CB8F0)' }}
               animate={{ width: `${Math.max(progress * 100, 4)}%` }}
               transition={{ duration: 0.6, ease: 'easeOut' }}
             />
           </div>
         ) : (
-          <div className="w-64 h-px overflow-hidden relative" style={{ background: '#1e1e1e' }}>
+          <div className="w-64 h-px overflow-hidden relative" style={{ background: '#0F1F28' }}>
             <motion.div
               className="absolute inset-y-0 w-1/3"
-              style={{ background: 'linear-gradient(90deg, transparent, #5B50FF, #8B80FF, transparent)' }}
+              style={{ background: 'linear-gradient(90deg, transparent, #0297DE, #4CB8F0, transparent)' }}
               animate={{ x: ['-33%', '300%'] }}
               transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut', repeatDelay: 0.2 }}
             />
@@ -155,7 +155,7 @@ export default function LoadingScreen({ generatedSlides = [], totalSlides = 0 })
                   animate={{ opacity: 1, scale: 1, x: 0 }}
                   transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                   className="flex-shrink-0 w-28 overflow-hidden"
-                  style={{ aspectRatio: '16/9', borderRadius: '6px', border: '0.5px solid #1e1e1e' }}
+                  style={{ aspectRatio: '16/9', borderRadius: '6px', border: '0.5px solid #0F1F28' }}
                 >
                   {slide.image_data ? (
                     <img src={mediaUrl(slide.image_data)} alt={slide.title} className="w-full h-full object-cover" />

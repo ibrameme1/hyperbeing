@@ -1,16 +1,25 @@
 # HyperBeing
 
 ## About
-HyperBeing is an AI presentation maker built for hyper-personalized, large-context decks. Hand it a long, messy brief and it keeps the full thread instead of collapsing it into a generic template. It adapts deck style to your niche, so a fintech deck and a fashion deck don't come out looking the same. Built for teams who are tired of burning hours on slides instead of strategy.
+HyperBeing is an AI presentation maker built for hyper-personalized, large-context decks. You give Nova, HyperBeing's AI art director, a written brief (plus PDFs, spreadsheets, Word documents or an old PowerPoint if you have them). Nova reads all of it, proposes a slide plan, and composes every slide from scratch: generated imagery plus real, editable text, charts, shapes and icons, instead of filling in a template. It adapts the deck's style (its "register") to your industry and audience, so a fintech board update and a fashion launch don't come out looking the same. Built for teams who are tired of burning hours on slides instead of strategy.
+
+## How it works
+1. Brief: paste the whole messy thing, or attach files. Nova can also redesign an existing deck.
+2. Plan: Nova reads everything, then proposes a slide map built around your argument.
+3. Compose: every slide is art-directed on its own, in parallel (3 at a time on Basic, 6 on Pro, unlimited on Ultra).
+4. Edit and export: click any text to change it, ask Nova for changes in plain language, then export to PowerPoint (.pptx, with native editable objects), PDF or PNG. Exporting is always free.
+
+## Free trial
+New accounts get 54 free credits, enough for a first 3-slide deck, with no card required. A slide costs 18 credits.
 
 ## Services and Pricing
-Monthly billing:
-- Basic: $25/month
-- Pro: $65/month
-- Ultra 1: $149/month
-- Ultra 2: $209/month
-- Ultra 3: $269/month
-- Ultra 4: $299/month
+Monthly billing (monthly credits in brackets):
+- Basic: $25/month (1,200 credits)
+- Pro: $65/month (3,200 credits)
+- Ultra 1: $149/month (8,000 credits)
+- Ultra 2: $209/month (11,200 credits)
+- Ultra 3: $269/month (14,400 credits)
+- Ultra 4: $299/month (16,000 credits)
 
 Annual billing (billed yearly, shown as per-month cost):
 - Basic: $20/month

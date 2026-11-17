@@ -84,7 +84,7 @@ export default function FeedbackButton() {
                   style={{
                     width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                     padding: '10px 14px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                    background: '#5B50FF', color: '#fff', fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: 13,
+                    background: '#0297DE', color: '#fff', fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: 13,
                     opacity: !message.trim() || status === 'sending' ? 0.6 : 1,
                   }}
                 >
@@ -104,9 +104,9 @@ export default function FeedbackButton() {
         aria-label="Send feedback"
         style={{
           width: 48, height: 48, borderRadius: '50%', border: 'none', cursor: 'pointer',
-          background: '#5B50FF', color: '#fff',
+          background: '#0297DE', color: '#fff',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 4px 16px rgba(91,80,255,0.4)',
+          boxShadow: '0 4px 16px rgba(2,151,222,0.4)',
         }}
       >
         {open ? <X size={20} /> : <MessageCircle size={20} />}

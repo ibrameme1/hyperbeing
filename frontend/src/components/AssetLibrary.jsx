@@ -92,7 +92,7 @@ export default function AssetLibrary({ presentationId, selected, onChange, defau
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className={`flex items-center gap-1 text-xs ${muted} hover:text-[#8B80FF] transition-colors`}
+          className={`flex items-center gap-1 text-xs ${muted} hover:text-[#4CB8F0] transition-colors`}
         >
           <Plus size={12} /> Add file
         </button>
@@ -118,7 +118,7 @@ export default function AssetLibrary({ presentationId, selected, onChange, defau
                   aria-label={`Let Nova read ${a.name}`}
                   onClick={() => toggle(a.id)}
                   className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 border transition-colors"
-                  style={{ background: on ? '#5B50FF' : 'transparent', borderColor: on ? '#5B50FF' : (dark ? 'rgba(255,255,255,0.3)' : '#c4c4c4') }}
+                  style={{ background: on ? '#0297DE' : 'transparent', borderColor: on ? '#0297DE' : (dark ? 'rgba(255,255,255,0.3)' : '#c4c4c4') }}
                 >
                   {on && <Check size={12} className="text-white" />}
                 </button>
@@ -127,14 +127,14 @@ export default function AssetLibrary({ presentationId, selected, onChange, defau
                   <p className={`text-xs font-medium truncate ${text}`} title={a.name}>{a.name}</p>
                   <p className={`text-[11px] ${muted}`}>{assetMetaLabel(a)}</p>
                 </button>
-                <button type="button" onClick={() => download(a)} aria-label={`Download ${a.name}`} className={`p-1 rounded-md ${muted} hover:text-[#8B80FF]`}><Download size={13} /></button>
+                <button type="button" onClick={() => download(a)} aria-label={`Download ${a.name}`} className={`p-1 rounded-md ${muted} hover:text-[#4CB8F0]`}><Download size={13} /></button>
                 <button type="button" onClick={() => remove(a)} aria-label={`Remove ${a.name}`} className={`p-1 rounded-md ${muted} hover:text-red-500`}><Trash2 size={13} /></button>
               </div>
             );
           })}
           {uploading.map(n => (
             <div key={n} className={`flex items-center gap-2 rounded-xl px-3 py-2 ${rowBg}`}>
-              <Loader2 size={14} className="animate-spin text-[#8B80FF]" />
+              <Loader2 size={14} className="animate-spin text-[#4CB8F0]" />
               <p className={`text-xs truncate ${muted}`}>Checking {n}…</p>
             </div>
           ))}

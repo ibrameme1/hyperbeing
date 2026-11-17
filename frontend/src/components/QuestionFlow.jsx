@@ -79,7 +79,7 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 16 }}
         className="w-full max-w-lg overflow-hidden"
-        style={{ background: '#141414', border: '0.5px solid #1e1e1e', borderRadius: 12 }}
+        style={{ background: '#08131A', border: '0.5px solid #0F1F28', borderRadius: 12 }}
       >
         {/* Header */}
         <div style={{ padding: '24px 24px 16px' }}>
@@ -88,7 +88,7 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
               <div
                 style={{
                   width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: '#5B50FF',
+                  background: '#0297DE',
                 }}
               >
                 <Sparkles size={13} style={{ color: '#fff' }} />
@@ -105,7 +105,7 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
           {/* Progress bar */}
           <div style={{ width: '100%', height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 9999, overflow: 'hidden' }}>
             <motion.div
-              style={{ height: '100%', background: '#5B50FF', borderRadius: 9999 }}
+              style={{ height: '100%', background: '#0297DE', borderRadius: 9999 }}
               animate={{ width: `${((currentIndex + 1) / total) * 100}%` }}
               transition={{ duration: 0.4, ease: 'easeOut' }}
             />
@@ -161,8 +161,8 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
                         fontFamily: 'Inter,sans-serif',
                         fontSize: 14,
                         fontWeight: 600,
-                        border: '0.5px solid rgba(91,80,255,0.4)',
-                        background: 'rgba(91,80,255,0.1)',
+                        border: '0.5px solid rgba(2,151,222,0.4)',
+                        background: 'rgba(2,151,222,0.1)',
                         color: '#f0f0ee',
                         cursor: 'pointer',
                         transition: 'all 0.15s',
@@ -172,7 +172,7 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
                         fontFamily: 'Inter,sans-serif',
                         fontSize: 14,
                         fontWeight: 600,
-                        border: '0.5px solid #1e1e1e',
+                        border: '0.5px solid #0F1F28',
                         background: 'rgba(255,255,255,0.03)',
                         color: '#b8b8b8',
                         cursor: 'pointer',
@@ -192,8 +192,8 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
-                  background: '#0f0f0f',
-                  border: '0.5px solid #1e1e1e',
+                  background: '#050D12',
+                  border: '0.5px solid #0F1F28',
                   borderRadius: 6,
                   padding: '10px 14px',
                 }}
@@ -219,7 +219,7 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
                     onClick={handleNext}
                     style={{
                       width: 24, height: 24, borderRadius: 6, display: 'flex', alignItems: 'center',
-                      justifyContent: 'center', flexShrink: 0, background: '#5B50FF', border: 'none', cursor: 'pointer',
+                      justifyContent: 'center', flexShrink: 0, background: '#0297DE', border: 'none', cursor: 'pointer',
                     }}
                   >
                     <Send size={11} style={{ color: '#fff' }} />
@@ -260,7 +260,7 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
                 fontSize: 13,
                 fontWeight: 600,
                 color: '#fff',
-                background: '#5B50FF',
+                background: '#0297DE',
                 border: 'none',
                 cursor: canProceed ? 'pointer' : 'not-allowed',
                 opacity: canProceed ? 1 : 0.3,

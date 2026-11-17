@@ -4,13 +4,13 @@ import { Eye, EyeOff, Loader2, ArrowRight, Zap, Layers, TrendingUp } from 'lucid
 import { useAuth } from '../contexts/AuthContext';
 import { useSearchParams, Link } from 'react-router-dom';
 import Logo from '../components/Logo';
-import NovaMascot from '../components/NovaMascot';
+import Nova from '../components/nova/Nova';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 const BRAND_FEATURES = [
-  { icon: Zap, title: 'Instant generation', desc: 'A full deck in under 3 minutes', color: '#5B50FF' },
-  { icon: Layers, title: 'AI art direction', desc: 'Every slide professionally designed', color: '#8B5CF6' },
+  { icon: Zap, title: 'Instant generation', desc: 'A full deck in under 3 minutes', color: '#0297DE' },
+  { icon: Layers, title: 'AI art direction', desc: 'Every slide professionally designed', color: '#FC734D' },
   { icon: TrendingUp, title: 'Strategy baked in', desc: 'Nova thinks like a McKinsey + Apple hybrid', color: '#22c55e' },
 ];
 
@@ -27,8 +27,8 @@ function BrandFeature({ icon: Icon, title, desc, color }) {
         <Icon size={16} style={{ color }} />
       </div>
       <div>
-        <p style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: 13, color: '#0d0b1a' }}>{title}</p>
-        <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#6b6490', marginTop: 2 }}>{desc}</p>
+        <p style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: 13, color: '#02070A' }}>{title}</p>
+        <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#5E717D', marginTop: 2 }}>{desc}</p>
       </div>
     </div>
   );
@@ -46,7 +46,13 @@ function GoogleIcon() {
 }
 
 export default function Login() {
-  const [mode, setMode] = useState('login');
+  // /login?mode=signup (every "Start free" link) opens on the sign-up tab.
+  const [mode, setMode] = useState(() => (
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mode') === 'signup' ? 'register' : 'login'
+  ));
+  // Which field has focus, so Nova can react to it (watch the email, look
+  // away from the password).
+  const [focusField, setFocusField] = useState(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -251,16 +257,30 @@ export default function Login() {
   const inputStyle = {
     fontFamily: 'Inter, sans-serif',
     background: '#ffffff',
-    color: '#0d0b1a',
+    color: '#02070A',
     border: '1px solid #e8e8f0',
   };
+
+  // Nova's reaction to the form. Shy (eyes closed) while a hidden password
+  // is typed, worried on an error, thinking while a request is in flight,
+  // delighted once we're waiting on the email code.
+  const novaMood =
+    error || emailError || passwordError || forgotError ? 'sad'
+      : loading || verifying || forgotBusy ? 'think'
+      : pendingEmail || forgotStep === 'done' ? 'happy'
+      : focusField === 'password' && !showPassword ? 'shy'
+      : mode === 'register' && !focusField && !name && !email ? 'wave'
+      : 'idle';
+  // While typing, her eyes follow the text along the field.
+  const typed = focusField === 'email' ? email.length : focusField === 'name' ? name.length : -1;
+  const novaLook = typed >= 0 ? { x: Math.min(1, typed / 28) * 1.6 - 0.8, y: 0.9 } : null;
 
   return (
     <div className="min-h-screen flex" style={{ background: '#f5f5f5' }}>
       {/* ── Left brand panel (desktop only) ── */}
       <div className="hidden lg:flex lg:flex-1 lg:flex-col relative overflow-hidden" style={{ padding: '48px' }}>
         {/* Atmospheric glow, matching the homepage hero */}
-        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 30% 20%, rgba(91,80,255,0.10), transparent 60%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 30% 20%, rgba(2,151,222,0.10), transparent 60%)', pointerEvents: 'none' }} />
 
         <div style={{ position: 'relative', zIndex: 1 }}>
           <Link to="/" style={{ display: 'inline-flex', textDecoration: 'none' }}>
@@ -269,13 +289,13 @@ export default function Login() {
         </div>
 
         <div className="flex-1 flex flex-col justify-center" style={{ position: 'relative', zIndex: 1, maxWidth: '460px' }}>
-          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase', marginBottom: '16px' }}>
+          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', letterSpacing: '0.20em', color: '#0297DE', textTransform: 'uppercase', marginBottom: '16px' }}>
             AI Presentation Maker
           </p>
-          <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(32px, 3.4vw, 44px)', fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#0d0b1a', marginBottom: '16px' }}>
+          <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(32px, 3.4vw, 44px)', fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#02070A', marginBottom: '16px' }}>
             Presentations that make people go <em>"how?"</em>
           </h2>
-          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', color: '#3d3660', lineHeight: 1.65, marginBottom: '32px' }}>
+          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', color: '#2B3A44', lineHeight: 1.65, marginBottom: '32px' }}>
             Nova designs every slide like a senior art director. You just describe what you need.
           </p>
           <div className="flex flex-col gap-2.5">
@@ -287,14 +307,14 @@ export default function Login() {
           className="flex items-center gap-4"
           style={{
             position: 'relative', zIndex: 1,
-            background: '#0f0f0f',
-            border: '0.5px solid #1e1e1e',
+            background: '#050D12',
+            border: '0.5px solid #0F1F28',
             borderRadius: '14px',
             padding: '20px 24px',
-            boxShadow: 'rgba(91,80,255,0.10) 0px 0px 48px -12px',
+            boxShadow: 'rgba(2,151,222,0.10) 0px 0px 48px -12px',
           }}
         >
-          <NovaMascot size={64} />
+          <Nova size={76} mood="happy" follow={false} />
           <div>
             <p style={{ fontFamily: 'Playfair Display, Georgia, serif', fontStyle: 'italic', fontSize: '15px', color: '#f0f0ee', lineHeight: 1.4 }}>
               "It's like Canva and a McKinsey consultant had a very talented baby."
@@ -317,7 +337,7 @@ export default function Login() {
           background: '#ffffff',
           border: '0.5px solid #e8e8f0',
           borderRadius: '8px',
-          boxShadow: 'rgba(91,80,255,0.06) 0px 4px 16px',
+          boxShadow: 'rgba(2,151,222,0.06) 0px 4px 16px',
           padding: '40px',
         }}
       >
@@ -328,18 +348,22 @@ export default function Login() {
           </Link>
         </div>
 
+        <div className="flex flex-col items-center mb-3" aria-hidden="true">
+          <Nova size={92} mood={novaMood} look={novaLook} />
+        </div>
+
         {forgotOpen ? (
           <>
             <h1
               className="text-center mb-1"
-              style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '32px', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.1, color: '#0d0b1a' }}
+              style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '32px', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.1, color: '#02070A' }}
             >
               {forgotStep === 'done' ? 'Password reset' : 'Reset your password'}
             </h1>
 
             {forgotStep === 'request' && (
               <>
-                <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
+                <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
                   Enter your email and we'll send you a code to set a new password.
                 </p>
                 <form onSubmit={handleForgotRequest} className="space-y-3">
@@ -352,7 +376,7 @@ export default function Login() {
                     autoFocus
                     className="w-full px-4 py-3 text-sm focus:outline-none transition-all duration-200"
                     style={{ ...inputStyle, borderRadius: '6px' }}
-                    onFocus={e => { e.target.style.borderColor = '#5B50FF'; e.target.style.boxShadow = '0 0 0 3px rgba(91,80,255,0.35)'; }}
+                    onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; }}
                     onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
                   />
 
@@ -372,9 +396,9 @@ export default function Login() {
                     type="submit"
                     disabled={forgotBusy}
                     className="w-full py-3 font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
-                    style={{ fontFamily: 'Inter, sans-serif', background: '#5B50FF', borderRadius: '6px', boxShadow: 'rgba(91,80,255,0.20) 0px 0px 24px 0px' }}
-                    onMouseEnter={e => { if (!forgotBusy) e.currentTarget.style.background = '#6E63FF'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#5B50FF'; }}
+                    style={{ fontFamily: 'Inter, sans-serif', background: '#0297DE', borderRadius: '6px', boxShadow: 'rgba(2,151,222,0.20) 0px 0px 24px 0px' }}
+                    onMouseEnter={e => { if (!forgotBusy) e.currentTarget.style.background = '#1AA6E8'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#0297DE'; }}
                   >
                     {forgotBusy ? (<><Loader2 size={16} className="animate-spin" /> Sending…</>) : (<>Send reset code <ArrowRight size={15} /></>)}
                   </button>
@@ -384,8 +408,8 @@ export default function Login() {
 
             {forgotStep === 'reset' && (
               <>
-                <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
-                  Enter the 6-digit code sent to <span style={{ color: '#0d0b1a', fontWeight: 600 }}>{forgotEmail}</span> and choose a new password.
+                <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
+                  Enter the 6-digit code sent to <span style={{ color: '#02070A', fontWeight: 600 }}>{forgotEmail}</span> and choose a new password.
                 </p>
                 <form onSubmit={handleForgotReset} className="space-y-3">
                   <input
@@ -398,7 +422,7 @@ export default function Login() {
                     required
                     className="w-full px-4 py-3 text-sm text-center tracking-[0.4em] focus:outline-none transition-all duration-200"
                     style={{ ...inputStyle, borderRadius: '6px' }}
-                    onFocus={e => { e.target.style.borderColor = '#5B50FF'; e.target.style.boxShadow = '0 0 0 3px rgba(91,80,255,0.35)'; }}
+                    onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; }}
                     onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
                   />
                   <div className="relative">
@@ -411,14 +435,14 @@ export default function Login() {
                       required
                       className="w-full px-4 py-3 pr-12 text-sm focus:outline-none transition-all duration-200"
                       style={{ ...inputStyle, borderRadius: '6px' }}
-                      onFocus={e => { e.target.style.borderColor = '#5B50FF'; e.target.style.boxShadow = '0 0 0 3px rgba(91,80,255,0.35)'; }}
+                      onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; }}
                       onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
                     />
                     <button
                       type="button"
                       onClick={() => setShowForgotPw(v => !v)}
                       className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors"
-                      style={{ color: '#6b6490' }}
+                      style={{ color: '#5E717D' }}
                     >
                       {showForgotPw ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
@@ -432,7 +456,7 @@ export default function Login() {
                     required
                     className="w-full px-4 py-3 text-sm focus:outline-none transition-all duration-200"
                     style={{ ...inputStyle, borderRadius: '6px' }}
-                    onFocus={e => { e.target.style.borderColor = '#5B50FF'; e.target.style.boxShadow = '0 0 0 3px rgba(91,80,255,0.35)'; }}
+                    onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; }}
                     onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
                   />
 
@@ -449,40 +473,40 @@ export default function Login() {
                   </AnimatePresence>
 
                   {forgotNote && (
-                    <p className="text-center text-xs" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>{forgotNote}</p>
+                    <p className="text-center text-xs" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>{forgotNote}</p>
                   )}
 
                   <button
                     type="submit"
                     disabled={forgotBusy || forgotCode.length < 6 || !forgotNewPw || !forgotConfirmPw}
                     className="w-full py-3 font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
-                    style={{ fontFamily: 'Inter, sans-serif', background: '#5B50FF', borderRadius: '6px', boxShadow: 'rgba(91,80,255,0.20) 0px 0px 24px 0px' }}
-                    onMouseEnter={e => { if (!forgotBusy) e.currentTarget.style.background = '#6E63FF'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#5B50FF'; }}
+                    style={{ fontFamily: 'Inter, sans-serif', background: '#0297DE', borderRadius: '6px', boxShadow: 'rgba(2,151,222,0.20) 0px 0px 24px 0px' }}
+                    onMouseEnter={e => { if (!forgotBusy) e.currentTarget.style.background = '#1AA6E8'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#0297DE'; }}
                   >
                     {forgotBusy ? (<><Loader2 size={16} className="animate-spin" /> Resetting…</>) : (<>Reset password <ArrowRight size={15} /></>)}
                   </button>
                 </form>
 
-                <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
+                <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
                   Didn't get it?{' '}
-                  <button type="button" onClick={handleForgotResend} className="underline" style={{ color: '#5B50FF' }}>Resend code</button>
+                  <button type="button" onClick={handleForgotResend} className="underline" style={{ color: '#0297DE' }}>Resend code</button>
                 </p>
               </>
             )}
 
             {forgotStep === 'done' && (
               <>
-                <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
+                <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
                   Your password has been updated. You can now sign in with your new password.
                 </p>
                 <button
                   type="button"
                   onClick={() => { closeForgot(); setMode('login'); setPassword(''); if (forgotEmail) setEmail(forgotEmail.trim()); }}
                   className="w-full py-3 font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98]"
-                  style={{ fontFamily: 'Inter, sans-serif', background: '#5B50FF', borderRadius: '6px', boxShadow: 'rgba(91,80,255,0.20) 0px 0px 24px 0px' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = '#6E63FF'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = '#5B50FF'; }}
+                  style={{ fontFamily: 'Inter, sans-serif', background: '#0297DE', borderRadius: '6px', boxShadow: 'rgba(2,151,222,0.20) 0px 0px 24px 0px' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#1AA6E8'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#0297DE'; }}
                 >
                   Back to sign in <ArrowRight size={15} />
                 </button>
@@ -490,8 +514,8 @@ export default function Login() {
             )}
 
             {forgotStep !== 'done' && (
-              <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
-                <button type="button" onClick={closeForgot} className="underline" style={{ color: '#6b6490' }}>
+              <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
+                <button type="button" onClick={closeForgot} className="underline" style={{ color: '#5E717D' }}>
                   Back to sign in
                 </button>
               </p>
@@ -501,12 +525,12 @@ export default function Login() {
           <>
             <h1
               className="text-center mb-1"
-              style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '32px', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.1, color: '#0d0b1a' }}
+              style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '32px', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.1, color: '#02070A' }}
             >
               Check your email
             </h1>
-            <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
-              We sent a 6-digit code to <span style={{ color: '#0d0b1a', fontWeight: 600 }}>{pendingEmail}</span>.{' '}
+            <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
+              We sent a 6-digit code to <span style={{ color: '#02070A', fontWeight: 600 }}>{pendingEmail}</span>.{' '}
               {verifyContext === 'login'
                 ? "It's a one-time check to verify your account — enter it below to continue."
                 : 'Enter it below to finish signing up.'}
@@ -523,7 +547,7 @@ export default function Login() {
                 required
                 className="w-full px-4 py-3 text-sm text-center tracking-[0.4em] focus:outline-none transition-all duration-200"
                 style={{ ...inputStyle, borderRadius: '6px' }}
-                onFocus={e => { e.target.style.borderColor = '#5B50FF'; e.target.style.boxShadow = '0 0 0 3px rgba(91,80,255,0.35)'; }}
+                onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; }}
                 onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
               />
 
@@ -540,30 +564,30 @@ export default function Login() {
               </AnimatePresence>
 
               {resendNote && (
-                <p className="text-center text-xs" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>{resendNote}</p>
+                <p className="text-center text-xs" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>{resendNote}</p>
               )}
 
               <button
                 type="submit"
                 disabled={verifying || code.length < 6}
                 className="w-full py-3 font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
-                style={{ fontFamily: 'Inter, sans-serif', background: '#5B50FF', borderRadius: '6px', boxShadow: 'rgba(91,80,255,0.20) 0px 0px 24px 0px' }}
-                onMouseEnter={e => { if (!verifying && code.length >= 6) e.currentTarget.style.background = '#6E63FF'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = '#5B50FF'; }}
+                style={{ fontFamily: 'Inter, sans-serif', background: '#0297DE', borderRadius: '6px', boxShadow: 'rgba(2,151,222,0.20) 0px 0px 24px 0px' }}
+                onMouseEnter={e => { if (!verifying && code.length >= 6) e.currentTarget.style.background = '#1AA6E8'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#0297DE'; }}
               >
                 {verifying ? (<><Loader2 size={16} className="animate-spin" /> Verifying…</>) : (<>Verify & continue <ArrowRight size={15} /></>)}
               </button>
             </form>
 
-            <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
+            <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
               Didn't get it?{' '}
-              <button type="button" onClick={handleResend} className="underline" style={{ color: '#5B50FF' }}>Resend code</button>
+              <button type="button" onClick={handleResend} className="underline" style={{ color: '#0297DE' }}>Resend code</button>
               {' · '}
               <button
                 type="button"
                 onClick={() => { setPendingEmail(''); setCode(''); setError(''); setResendNote(''); }}
                 className="underline"
-                style={{ color: '#6b6490' }}
+                style={{ color: '#5E717D' }}
               >
                 Use a different email
               </button>
@@ -579,15 +603,17 @@ export default function Login() {
             fontWeight: 400,
             letterSpacing: '-0.02em',
             lineHeight: 1.1,
-            color: '#0d0b1a',
+            color: '#02070A',
           }}
         >
           {mode === 'login' ? 'Welcome back' : 'Create your account'}
         </h1>
-        <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
-          {mode === 'login'
-            ? 'Good to see you again. Nova missed you.'
-            : 'Takes 30 seconds. No credit card.'}
+        <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
+          {focusField === 'password' && !showPassword
+            ? "I'm not looking. Promise."
+            : mode === 'login'
+              ? 'Good to see you again. Nova missed you.'
+              : "Hi, I'm Nova. Sign up and we'll make your first deck together. No card needed."}
         </p>
 
         {/* Toggle */}
@@ -598,8 +624,8 @@ export default function Login() {
               onClick={() => { setMode(m); setError(''); setEmailError(''); setPasswordError(''); }}
               className="flex-1 py-2.5 text-sm font-semibold transition-all duration-200"
               style={mode === m
-                ? { background: '#ffffff', color: '#0d0b1a', borderRadius: '6px', boxShadow: 'rgba(91,80,255,0.06) 0px 4px 16px' }
-                : { color: '#6b6490', borderRadius: '6px', fontFamily: 'Inter, sans-serif' }}
+                ? { background: '#ffffff', color: '#02070A', borderRadius: '6px', boxShadow: 'rgba(2,151,222,0.06) 0px 4px 16px' }
+                : { color: '#5E717D', borderRadius: '6px', fontFamily: 'Inter, sans-serif' }}
             >
               {m === 'login' ? 'Sign in' : 'Sign up'}
             </button>
@@ -622,10 +648,11 @@ export default function Login() {
                   value={name}
                   onChange={e => setName(e.target.value)}
                   required
+                  autoComplete="name"
                   className="w-full px-4 py-3 text-sm focus:outline-none transition-all duration-200"
                   style={{ ...inputStyle, borderRadius: '6px' }}
-                  onFocus={e => { e.target.style.borderColor = '#5B50FF'; e.target.style.boxShadow = '0 0 0 3px rgba(91,80,255,0.35)'; }}
-                  onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
+                  onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; setFocusField('name'); }}
+                  onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; setFocusField(null); }}
                 />
               </motion.div>
             )}
@@ -640,8 +667,10 @@ export default function Login() {
               required
               className="w-full px-4 py-3 text-sm focus:outline-none transition-all duration-200"
               style={{ ...inputStyle, borderRadius: '6px' }}
-              onFocus={e => { e.target.style.borderColor = '#5B50FF'; e.target.style.boxShadow = '0 0 0 3px rgba(91,80,255,0.35)'; setEmailError(''); }}
+              autoComplete="email"
+              onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; setEmailError(''); setFocusField('email'); }}
               onBlur={e => {
+                setFocusField(null);
                 e.target.style.borderColor = '#e8e8f0';
                 e.target.style.boxShadow = 'none';
                 if (email && !EMAIL_RE.test(email)) setEmailError('Enter a valid email address.');
@@ -662,8 +691,10 @@ export default function Login() {
                 required
                 className="w-full px-4 py-3 pr-12 text-sm focus:outline-none transition-all duration-200"
                 style={{ ...inputStyle, borderRadius: '6px' }}
-                onFocus={e => { e.target.style.borderColor = '#5B50FF'; e.target.style.boxShadow = '0 0 0 3px rgba(91,80,255,0.35)'; setPasswordError(''); }}
+                autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+                onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; setPasswordError(''); setFocusField('password'); }}
                 onBlur={e => {
+                  setFocusField(null);
                   e.target.style.borderColor = '#e8e8f0';
                   e.target.style.boxShadow = 'none';
                   if (mode === 'register' && password && password.length < 8) setPasswordError('Password must be at least 8 characters.');
@@ -673,7 +704,7 @@ export default function Login() {
                 type="button"
                 onClick={() => setShowPassword(v => !v)}
                 className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors"
-                style={{ color: '#6b6490' }}
+                style={{ color: '#5E717D' }}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
@@ -687,7 +718,7 @@ export default function Login() {
                   type="button"
                   onClick={openForgot}
                   className="text-xs underline"
-                  style={{ fontFamily: 'Inter, sans-serif', color: '#5B50FF' }}
+                  style={{ fontFamily: 'Inter, sans-serif', color: '#0297DE' }}
                 >
                   Forgot password?
                 </button>
@@ -715,12 +746,12 @@ export default function Login() {
             className="w-full py-3 font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
             style={{
               fontFamily: 'Inter, sans-serif',
-              background: '#5B50FF',
+              background: '#0297DE',
               borderRadius: '6px',
-              boxShadow: 'rgba(91,80,255,0.20) 0px 0px 24px 0px',
+              boxShadow: 'rgba(2,151,222,0.20) 0px 0px 24px 0px',
             }}
-            onMouseEnter={e => { if (!loading) e.currentTarget.style.background = '#6E63FF'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = '#5B50FF'; }}
+            onMouseEnter={e => { if (!loading) e.currentTarget.style.background = '#1AA6E8'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#0297DE'; }}
           >
             {loading ? (
               <><Loader2 size={16} className="animate-spin" /> {mode === 'login' ? 'Signing in…' : 'Creating account…'}</>
@@ -733,7 +764,7 @@ export default function Login() {
         {/* Divider */}
         <div className="flex items-center gap-3 my-5">
           <div className="flex-1 h-px" style={{ background: '#e8e8f0' }} />
-          <span className="text-xs font-medium" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>or continue with</span>
+          <span className="text-xs font-medium" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>or continue with</span>
           <div className="flex-1 h-px" style={{ background: '#e8e8f0' }} />
         </div>
 
@@ -749,7 +780,7 @@ export default function Login() {
                 background: '#ffffff',
                 border: '1px solid #e8e8f0',
                 borderRadius: '6px',
-                color: '#0d0b1a',
+                color: '#02070A',
               }}
             >
               <Icon />
@@ -759,11 +790,11 @@ export default function Login() {
         </div>
 
         {mode === 'register' && (
-          <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#6b6490' }}>
+          <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
             By signing up you agree to our{' '}
-            <Link to="/terms" className="underline" style={{ color: '#5B50FF' }}>Terms</Link>
+            <Link to="/terms" className="underline" style={{ color: '#0297DE' }}>Terms</Link>
             {' '}and{' '}
-            <Link to="/privacy" className="underline" style={{ color: '#5B50FF' }}>Privacy Policy</Link>
+            <Link to="/privacy" className="underline" style={{ color: '#0297DE' }}>Privacy Policy</Link>
           </p>
         )}
         </>

@@ -1,6 +1,6 @@
 ---
-title: "Pick your plan, start creating — HyperBeing"
-description: "HyperBeing — AI-powered presentation maker"
+title: "HyperBeing: AI presentations that make people go how?"
+description: "HyperBeing is an AI presentation maker. Give Nova your brief, files or old deck and every slide comes back art-directed, with a real argument and editable text. Export to PowerPoint, PDF or PNG. 54 free credits, no card required."
 url: "https://www.hyperbeing.co/pricing"
 last_updated: 2026-11-17
 ---

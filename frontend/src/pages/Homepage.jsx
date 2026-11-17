@@ -1,1277 +1,735 @@
-import { useNavigate, Link } from 'react-router-dom';
-import { useState, useEffect, useRef } from 'react';
-import { motion, useInView, AnimatePresence, useScroll, useTransform } from 'framer-motion';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import TextRotate from '../components/TextRotate';
-import NovaMascot from '../components/NovaMascot';
-import Logo from '../components/Logo';
+import LandingNova from '../components/nova/LandingNova';
+import {
+  thumb, full, SLIDE_ALT, ALL, WALL, CASE, RANGE, STUDIO_SLIDES,
+  PLANS, ULTRA_TIERS, ULTRA_FEATURES, FAQ, CREDITS_PER_DECK, FREE_CREDITS,
+} from './landingData';
+import './landing.css';
 
+// The marketing landing page. Ported from the approved standalone design:
+// one midnight stage lit from below. Midnight Black carries the page,
+// Electric Blue is the light, Cantaloupe only ever appears as warm light at
+// the horizon.
+//
+// Two rules keep it crawlable:
+//  1. Every word and image is in the JSX (no content built in effects), so
+//     the build-time prerender (scripts/prerender.mjs) captures it as static
+//     HTML for crawlers that don't run JavaScript.
+//  2. Nothing reads window/document during render; motion is wired up in one
+//     effect after mount.
 
-const FEATURES = [
-  { icon: '◈', title: 'Art-directed images', desc: 'Each slide gets its own generated visual. Context-aware, brand-aware, purpose-built.', visual: 'slide-showcase' },
-  { icon: '◎', title: 'Narrative intelligence', desc: 'Claude reads your entire outline before writing a single word. The story comes first.', visual: 'screenshot' },
-  { icon: '▦', title: 'Slide map preview', desc: 'Approve the structure before the images generate. No surprises.', visual: 'slide-map' },
-  { icon: '◉', title: 'Brand memory', desc: 'Upload your brand kit once. Every deck stays on-brand automatically.', soon: true, visual: 'brand-kit' },
-  { icon: '↗', title: 'One-click export', desc: 'Download as PowerPoint, PDF, or shareable link. Integration-ready.', visual: 'export-panel' },
-  { icon: '⬡', title: 'Enterprise grade', desc: 'SSO, audit logs, team workspaces, and volume pricing. Built to scale.', visual: 'enterprise' },
-];
+const fmt = (n) => n.toLocaleString('en-US');
+const annualPrice = (monthly, discount) => Math.round(monthly * (1 - discount));
+const pad = (n) => String(n).padStart(2, '0');
 
-const FAQ_ITEMS = [
-  {
-    q: 'What does HyperBeing do?',
-    a: "HyperBeing is an AI presentation maker that generates fully designed decks from a written brief. It reads the entire brief before building a slide plan, then generates each slide as an art-directed image instead of filling in a template. It's built for consultants, marketers, corporate teams, founders, and investment bankers.",
-  },
-  {
-    q: 'How much does HyperBeing cost?',
-    a: 'Plans range from $25/month (Basic) to $299/month (Ultra 4) on monthly billing. Annual billing lowers the cost, starting at $20/month for Basic and going up to $209/month for Ultra 4. There are six tiers total: Basic, Pro, and Ultra 1 through Ultra 4.',
-  },
-  {
-    q: 'How long does it take to generate a deck?',
-    a: "A typical deck takes 5 to 10 minutes from brief to finished slides. Generation time depends on deck length and how much detail is in the brief. There's no manual design work required in that time.",
-  },
-  {
-    q: 'Do you serve companies outside the United States?',
-    a: 'Yes. HyperBeing is a web-based product available worldwide, with no location restrictions. Teams can sign up and generate decks from any country.',
-  },
-  {
-    q: 'What makes HyperBeing different from tools like Gamma or Canva?',
-    a: "HyperBeing holds large context: you can hand it a long, messy brief and it keeps the full thread instead of collapsing it into a generic template. It also adapts deck style to your industry, so a fintech deck and a fashion deck don't come out looking the same.",
-  },
-  {
-    q: 'What file formats can I export a deck to?',
-    a: "Decks export as PowerPoint (.pptx), PDF, or a shareable link. Exporting doesn't require any file conversion on your end.",
-  },
-  {
-    q: 'Do I need design experience to use HyperBeing?',
-    a: 'No. Each slide is generated as a fully art-directed image directly from your brief, without manual layout or design work. You write or paste the brief, and HyperBeing builds the deck.',
-  },
-  {
-    q: 'How does HyperBeing handle a long, messy brief instead of losing detail?',
-    a: 'HyperBeing reads the entire brief before generating a slide plan, rather than processing it in fragments. This lets it keep specific details, numbers, and structure from a long brief instead of flattening them into a generic template.',
-  },
-  {
-    q: 'Do you offer enterprise features like SSO and audit logs?',
-    a: 'Yes. Higher-tier plans include single sign-on (SSO), audit logs, and team workspaces. Volume pricing is available for larger teams.',
-  },
-];
-
-const FEATURE_SPLITS = [
-  {
-    headline: 'Nova reads your room.',
-    body: 'Paste your brief and Nova — our AI agent — absorbs the whole thing before generating a single question. The plan it builds is specific to you: your audience, your story, your stakes.',
-    visual: 'nova-chat',
-    side: 'right',
-  },
-  {
-    headline: 'The kind of slides that close deals.',
-    body: 'Every slide is a fully art-directed image. No clip art, no templates. Consultants, VCs, and agency leads use HyperBeing for their highest-stakes presentations.',
-    visual: 'slide-showcase',
-    side: 'left',
-  },
-  {
-    headline: '20 slides. Under 3 minutes.',
-    body: 'From a rough outline to a fully designed, image-complete deck. No waiting for a designer. No back-and-forth. Just done.',
-    visual: 'speed-meter',
-    side: 'right',
-  },
-];
-
-/* ─── HB Icon ─── */
-function HBIcon({ size = 32, className = '' }) {
-  return (
-    <div
-      className={`flex items-center justify-center flex-shrink-0 ${className}`}
-      style={{
-        width: size, height: size,
-        background: '#5B50FF',
-        borderRadius: Math.round(size * 0.22),
-      }}
-    >
-      <span style={{ fontFamily: 'Inter,Arial,sans-serif', fontWeight: 900, color: '#fff', fontSize: size * 0.46, letterSpacing: '-0.1em', paddingRight: '0.1em', display: 'block', lineHeight: 1 }}>HB</span>
-    </div>
-  );
-}
-
-/* ─── Scroll-reveal wrapper ─── */
-function Reveal({ children, delay = 0, className = '' }) {
-  const ref = useRef(null);
-  const inView = useInView(ref, { once: true, margin: '-80px' });
-  return (
-    <motion.div
-      ref={ref}
-      initial={{ opacity: 0, y: 28 }}
-      animate={inView ? { opacity: 1, y: 0 } : {}}
-      transition={{ duration: 0.6, delay, ease: [0.16, 1, 0.3, 1] }}
-      className={className}
-    >
-      {children}
-    </motion.div>
-  );
-}
-
-/* ─── Animated product mockup (demo section) ─── */
-function ProductMockup() {
-  const [phase, setPhase] = useState(0); // 0=typing, 1=plan, 2=generating, 3=done
-  const [typed, setTyped] = useState('');
-  const [visibleSlides, setVisibleSlides] = useState(0);
-  const prompt = 'Series A pitch deck for a fintech startup disrupting B2B payments';
-
-  useEffect(() => {
-    let timeout;
-    if (phase === 0) {
-      if (typed.length < prompt.length) {
-        timeout = setTimeout(() => setTyped(prompt.slice(0, typed.length + 1)), 40);
-      } else {
-        timeout = setTimeout(() => setPhase(1), 800);
-      }
-    } else if (phase === 1) {
-      timeout = setTimeout(() => setPhase(2), 1200);
-    } else if (phase === 2) {
-      if (visibleSlides < 6) {
-        timeout = setTimeout(() => setVisibleSlides(v => v + 1), 400);
-      } else {
-        timeout = setTimeout(() => setPhase(3), 600);
-      }
-    } else if (phase === 3) {
-      timeout = setTimeout(() => { setPhase(0); setTyped(''); setVisibleSlides(0); }, 3000);
-    }
-    return () => clearTimeout(timeout);
-  }, [phase, typed, visibleSlides]);
-
-  const slideColors = [
-    'linear-gradient(135deg, #1a1540 0%, #5B50FF 100%)',
-    'linear-gradient(135deg, #0f0f0f 0%, #1e1e1e 100%)',
-    'linear-gradient(135deg, #14102e 0%, #3B2FFF 100%)',
-    'linear-gradient(135deg, #080808 0%, #141414 100%)',
-    'linear-gradient(135deg, #0a0818 0%, #8B80FF 100%)',
-    'linear-gradient(135deg, #0f0f0f 0%, #2a2a2a 100%)',
-  ];
-
-  return (
-    <div style={{ background: '#0f0f0f', borderRadius: '8px', border: '0.5px solid #1e1e1e', overflow: 'hidden' }}>
-      {/* Top bar */}
-      <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #1e1e1e', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1e1e1e' }} />
-        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1e1e1e' }} />
-        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1e1e1e' }} />
-        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#555', letterSpacing: '0.1em', marginLeft: '8px' }}>HYPERBEING STUDIO</span>
-      </div>
-      {/* Content area */}
-      <div style={{ padding: '24px' }}>
-        {/* Input */}
-        <div style={{ marginBottom: '20px' }}>
-          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '8px' }}>PROMPT</p>
-          <div style={{ background: '#141414', borderRadius: '6px', border: '0.5px solid #2a2a2a', padding: '12px 14px', minHeight: '48px' }}>
-            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#f0f0ee' }}>{typed}</span>
-            {phase === 0 && <span style={{ display: 'inline-block', width: '2px', height: '14px', background: '#5B50FF', marginLeft: '2px', verticalAlign: 'text-bottom', animation: 'blink 1s step-end infinite' }} />}
-          </div>
-        </div>
-
-        {/* Slide grid */}
-        <AnimatePresence>
-          {phase >= 1 && (
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-              <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '12px' }}>
-                {phase === 1 ? 'PLANNING STRUCTURE…' : phase === 2 ? 'GENERATING SLIDES…' : 'DECK COMPLETE'}
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <motion.div
-                    key={i}
-                    style={{ aspectRatio: '16/9', borderRadius: '4px', border: '0.5px solid #1e1e1e', overflow: 'hidden', position: 'relative' }}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: i * 0.05 }}
-                  >
-                    {i < visibleSlides ? (
-                      <div style={{ width: '100%', height: '100%', background: slideColors[i], display: 'flex', alignItems: 'flex-end', padding: '6px' }}>
-                        <div style={{ width: '60%', height: '3px', background: 'rgba(255,255,255,0.3)', borderRadius: '2px' }} />
-                      </div>
-                    ) : (
-                      <div style={{ width: '100%', height: '100%', background: '#141414', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {phase >= 2 && i <= visibleSlides && (
-                          <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '1.5px solid #5B50FF', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
-                        )}
-                      </div>
-                    )}
-                  </motion.div>
-                ))}
-              </div>
-              {phase >= 2 && (
-                <div style={{ marginTop: '12px' }}>
-                  <div style={{ height: '1.5px', background: '#1e1e1e', borderRadius: '1px', overflow: 'hidden' }}>
-                    <motion.div
-                      style={{ height: '100%', background: 'linear-gradient(90deg, #5B50FF, #8B80FF)', borderRadius: '1px' }}
-                      animate={{ width: `${Math.round((visibleSlides / 6) * 100)}%` }}
-                      transition={{ duration: 0.4 }}
-                    />
-                  </div>
-                  <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#555', marginTop: '6px' }}>
-                    slide_{String(visibleSlides).padStart(2, '0')}.visual.generating — {Math.round((visibleSlides / 6) * 100)}%
-                  </p>
-                </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Deck thumbnail card (gallery) ─── */
-function DeckCard({ title, category, gradient, delay = 0 }) {
-  const ref = useRef(null);
-  const inView = useInView(ref, { once: true });
-  return (
-    <motion.div
-      ref={ref}
-      initial={{ opacity: 0, y: 20 }}
-      animate={inView ? { opacity: 1, y: 0 } : {}}
-      transition={{ duration: 0.5, delay }}
-      whileHover={{ y: -4, boxShadow: 'rgba(91,80,255,0.3) 0px 0px 24px 0px' }}
-      style={{ borderRadius: '8px', overflow: 'hidden', border: '0.5px solid #1e1e1e', cursor: 'pointer', flexShrink: 0, width: '280px' }}
-    >
-      <div style={{ aspectRatio: '16/9', background: gradient, position: 'relative', padding: '20px' }}>
-        <div style={{ position: 'absolute', bottom: '14px', left: '14px', right: '14px' }}>
-          <div style={{ height: '2px', background: 'rgba(255,255,255,0.2)', borderRadius: '1px', marginBottom: '8px' }} />
-          <div style={{ height: '2px', width: '60%', background: 'rgba(255,255,255,0.12)', borderRadius: '1px' }} />
-        </div>
-        <div style={{ position: 'absolute', top: '12px', left: '12px' }}>
-          <HBIcon size={18} />
-        </div>
-      </div>
-      <div style={{ padding: '12px 14px', background: '#0f0f0f' }}>
-        <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', color: '#8B80FF', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '4px' }}>{category}</p>
-        <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#f0f0ee', fontWeight: 500 }}>{title}</p>
-      </div>
-    </motion.div>
-  );
-}
-
-/* ─── Feature visuals ─── */
-function FeatureVisual({ type }) {
-
-  /* ── Nova chat interface ── */
-  if (type === 'nova-chat') {
-    const plan = [
-      { n: '01', title: 'Market Opportunity', note: 'TAM/SAM/SOM · growth vectors' },
-      { n: '02', title: 'The Problem',         note: 'B2B friction · incumbent gaps' },
-      { n: '03', title: 'Our Solution',         note: 'Core product · differentiation' },
-      { n: '04', title: 'Business Model',       note: 'Revenue · unit economics' },
-      { n: '05', title: 'Traction & Metrics',   note: 'ARR · growth rate · key logos' },
-      { n: '06', title: 'The Ask',              note: 'Raise · use of funds · milestones' },
-    ];
-    return (
-      <div style={{ background: '#080808', borderRadius: '12px', border: '0.5px solid #1a1a1a', overflow: 'hidden', fontFamily: 'Inter, sans-serif' }}>
-        {/* Title bar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '0.5px solid #1a1a1a', background: '#0a0a0b' }}>
-          <div style={{ display: 'flex', gap: 5 }}>
-            {['#ff5f57', '#febc2e', '#28c840'].map((c, i) => (
-              <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: c, opacity: 0.45 }} />
-            ))}
-          </div>
-          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#444', letterSpacing: '0.12em', marginLeft: 6 }}>HYPERBEING · NOVA CHAT</span>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
-            <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e' }} />
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#22c55e' }}>NOVA ONLINE</span>
-          </div>
-        </div>
-
-        {/* Messages */}
-        <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {/* User bubble */}
-          <div style={{ alignSelf: 'flex-end', maxWidth: '78%', background: '#14103a', border: '0.5px solid rgba(91,80,255,0.3)', borderRadius: '10px 10px 2px 10px', padding: '8px 12px' }}>
-            <p style={{ fontSize: 11, color: '#c8c4e8', margin: 0, lineHeight: 1.55 }}>
-              Series A pitch deck for a fintech startup disrupting B2B payments — targeting US mid-market CFOs
-            </p>
-          </div>
-
-          {/* Nova reply — video avatar drops naturally here */}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <div style={{ width: 28, height: 28, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(139,92,246,0.35)', background: '#0a0a0b' }}>
-              <video autoPlay loop muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }}>
-                <source src="/nova-mascot.mp4" type="video/mp4" />
-              </video>
-            </div>
-            <div style={{ flex: 1, background: '#111', border: '0.5px solid #1e1e1e', borderRadius: '2px 10px 10px 10px', padding: '9px 12px' }}>
-              <p style={{ fontSize: 11, color: '#e0dcff', margin: '0 0 3px', lineHeight: 1.55 }}>ok i've read this. strong angle — CFO pain is real.</p>
-              <p style={{ fontSize: 11, color: '#666', margin: 0, lineHeight: 1.5 }}>here's the deck structure i'm building:</p>
-            </div>
-          </div>
-
-          {/* Slide plan card */}
-          <div style={{ background: '#0c0c0c', border: '0.5px solid rgba(91,80,255,0.18)', borderRadius: 8, overflow: 'hidden' }}>
-            <div style={{ padding: '7px 12px', borderBottom: '0.5px solid #161616', display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#5B50FF', letterSpacing: '0.15em' }}>SLIDE PLAN · 12 SLIDES</span>
-              <div style={{ marginLeft: 'auto', background: 'rgba(91,80,255,0.1)', border: '0.5px solid rgba(91,80,255,0.28)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}>
-                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, color: '#8B80FF', fontWeight: 600, letterSpacing: '0.05em' }}>APPROVE →</span>
-              </div>
-            </div>
-            {plan.map(({ n, title, note }) => (
-              <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 12px', borderBottom: '0.5px solid #0f0f0f' }}>
-                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#5B50FF', width: 16, flexShrink: 0 }}>{n}</span>
-                <span style={{ fontSize: 10, color: '#ccc', flex: 1 }}>{title}</span>
-                <span style={{ fontSize: 9, color: '#3a3a3a', fontStyle: 'italic', whiteSpace: 'nowrap' }}>{note}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /* ── Slide output showcase ── */
-  if (type === 'slide-showcase') {
-    const slides = [
-      { g: 'linear-gradient(135deg, #0d0a2e 0%, #5B50FF 100%)', accent: '#8B80FF', n: '01' },
-      { g: 'linear-gradient(135deg, #06101e 0%, #0e4a7a 100%)', accent: '#38bdf8', n: '02' },
-      { g: 'linear-gradient(135deg, #0f0818 0%, #6d28d9 100%)', accent: '#a78bfa', n: '03', selected: true },
-      { g: 'linear-gradient(135deg, #050f0a 0%, #064e3b 100%)', accent: '#34d399', n: '04' },
-      { g: 'linear-gradient(135deg, #140904 0%, #9a3412 100%)', accent: '#fb923c', n: '05' },
-      { g: 'linear-gradient(135deg, #08080f 0%, #2d2b6e 100%)', accent: '#818cf8', n: '06' },
-    ];
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontFamily: 'Inter, sans-serif' }}>
-        {/* Deck meta row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
-          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#5B50FF', letterSpacing: '0.15em' }}>SERIES A PITCH · 12 SLIDES</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e' }} />
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#22c55e' }}>COMPLETE</span>
-          </div>
-        </div>
-
-        {/* 3×2 slide grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7 }}>
-          {slides.map(({ g, accent, n, selected }) => (
-            <div
-              key={n}
-              style={{
-                aspectRatio: '16/9', background: g, borderRadius: 6, overflow: 'hidden',
-                border: selected ? `1.5px solid ${accent}` : '0.5px solid #1a1a1a',
-                position: 'relative',
-                boxShadow: selected ? `0 0 16px rgba(167,139,250,0.22)` : 'none',
-              }}
-            >
-              {/* HB mark */}
-              <div style={{ position: 'absolute', top: 5, left: 5, width: 13, height: 13, background: '#5B50FF', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 900, fontSize: 6, color: '#fff', letterSpacing: '-0.1em' }}>HB</span>
-              </div>
-              {/* Slide index */}
-              <div style={{ position: 'absolute', bottom: 7, left: 7 }}>
-                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 7, color: accent, opacity: 0.9, marginBottom: 3 }}>{n}</div>
-                <div style={{ width: 36, height: 1.5, background: accent, opacity: 0.55, borderRadius: 1 }} />
-                <div style={{ width: 22, height: 1.5, background: accent, opacity: 0.25, borderRadius: 1, marginTop: 3 }} />
-              </div>
-              {/* Status dot */}
-              <div style={{ position: 'absolute', bottom: 6, right: 6, width: 5, height: 5, borderRadius: '50%', background: accent, opacity: 0.65 }} />
-              {/* Selected overlay ring */}
-              {selected && (
-                <div style={{ position: 'absolute', inset: 0, border: `1px solid ${accent}`, borderRadius: 5, opacity: 0.3, pointerEvents: 'none' }} />
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Slide editor strip */}
-        <div style={{ background: '#0a0a0b', border: '0.5px solid #1a1a1a', borderRadius: 8, overflow: 'hidden' }}>
-          <div style={{ padding: '8px 12px', borderBottom: '0.5px solid #111', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#a78bfa' }}>slide_03 · Our Solution</span>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-              {['Regenerate', 'Edit prompt', 'Download'].map(a => (
-                <div key={a} style={{ background: '#161616', border: '0.5px solid #252525', borderRadius: 4, padding: '2px 7px' }}>
-                  <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, color: '#555' }}>{a}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ flex: 1, height: 1, background: 'linear-gradient(to right, rgba(167,139,250,0.4), transparent)' }} />
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#333' }}>art-directed · Imagen 3</span>
-          </div>
-        </div>
-
-        {/* Export row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#0a0a0b', border: '0.5px solid #1a1a1a', borderRadius: 7, padding: '8px 12px' }}>
-          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#444', flex: 1 }}>deck_series_a.pptx · 12 slides · 2.4 MB</span>
-          <div style={{ background: '#5B50FF', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>
-            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, fontWeight: 600, color: '#fff' }}>Export →</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /* ── Speed / generation log ── */
-  if (type === 'speed-meter') {
-    const steps = [
-      { label: 'Brief submitted',      time: '0:00', color: '#22c55e', detail: 'Series A fintech pitch · CFO focus' },
-      { label: 'Nova analyzes brief',  time: '0:14', color: '#22c55e', detail: '5 follow-up questions answered' },
-      { label: 'Slide plan approved',  time: '0:51', color: '#22c55e', detail: '12 slides · 3-act narrative arc' },
-      { label: 'Visuals generating',   time: '1:08', color: '#22c55e', detail: 'Imagen 3 · fully art-directed' },
-      { label: 'Deck complete',        time: '2:47', color: '#5B50FF', detail: 'Export ready', highlight: true },
-    ];
-    return (
-      <div style={{ background: '#080808', border: '0.5px solid #1a1a1a', borderRadius: 12, padding: '22px', fontFamily: 'Inter, sans-serif' }}>
-        {/* Big time */}
-        <div style={{ marginBottom: 24 }}>
-          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#5B50FF', letterSpacing: '0.18em', display: 'block', marginBottom: 10 }}>GENERATION LOG</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-            <span style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 48, color: '#f0f0ee', fontWeight: 400, lineHeight: 1, letterSpacing: '-0.03em' }}>2:47</span>
-            <span style={{ fontSize: 13, color: '#444' }}>total</span>
-          </div>
-          {/* Thin progress bar full */}
-          <div style={{ marginTop: 12, height: 2, background: '#111', borderRadius: 1, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: '100%', background: 'linear-gradient(90deg, #5B50FF, #22c55e)', borderRadius: 1 }} />
-          </div>
-        </div>
-
-        {/* Timeline */}
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {steps.map(({ label, time, color, detail, highlight }, i) => (
-            <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-              {/* Dot + line */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 18, flexShrink: 0 }}>
-                <div style={{
-                  width: highlight ? 10 : 7, height: highlight ? 10 : 7,
-                  borderRadius: '50%', background: color, marginTop: 3, flexShrink: 0,
-                  boxShadow: highlight ? '0 0 10px rgba(91,80,255,0.6)' : 'none',
-                  border: highlight ? '2px solid rgba(91,80,255,0.35)' : 'none',
-                }} />
-                {i < steps.length - 1 && (
-                  <div style={{ width: 1, flex: 1, minHeight: 18, background: 'rgba(34,197,94,0.15)', margin: '3px 0' }} />
-                )}
-              </div>
-              {/* Text */}
-              <div style={{ paddingBottom: i < steps.length - 1 ? 14 : 0, flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                  <span style={{ fontSize: 12, color: highlight ? '#f0f0ee' : '#999', fontWeight: highlight ? 500 : 400 }}>{label}</span>
-                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: highlight ? '#5B50FF' : '#333', marginLeft: 'auto', flexShrink: 0 }}>{time}</span>
-                </div>
-                <span style={{ fontSize: 10, color: '#333' }}>{detail}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Footer */}
-        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '0.5px solid #111', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
-          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#22c55e', letterSpacing: '0.08em' }}>12 slides · fully art-directed · export ready</span>
-        </div>
-      </div>
-    );
-  }
-
-  /* ── Slide map preview (approval grid) ── */
-  if (type === 'slide-map') {
-    const slides = [
-      { g: 'linear-gradient(135deg, #0d0a2e 0%, #5B50FF 100%)', n: '01', label: 'Title' },
-      { g: 'linear-gradient(135deg, #06101e 0%, #0e4a7a 100%)', n: '02', label: 'Problem' },
-      { g: 'linear-gradient(135deg, #0f0818 0%, #6d28d9 100%)', n: '03', label: 'Solution' },
-      { g: 'linear-gradient(135deg, #050f0a 0%, #064e3b 100%)', n: '04', label: 'Market' },
-      { g: 'linear-gradient(135deg, #140904 0%, #9a3412 100%)', n: '05', label: 'Product' },
-      { g: 'linear-gradient(135deg, #08080f 0%, #2d2b6e 100%)', n: '06', label: 'Traction' },
-      { g: 'linear-gradient(135deg, #0a1a18 0%, #0d5c52 100%)', n: '07', label: 'Team' },
-      { g: 'linear-gradient(135deg, #1a1200 0%, #856512 100%)', n: '08', label: 'Roadmap' },
-      { g: 'linear-gradient(135deg, #1a0808 0%, #8B1a1a 100%)', n: '09', label: 'The Ask' },
-    ];
-    return (
-      <div style={{ background: '#080808', borderRadius: '12px', border: '0.5px solid #1a1a1a', overflow: 'hidden', fontFamily: 'Inter, sans-serif' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '0.5px solid #1a1a1a', background: '#0a0a0b' }}>
-          <div style={{ display: 'flex', gap: 5 }}>
-            {['#ff5f57', '#febc2e', '#28c840'].map((c, i) => (
-              <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: c, opacity: 0.45 }} />
-            ))}
-          </div>
-          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#444', letterSpacing: '0.12em', marginLeft: 6 }}>HYPERBEING · SLIDE MAP</span>
-          <div style={{ marginLeft: 'auto' }}>
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#5B50FF', letterSpacing: '0.12em' }}>9 SLIDES PLANNED</span>
-          </div>
-        </div>
-        <div style={{ padding: '14px' }}>
-          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 10 }}>STRUCTURE · AWAITING APPROVAL</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
-            {slides.map(({ g, n, label }) => (
-              <div key={n} style={{ aspectRatio: '16/9', background: g, borderRadius: 5, position: 'relative', border: '0.5px solid #1a1a1a', overflow: 'hidden' }}>
-                <div style={{ position: 'absolute', top: 5, left: 5, fontFamily: 'JetBrains Mono, monospace', fontSize: 7, color: 'rgba(255,255,255,0.65)' }}>{n}</div>
-                <div style={{ position: 'absolute', bottom: 6, left: 6, right: 6 }}>
-                  <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.85)', fontWeight: 500 }}>{label}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#0a0a0b', border: '0.5px solid #1a1a1a', borderRadius: 7, padding: '10px 12px' }}>
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#555', flex: 1 }}>review structure before visuals generate</span>
-            <div style={{ background: 'rgba(91,80,255,0.1)', border: '0.5px solid rgba(91,80,255,0.28)', borderRadius: 4, padding: '5px 12px', cursor: 'pointer' }}>
-              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, fontWeight: 600, color: '#8B80FF', letterSpacing: '0.05em' }}>APPROVE STRUCTURE →</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /* ── Brand memory / brand kit panel ── */
-  if (type === 'brand-kit') {
-    const swatches = ['#5B50FF', '#8B80FF', '#1a1540', '#f0f0ee', '#22c55e'];
-    return (
-      <div style={{ background: '#080808', borderRadius: '12px', border: '0.5px solid #1a1a1a', overflow: 'hidden', fontFamily: 'Inter, sans-serif' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '0.5px solid #1a1a1a', background: '#0a0a0b' }}>
-          <div style={{ display: 'flex', gap: 5 }}>
-            {['#ff5f57', '#febc2e', '#28c840'].map((c, i) => (
-              <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: c, opacity: 0.45 }} />
-            ))}
-          </div>
-          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#444', letterSpacing: '0.12em', marginLeft: 6 }}>HYPERBEING · BRAND KIT</span>
-          <div style={{ marginLeft: 'auto', background: 'rgba(91,80,255,0.1)', border: '0.5px solid rgba(91,80,255,0.28)', borderRadius: 4, padding: '2px 8px' }}>
-            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, fontWeight: 600, color: '#8B80FF', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Soon</span>
-          </div>
-        </div>
-        <div style={{ padding: '18px 16px' }}>
-          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 12 }}>BRAND ASSETS</p>
-
-          {/* Logo upload row */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#0c0c0c', border: '0.5px solid #1a1a1a', borderRadius: 8, padding: '12px', marginBottom: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 6, border: '1px dashed #2a2a2a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 900, fontSize: 11, color: '#3a3a3a', letterSpacing: '-0.1em' }}>HB</span>
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 11, color: '#ccc', margin: '0 0 3px', fontWeight: 500 }}>Acme Corp logo</p>
-              <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#444', margin: 0 }}>logo_primary.svg · uploaded</p>
-            </div>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
-          </div>
-
-          {/* Color swatches */}
-          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#555', letterSpacing: '0.1em', marginBottom: 8 }}>BRAND PALETTE</p>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            {swatches.map((c, i) => (
-              <div key={i} style={{ flex: 1, aspectRatio: '1', borderRadius: 6, background: c, border: '0.5px solid rgba(255,255,255,0.08)' }} />
-            ))}
-          </div>
-
-          {/* Applied banner */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#0a0a0b', border: '0.5px solid rgba(91,80,255,0.18)', borderRadius: 7, padding: '10px 12px' }}>
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#555', flex: 1 }}>every new deck inherits this kit automatically</span>
-            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, fontWeight: 600, color: '#8B80FF' }}>auto-applied</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /* ── Enterprise grade panel ── */
-  if (type === 'enterprise') {
-    const rows = [
-      { label: 'Single sign-on (SSO)', detail: 'SAML · Okta · Google Workspace', status: 'Active', color: '#22c55e' },
-      { label: 'Audit logs', detail: 'Every generation, export & edit tracked', status: 'Enabled', color: '#22c55e' },
-      { label: 'Team workspaces', detail: '12 members · 4 shared brand kits', status: 'Synced', color: '#5B50FF' },
-      { label: 'Volume pricing', detail: 'Custom seats · annual billing', status: 'Custom', color: '#8B80FF' },
-    ];
-    return (
-      <div style={{ background: '#080808', borderRadius: '12px', border: '0.5px solid #1a1a1a', overflow: 'hidden', fontFamily: 'Inter, sans-serif' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '0.5px solid #1a1a1a', background: '#0a0a0b' }}>
-          <div style={{ display: 'flex', gap: 5 }}>
-            {['#ff5f57', '#febc2e', '#28c840'].map((c, i) => (
-              <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: c, opacity: 0.45 }} />
-            ))}
-          </div>
-          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#444', letterSpacing: '0.12em', marginLeft: 6 }}>HYPERBEING · ADMIN CONSOLE</span>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
-            <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e' }} />
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#22c55e' }}>WORKSPACE: ACME CORP</span>
-          </div>
-        </div>
-        <div style={{ padding: '8px 14px 14px' }}>
-          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', margin: '10px 0 4px' }}>SECURITY &amp; SCALE</p>
-          {rows.map(({ label, detail, status, color }) => (
-            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '0.5px solid #131313' }}>
-              <div style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 11, color: '#e0dcff', margin: '0 0 2px', fontWeight: 500 }}>{label}</p>
-                <p style={{ fontSize: 9, color: '#3a3a3a', margin: 0 }}>{detail}</p>
-              </div>
-              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color, letterSpacing: '0.08em', flexShrink: 0 }}>{status}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  /* ── One-click export panel ── */
-  if (type === 'export-panel') {
-    const formats = [
-      { label: 'PowerPoint', ext: '.pptx', size: '2.4 MB' },
-      { label: 'PDF', ext: '.pdf', size: '5.1 MB' },
-      { label: 'Shareable link', ext: 'hyperbeing.co/d/8f3a', size: 'live' },
-    ];
-    return (
-      <div style={{ background: '#080808', borderRadius: '12px', border: '0.5px solid #1a1a1a', overflow: 'hidden', fontFamily: 'Inter, sans-serif' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '0.5px solid #1a1a1a', background: '#0a0a0b' }}>
-          <div style={{ display: 'flex', gap: 5 }}>
-            {['#ff5f57', '#febc2e', '#28c840'].map((c, i) => (
-              <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: c, opacity: 0.45 }} />
-            ))}
-          </div>
-          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#444', letterSpacing: '0.12em', marginLeft: 6 }}>HYPERBEING · EXPORT</span>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
-            <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e' }} />
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#22c55e' }}>READY</span>
-          </div>
-        </div>
-        <div style={{ padding: '16px' }}>
-          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: '#8B80FF', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 12 }}>deck_series_a · 12 slides · export ready</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {formats.map(({ label, ext, size }) => (
-              <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#0a0a0b', border: '0.5px solid #1a1a1a', borderRadius: 7, padding: '10px 12px' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 11, color: '#e0dcff', margin: '0 0 2px', fontWeight: 500 }}>{label}</p>
-                  <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 8, color: '#444', margin: 0 }}>{ext} · {size}</p>
-                </div>
-                <div style={{ background: '#5B50FF', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', flexShrink: 0 }}>
-                  <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, fontWeight: 600, color: '#fff' }}>Export →</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /* ── Static screenshot wrapper ── */
-  if (type === 'screenshot') {
-    return (
-      <div style={{ borderRadius: '12px', overflow: 'hidden', border: '0.5px solid #1a1a1a' }}>
-        <img
-          src="/screenshots/feature-nova-chat.png"
-          alt="Nova, HyperBeing's AI, planning a 12-slide Series A pitch deck from a single prompt"
-          style={{ width: '100%', display: 'block' }}
-        />
-      </div>
-    );
-  }
-
-  return null;
-}
-
-// Scale Nova settles to once docked above the demo section's label —
-// large enough to stay a clear "presence" rather than shrinking away.
-const DOCK_SCALE = 0.75;
-
-/* ─── FAQ accordion item ─── */
-function FAQItem({ q, a }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{ borderBottom: '0.5px solid #e8e8f0' }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
-          padding: '24px 4px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left',
-        }}
-      >
-        <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', fontWeight: 600, color: '#0d0b1a' }}>{q}</span>
-        <span style={{ fontSize: '18px', color: '#5B50FF', flexShrink: 0, transform: open ? 'rotate(45deg)' : 'none', transition: 'transform 0.15s' }}>+</span>
-      </button>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            style={{ overflow: 'hidden' }}
-          >
-            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#6b6490', lineHeight: 1.7, padding: '0 4px 24px' }}>{a}</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-/* ─── Main component ─── */
 export default function Homepage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const [scrolled, setScrolled] = useState(false);
-  const [selectedFeature, setSelectedFeature] = useState(0);
-  const heroRef = useRef(null);
-  const travelWrapRef = useRef(null);
-  const novaLabelRef = useRef(null);
+  const rootRef = useRef(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [rangeKey, setRangeKey] = useState(Object.keys(RANGE)[0]);
+  const [annual, setAnnual] = useState(true);
+  const [ultraTier, setUltraTier] = useState(0);
+  const [lightbox, setLightbox] = useState(null); // { list, i }
+  const [copied, setCopied] = useState('');
 
-  // Viewport height + Nova size, kept in sync so the travel math below stays
-  // correct across resizes and on mobile (where vh and Nova are smaller).
-  const [vh, setVh] = useState(() => (typeof window !== 'undefined' ? window.innerHeight : 900));
-  const [novaBaseSize, setNovaBaseSize] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 640 ? 160 : 240));
-  // Resting top offset (within travelWrapRef) that docks Nova directly above
-  // the "NOVA · HYPERBEING IN ACTION" label, measured so it stays accurate
-  // regardless of section padding/heading line-wraps.
-  const [novaDockTop, setNovaDockTop] = useState(null);
+  const startHref = user ? '/dashboard' : '/login?mode=signup';
+  const startLabel = user ? 'Open dashboard' : 'Start free';
 
   useEffect(() => {
-    const measureDock = () => {
-      const wrap = travelWrapRef.current;
-      const label = novaLabelRef.current;
-      if (!wrap || !label) return;
-      const wrapRect = wrap.getBoundingClientRect();
-      const labelRect = label.getBoundingClientRect();
-      const dockedSize = novaBaseSize * DOCK_SCALE;
-      setNovaDockTop(labelRect.top - wrapRect.top - dockedSize - 16);
-    };
-
-    const onResize = () => {
-      setVh(window.innerHeight);
-      setNovaBaseSize(window.innerWidth < 640 ? 160 : 240);
-      measureDock();
-    };
-    window.addEventListener('resize', onResize);
-    measureDock();
-    return () => window.removeEventListener('resize', onResize);
-  }, [novaBaseSize]);
-
-  // Scroll-driven Nova "welcome" travel between the Hero and the Demo
-  // ("Nova · HyperBeing in action") sections. `heroExitProgress` runs 0 → 1
-  // over exactly one viewport-height of scroll: 0 while the hero is fully in
-  // view, 1 once it has scrolled completely out. Nova's position is purely a
-  // function of this value, so scrolling back up reverses the travel.
-  //
-  // The wrapper uses `transformOrigin: 'top center'`, so `top` always
-  // reflects Nova's actual rendered top edge regardless of `scale` — without
-  // this, the default center-origin scaling shifts the rendered box ~25% of
-  // its height downward as it shrinks, which is what caused Nova to overlap
-  // the "Nova · HyperBeing in action" label and heading below it.
-  const { scrollYProgress: heroExitProgress } = useScroll({
-    target: heroRef,
-    offset: ['start start', 'end start'],
-  });
-  const novaTop = useTransform(heroExitProgress, [0, 1], [vh - novaBaseSize * 0.6, novaDockTop ?? (vh + 16)]);
-  const novaScale = useTransform(heroExitProgress, [0, 1], [1, DOCK_SCALE]);
-  const chevronOpacity = useTransform(heroExitProgress, [0, 1], [0.7, 0]);
-
-  useEffect(() => {
-    const handler = () => setScrolled(window.scrollY > 10);
-    window.addEventListener('scroll', handler, { passive: true });
-    return () => window.removeEventListener('scroll', handler);
+    document.title = 'HyperBeing: AI presentations that make people go how?';
   }, []);
 
-  const goToApp = () => navigate(user ? '/dashboard' : '/login');
+  /* ---------- lightbox ---------- */
+  const openLightbox = useCallback((id, scope) => {
+    const list = scope
+      ? [...new Set([...scope.querySelectorAll('[data-full]')].map((e) => e.dataset.full))]
+      : ALL;
+    setLightbox({ list, i: Math.max(0, list.indexOf(id)), from: document.activeElement });
+  }, []);
+  const closeLightbox = useCallback(() => {
+    setLightbox((lb) => {
+      lb?.from?.focus?.({ preventScroll: true });
+      return null;
+    });
+  }, []);
+  const stepLightbox = useCallback((d) => {
+    setLightbox((lb) => lb && { ...lb, i: (lb.i + d + lb.list.length) % lb.list.length });
+  }, []);
+
+  useEffect(() => {
+    if (!lightbox) return undefined;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e) => {
+      if (e.key === 'Escape') closeLightbox();
+      if (e.key === 'ArrowRight') stepLightbox(1);
+      if (e.key === 'ArrowLeft') stepLightbox(-1);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = '';
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [lightbox, closeLightbox, stepLightbox]);
+
+  // One delegated click handler opens any slide with data-full.
+  const onRootClick = (e) => {
+    const t = e.target.closest('[data-full]');
+    if (t && !t.closest('.lb')) openLightbox(t.dataset.full, t.closest('.rows,.track,.bento,.fan'));
+  };
+
+  /* ---------- motion: everything imperative lives here ---------- */
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return undefined;
+    root.classList.add('lp-js');
+    const $ = (s) => root.querySelector(s);
+    const $$ = (s) => [...root.querySelectorAll(s)];
+    const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const narrow = () => innerWidth <= 760;
+    const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+    const cleanups = [];
+    const on = (el, ev, fn, opts) => { el.addEventListener(ev, fn, opts); cleanups.push(() => el.removeEventListener(ev, fn, opts)); };
+    const observe = (io, els) => { els.forEach((el) => io.observe(el)); cleanups.push(() => io.disconnect()); };
+
+    /* compare: drag anywhere, keyboard via the hidden range */
+    const cut = $('#cut');
+    const cmp = $('#compare');
+    let dragging = false;
+    if (cut && cmp) {
+      const setCut = (v) => { v = clamp(v, 0, 100); cmp.style.setProperty('--cut', v + '%'); cut.value = v; };
+      on(cut, 'input', (e) => setCut(+e.target.value));
+      let sx = 0; let sy = 0; let decided = false;
+      const pos = (e) => { const r = cmp.getBoundingClientRect(); return ((e.clientX - r.left) / r.width) * 100; };
+      on(cmp, 'pointerdown', (e) => { dragging = true; decided = e.pointerType === 'mouse'; sx = e.clientX; sy = e.clientY; if (decided) { cmp.setPointerCapture(e.pointerId); setCut(pos(e)); } });
+      on(cmp, 'pointermove', (e) => {
+        if (!dragging) return;
+        if (!decided) {
+          const dx = Math.abs(e.clientX - sx); const dy = Math.abs(e.clientY - sy);
+          if (dx < 6 && dy < 6) return;
+          decided = true;
+          if (dy > dx) { dragging = false; return; } // a vertical swipe is a scroll, not a drag
+          cmp.setPointerCapture(e.pointerId);
+        }
+        setCut(pos(e));
+      });
+      const end = (e) => { if (dragging && !decided && e.type === 'pointerup') setCut(pos(e)); dragging = false; };
+      on(cmp, 'pointerup', end); on(cmp, 'pointercancel', end);
+      on(cmp, 'click', () => cut.focus({ preventScroll: true }));
+      // A little nudge so people discover the handle.
+      if (!RM) {
+        const tio = new IntersectionObserver((es) => {
+          if (!es[0].isIntersecting) return;
+          tio.disconnect();
+          const t0 = performance.now();
+          const a = (t) => { const p = Math.min(1, (t - t0) / 1600); setCut(50 + Math.sin(p * Math.PI * 2) * 22 * (1 - p)); if (p < 1 && !dragging) requestAnimationFrame(a); };
+          requestAnimationFrame(a);
+        }, { threshold: 0.6 });
+        observe(tio, [cmp]);
+      }
+    }
+
+    /* feature spotlight */
+    $$('.feat').forEach((f) => on(f, 'pointermove', (e) => { const r = f.getBoundingClientRect(); f.style.setProperty('--mx', e.clientX - r.left + 'px'); f.style.setProperty('--my', e.clientY - r.top + 'px'); }));
+
+    /* reveal */
+    if (!RM) {
+      const io = new IntersectionObserver((es) => es.forEach((en) => { if (en.isIntersecting) { en.target.classList.remove('pre'); io.unobserve(en.target); } }), { rootMargin: '0px 0px -8% 0px' });
+      const pending = $$('.rv').filter((el) => el.getBoundingClientRect().top > innerHeight);
+      pending.forEach((el) => el.classList.add('pre'));
+      observe(io, pending);
+    }
+
+    /* count up */
+    const cio = new IntersectionObserver((es) => es.forEach((en) => {
+      if (!en.isIntersecting) return;
+      const b = en.target; const to = +b.dataset.count; const suf = b.dataset.suffix || '';
+      cio.unobserve(b);
+      const paint = (v) => { b.textContent = String(v); if (suf) { const s = document.createElement('small'); s.textContent = suf; b.appendChild(s); } };
+      if (RM || to === 0) { paint(to); return; }
+      b.dataset.counting = '1';
+      const t0 = performance.now();
+      const tick = (t) => { const p = Math.min(1, (t - t0) / 1400); paint(Math.round(to * (1 - Math.pow(1 - p, 3)))); if (p < 1) requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    }), { threshold: 0.5 });
+    observe(cio, $$('[data-count]'));
+
+    /* light field: thin blue beams rising from a warm horizon */
+    function beamField(cv, o) {
+      const ctx = cv?.getContext('2d');
+      if (!ctx) return;
+      let W = 0; let H = 0; let beams = []; let stars = []; let raf = 0; let running = false;
+      const t0 = performance.now();
+      const sprite = (rgb) => {
+        const c = document.createElement('canvas'); c.width = 1; c.height = 256;
+        const g = c.getContext('2d'); const gr = g.createLinearGradient(0, 256, 0, 0);
+        gr.addColorStop(0, `rgba(${rgb},1)`); gr.addColorStop(0.3, `rgba(${rgb},.6)`); gr.addColorStop(0.7, `rgba(${rgb},.18)`); gr.addColorStop(1, `rgba(${rgb},0)`);
+        g.fillStyle = gr; g.fillRect(0, 0, 1, 256); return c;
+      };
+      const SB = sprite('2,151,222'); const SL = sprite('76,184,240'); const SI = sprite('214,241,255');
+      function glow(cx, cy, r, stops) { const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r); stops.forEach(([s, c]) => g.addColorStop(s, c)); ctx.fillStyle = g; ctx.fillRect(-W, -H, W * 3, H * 3); }
+      function draw(now) {
+        if (!W) return;
+        const t = (now - t0) / 1000; ctx.clearRect(0, 0, W, H);
+        const cx = W * o.cx; const sig = Math.max(W * o.spread, 160); const base = H * o.base;
+        ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#D6F1FF';
+        for (const s of stars) { ctx.globalAlpha = 0.12 + 0.38 * (0.5 + 0.5 * Math.sin(t * s.s + s.p)); ctx.fillRect(s.x, s.y, s.r, s.r); }
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.save(); ctx.translate(cx, base); ctx.scale(1, 1.6); ctx.translate(-cx, -base);
+        glow(cx, base, sig * 1.9, [[0, `rgba(2,151,222,${0.5 * o.haze})`], [0.5, `rgba(2,151,222,${0.18 * o.haze})`], [1, 'rgba(2,151,222,0)']]);
+        ctx.restore();
+        for (const b of beams) {
+          const d = (b.x - cx) / sig; const env = Math.exp(-d * d * 0.9);
+          const wave = 0.5 + 0.5 * Math.sin(b.x * 0.011 - t * 0.6);
+          const flick = 0.6 + 0.4 * Math.sin(t * b.s + b.p);
+          const a = env * (0.35 + 0.65 * wave * flick) * b.a * o.intensity;
+          if (a < 0.015) continue;
+          const h = base * o.reach * (0.18 + 0.82 * env) * b.h * (0.85 + 0.15 * Math.sin(t * 0.3 * b.s + b.p));
+          ctx.globalAlpha = Math.min(1, a);
+          ctx.drawImage(b.k > 0.85 ? SI : (b.k > 0.4 ? SL : SB), b.x, base - h, b.w, h);
+        }
+        ctx.globalAlpha = 1;
+        const pulse = 1 + 0.05 * Math.sin(t * 0.7);
+        ctx.save(); ctx.translate(cx, base); ctx.scale(1, 0.42); ctx.translate(-cx, -base);
+        glow(cx, base, W * 0.6 * pulse, [[0, 'rgba(2,151,222,.55)'], [0.45, 'rgba(2,151,222,.16)'], [1, 'rgba(2,151,222,0)']]);
+        ctx.globalCompositeOperation = 'source-over'; // warm light sits on the blue instead of adding to white
+        glow(cx, base, W * 0.42 * pulse, [[0, `rgba(252,115,77,${0.95 * o.warm})`], [0.35, `rgba(252,115,77,${0.45 * o.warm})`], [0.7, `rgba(252,115,77,${0.1 * o.warm})`], [1, 'rgba(252,115,77,0)']]);
+        glow(cx, base, W * 0.16 * pulse, [[0, `rgba(255,200,170,${0.75 * o.warm})`], [0.5, `rgba(253,140,100,${0.3 * o.warm})`], [1, 'rgba(253,140,100,0)']]);
+        ctx.restore();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      function size() {
+        const r = cv.getBoundingClientRect(); if (!r.width) return;
+        const dpr = Math.min(devicePixelRatio || 1, innerWidth < 760 ? 1.25 : 1.75);
+        if (o.anchor) { const a = root.querySelector(o.anchor); if (a) o.base = Math.min(0.97, (a.getBoundingClientRect().top - r.top + (o.anchorOff || 0)) / r.height); }
+        W = r.width; H = r.height; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const step = innerWidth < 760 ? 3.4 : 2.6; beams = [];
+        for (let x = 0; x < W; x += step + Math.random() * 1.6) beams.push({ x, w: Math.random() < 0.12 ? 1.8 : 0.9, p: Math.random() * 6.283, s: 0.35 + Math.random() * 1.3, a: 0.35 + Math.random() * 0.65, k: Math.random(), h: 0.7 + Math.random() * 0.3 });
+        stars = Array.from({ length: Math.round((W * H) / 7000) }, () => ({ x: Math.random() * W, y: Math.random() * H * o.base * 0.75, r: Math.random() * 1.2 + 0.3, p: Math.random() * 6.283, s: 0.4 + Math.random() * 1.6 }));
+        draw(performance.now());
+      }
+      const loop = (now) => { draw(now); if (running) raf = requestAnimationFrame(loop); };
+      const start = () => { if (running || RM) return; running = true; raf = requestAnimationFrame(loop); };
+      const stop = () => { running = false; cancelAnimationFrame(raf); };
+      const vio = new IntersectionObserver((es) => es.forEach((en) => (en.isIntersecting ? start() : stop())), { rootMargin: '80px' });
+      observe(vio, [cv]);
+      on(document, 'visibilitychange', () => { if (document.hidden) stop(); else { const r = cv.getBoundingClientRect(); if (r.bottom > 0 && r.top < innerHeight) start(); } });
+      if ('ResizeObserver' in window) { const ro = new ResizeObserver(size); ro.observe(cv); cleanups.push(() => ro.disconnect()); } else on(window, 'resize', size);
+      cleanups.push(stop);
+      size();
+    }
+    beamField($('.hero .beams'), { cx: 0.5, spread: 0.27, base: 0.8, anchor: '.glass-row', anchorOff: 30, reach: 1.05, intensity: 1.9, warm: 1.15, haze: 1.1 });
+    beamField($('.numbers .beams'), { cx: 0.5, spread: 0.32, base: 1.04, reach: 0.95, intensity: 1.3, warm: 0.8, haze: 0.7 });
+    beamField($('.cta .beams'), { cx: 0.5, spread: 0.28, base: 1.0, reach: 1.05, intensity: 1.7, warm: 1, haze: 1 });
+
+    /* scroll engine */
+    const nav = $('.nav'); const hero = $('.hero'); const wall = $('.wall'); const studio = $('.studio');
+    const caseS = $('.case'); const track = $('#track'); const mcta = $('#mcta'); const ctaSec = $('.cta'); const pricing = $('#pricing');
+    const prog = (el) => { const r = el.getBoundingClientRect(); const span = r.height - innerHeight; return span > 0 ? clamp(-r.top / span) : clamp((innerHeight - r.top) / (innerHeight + r.height)); };
+    const PROMPT = "Seed pitch for HyperBeing, an AI presentation maker. Audience: tier-1 VCs. Argue that presentations are the last productivity category AI hasn't eaten. Use our penetration data.";
+    const ptext = $('#ptext'); const items = $$('#plan .it'); const canvasImgs = $$('#canvas img'); const strip = $$('#strip div');
+    const canvas = $('#canvas'); const steps = $$('#steps li'); const caseN = $('#case-n');
+    let lastSlide = -1;
+    function sizeCase() {
+      if (narrow()) { caseS.style.height = ''; return; }
+      const extra = track.scrollWidth - innerWidth + 32;
+      caseS.style.height = innerHeight + Math.max(0, extra) + 'px';
+    }
+    function studioState(p) {
+      const stp = p < 0.22 ? 0 : p < 0.42 ? 1 : p < 0.86 ? 2 : 3;
+      steps.forEach((s, i) => s.classList.toggle('on', i === stp));
+      ptext.textContent = PROMPT.slice(0, Math.round(PROMPT.length * clamp(p / 0.2)));
+      const nShow = Math.round(clamp((p - 0.22) / 0.18) * 6);
+      items.forEach((it, i) => it.classList.toggle('show', i < nShow)); $('#pcount').textContent = nShow + ' / 6';
+      const n = p < 0.42 ? -1 : Math.min(5, Math.floor(clamp((p - 0.42) / 0.42) * 6));
+      items.forEach((it, i) => it.classList.toggle('cur', i === n));
+      canvasImgs.forEach((im, i) => { im.classList.toggle('on', i === n); if (i === n) im.loading = 'eager'; });
+      strip.forEach((s, i) => { s.classList.toggle('on', i <= n); s.classList.toggle('cur', i === n); });
+      $('#canvas .empty').hidden = n >= 0;
+      if (n !== lastSlide && n >= 0) { canvas.classList.remove('rendering'); void canvas.offsetWidth; canvas.classList.add('rendering'); }
+      lastSlide = n;
+      const secs = Math.round(167 * clamp(p / 0.9)); $('#timer').textContent = Math.floor(secs / 60) + ':' + pad(secs % 60);
+      $('#export').classList.toggle('ready', p >= 0.88);
+    }
+    // Narrow screens: the studio plays itself while visible.
+    let autoOn = false; let autoT0 = 0;
+    function autoLoop(t) { if (!autoOn || innerWidth > 980) return; studioState(Math.min(1, ((t - autoT0) / 13000) % 1.15)); requestAnimationFrame(autoLoop); }
+    const sio = new IntersectionObserver((es) => es.forEach((en) => {
+      if (innerWidth > 980 || RM) return;
+      if (en.isIntersecting && !autoOn) { autoOn = true; autoT0 = performance.now(); requestAnimationFrame(autoLoop); } else if (!en.isIntersecting) autoOn = false;
+    }), { threshold: 0.25 });
+    observe(sio, [studio]);
+    cleanups.push(() => { autoOn = false; });
+
+    let ticking = false;
+    function frame() {
+      ticking = false;
+      const y = scrollY; const docH = document.documentElement.scrollHeight - innerHeight;
+      root.style.setProperty('--sp', docH > 0 ? y / docH : 0);
+      nav.classList.toggle('scrolled', y > 20);
+      hero.style.setProperty('--hp', clamp(y / innerHeight));
+      if (narrow()) {
+        const hb = hero.getBoundingClientRect().bottom; const cr = ctaSec.getBoundingClientRect(); const pr = pricing.getBoundingClientRect();
+        const inPricing = pr.top < innerHeight && pr.bottom > 0;
+        mcta.classList.toggle('show', hb < 0 && cr.top > innerHeight * 0.9 && !nav.classList.contains('open') && !inPricing);
+      }
+      if (!RM) {
+        const wp = prog(wall); wall.style.setProperty('--wp', clamp(wp / 0.7)); wall.style.setProperty('--wt', clamp((wp - 0.55) / 0.3));
+        if (innerWidth > 980) studioState(prog(studio));
+        if (!narrow()) {
+          const cp = prog(caseS); const max = track.scrollWidth - innerWidth + 32;
+          track.style.transform = `translate3d(${-cp * Math.max(0, max)}px,0,0)`; caseS.style.setProperty('--cp', cp);
+          caseN.textContent = pad(Math.min(CASE.length, 1 + Math.floor(cp * CASE.length * 0.999))) + ' / ' + CASE.length;
+        }
+      }
+    }
+    // On phones the case counter follows the swipe.
+    on(track, 'scroll', () => { if (!narrow()) return; const w = track.firstElementChild.offsetWidth + 12; caseN.textContent = pad(Math.min(CASE.length, 1 + Math.round(track.scrollLeft / w))) + ' / ' + CASE.length; }, { passive: true });
+    const req = () => { if (!ticking) { ticking = true; requestAnimationFrame(frame); } };
+    on(window, 'scroll', req, { passive: true });
+    let lastW = innerWidth;
+    on(window, 'resize', () => { if (innerWidth !== lastW) { lastW = innerWidth; sizeCase(); } req(); });
+    on(window, 'load', () => { sizeCase(); req(); });
+    sizeCase();
+    studioState(RM ? 1 : 0);
+    frame();
+
+    return () => {
+      cleanups.forEach((fn) => fn());
+      root.classList.remove('lp-js');
+    };
+  }, []);
+
+  // Keep the sticky bottom CTA out of the way while the menu is open.
+  useEffect(() => {
+    const nav = rootRef.current?.querySelector('.nav');
+    nav?.classList.toggle('open', menuOpen);
+  }, [menuOpen]);
+
+  const copyMail = async () => {
+    try { await navigator.clipboard.writeText('team@hyperbeing.co'); setCopied('Copied'); } catch { setCopied('Select it'); }
+    setTimeout(() => setCopied(''), 1800);
+  };
+
+  const ultra = ULTRA_TIERS[ultraTier];
+  const ultraPct = (ultraTier / (ULTRA_TIERS.length - 1)) * 100;
+  const priceBlock = (monthly, discount) => (
+    <div>
+      <div className="price">
+        <b className="amt">${annual ? annualPrice(monthly, discount) : monthly}</b>
+        {annual && <s className="was">${monthly}</s>}
+        <span>/month</span>
+        {annual && <span className="off">{Math.round(discount * 100)}% OFF</span>}
+      </div>
+      <div className="billed">{annual ? `Billed $${fmt(annualPrice(monthly, discount) * 12)}/year` : 'Billed monthly'}</div>
+    </div>
+  );
+
+  const lbId = lightbox ? lightbox.list[lightbox.i] : null;
+  const navLinks = [['#studio', 'Product'], ['#work', 'Examples'], ['#pricing', 'Pricing'], ['#faq', 'FAQ']];
 
   return (
-    <div data-theme="light" style={{ fontFamily: 'Inter, system-ui, sans-serif', background: '#f5f5f5', color: '#0d0b1a' }}>
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+    <div className="lp" ref={rootRef} onClick={onRootClick}>
+      <div className="grain" aria-hidden="true" />
+      <div className="progress" aria-hidden="true" />
 
-      {/* ── 1. NAV ── */}
-      <nav style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        height: '60px',
-        background: scrolled ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.7)',
-        backdropFilter: 'blur(12px)',
-        borderBottom: scrolled ? '0.5px solid #e8e8f0' : '0.5px solid transparent',
-        transition: 'all 0.2s ease',
-        display: 'flex', alignItems: 'center',
-      }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', width: '100%', padding: '0 24px', display: 'flex', alignItems: 'center', gap: '32px' }}>
-          {/* Logo */}
-          <Link to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', flexShrink: 0 }}>
-            <Logo height={37} />
-          </Link>
+      <header className="nav" id="top">
+        <div className="wrap">
+          <a href="#top" className="logo" aria-label="HyperBeing home"><b>HB</b>HyperBeing</a>
+          <ul>
+            {navLinks.map(([h, l]) => <li key={h}><a href={h}>{l}</a></li>)}
+          </ul>
+          <div className="right">
+            {!user && <Link className="signin" to="/login">Sign in</Link>}
+            <Link className="btn btn-primary" to={startHref}>{startLabel} <span className="arr">→</span></Link>
+            <button
+              className="burger" type="button" aria-controls="sheet" aria-expanded={menuOpen}
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'} onClick={() => setMenuOpen((o) => !o)}
+            ><span /></button>
+          </div>
+        </div>
+        <nav className="sheet" id="sheet" hidden={!menuOpen} aria-label="Mobile" onClick={(e) => { if (e.target.closest('a')) setMenuOpen(false); }}>
+          {navLinks.map(([h, l]) => <a key={h} href={h}>{l}</a>)}
+          {!user && <Link to="/login">Sign in</Link>}
+          <Link className="btn btn-primary" to={startHref}>{startLabel} <span className="arr">→</span></Link>
+        </nav>
+      </header>
 
-          {/* Center links */}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '32px' }}>
-            {[
-              { label: 'Product', href: '#demo' },
-              { label: 'Examples', href: '#gallery' },
-              { label: 'Pricing', href: '/pricing' },
-              { label: 'Enterprise', href: 'mailto:team@hyperbeing.co?subject=Enterprise%20Enquiry' },
-            ].map(({ label, href }) => (
-              <a
-                key={label}
-                href={href}
-                onClick={label === 'Pricing' ? (e) => { e.preventDefault(); navigate('/pricing'); } : undefined}
-                style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#6b6490', textDecoration: 'none', transition: 'color 0.15s', cursor: 'pointer' }}
-                onMouseEnter={e => e.target.style.color = '#0d0b1a'}
-                onMouseLeave={e => e.target.style.color = '#6b6490'}
-              >
-                {label}
-              </a>
+      <main>
+        {/* HERO */}
+        <section className="hero" data-nova="hero">
+          <div className="lightfield" aria-hidden="true" />
+          <canvas className="beams" aria-hidden="true" />
+          <div className="hstats l" aria-hidden="true">
+            <div><b>2:47</b><span>Brief to finished deck</span></div>
+            <div><b>6×</b><span>Slides built in parallel</span></div>
+          </div>
+          <div className="hstats r" aria-hidden="true">
+            <div><b>0</b><span>Templates used</span></div>
+            <div><b>.pptx</b><span>PowerPoint &amp; PDF export</span></div>
+          </div>
+          <div className="wrap hero-in">
+            <div className="nova-slot" data-nova-slot aria-hidden="true" />
+            <span className="pill"><i />AI presentation studio</span>
+            <h1>Presentations that make people go <em className="how">how?</em></h1>
+            <p className="lede">
+              <span className="d-only">Give Nova your brief. Every slide comes back art-directed, with a real argument, an agency finish and text you can still edit. No templates.</span>
+              <span className="m-only">Your brief in. A designed, editable deck out.</span>
+            </p>
+            <div className="ctas">
+              <Link className="btn btn-primary" to={startHref}>{user ? 'Open dashboard' : 'Generate your first deck'} <span className="arr">→</span></Link>
+              <a className="btn btn-ghost" href="#work">See what it makes</a>
+            </div>
+            <p className="note"><b>{FREE_CREDITS} free credits</b> on sign-up · no card required</p>
+            <div className="glass-row fan">
+              <div className="gp l" style={{ '--d': 0 }}><span className="lab">Nova studio</span><button type="button" className="frame" data-full="s23" aria-label="Open slide: HyperBeing studio"><img src={thumb('s23')} alt={SLIDE_ALT.s23} width="640" height="357" /></button></div>
+              <div className="gp c" style={{ '--d': 1 }}><span className="lab">Art direction</span><button type="button" className="frame" data-full="s06" aria-label="Open slide: Launched at 30,000 feet"><img src={full('s06')} alt={SLIDE_ALT.s06} width="1600" height="893" fetchpriority="high" /></button></div>
+              <div className="gp r" style={{ '--d': 2 }}><span className="lab">Data storytelling</span><button type="button" className="frame" data-full="s20" aria-label="Open slide: Kestrel is outreaching us"><img src={thumb('s20')} alt={SLIDE_ALT.s20} width="640" height="362" /></button></div>
+            </div>
+          </div>
+        </section>
+
+        <div className="proof">
+          <div className="wrap">
+            <span>Used by <b>brand teams</b></span>
+            <span><b>Strategy</b> consultants</span>
+            <span><b>Founders</b> &amp; investors</span>
+            <span><b>Agencies</b> &amp; analysts</span>
+            <span>Exports <b>.pptx · PDF · PNG</b></span>
+          </div>
+        </div>
+
+        {/* MARQUEE */}
+        <section className="marquee" aria-labelledby="mq-h" data-nova="marquee">
+          <div className="wrap head">
+            <div style={{ display: 'grid', gap: 18 }}>
+              <span className="eyebrow">Made with HyperBeing</span>
+              <h2 id="mq-h">Not one template<br />in the <em>building.</em></h2>
+            </div>
+            <p className="lede" style={{ maxWidth: '40ch' }}>Every frame on this page is a real slide generated by HyperBeing. Tap any one to see it full size.</p>
+          </div>
+          <div className="rows">
+            {[ALL.filter((_, i) => i % 2 === 0), ALL.filter((_, i) => i % 2 === 1)].map((ids, r) => (
+              <div key={r} className={'row' + (r ? ' rev' : '')} style={{ '--dur': (r ? 95 : 85) + 's' }}>
+                {[...ids, ...ids].map((id, k) => {
+                  const dup = k >= ids.length;
+                  return (
+                    <button key={k} type="button" data-full={id} tabIndex={dup ? -1 : undefined} aria-hidden={dup || undefined} aria-label={`Open slide: ${SLIDE_ALT[id]}`}>
+                      <img loading="lazy" decoding="async" src={thumb(id)} alt={dup ? '' : SLIDE_ALT[id]} width="640" height="357" />
+                    </button>
+                  );
+                })}
+              </div>
             ))}
           </div>
+        </section>
 
-          {/* Right buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-            {user ? (
-              <button
-                onClick={() => navigate('/dashboard')}
-                style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600, color: '#fff', background: '#5B50FF', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.15s' }}
-                onMouseEnter={e => e.target.style.background = '#6E63FF'}
-                onMouseLeave={e => e.target.style.background = '#5B50FF'}
-              >
-                Return to dashboard →
-              </button>
-            ) : (
-              <>
-                <button
-                  onClick={() => navigate('/login')}
-                  className="nav-signin-btn"
-                  style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 500, color: '#0d0b1a', background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px 12px' }}
-                >
-                  Sign in
-                </button>
-                <button
-                  onClick={goToApp}
-                  style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600, color: '#fff', background: '#5B50FF', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.15s' }}
-                  onMouseEnter={e => e.target.style.background = '#6E63FF'}
-                  onMouseLeave={e => e.target.style.background = '#5B50FF'}
-                >
-                  Start free →
-                </button>
-              </>
-            )}
+        {/* WALL */}
+        <section className="wall" aria-label="A wall of HyperBeing slides" data-nova="wall">
+          <div className="stick">
+            <div className="grid">
+              {WALL.map((id) => <img key={id} loading="lazy" decoding="async" src={thumb(id)} alt="" width="640" height="357" />)}
+            </div>
+            <div className="vign" />
+            <div className="over"><div>
+              <h2>Clip art is <em>over.</em></h2>
+              <p>Every slide is composed from scratch around its argument: the lighting, the layout, the data and the type.</p>
+            </div></div>
           </div>
-        </div>
-      </nav>
+        </section>
 
-      {/* ── 2. HERO + 4. PRODUCT DEMO (wrapped together so Nova can travel between them) ── */}
-      <div ref={travelWrapRef} style={{ position: 'relative' }}>
-      <section ref={heroRef} style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '80px', paddingBottom: '64px', position: 'relative', background: '#f5f5f5', overflowX: 'hidden' }}>
-        {/* Atmospheric glow top-right */}
-        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 65% 40%, rgba(91,80,255,0.08), transparent 60%)', pointerEvents: 'none' }} />
-
-        <div style={{ maxWidth: '900px', margin: '0 auto', padding: '0 24px', textAlign: 'center', position: 'relative', zIndex: 1 }}>
-          {/* Headline */}
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.1 }}
-            style={{
-              fontFamily: 'Playfair Display, Georgia, serif',
-              fontSize: 'clamp(48px, 8vw, 80px)',
-              fontWeight: 400,
-              lineHeight: 0.96,
-              letterSpacing: '-0.04em',
-              color: '#0d0b1a',
-              marginBottom: '20px',
-            }}
-          >
-            Presentations that make<br />
-            {'people go '}
-            <span style={{ display: 'inline-flex', background: '#5B50FF', borderRadius: '6px', verticalAlign: 'bottom', overflow: 'hidden', lineHeight: 0.96 }}>
-              <TextRotate
-                texts={['how?', 'wow.', 'really?', 'that fast?', 'just you?', 'with AI?']}
-                rotationInterval={2200}
-                staggerDuration={0.025}
-                staggerFrom="last"
-                initial={{ y: '100%' }}
-                animate={{ y: 0 }}
-                exit={{ y: '-120%' }}
-                transition={{ type: 'spring', damping: 30, stiffness: 400 }}
-                mainClassName="text-white px-3 py-1 overflow-hidden justify-center"
-                splitLevelClassName="overflow-hidden pb-0.5"
-              />
-            </span>
-          </motion.h1>
-
-          {/* Subheadline */}
-          <motion.p
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.25 }}
-            style={{ fontFamily: 'Inter, sans-serif', fontSize: '18px', fontWeight: 400, color: '#3d3660', maxWidth: '560px', margin: '0 auto 36px', lineHeight: 1.6 }}
-          >
-            HyperBeing generates each slide as a fully art-directed image.{' '}
-            No templates. No compromise. McKinsey substance, Apple finish.
-          </motion.p>
-
-          {/* CTA row */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.35 }}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}
-          >
-            <button
-              onClick={goToApp}
-              style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 600, color: '#fff', background: '#5B50FF', border: 'none', borderRadius: '6px', padding: '12px 24px', cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.15s', boxShadow: 'rgba(91,80,255,0.25) 0px 4px 16px' }}
-              onMouseEnter={e => e.target.style.background = '#6E63FF'}
-              onMouseLeave={e => e.target.style.background = '#5B50FF'}
-            >
-              Generate your first deck →
-            </button>
-            <a
-              href="#demo"
-              style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 500, color: '#0d0b1a', background: 'transparent', border: '0.5px solid #e8e8f0', borderRadius: '6px', padding: '12px 24px', textDecoration: 'none', transition: 'border-color 0.15s' }}
-              onMouseEnter={e => e.target.style.borderColor = 'rgba(91,80,255,0.3)'}
-              onMouseLeave={e => e.target.style.borderColor = '#e8e8f0'}
-            >
-              See examples
-            </a>
-          </motion.div>
-
-          {/* Trust line */}
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-            style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490' }}
-          >
-            Used by brand teams, investors, analysts &amp; agencies at top-tier companies
-          </motion.p>
-        </div>
-      </section>
-
-      {/* ── 4. PRODUCT DEMO ── */}
-      <section id="demo" style={{ background: '#080808', padding: '64px 24px 120px', position: 'relative' }}>
-        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-          <Reveal>
-            <div style={{
-              position: 'relative',
-              background: '#0f0f0f',
-              border: '0.5px solid #1e1e1e',
-              borderRadius: '24px',
-              padding: '48px 32px 40px',
-              boxShadow: 'rgba(8,8,8,0.6) 0px 24px 64px -16px, rgba(91,80,255,0.18) 0px 0px 64px -16px',
-            }}>
-              {/* Nova label above section heading */}
-              <div ref={novaLabelRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
-                <div style={{ height: '1px', width: '32px', background: 'linear-gradient(to right, transparent, rgba(139,92,246,0.6))' }} />
-                <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#8B5CF6', textTransform: 'uppercase' }}>NOVA · HYPERBEING IN ACTION</p>
-                <div style={{ height: '1px', width: '32px', background: 'linear-gradient(to left, transparent, rgba(139,92,246,0.6))' }} />
+        {/* STUDIO */}
+        <section className="studio" id="studio" aria-labelledby="st-h" data-nova="studio">
+          <div className="stick">
+            <div className="wrap">
+              <div>
+                <span className="eyebrow">Watch it work</span>
+                <h2 id="st-h" style={{ marginTop: 20, fontSize: 'clamp(32px,4.4vw,60px)' }}>From messy brief to <em>board-ready</em>.</h2>
+                <ol className="steps" id="steps">
+                  <li className="on"><b>01 · Brief</b><span>Paste the whole messy thing: notes, numbers, PDFs, the angle you want.</span></li>
+                  <li><b>02 · Plan</b><span>Nova reads all of it, then proposes a slide map built around your argument.</span></li>
+                  <li><b>03 · Compose</b><span>Every slide is art-directed on its own, in parallel, with editable text and charts.</span></li>
+                  <li><b>04 · Export</b><span>Download as PowerPoint, PDF or PNG.</span></li>
+                </ol>
               </div>
-              <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(36px, 5vw, 56px)', fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.03em', color: '#f0f0ee', textAlign: 'center', marginBottom: '40px' }}>
-                Watch the blank become{' '}
-                <em>brilliant.</em>
-              </h2>
-              <ProductMockup />
-            </div>
-          </Reveal>
-        </div>
-      </section>
-
-      {/* Scroll-driven Nova "welcome" — travels from the hero into a docked
-          position at the top of the demo section as the user scrolls, and
-          reverses smoothly when scrolling back up. */}
-      <motion.div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          left: '50%',
-          x: '-50%',
-          top: novaTop,
-          scale: novaScale,
-          transformOrigin: 'top center',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '14px',
-          pointerEvents: 'none',
-          zIndex: 5,
-        }}
-      >
-        <NovaMascot size={novaBaseSize} />
-        <motion.div
-          style={{ opacity: chevronOpacity, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}
-          animate={{ y: [0, 8, 0] }}
-          transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-        >
-          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase' }}>SCROLL</span>
-          <svg width="14" height="8" viewBox="0 0 14 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M1 1L7 7L13 1" stroke="#5B50FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </motion.div>
-      </motion.div>
-      </div>
-
-      {/* ── 5. FEATURE SPLITS ── */}
-      <section style={{ background: '#f5f5f5', padding: '120px 24px' }}>
-        <div className="feature-split-list" style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '120px' }}>
-          {FEATURE_SPLITS.map((f, i) => (
-            <div key={i} className="feature-split-item" style={{ position: 'relative' }}>
-              <div className="feature-split-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '80px', alignItems: 'center' }}>
-                {/* Text side */}
-                <div className="feature-split-text" style={{ order: f.side === 'right' ? 0 : 1 }}>
-                  <Reveal>
-                    <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', letterSpacing: '0.2em', color: '#5B50FF', marginBottom: '14px' }}>
-                      {String(i + 1).padStart(2, '0')} / {String(FEATURE_SPLITS.length).padStart(2, '0')}
-                    </p>
-                    <h3 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(32px, 4vw, 48px)', fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#0d0b1a', marginBottom: '20px' }}>
-                      <em>{f.headline}</em>
-                    </h3>
-                    <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', color: '#3d3660', lineHeight: 1.65 }}>{f.body}</p>
-                  </Reveal>
-                </div>
-                {/* Visual side */}
-                <div className="feature-split-visual" style={{ order: f.side === 'right' ? 1 : 0, borderRadius: '14px', boxShadow: '0 24px 80px rgba(13,11,26,0.14), 0 4px 24px rgba(91,80,255,0.08)' }}>
-                  <Reveal delay={0.15}>
-                    <FeatureVisual type={f.visual} />
-                  </Reveal>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── 6. DECK GALLERY ── */}
-      <section style={{ background: '#080808', padding: '120px 0' }}>
-        <Reveal>
-          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase', marginBottom: '20px', textAlign: 'center' }}>MADE WITH HYPERBEING</p>
-          <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(36px, 5vw, 56px)', fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.03em', color: '#f0f0ee', textAlign: 'center', marginBottom: '64px' }}>
-            Decks that do the talking.
-          </h2>
-        </Reveal>
-        <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', padding: '0 48px 16px', scrollbarWidth: 'none' }}>
-          {[
-            { title: 'Series A Pitch', category: 'FINTECH · 2024', gradient: 'linear-gradient(135deg, #1a1040 0%, #5B50FF 100%)' },
-            { title: 'Board Update Q4', category: 'ENTERPRISE · 2024', gradient: 'linear-gradient(135deg, #0a1628 0%, #1e3a5f 100%)' },
-            { title: 'Agency Case Study', category: 'AGENCY · 2024', gradient: 'linear-gradient(135deg, #1a0a2e 0%, #4a1882 100%)' },
-            { title: 'Product Launch', category: 'SAAS · 2024', gradient: 'linear-gradient(135deg, #0a1a18 0%, #0d5c52 100%)' },
-            { title: 'Investor Deck', category: 'VC · 2024', gradient: 'linear-gradient(135deg, #1a1200 0%, #856512 100%)' },
-            { title: 'Sales Deck', category: 'SALES · 2024', gradient: 'linear-gradient(135deg, #1a0808 0%, #8B1a1a 100%)' },
-          ].map((deck, i) => (
-            <DeckCard key={deck.title} delay={i * 0.07} {...deck} />
-          ))}
-        </div>
-      </section>
-
-      {/* ── 7. FEATURE GRID ── */}
-      <section style={{ background: '#ffffff', padding: '120px 24px' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-          <Reveal>
-            <div style={{ textAlign: 'center', marginBottom: '64px' }}>
-              <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#5B50FF', textTransform: 'uppercase', marginBottom: '16px' }}>FEATURES</p>
-              <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(32px, 4vw, 48px)', fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#0d0b1a' }}>
-                Everything you need.<br /><em>Nothing you don't.</em>
-              </h2>
-            </div>
-          </Reveal>
-          <Reveal delay={0.05}>
-            <div style={{
-              borderRadius: '14px', overflow: 'hidden', marginBottom: '24px', padding: '24px',
-              background: '#080808', border: '0.5px solid #1a1a1a',
-              boxShadow: '0 24px 80px rgba(13,11,26,0.14), 0 4px 24px rgba(91,80,255,0.08)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', color: '#8B80FF', textTransform: 'uppercase', margin: 0 }}>
-                  {FEATURES[selectedFeature].title} · IN ACTION
-                </p>
-              </div>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={selectedFeature}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -12 }}
-                  transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                >
-                  <FeatureVisual type={FEATURES[selectedFeature].visual} />
-                </motion.div>
-              </AnimatePresence>
-            </div>
-          </Reveal>
-          <div className="features-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1px', background: '#e8e8f0', border: '0.5px solid #e8e8f0', borderRadius: '8px', overflow: 'hidden', marginBottom: '64px' }}>
-            {FEATURES.map((f, i) => {
-              const active = i === selectedFeature;
-              return (
-                <Reveal key={f.title} delay={i * 0.05}>
-                  <div
-                    onClick={() => setSelectedFeature(i)}
-                    style={{
-                      background: active ? '#fafaff' : '#ffffff',
-                      padding: '32px', position: 'relative', cursor: 'pointer',
-                      transition: 'background 0.2s, box-shadow 0.2s',
-                      boxShadow: active ? 'inset 4px 0 0 0 #5B50FF' : 'inset 4px 0 0 0 transparent',
-                    }}
-                    onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#fafaff'; }}
-                    onMouseLeave={e => { if (!active) e.currentTarget.style.background = '#ffffff'; }}
-                  >
-                    <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-                      <span style={{ fontSize: '20px', color: '#5B50FF' }}>{f.icon}</span>
+              <div className="app" aria-label="HyperBeing studio, building a seed deck">
+                <div className="app-bar"><i /><i /><i /><span className="title">hyperbeing.co / studio / seed-pitch</span><span className="live">Nova online</span></div>
+                <div className="app-body">
+                  <div className="app-side">
+                    <div className="prompt" id="prompt"><span id="ptext" /><span className="cur" /></div>
+                    <div className="plan" id="plan">
+                      <div className="lbl"><span>Slide plan</span><span id="pcount">0 / 6</span></div>
+                      {STUDIO_SLIDES.map(([, t], i) => <div key={t} className="it"><em>{pad(i + 1)}</em>{t}</div>)}
                     </div>
-                    <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', fontWeight: 600, color: '#0d0b1a', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {f.title}
-                      {f.soon && (
-                        <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '9px', fontWeight: 600, color: '#5B50FF', background: 'rgba(91,80,255,0.1)', border: '0.5px solid rgba(91,80,255,0.2)', borderRadius: '4px', padding: '2px 6px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Soon</span>
-                      )}
-                    </h3>
-                    <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#6b6490', lineHeight: 1.6 }}>{f.desc}</p>
                   </div>
-                </Reveal>
-              );
-            })}
+                  <div className="app-main">
+                    <div className="canvas" id="canvas">
+                      <div className="empty">Awaiting slide plan</div>
+                      {STUDIO_SLIDES.map(([id]) => <img key={id} src={full(id)} alt={SLIDE_ALT[id]} loading="lazy" width="1600" height="893" />)}
+                      <div className="scan" />
+                    </div>
+                    <div className="strip" id="strip">
+                      {STUDIO_SLIDES.map(([id]) => <div key={id}><img src={thumb(id)} alt="" loading="lazy" width="640" height="357" /></div>)}
+                    </div>
+                    <div className="export" id="export"><span>seed_pitch.pptx · <span className="timer" id="timer">0:00</span></span><span className="x">Export →</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ── 8b. FAQ ── */}
-      <section style={{ background: '#ffffff', padding: '96px 24px', borderTop: '0.5px solid #e8e8f0' }}>
-        <div style={{ maxWidth: '760px', margin: '0 auto' }}>
-          <Reveal>
-            <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(32px, 4vw, 44px)', fontWeight: 400, letterSpacing: '-0.02em', color: '#0d0b1a', marginBottom: '48px', textAlign: 'center' }}>
-              Frequently asked questions
-            </h2>
-          </Reveal>
-          <Reveal delay={0.05}>
-            <div>
-              {FAQ_ITEMS.map(({ q, a }) => (
-                <FAQItem key={q} q={q} a={a} />
+        {/* CASE */}
+        <section className="case" id="work" aria-labelledby="case-h" data-nova="work">
+          <div className="stick">
+            <div className="wrap head">
+              <div style={{ display: 'grid', gap: 18 }}>
+                <span className="eyebrow">Case · FMCG campaign pitch</span>
+                <h2 id="case-h" style={{ fontSize: 'clamp(32px,4.8vw,66px)' }}>A whole campaign,<br /><em>pitched in pictures.</em></h2>
+              </div>
+              <div className="meta"><b id="case-n">01 / {CASE.length}</b>A noodle launch told as a flight. Every slide made by HyperBeing.</div>
+            </div>
+            <div className="track" id="track">
+              {CASE.map(([id, c], i) => (
+                <figure key={id}>
+                  <button type="button" data-full={id} aria-label={`Open slide ${i + 1}: ${c}`}>
+                    <img loading="lazy" decoding="async" src={full(id)} alt={SLIDE_ALT[id]} width="1600" height="893" />
+                  </button>
+                  <figcaption><b>{pad(i + 1)}</b>{c}</figcaption>
+                </figure>
               ))}
             </div>
-          </Reveal>
-        </div>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            <div className="wrap"><div className="bar"><i /></div><span className="swipe">Swipe to see all {CASE.length} →</span></div>
+          </div>
+        </section>
+
+        {/* RANGE */}
+        <section className="sec" aria-labelledby="range-h" data-nova="range">
+          <div className="wrap">
+            <div className="sec-head rv">
+              <span className="eyebrow">Range</span>
+              <h2 id="range-h">One engine. <em>Every register.</em></h2>
+              <p className="lede">A board update and a launch campaign shouldn't look alike. HyperBeing matches its style to your industry and audience, so a fintech deck and a fashion deck come out different.</p>
+            </div>
+            <div className="tabs" role="tablist">
+              {Object.keys(RANGE).map((k, i) => (
+                <button
+                  key={k} type="button" role="tab" id={'tab-' + i} aria-selected={k === rangeKey}
+                  onClick={(e) => { setRangeKey(k); e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' }); }}
+                >{k}</button>
+              ))}
+            </div>
+            <div className="bento" role="tabpanel" aria-labelledby={'tab-' + Object.keys(RANGE).indexOf(rangeKey)} key={rangeKey}>
+              {RANGE[rangeKey].ids.map((id, i) => (
+                <button key={id} type="button" data-full={id} style={{ '--i': i }} aria-label={`Open slide: ${SLIDE_ALT[id]}`}>
+                  <img loading="lazy" decoding="async" src={i === 0 ? full(id) : thumb(id)} alt={SLIDE_ALT[id]} />
+                </button>
+              ))}
+            </div>
+            <p className="range-note">{RANGE[rangeKey].note}</p>
+          </div>
+        </section>
+
+        {/* BEFORE / AFTER */}
+        <section className="sec" style={{ paddingTop: 0 }} aria-labelledby="ba-h" data-nova="compare">
+          <div className="wrap ba">
+            <div className="copy rv">
+              <span className="eyebrow">Same data. Different outcome.</span>
+              <h2 id="ba-h" style={{ fontSize: 'clamp(32px,4.4vw,60px)' }}>Drag the line. <em>Feel the difference.</em></h2>
+              <p className="lede">On the left is the slide most teams would ship. On the right is what HyperBeing made from the same facts.</p>
+              <ul>
+                <li>Numbers kept exact. 2,916 towns stays 2,916.</li>
+                <li>The headline argues a point instead of naming a topic.</li>
+                <li>Every chart, photo and callout is composed for that one slide.</li>
+              </ul>
+            </div>
+            <div className="compare rv" id="compare">
+              <img className="after" src={full('s20')} alt="HyperBeing slide: Kestrel is outreaching us town by town, with map, bar chart and retail photos" loading="lazy" width="1600" height="905" />
+              <div className="before" aria-hidden="true">
+                <div className="t">Competitive Landscape - Rural Coverage</div>
+                <ul>
+                  <li>Kestrel covers 2,916 towns vs our 874</li>
+                  <li>Kestrel distributors: 11,240 vs 3,180</li>
+                  <li>Outlet reach in target towns: 98,450 vs 27,630</li>
+                  <li>Gap is measurable - need to act in 2026</li>
+                </ul>
+                <div className="clip">📊</div>
+                <div className="foot">Confidential · Slide 7</div>
+              </div>
+              <div className="handle" />
+              <span className="lab l">Template</span><span className="lab r">HyperBeing</span>
+              <input type="range" min="0" max="100" defaultValue="50" id="cut" aria-label="Compare template slide and HyperBeing slide" />
+            </div>
+          </div>
+        </section>
+
+        {/* NUMBERS */}
+        <section className="numbers" aria-labelledby="num-h" data-nova="numbers">
+          <canvas className="beams" aria-hidden="true" />
+          <div className="wrap">
+            <div className="top rv">
+              <h2 id="num-h">Hours of work,<br /><i>gone.</i></h2>
+              <p>What changes when every slide is designed for you instead of pushed around a template.</p>
+            </div>
+            <div className="nums rv">
+              <div><b data-count="4" data-suffix="h">4<small>h</small></b><span>The average professional spends this long building one deck.</span></div>
+              <div><b>2:47</b><span>From brief to an export-ready 12-slide deck in our generation log.</span></div>
+              <div><b data-count="6">6</b><span>Slides building in parallel on Pro. Unlimited on Ultra.</span></div>
+              <div><b data-count="0">0</b><span>Templates. Every slide is designed for its own argument.</span></div>
+            </div>
+          </div>
+        </section>
+
+        {/* FEATURES */}
+        <section className="sec" aria-labelledby="ft-h" data-nova="features">
+          <div className="wrap">
+            <div className="sec-head rv">
+              <span className="eyebrow">Features</span>
+              <h2 id="ft-h">Everything you need. <em>Nothing you don't.</em></h2>
+            </div>
+            <div className="feats rv">
+              <div className="feat"><div className="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 16 5-5 4 4 3-3 6 6" /><circle cx="16" cy="9" r="1.6" /></svg></div><h3>Art-directed slides</h3><p>Each slide gets its own generated imagery, composed around that slide's argument, with real text, charts and shapes on top.</p></div>
+              <div className="feat"><div className="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h13" /></svg></div><h3>Narrative intelligence</h3><p>Nova reads your entire brief, PDFs, spreadsheets and old decks before it writes a word. Details, numbers and structure survive.</p></div>
+              <div className="feat"><div className="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z" /><path d="m13 7 4 4" /></svg></div><h3>Edit anything</h3><p>Click any text to change it, or ask Nova to rework a slide in plain words. Every version is kept.</p></div>
+              <div className="feat"><div className="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /></svg></div><h3>Brand memory <small>SOON</small></h3><p>Upload your brand kit once. Every deck after that stays on brand automatically.</p></div>
+              <div className="feat"><div className="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14" /></svg></div><h3>One-click export</h3><p>Native PowerPoint with editable text boxes and charts, plus PDF and PNG. Exporting is always free.</p></div>
+              <div className="feat"><div className="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6l-8-3Z" /></svg></div><h3>Enterprise grade</h3><p>SSO, audit logs, team workspaces and volume pricing on higher tiers.</p></div>
+            </div>
+          </div>
+        </section>
+
+        {/* PRICING */}
+        <section className="sec" id="pricing" style={{ paddingTop: 0 }} aria-labelledby="pr-h" data-nova="pricing">
+          <div className="wrap">
+            <div className="sec-head rv">
+              <span className="eyebrow">Pricing</span>
+              <h2 id="pr-h">Pick your plan. <em>Start creating.</em></h2>
+              <p className="lede">Six plans, from your first deck to agency scale. Every plan includes AI image generation, PowerPoint and PDF export and Nova's full art-direction engine.</p>
+            </div>
+            <div className="bill" role="group" aria-label="Billing period">
+              <button type="button" aria-pressed={!annual} onClick={() => setAnnual(false)}>Monthly</button>
+              <button type="button" aria-pressed={annual} onClick={() => setAnnual(true)}>Annual</button>
+              <span className="save prism-text">save up to 30%</span>
+            </div>
+            <div className="plans">
+              {PLANS.map((p) => (
+                <div key={p.key} className={'plan-c' + (p.popular ? ' pop' : '')} data-plan={p.key}>
+                  {p.popular && <span className="badge">Most popular</span>}
+                  <div><h3>{p.name}</h3><p className="for">{p.for}</p></div>
+                  {priceBlock(p.monthly, p.discount)}
+                  <div className="credits">✦ {fmt(p.credits)} credits / month</div>
+                  <ul>{p.features.map((f) => <li key={f}>{f}</li>)}</ul>
+                  <div className="decks">About {Math.floor(p.credits / CREDITS_PER_DECK)} five-slide decks a month</div>
+                  <Link className={'btn ' + (p.popular ? 'btn-primary' : 'btn-ghost')} to="/pricing">Choose {p.name}{p.popular && <> <span className="arr">→</span></>}</Link>
+                </div>
+              ))}
+              <div className="plan-c ultra" data-plan="ultra">
+                <span className="badge alt">Best value</span>
+                <div><h3>Ultra <span className="tier">Ultra {ultraTier + 1}</span></h3><p className="for">For power users and agencies. Pick your credit level.</p></div>
+                {priceBlock(ultra.price, ultra.annualDiscount)}
+                {/* Same credit slider as the pricing page, restyled for the dark stage. */}
+                <div className="ultra-slide">
+                  <div className="row">
+                    <label htmlFor="ultra-credits" className="lbl">Credits per month</label>
+                    <b>{fmt(ultra.credits)}</b>
+                  </div>
+                  <input
+                    id="ultra-credits" type="range" min={0} max={ULTRA_TIERS.length - 1} step={1}
+                    value={ultraTier} onChange={(e) => setUltraTier(Number(e.target.value))}
+                    aria-valuetext={`Ultra ${ultraTier + 1}, ${fmt(ultra.credits)} credits`}
+                    style={{ '--fill': ultraPct + '%' }}
+                  />
+                  <div className="ticks">
+                    {ULTRA_TIERS.map((t, idx) => (
+                      <button key={t.credits} type="button" className={idx === ultraTier ? 'on' : ''} onClick={() => setUltraTier(idx)}>
+                        Ultra {idx + 1}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="hint">{Math.round(ultra.annualDiscount * 100)}% off on annual. More credits, bigger discount.</p>
+                </div>
+                <ul>{ULTRA_FEATURES.map((f) => <li key={f}>{f}</li>)}</ul>
+                <div className="decks">About {Math.floor(ultra.credits / CREDITS_PER_DECK)} five-slide decks a month</div>
+                <Link className="btn btn-ghost" to="/pricing">Choose Ultra {ultraTier + 1}</Link>
+              </div>
+            </div>
+            <div className="ent rv">
+              <p><b>Need a plan for your team?</b> Custom credit volumes, shared workspaces, priority onboarding, SLA support and flexible billing.</p>
+              <div className="mail"><code>team@hyperbeing.co</code><button type="button" className="copybtn" onClick={copyMail}>{copied || 'Copy'}</button></div>
+            </div>
+            <p className="free">New accounts get <b>{FREE_CREDITS} free credits</b>. No card required.</p>
+          </div>
+        </section>
+
+        {/* FAQ */}
+        <section className="sec" id="faq" style={{ paddingTop: 0 }} aria-labelledby="faq-h" data-nova="faq">
+          <div className="wrap faq">
+            <div className="rv" style={{ display: 'grid', gap: 20, alignContent: 'start' }}>
+              <span className="eyebrow">FAQ</span>
+              <h2 id="faq-h" style={{ fontSize: 'clamp(32px,4.4vw,60px)' }}>Questions, <em>answered.</em></h2>
+            </div>
+            <div className="rv">
+              {FAQ.map(({ q, a }) => <details key={q}><summary>{q}</summary><p>{a}</p></details>)}
+            </div>
+          </div>
+          <script
+            type="application/ld+json"
+            // eslint-disable-next-line react/no-danger
+            dangerouslySetInnerHTML={{ __html: JSON.stringify({
               '@context': 'https://schema.org',
               '@type': 'FAQPage',
-              mainEntity: FAQ_ITEMS.map(({ q, a }) => ({
-                '@type': 'Question',
-                name: q,
-                acceptedAnswer: { '@type': 'Answer', text: a },
-              })),
-            }),
-          }}
-        />
-      </section>
+              mainEntity: FAQ.map(({ q, a }) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })),
+            }) }}
+          />
+        </section>
 
-      {/* ── 9. FINAL CTA ── */}
-      <section style={{ background: '#5B50FF', padding: '120px 24px', textAlign: 'center' }}>
-        <Reveal>
-          <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(36px, 5vw, 64px)', fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.03em', color: '#ffffff', marginBottom: '16px' }}>
-            Your next deck is{' '}
-            <em>3 minutes away.</em>
-          </h2>
-          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '18px', color: 'rgba(255,255,255,0.75)', marginBottom: '40px' }}>
-            No design experience needed. No templates. Just your ideas.
-          </p>
-          <button
-            onClick={goToApp}
-            style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 600, color: '#5B50FF', background: '#ffffff', border: 'none', borderRadius: '6px', padding: '14px 32px', cursor: 'pointer', transition: 'opacity 0.15s', boxShadow: 'rgba(0,0,0,0.2) 0px 4px 16px' }}
-            onMouseEnter={e => e.target.style.opacity = '0.9'}
-            onMouseLeave={e => e.target.style.opacity = '1'}
-          >
-            Start for free →
-          </button>
-        </Reveal>
-      </section>
-
-      {/* ── 10. FOOTER ── */}
-      <footer style={{ background: '#ffffff', borderTop: '0.5px solid #e8e8f0', padding: '64px 24px 40px' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr 1fr', gap: '48px', marginBottom: '48px' }}>
-            {/* Brand */}
-            <div>
-              <Link to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', marginBottom: '12px' }}>
-                <Logo height={32} />
-              </Link>
-              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490', maxWidth: '180px', lineHeight: 1.6 }}>AI-powered presentation studio.</p>
-            </div>
-            {/* Product */}
-            <div>
-              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 600, color: '#0d0b1a', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>Product</p>
-              {['Features', 'Examples', 'Pricing', 'Enterprise'].map(l => (
-                <a key={l} href="#" style={{ display: 'block', fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#6b6490', textDecoration: 'none', marginBottom: '10px', transition: 'color 0.15s' }}
-                   onMouseEnter={e => e.target.style.color = '#0d0b1a'}
-                   onMouseLeave={e => e.target.style.color = '#6b6490'}>{l}</a>
-              ))}
-            </div>
-            {/* Company */}
-            <div>
-              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 600, color: '#0d0b1a', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>Company</p>
-              {['About', 'Blog', 'Careers', 'Contact'].map(l => (
-                <a key={l} href="#" style={{ display: 'block', fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#6b6490', textDecoration: 'none', marginBottom: '10px', transition: 'color 0.15s' }}
-                   onMouseEnter={e => e.target.style.color = '#0d0b1a'}
-                   onMouseLeave={e => e.target.style.color = '#6b6490'}>{l}</a>
-              ))}
-            </div>
-            {/* Legal */}
-            <div>
-              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 600, color: '#0d0b1a', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>Legal</p>
-              {[{ label: 'Privacy', to: '/privacy' }, { label: 'Terms', to: '/terms' }].map(l => (
-                <Link key={l.label} to={l.to} style={{ display: 'block', fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#6b6490', textDecoration: 'none', marginBottom: '10px' }}>{l.label}</Link>
-              ))}
+        {/* CTA */}
+        <section className="cta" aria-labelledby="cta-h" data-nova="cta">
+          <canvas className="beams" aria-hidden="true" />
+          <div className="wrap">
+            <span className="eyebrow">Your turn</span>
+            <h2 id="cta-h" style={{ marginTop: 22 }}>Your next deck is<br /><em>minutes away.</em></h2>
+            <p>No design experience. No templates. Just your ideas, made impossible to ignore.</p>
+            <div className="ctas">
+              <Link className="btn btn-primary" to={startHref}>{user ? 'Open dashboard' : 'Start for free'} <span className="arr">→</span></Link>
+              <a className="btn btn-ghost" href="#pricing">Compare plans</a>
             </div>
           </div>
-          <div style={{ borderTop: '0.5px solid #e8e8f0', paddingTop: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#6b6490' }}>&copy; {new Date().getFullYear()} HyperBeing. All rights reserved.</p>
-          </div>
+        </section>
+      </main>
+
+      <footer>
+        <div className="wrap">
+          <div><a href="#top" className="logo"><b>HB</b>HyperBeing</a><p style={{ margin: '14px 0 0', maxWidth: '32ch' }}>The AI presentation studio that art-directs every slide.</p></div>
+          <div><h4>Product</h4><ul><li><a href="#studio">How it works</a></li><li><a href="#work">Examples</a></li><li><Link to="/pricing">Pricing</Link></li></ul></div>
+          <div><h4>Use cases</h4><ul><li><Link to="/services/marketing-decks">Marketing decks</Link></li><li><Link to="/services/consulting-decks">Consulting decks</Link></li></ul></div>
+          <div><h4>Legal</h4><ul><li><Link to="/privacy">Privacy</Link></li><li><Link to="/terms">Terms</Link></li></ul></div>
+          <div className="copy">© {new Date().getFullYear()} HyperBeing. All rights reserved.</div>
         </div>
       </footer>
 
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
-        @media (max-width: 768px) {
-          .feature-split-grid {
-            grid-template-columns: minmax(0, 1fr) !important;
-            gap: 28px !important;
-          }
-          .feature-split-grid > div {
-            min-width: 0;
-          }
-          .feature-split-text {
-            order: -1 !important;
-          }
-          .feature-split-visual {
-            order: 2 !important;
-          }
-          .feature-split-list {
-            gap: 64px !important;
-          }
-          .feature-split-item:not(:last-child)::after {
-            content: '';
-            position: absolute;
-            left: 50%;
-            bottom: -64px;
-            width: 1px;
-            height: 64px;
-            background: linear-gradient(to bottom, rgba(91,80,255,0.35), transparent);
-            transform: translateX(-50%);
-            pointer-events: none;
-          }
-          .features-grid {
-            grid-template-columns: 1fr !important;
-          }
-          nav > div[style*="max-width: 1200px"] > div[style*="justify-content: center"] {
-            display: none !important;
-          }
-          nav > div[style*="max-width: 1200px"] {
-            gap: 12px !important;
-            justify-content: space-between !important;
-          }
-          footer > div > div[style*="grid-template-columns: auto 1fr 1fr 1fr"] {
-            grid-template-columns: 1fr !important;
-            gap: 32px !important;
-          }
-        }
-        @media (max-width: 480px) {
-          .nav-signin-btn {
-            display: none !important;
-          }
-        }
-        @media (min-width: 769px) and (max-width: 1024px) {
-          .features-grid {
-            grid-template-columns: repeat(2, 1fr) !important;
-          }
-          footer > div > div[style*="grid-template-columns: auto 1fr 1fr 1fr"] {
-            grid-template-columns: 1fr 1fr !important;
-          }
-          div[style*="gap: 48px"][style*="align-items: center"] > div[style*="order:"] {
-            order: unset !important;
-          }
-          nav > div[style*="max-width: 1200px"] > div[style*="justify-content: center"] {
-            display: none !important;
-          }
-          nav > div[style*="max-width: 1200px"] {
-            gap: 12px !important;
-            justify-content: space-between !important;
-          }
-        }
-      `}</style>
+      <div className="mcta" id="mcta"><Link className="btn btn-primary" to={startHref}>{user ? 'Open dashboard' : 'Generate your first deck'} <span className="arr">→</span></Link></div>
+
+      <LandingNova rootRef={rootRef} startHref={startHref} signedIn={!!user} />
+
+      {lightbox && (
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+        <div
+          className="lb" role="dialog" aria-modal="true" aria-label="Slide viewer"
+          onClick={(e) => { if (e.target === e.currentTarget) closeLightbox(); }}
+          onTouchStart={(e) => { e.currentTarget.dataset.tx = e.touches[0].clientX; }}
+          onTouchEnd={(e) => { const tx = +e.currentTarget.dataset.tx; const dx = e.changedTouches[0].clientX - tx; if (Math.abs(dx) > 50) stepLightbox(dx < 0 ? 1 : -1); }}
+        >
+          <img src={full(lbId)} alt={SLIDE_ALT[lbId] || 'HyperBeing slide'} />
+          {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+          <button type="button" className="close" aria-label="Close" onClick={closeLightbox} autoFocus>✕</button>
+          <button type="button" className="prev" aria-label="Previous slide" onClick={() => stepLightbox(-1)}>←</button>
+          <button type="button" className="next" aria-label="Next slide" onClick={() => stepLightbox(1)}>→</button>
+          <span className="count">{lightbox.i + 1} / {lightbox.list.length}</span>
+        </div>
+      )}
     </div>
   );
 }
