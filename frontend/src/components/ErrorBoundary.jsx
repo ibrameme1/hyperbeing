@@ -37,7 +37,7 @@ export function ErrorFallback({ error, resetError }) {
           <button
             onClick={resetError}
             style={{
-              background: '#0297DE', color: '#fff', border: 'none', borderRadius: 10,
+              background: '#0297DE', color: '#02070A', border: 'none', borderRadius: 10,
               padding: '10px 22px', fontSize: 14, fontWeight: 600, cursor: 'pointer',
               fontFamily: 'Inter, sans-serif',
             }}

@@ -645,7 +645,7 @@ export default function PresentationPage() {
     return (
       <div
         className="h-screen flex flex-col items-center justify-center gap-6"
-        style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
+        style={{ background: 'linear-gradient(135deg, #02070A 0%, #0B2A3D 50%, #050D12 100%)' }}
       >
         <div className="w-14 h-14 rounded-2xl bg-red-500/20 flex items-center justify-center">
           <AlertTriangle size={28} className="text-red-400" />

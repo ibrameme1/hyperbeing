@@ -27,7 +27,7 @@ function DeliveryBlock({ text, onUsePrompt }) {
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         onClick={handleCopy}
-        className="self-start flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all active:scale-95"
+        className="self-start flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-[#02070A] transition-all active:scale-95"
         style={{ background: copied ? '#22c55e' : '#0297DE' }}
       >
         {copied ? <><Check size={14} /> Copied!</> : <><Copy size={14} /> Use this prompt</>}
@@ -48,7 +48,7 @@ function ChatMessage({ msg }) {
       >
         <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center self-end"
              style={{ background: '#0297DE' }}>
-          <Sparkles size={14} className="text-white" />
+          <Sparkles size={14} className="text-[#02070A]" />
         </div>
         <DeliveryBlock text={msg.content} />
       </motion.div>
@@ -64,7 +64,7 @@ function ChatMessage({ msg }) {
       {!isUser && (
         <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center self-end"
              style={{ background: '#0297DE' }}>
-          <Sparkles size={14} className="text-white" />
+          <Sparkles size={14} className="text-[#02070A]" />
         </div>
       )}
       <div className={`max-w-[78%] flex flex-col gap-2 ${isUser ? 'items-end' : 'items-start'}`}>
@@ -237,7 +237,7 @@ export default function PromptGeneratorPage() {
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0"
                style={{ background: '#0297DE' }}>
-            <Sparkles size={13} className="text-white" />
+            <Sparkles size={13} className="text-[#02070A]" />
           </div>
           <p style={{ fontFamily: 'Inter,sans-serif', fontWeight: 600, color: '#f0f0ee', fontSize: 14 }}>Prompt Generator</p>
         </div>
@@ -277,7 +277,7 @@ export default function PromptGeneratorPage() {
           <div className="flex gap-3">
             <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center self-end"
                  style={{ background: '#0297DE' }}>
-              <Sparkles size={14} className="text-white" />
+              <Sparkles size={14} className="text-[#02070A]" />
             </div>
             <div className="bubble-ai flex items-center gap-2 text-ios-gray1">
               <Loader2 size={14} className="animate-spin" />
@@ -344,7 +344,7 @@ export default function PromptGeneratorPage() {
                 className="w-8 h-8 rounded-xl flex items-center justify-center transition-all active:scale-95 disabled:opacity-40"
                 style={{ background: '#0297DE' }}
               >
-                <Send size={14} className="text-white" />
+                <Send size={14} className="text-[#02070A]" />
               </button>
             </div>
           </div>

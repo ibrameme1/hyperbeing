@@ -395,7 +395,7 @@ export default function Login() {
                   <button
                     type="submit"
                     disabled={forgotBusy}
-                    className="w-full py-3 font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
+                    className="w-full py-3 font-semibold text-sm text-[#02070A] flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
                     style={{ fontFamily: 'Inter, sans-serif', background: '#0297DE', borderRadius: '6px', boxShadow: 'rgba(2,151,222,0.20) 0px 0px 24px 0px' }}
                     onMouseEnter={e => { if (!forgotBusy) e.currentTarget.style.background = '#1AA6E8'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = '#0297DE'; }}
@@ -479,7 +479,7 @@ export default function Login() {
                   <button
                     type="submit"
                     disabled={forgotBusy || forgotCode.length < 6 || !forgotNewPw || !forgotConfirmPw}
-                    className="w-full py-3 font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
+                    className="w-full py-3 font-semibold text-sm text-[#02070A] flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
                     style={{ fontFamily: 'Inter, sans-serif', background: '#0297DE', borderRadius: '6px', boxShadow: 'rgba(2,151,222,0.20) 0px 0px 24px 0px' }}
                     onMouseEnter={e => { if (!forgotBusy) e.currentTarget.style.background = '#1AA6E8'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = '#0297DE'; }}
@@ -503,7 +503,7 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => { closeForgot(); setMode('login'); setPassword(''); if (forgotEmail) setEmail(forgotEmail.trim()); }}
-                  className="w-full py-3 font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98]"
+                  className="w-full py-3 font-semibold text-sm text-[#02070A] flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98]"
                   style={{ fontFamily: 'Inter, sans-serif', background: '#0297DE', borderRadius: '6px', boxShadow: 'rgba(2,151,222,0.20) 0px 0px 24px 0px' }}
                   onMouseEnter={e => { e.currentTarget.style.background = '#1AA6E8'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = '#0297DE'; }}
@@ -570,7 +570,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={verifying || code.length < 6}
-                className="w-full py-3 font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
+                className="w-full py-3 font-semibold text-sm text-[#02070A] flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
                 style={{ fontFamily: 'Inter, sans-serif', background: '#0297DE', borderRadius: '6px', boxShadow: 'rgba(2,151,222,0.20) 0px 0px 24px 0px' }}
                 onMouseEnter={e => { if (!verifying && code.length >= 6) e.currentTarget.style.background = '#1AA6E8'; }}
                 onMouseLeave={e => { e.currentTarget.style.background = '#0297DE'; }}
@@ -743,7 +743,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
+            className="w-full py-3 font-semibold text-sm text-[#02070A] flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
             style={{
               fontFamily: 'Inter, sans-serif',
               background: '#0297DE',

@@ -58,7 +58,7 @@ export default function CookieConsent() {
           background: '#0297DE',
           border: 'none',
           borderRadius: 6,
-          color: '#fff',
+          color: '#02070A',
           fontFamily: 'Inter, sans-serif',
           fontWeight: 600,
           fontSize: 13,

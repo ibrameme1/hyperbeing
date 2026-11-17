@@ -43,7 +43,7 @@ export default function ServicePage() {
           </Link>
           <button
             onClick={() => navigate('/login')}
-            style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600, color: '#fff', background: '#0297DE', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer' }}
+            style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600, color: '#02070A', background: '#0297DE', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer' }}
           >
             Start free →
           </button>

@@ -186,7 +186,7 @@
 /* ── Legacy class shims ── */
 .ios-btn, .hb-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  background: #0297DE; color: #ffffff;
+  background: #0297DE; color: #02070A;
   font-family: var(--f-ui); font-size: 13px; font-weight: 600; letter-spacing: 0.01em;
   padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer;
   transition: background 0.15s;
@@ -249,7 +249,7 @@
 }
 
 .bubble-user {
-  background: #0297DE; color: #ffffff;
+  background: #0297DE; color: #02070A;
   border-radius: 12px 12px 4px 12px;
   padding: 10px 14px; max-width: 80%;
   font-family: var(--f-ui); font-size: 14px; line-height: 1.5;

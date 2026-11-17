@@ -79,7 +79,7 @@ function FilmstripItem({ slide, idx, isCurrent, onGoTo, onRetry, onDelete, canDe
               <ImageIcon size={16} style={{ color: '#4CB8F0' }} />
               <button
                 onPointerUp={e => { e.stopPropagation(); if (!wasDragging.current) onRetry(idx); }}
-                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold text-white"
+                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold text-[#02070A]"
                 style={{ background: '#0297DE' }}
               >
                 <RefreshCw size={9} /> Retry
@@ -665,7 +665,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
           <button
             onClick={() => { setExportError(null); setShowExportMenu(v => !v); }}
             disabled={exportingPDF || exportingImages || exportingPPTX}
-            className="export-cta-btn flex items-center gap-1.5 px-3 py-1.5 text-white transition-all duration-150 active:scale-95"
+            className="export-cta-btn flex items-center gap-1.5 px-3 py-1.5 text-[#02070A] transition-all duration-150 active:scale-95"
             style={{
               background: '#0297DE',
               borderRadius: 6,
@@ -810,7 +810,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                         {canEditLayers && (
                           <button
                             onClick={() => { setShowEditConfirm(false); setEditorOpen(true); }}
-                            className="px-3 py-1.5 rounded-full text-xs font-bold text-white"
+                            className="px-3 py-1.5 rounded-full text-xs font-bold text-[#02070A]"
                             style={{ background: '#0297DE' }}
                           >
                             Edit layers
@@ -818,7 +818,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                         )}
                         <button
                           onClick={() => { setShowEditConfirm(false); setShowEditPrompt(true); }}
-                          className={canEditLayers ? 'px-3 py-1.5 rounded-full text-xs font-bold text-[#1a1a2e] border border-gray-200 hover:bg-gray-50' : 'px-3 py-1.5 rounded-full text-xs font-bold text-white'}
+                          className={canEditLayers ? 'px-3 py-1.5 rounded-full text-xs font-bold text-[#1a1a2e] border border-gray-200 hover:bg-gray-50' : 'px-3 py-1.5 rounded-full text-xs font-bold text-[#02070A]'}
                           style={canEditLayers ? undefined : { background: '#0297DE' }}
                         >
                           {canEditLayers ? 'Describe a change' : 'Edit'}
@@ -914,7 +914,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                       <button
                         onClick={handleEditSubmit}
                         disabled={!editInstruction.trim() || editLoading || isUpdating}
-                        className="w-9 h-9 rounded-2xl flex items-center justify-center text-white transition-all duration-150 active:scale-95 disabled:opacity-40 flex-shrink-0"
+                        className="w-9 h-9 rounded-2xl flex items-center justify-center text-[#02070A] transition-all duration-150 active:scale-95 disabled:opacity-40 flex-shrink-0"
                         style={{ background: '#0297DE' }}
                       >
                         {editLoading ? <Loader2 size={15} className="animate-spin" /> : <Send size={14} />}
@@ -944,7 +944,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                   <p className="text-sm font-semibold" style={{ color: '#0297DE' }}>Image not generated</p>
                   <button
                     onClick={() => handleRetrySlide(current)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-colors active:scale-95"
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-[#02070A] transition-colors active:scale-95"
                     style={{ background: '#0297DE' }}
                   >
                     <RefreshCw size={13} /> Regenerate
@@ -1065,7 +1065,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 flex items-center justify-center"
                        style={{ background: '#0297DE', borderRadius: 12 }}>
-                    <Plus size={15} className="text-white" />
+                    <Plus size={15} className="text-[#02070A]" />
                   </div>
                   <div>
                     <h2 className="font-bold text-gray-900 dark:text-zinc-100 text-base">Add More Slides</h2>
@@ -1088,7 +1088,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                         onClick={() => setAddCount(n)}
                         className={`w-10 py-2 rounded-xl text-sm font-semibold border-2 transition-all ${
                           addCount === n
-                            ? 'border-transparent text-white'
+                            ? 'border-transparent text-[#02070A]'
                             : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-400 bg-gray-50 dark:bg-zinc-800 hover:border-gray-300 dark:hover:border-zinc-600'
                         }`}
                         style={addCount === n ? { background: '#0297DE' } : {}}
@@ -1100,7 +1100,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                       onClick={() => setAddCount('auto')}
                       className={`flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all ${
                         addCount === 'auto'
-                          ? 'border-transparent text-white'
+                          ? 'border-transparent text-[#02070A]'
                           : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-400 bg-gray-50 dark:bg-zinc-800 hover:border-gray-300 dark:hover:border-zinc-600'
                       }`}
                       style={addCount === 'auto' ? { background: '#0297DE' } : {}}
@@ -1169,7 +1169,7 @@ export default function PresentationViewer({ slides, presentationId, title, onBa
                 <button
                   onClick={handleAddSlides}
                   disabled={!addDesc.trim() || addLoading}
-                  className="w-full py-3 rounded-2xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-40"
+                  className="w-full py-3 rounded-2xl text-sm font-bold text-[#02070A] flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-40"
                   style={{ background: '#0297DE' }}
                 >
                   {addLoading ? (

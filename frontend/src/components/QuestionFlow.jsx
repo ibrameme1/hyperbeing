@@ -91,7 +91,7 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
                   background: '#0297DE',
                 }}
               >
-                <Sparkles size={13} style={{ color: '#fff' }} />
+                <Sparkles size={13} style={{ color: '#02070A' }} />
               </div>
               <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 11, fontWeight: 600, color: '#888888', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                 {detected_type || 'Your presentation'}
@@ -222,7 +222,7 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
                       justifyContent: 'center', flexShrink: 0, background: '#0297DE', border: 'none', cursor: 'pointer',
                     }}
                   >
-                    <Send size={11} style={{ color: '#fff' }} />
+                    <Send size={11} style={{ color: '#02070A' }} />
                   </button>
                 )}
               </div>
@@ -259,7 +259,7 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
                 fontFamily: 'Inter,sans-serif',
                 fontSize: 13,
                 fontWeight: 600,
-                color: '#fff',
+                color: '#02070A',
                 background: '#0297DE',
                 border: 'none',
                 cursor: canProceed ? 'pointer' : 'not-allowed',

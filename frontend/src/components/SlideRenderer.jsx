@@ -73,7 +73,7 @@ export default function SlideRenderer({ slide, className = '', onUnlock, unlocki
             <button
               onClick={onUnlock}
               disabled={unlocking}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-colors active:scale-95 disabled:opacity-60"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-[#02070A] transition-colors active:scale-95 disabled:opacity-60"
               style={{ background: '#0297DE' }}
             >
               {unlocking ? <Loader2 size={13} className="animate-spin" /> : <Lock size={13} />}

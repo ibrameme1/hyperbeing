@@ -152,7 +152,7 @@ export default function EditSlideModal({ slide, presentationId, onClose, onUpdat
                   style={{
                     flex: 1,
                     background: '#0297DE',
-                    color: '#fff',
+                    color: '#02070A',
                     border: 'none',
                     borderRadius: 6,
                     fontFamily: 'Inter,sans-serif',

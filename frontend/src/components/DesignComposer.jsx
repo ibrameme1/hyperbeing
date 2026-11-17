@@ -234,7 +234,7 @@ export default function DesignComposer({
             >
               <ImageIcon size={14} />
               {attachments.length > 0 && (
-                <span style={{ background: '#0297DE', color: '#fff', borderRadius: 9999, fontSize: 11, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+                <span style={{ background: '#0297DE', color: '#02070A', borderRadius: 9999, fontSize: 11, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
                   {attachments.length}
                 </span>
               )}
@@ -246,7 +246,7 @@ export default function DesignComposer({
               <button
                 onClick={onSubmit}
                 disabled={!canSubmit}
-                className="py-2 px-5 text-sm font-semibold text-white rounded-btn flex items-center gap-2 disabled:opacity-40"
+                className="py-2 px-5 text-sm font-semibold text-[#02070A] rounded-btn flex items-center gap-2 disabled:opacity-40"
                 style={{ background: '#0297DE', border: 'none', cursor: 'pointer' }}
               >
                 <Send size={15} /> {isVideo ? 'Generate video' : 'Generate'}

@@ -4,6 +4,7 @@ import { Check, X, Sparkles, Zap, Crown, Rocket, ArrowRight, Loader2 } from 'luc
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Logo from '../components/Logo';
+import Nova from '../components/nova/Nova';
 import api from '../api/client';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
@@ -44,8 +45,8 @@ const PLANS = [
     credits: 1200,
     annualDiscount: 0.20,
     icon: Zap,
-    color: '#5E717D',
-    speed: { label: 'Standard Speed', emoji: '🐢', color: '#5E717D' },
+    color: '#9AAAB5',
+    speed: { label: 'Standard Speed', emoji: '🐢', color: '#9AAAB5' },
     parallel: { label: '3 slides in parallel', emoji: '🔀' },
     features: [
       'PDF & PNG export',
@@ -273,23 +274,23 @@ export default function Pricing() {
   const eyebrow = { fontFamily: 'JetBrains Mono, monospace', fontSize: '9px', letterSpacing: '0.20em', textTransform: 'uppercase' };
 
   return (
-    <div data-theme="light" style={{ fontFamily: 'Inter, system-ui, sans-serif', background: '#f5f5f5', color: '#02070A', minHeight: '100vh' }}>
+    <div data-theme="dark" style={{ fontFamily: 'Inter, system-ui, sans-serif', background: '#02070A', color: '#F1F6F9', minHeight: '100vh' }}>
       <style>{sliderThumbStyle}</style>
 
       {/* ── NAV ── */}
       <nav style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
         height: '60px',
-        background: scrolled ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.7)',
+        background: scrolled ? 'rgba(2,7,10,0.82)' : 'rgba(2,7,10,0.55)',
         backdropFilter: 'blur(12px)',
-        borderBottom: scrolled ? '0.5px solid #e8e8f0' : '0.5px solid transparent',
+        borderBottom: scrolled ? '0.5px solid rgba(190,225,245,0.12)' : '0.5px solid transparent',
         transition: 'all 0.2s ease',
         display: 'flex', alignItems: 'center',
       }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', width: '100%', padding: '0 24px', display: 'flex', alignItems: 'center', gap: '32px' }}>
           {/* Logo */}
           <Link to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', flexShrink: 0 }}>
-            <Logo height={37} />
+            <Logo dark height={37} />
           </Link>
 
           {/* Center links */}
@@ -304,9 +305,9 @@ export default function Pricing() {
                 key={label}
                 href={href}
                 onClick={label === 'Pricing' ? (e) => e.preventDefault() : undefined}
-                style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: label === 'Pricing' ? '#02070A' : '#5E717D', textDecoration: 'none', transition: 'color 0.15s', cursor: 'pointer' }}
-                onMouseEnter={e => e.target.style.color = '#02070A'}
-                onMouseLeave={e => e.target.style.color = label === 'Pricing' ? '#02070A' : '#5E717D'}
+                style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: label === 'Pricing' ? '#F1F6F9' : '#9AAAB5', textDecoration: 'none', transition: 'color 0.15s', cursor: 'pointer' }}
+                onMouseEnter={e => e.target.style.color = '#F1F6F9'}
+                onMouseLeave={e => e.target.style.color = label === 'Pricing' ? '#F1F6F9' : '#9AAAB5'}
               >
                 {label}
               </a>
@@ -316,7 +317,7 @@ export default function Pricing() {
           {/* Right buttons */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             {creditsLeft !== null && (
-              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', fontWeight: 600, padding: '6px 12px', borderRadius: '6px', background: '#E4F4FC', color: '#0297DE', border: '0.5px solid rgba(2,151,222,0.2)' }}>
+              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', fontWeight: 600, padding: '6px 12px', borderRadius: '6px', background: 'rgba(2,151,222,0.14)', color: '#0297DE', border: '0.5px solid rgba(2,151,222,0.2)' }}>
                 {creditsLeft.toLocaleString()} credits left
               </span>
             )}
@@ -324,7 +325,7 @@ export default function Pricing() {
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
                 <button
                   onClick={handleManage}
-                  style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 500, color: '#5E717D', background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px 8px' }}
+                  style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 500, color: '#9AAAB5', background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px 8px' }}
                 >
                   {loading === 'portal' ? <Loader2 size={14} className="animate-spin" /> : 'Manage / downgrade →'}
                 </button>
@@ -336,7 +337,7 @@ export default function Pricing() {
             {user ? (
               <button
                 onClick={() => navigate('/dashboard')}
-                style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600, color: '#fff', background: '#0297DE', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.15s' }}
+                style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600, color: '#02070A', background: '#0297DE', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.15s' }}
                 onMouseEnter={e => e.target.style.background = '#1AA6E8'}
                 onMouseLeave={e => e.target.style.background = '#0297DE'}
               >
@@ -345,7 +346,7 @@ export default function Pricing() {
             ) : (
               <button
                 onClick={() => navigate('/login')}
-                style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600, color: '#fff', background: '#0297DE', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.15s' }}
+                style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600, color: '#02070A', background: '#0297DE', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer', letterSpacing: '0.01em', transition: 'background 0.15s' }}
                 onMouseEnter={e => e.target.style.background = '#1AA6E8'}
                 onMouseLeave={e => e.target.style.background = '#0297DE'}
               >
@@ -360,13 +361,13 @@ export default function Pricing() {
       {fetchError && (
         <div style={{
           position: 'relative', zIndex: 10, marginTop: '60px',
-          background: '#ffffff',
+          background: '#08131A',
           borderBottom: '0.5px solid rgba(239,68,68,0.2)',
           borderLeft: '3px solid rgba(239,68,68,0.5)',
           padding: '10px 24px',
           fontFamily: 'Inter, sans-serif',
           fontSize: 13,
-          color: '#02070A',
+          color: '#F1F6F9',
         }}>
           Couldn't load your plan info. Reload to try again.
         </div>
@@ -374,10 +375,13 @@ export default function Pricing() {
 
       {/* ── HERO / HEADER ── */}
       <section style={{ paddingTop: fetchError ? '40px' : '120px', paddingBottom: '0px', paddingLeft: '24px', paddingRight: '24px', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 50% 0%, rgba(2,151,222,0.08), transparent 60%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 50% 0%, rgba(2,151,222,0.22), transparent 60%), radial-gradient(ellipse 60% 30% at 50% 100%, rgba(252,115,77,0.10), transparent 70%)', pointerEvents: 'none' }} />
         <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+          <div className="flex justify-center mb-3" aria-hidden="true">
+            <Nova size={96} mood="happy" />
+          </div>
           <Reveal>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 9px', borderRadius: '4px', background: '#E4F4FC', border: '0.5px solid rgba(2,151,222,0.28)', color: '#0297DE', marginBottom: '24px', fontFamily: 'Inter, sans-serif', fontSize: '9px', fontWeight: 600, letterSpacing: '0.10em', textTransform: 'uppercase' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 9px', borderRadius: '4px', background: 'rgba(2,151,222,0.14)', border: '0.5px solid rgba(2,151,222,0.28)', color: '#0297DE', marginBottom: '24px', fontFamily: 'Inter, sans-serif', fontSize: '9px', fontWeight: 600, letterSpacing: '0.10em', textTransform: 'uppercase' }}>
               <Sparkles size={11} /> Simple, transparent pricing
             </div>
           </Reveal>
@@ -388,28 +392,28 @@ export default function Pricing() {
               fontWeight: 400,
               lineHeight: 1.0,
               letterSpacing: '-0.03em',
-              color: '#02070A',
+              color: '#F1F6F9',
               marginBottom: '20px',
             }}>
               Pick your plan,{' '}
-              <em style={{ fontStyle: 'italic', color: '#0297DE' }}>start creating</em>
+              <em style={{ fontStyle: 'italic', color: '#4CB8F0' }}>start creating</em>
             </h1>
           </Reveal>
           <Reveal delay={0.1}>
-            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '18px', fontWeight: 400, color: '#2B3A44', maxWidth: '560px', margin: '0 auto 36px', lineHeight: 1.6 }}>
+            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '18px', fontWeight: 400, color: '#C5D2DA', maxWidth: '560px', margin: '0 auto 36px', lineHeight: 1.6 }}>
               Every plan includes AI image generation, PDF export, and Nova's full art direction engine.
             </p>
           </Reveal>
 
           {/* Billing toggle */}
           <Reveal delay={0.15}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px', borderRadius: '8px', background: '#ffffff', border: '0.5px solid #e8e8f0', marginBottom: '24px' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px', borderRadius: '8px', background: '#08131A', border: '0.5px solid rgba(190,225,245,0.12)', marginBottom: '24px' }}>
               <button
                 onClick={() => setBilling('monthly')}
                 style={{
                   fontFamily: 'Inter, sans-serif', fontSize: '14px', fontWeight: 600, padding: '10px 20px', borderRadius: '6px', border: 'none', cursor: 'pointer', transition: 'all 0.15s',
-                  background: billing === 'monthly' ? '#E4F4FC' : 'transparent',
-                  color: billing === 'monthly' ? '#0297DE' : '#5E717D',
+                  background: billing === 'monthly' ? 'rgba(2,151,222,0.14)' : 'transparent',
+                  color: billing === 'monthly' ? '#0297DE' : '#9AAAB5',
                 }}
               >
                 Monthly
@@ -418,12 +422,12 @@ export default function Pricing() {
                 onClick={() => setBilling('annual')}
                 style={{
                   fontFamily: 'Inter, sans-serif', fontSize: '14px', fontWeight: 600, padding: '10px 20px', borderRadius: '6px', border: 'none', cursor: 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '8px',
-                  background: billing === 'annual' ? '#E4F4FC' : 'transparent',
-                  color: billing === 'annual' ? '#0297DE' : '#5E717D',
+                  background: billing === 'annual' ? 'rgba(2,151,222,0.14)' : 'transparent',
+                  color: billing === 'annual' ? '#0297DE' : '#9AAAB5',
                 }}
               >
                 Annual
-                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(34,197,94,0.12)', color: '#16a34a' }}>
+                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(34,197,94,0.12)', color: '#4ADE80' }}>
                   Save up to 30%
                 </span>
               </button>
@@ -453,12 +457,12 @@ export default function Pricing() {
                       position: 'relative',
                       display: 'flex', flexDirection: 'column',
                       height: '100%',
-                      background: '#ffffff',
-                      border: highlighted ? '1px solid rgba(2,151,222,0.35)' : '0.5px solid #e8e8f0',
+                      background: '#08131A',
+                      border: highlighted ? '1px solid rgba(2,151,222,0.35)' : '0.5px solid rgba(190,225,245,0.12)',
                       borderRadius: highlighted ? '0 0 8px 8px' : '8px',
                       boxShadow: highlighted
-                        ? 'rgba(2,151,222,0.20) 0px 0px 24px 0px, 0 1px 2px rgba(13,11,26,0.04), 0 8px 24px -8px rgba(13,11,26,0.06)'
-                        : '0 1px 2px rgba(13,11,26,0.04), 0 8px 24px -8px rgba(13,11,26,0.06)',
+                        ? 'rgba(2,151,222,0.20) 0px 0px 24px 0px, 0 1px 2px rgba(0,0,0,0.20), 0 8px 24px -8px rgba(0,0,0,0.30)'
+                        : '0 1px 2px rgba(0,0,0,0.20), 0 8px 24px -8px rgba(0,0,0,0.30)',
                       zIndex: highlighted ? 1 : 0,
                       overflow: 'visible',
                     }}
@@ -467,8 +471,8 @@ export default function Pricing() {
                       <div style={{
                         position: 'absolute', top: 0, left: 0, right: 0, transform: 'translateY(-100%)',
                         textAlign: 'center', padding: '10px 0', borderRadius: '8px 8px 0 0',
-                        background: plan.popular ? '#0297DE' : '#0297DE',
-                        color: '#fff',
+                        background: '#0297DE',
+                        color: '#02070A',
                         fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase',
                       }}>
                         {plan.popular ? 'Most popular' : 'Best value'}
@@ -478,7 +482,7 @@ export default function Pricing() {
                     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', flex: 1 }}>
                       {/* Plan name + speed */}
                       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
-                        <h3 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '28px', fontWeight: 400, letterSpacing: '-0.02em', color: '#02070A' }}>{plan.name}</h3>
+                        <h3 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '28px', fontWeight: 400, letterSpacing: '-0.02em', color: '#F1F6F9' }}>{plan.name}</h3>
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0,
                           fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 700, padding: '4px 9px', borderRadius: '4px',
@@ -487,13 +491,13 @@ export default function Pricing() {
                           {plan.speed.emoji} {plan.speed.label}
                         </span>
                       </div>
-                      <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#5E717D', marginBottom: '20px' }}>{plan.tagline}</p>
+                      <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#9AAAB5', marginBottom: '20px' }}>{plan.tagline}</p>
 
                       {/* Credits */}
-                      <div style={{ borderRadius: '8px', padding: '16px', marginBottom: '16px', background: '#f5f5f5', border: '0.5px solid #e8e8f0' }}>
+                      <div style={{ borderRadius: '8px', padding: '16px', marginBottom: '16px', background: '#050D12', border: '0.5px solid rgba(190,225,245,0.12)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                           <span style={{ fontSize: '18px', color: '#0297DE' }}>✦</span>
-                          <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '18px', fontWeight: 700, color: '#02070A' }}>{credits.toLocaleString()} credits/mo</span>
+                          <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '18px', fontWeight: 700, color: '#F1F6F9' }}>{credits.toLocaleString()} credits/mo</span>
                         </div>
                       </div>
 
@@ -501,7 +505,7 @@ export default function Pricing() {
                       <div style={{ marginBottom: '20px' }}>
                         <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
                           {showDiscount && (
-                            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '20px', fontWeight: 600, color: '#5E717D', textDecoration: 'line-through', marginBottom: '4px' }}>${originalPrice}</span>
+                            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '20px', fontWeight: 600, color: '#9AAAB5', textDecoration: 'line-through', marginBottom: '4px' }}>${originalPrice}</span>
                           )}
                           <AnimatePresence mode="wait">
                             <motion.span
@@ -510,22 +514,22 @@ export default function Pricing() {
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: 6 }}
                               transition={{ duration: 0.2 }}
-                              style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '44px', fontWeight: 700, letterSpacing: '-0.02em', color: '#02070A', lineHeight: 1 }}
+                              style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '44px', fontWeight: 700, letterSpacing: '-0.02em', color: '#F1F6F9', lineHeight: 1 }}
                             >
                               ${price}
                             </motion.span>
                           </AnimatePresence>
-                          <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#5E717D', marginBottom: '6px' }}>/month</span>
+                          <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#9AAAB5', marginBottom: '6px' }}>/month</span>
                           {showDiscount && (
-                            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(34,197,94,0.12)', color: '#16a34a', marginBottom: '4px' }}>
+                            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(34,197,94,0.12)', color: '#4ADE80', marginBottom: '4px' }}>
                               {Math.round(discount * 100)}% OFF
                             </span>
                           )}
                         </div>
                         {showDiscount ? (
-                          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#5E717D', marginTop: '2px' }}>Billed ${price * 12}/year</p>
+                          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#9AAAB5', marginTop: '2px' }}>Billed ${price * 12}/year</p>
                         ) : (
-                          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#5E717D', marginTop: '2px' }}>Billed monthly</p>
+                          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#9AAAB5', marginTop: '2px' }}>Billed monthly</p>
                         )}
                       </div>
 
@@ -540,15 +544,15 @@ export default function Pricing() {
                         const periodEnd   = formatDate(subInfo?.current_period_end);
 
                         const primaryBtnStyle = {
-                          fontFamily: 'Inter, sans-serif', fontSize: '14px', fontWeight: 600, color: '#fff',
+                          fontFamily: 'Inter, sans-serif', fontSize: '14px', fontWeight: 600, color: '#02070A',
                           background: '#0297DE', border: 'none', borderRadius: '6px',
                           width: '100%', padding: '13px', cursor: 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                           transition: 'background 0.15s', marginBottom: '12px',
                         };
                         const secondaryBtnStyle = {
-                          fontFamily: 'Inter, sans-serif', fontSize: '14px', fontWeight: 600, color: '#02070A',
-                          background: 'transparent', border: '0.5px solid #e8e8f0', borderRadius: '6px',
+                          fontFamily: 'Inter, sans-serif', fontSize: '14px', fontWeight: 600, color: '#F1F6F9',
+                          background: 'transparent', border: '0.5px solid rgba(190,225,245,0.12)', borderRadius: '6px',
                           width: '100%', padding: '13px', cursor: 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                           transition: 'border-color 0.15s', marginBottom: '12px',
@@ -556,7 +560,7 @@ export default function Pricing() {
                         const onPrimaryEnter = e => { e.currentTarget.style.background = '#1AA6E8'; };
                         const onPrimaryLeave = e => { e.currentTarget.style.background = '#0297DE'; };
                         const onSecondaryEnter = e => { e.currentTarget.style.borderColor = 'rgba(2,151,222,0.3)'; };
-                        const onSecondaryLeave = e => { e.currentTarget.style.borderColor = '#e8e8f0'; };
+                        const onSecondaryLeave = e => { e.currentTarget.style.borderColor = 'rgba(190,225,245,0.12)'; };
 
                         // ── Plan being dropped (e.g. Pro while downgrading to Basic) ──
                         if (isCurrentEnding) {
@@ -574,7 +578,7 @@ export default function Pricing() {
                                   : <><span>Upgrade back to {plan.name}</span><ArrowRight size={14} /></>}
                               </button>
                               <div style={{ fontSize: '12px', textAlign: 'center', marginBottom: '16px', padding: '8px', borderRadius: '8px', background: 'rgba(245,158,11,0.08)', border: '0.5px solid rgba(245,158,11,0.25)' }}>
-                                <span style={{ color: '#b45309', fontFamily: 'Inter, sans-serif' }}>
+                                <span style={{ color: '#F59E0B', fontFamily: 'Inter, sans-serif' }}>
                                   {plan.name} benefits active{periodEnd
                                     ? <> until <span style={{ fontWeight: 700 }}>{periodEnd}</span></>
                                     : ' until end of billing period'}
@@ -596,7 +600,7 @@ export default function Pricing() {
                               >
                                 {loading === 'portal' ? <Loader2 size={16} className="animate-spin" /> : 'Manage subscription'}
                               </button>
-                              <div style={{ fontSize: '12px', textAlign: 'center', marginBottom: '16px', padding: '8px', borderRadius: '8px', background: '#E4F4FC', border: '0.5px solid rgba(2,151,222,0.25)' }}>
+                              <div style={{ fontSize: '12px', textAlign: 'center', marginBottom: '16px', padding: '8px', borderRadius: '8px', background: 'rgba(2,151,222,0.14)', border: '0.5px solid rgba(2,151,222,0.25)' }}>
                                 <span style={{ color: '#0297DE', fontFamily: 'Inter, sans-serif' }}>
                                   Switching to {plan.name}{periodEnd
                                     ? <> on <span style={{ fontWeight: 700 }}>{periodEnd}</span></>
@@ -620,7 +624,7 @@ export default function Pricing() {
                         const isCancelling = !isCancelled && !!subInfo?.cancel_at_period_end;
 
                         const statusNode = isCurrent && subInfo && subInfo.plan !== 'free' ? (
-                          <div style={{ fontSize: '12px', textAlign: 'center', marginBottom: '16px', fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
+                          <div style={{ fontSize: '12px', textAlign: 'center', marginBottom: '16px', fontFamily: 'Inter, sans-serif', color: '#9AAAB5' }}>
                             {isCancelled ? (
                               <span style={{ color: '#ef4444' }}>Cancelled - access ends {periodEnd}</span>
                             ) : isCancelling ? (
@@ -652,9 +656,9 @@ export default function Pricing() {
 
                       {/* Ultra credit slider — below CTA so prices/buttons align across cards */}
                       {plan.key === 'ultra' && (
-                        <div style={{ marginBottom: '20px', borderRadius: '8px', padding: '16px', background: '#E4F4FC', border: '0.5px solid rgba(2,151,222,0.18)' }}>
+                        <div style={{ marginBottom: '20px', borderRadius: '8px', padding: '16px', background: 'rgba(2,151,222,0.14)', border: '0.5px solid rgba(2,151,222,0.18)' }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', fontWeight: 600, color: '#2B3A44' }}>Customize credits / month</span>
+                            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', fontWeight: 600, color: '#C5D2DA' }}>Customize credits / month</span>
                             <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', fontWeight: 700, color: '#0297DE' }}>
                               {ULTRA_TIERS[ultraTier].credits.toLocaleString()}
                             </span>
@@ -667,7 +671,7 @@ export default function Pricing() {
                               className="ultra-slider"
                               style={{
                                 width: '100%', height: '6px', borderRadius: '9999px', appearance: 'none', cursor: 'pointer',
-                                background: `linear-gradient(to right, #0297DE ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%, #C7E8F8 ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%)`,
+                                background: `linear-gradient(to right, #0297DE ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%, rgba(190,225,245,0.16) ${(ultraTier / (ULTRA_TIERS.length - 1)) * 100}%)`,
                               }}
                             />
                           </div>
@@ -678,14 +682,14 @@ export default function Pricing() {
                                 onClick={() => setUltraTier(idx)}
                                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', background: 'transparent', border: 'none', cursor: 'pointer', transition: 'all 0.15s' }}
                               >
-                                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', fontWeight: 600, color: ultraTier === idx ? '#0297DE' : '#5E717D' }}>
+                                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', fontWeight: 600, color: ultraTier === idx ? '#0297DE' : '#9AAAB5' }}>
                                   {(t.credits / 1000).toFixed(0)}k
                                 </span>
                               </button>
                             ))}
                           </div>
                           {billing === 'annual' && (
-                            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', textAlign: 'center', marginTop: '10px', fontWeight: 600, color: '#16a34a' }}>
+                            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', textAlign: 'center', marginTop: '10px', fontWeight: 600, color: '#4ADE80' }}>
                               {Math.round(ULTRA_TIERS[ultraTier].annualDiscount * 100)}% off on annual - more credits = bigger discount
                             </p>
                           )}
@@ -701,24 +705,24 @@ export default function Pricing() {
                         </li>
                         <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontFamily: 'Inter, sans-serif' }}>
                           <span style={{ flexShrink: 0 }}>🔀</span>
-                          <span style={{ color: '#2B3A44' }}>{plan.parallel.label}</span>
+                          <span style={{ color: '#C5D2DA' }}>{plan.parallel.label}</span>
                         </li>
-                        <li style={{ height: '0.5px', margin: '4px 0', background: '#e8e8f0' }} />
+                        <li style={{ height: '0.5px', margin: '4px 0', background: 'rgba(190,225,245,0.12)' }} />
                         {plan.features.map(f => (
                           <li key={f} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontFamily: 'Inter, sans-serif' }}>
                             <Check size={14} style={{ color: plan.color, flexShrink: 0 }} />
-                            <span style={{ color: '#2B3A44' }}>{f}</span>
+                            <span style={{ color: '#C5D2DA' }}>{f}</span>
                           </li>
                         ))}
                         {plan.locked?.map(f => (
                           <li key={f} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontFamily: 'Inter, sans-serif' }}>
                             <X size={14} style={{ color: '#A9DDF7', flexShrink: 0 }} />
-                            <span style={{ color: '#a8a2c4', textDecoration: 'line-through' }}>{f}</span>
+                            <span style={{ color: '#5E717D', textDecoration: 'line-through' }}>{f}</span>
                           </li>
                         ))}
                       </ul>
 
-                      <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', color: '#a8a2c4', marginTop: '16px', textAlign: 'center' }}>
+                      <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', color: '#5E717D', marginTop: '16px', textAlign: 'center' }}>
                         Roughly {Math.floor(credits / 90)} five-slide decks a month
                       </p>
                     </div>
@@ -737,24 +741,24 @@ export default function Pricing() {
             <div style={{
               borderRadius: '8px', padding: '48px',
               display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '32px',
-              background: '#ffffff', border: '0.5px solid #e8e8f0',
-              boxShadow: '0 1px 2px rgba(13,11,26,0.04), 0 8px 24px -8px rgba(13,11,26,0.06)',
+              background: '#08131A', border: '0.5px solid rgba(190,225,245,0.12)',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.20), 0 8px 24px -8px rgba(0,0,0,0.30)',
             }} className="pricing-enterprise">
               <div style={{ flex: 1 }}>
-                <div style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 9px', borderRadius: '4px', background: '#E4F4FC', border: '0.5px solid rgba(2,151,222,0.28)', color: '#0297DE', marginBottom: '16px', fontFamily: 'Inter, sans-serif', fontSize: '9px', fontWeight: 600, letterSpacing: '0.10em', textTransform: 'uppercase' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 9px', borderRadius: '4px', background: 'rgba(2,151,222,0.14)', border: '0.5px solid rgba(2,151,222,0.28)', color: '#0297DE', marginBottom: '16px', fontFamily: 'Inter, sans-serif', fontSize: '9px', fontWeight: 600, letterSpacing: '0.10em', textTransform: 'uppercase' }}>
                   Enterprise
                 </div>
-                <h3 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(28px, 3vw, 36px)', fontWeight: 400, letterSpacing: '-0.02em', color: '#02070A', marginBottom: '12px', lineHeight: 1.1 }}>
+                <h3 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(28px, 3vw, 36px)', fontWeight: 400, letterSpacing: '-0.02em', color: '#F1F6F9', marginBottom: '12px', lineHeight: 1.1 }}>
                   Need a custom plan for your team?
                 </h3>
-                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', color: '#2B3A44', maxWidth: '560px', lineHeight: 1.65 }}>
+                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', color: '#C5D2DA', maxWidth: '560px', lineHeight: 1.65 }}>
                   Custom credit volumes, shared team workspaces, priority onboarding, SLA support, and flexible billing.
                   Reach out and we'll build a plan around your needs.
                 </p>
               </div>
               <a
                 href="mailto:team@hyperbeing.co?subject=Enterprise Plan Enquiry"
-                style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 600, color: '#fff', background: '#0297DE', border: 'none', borderRadius: '6px', padding: '14px 32px', cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.15s' }}
+                style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 600, color: '#02070A', background: '#0297DE', border: 'none', borderRadius: '6px', padding: '14px 32px', cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.15s' }}
                 onMouseEnter={e => e.target.style.background = '#1AA6E8'}
                 onMouseLeave={e => e.target.style.background = '#0297DE'}
               >
@@ -771,68 +775,68 @@ export default function Pricing() {
           <Reveal>
             <div style={{
               borderRadius: '8px', padding: '40px',
-              background: '#ffffff', border: '0.5px solid #e8e8f0',
-              boxShadow: '0 1px 2px rgba(13,11,26,0.04), 0 8px 24px -8px rgba(13,11,26,0.06)',
+              background: '#08131A', border: '0.5px solid rgba(190,225,245,0.12)',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.20), 0 8px 24px -8px rgba(0,0,0,0.30)',
             }}>
-              <h3 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '24px', fontWeight: 400, letterSpacing: '-0.02em', color: '#02070A', marginBottom: '6px' }}>How credits work</h3>
-              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#5E717D', marginBottom: '24px' }}>Each AI action deducts credits from your monthly balance. Unused credits don't roll over.</p>
+              <h3 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '24px', fontWeight: 400, letterSpacing: '-0.02em', color: '#F1F6F9', marginBottom: '6px' }}>How credits work</h3>
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#9AAAB5', marginBottom: '24px' }}>Each AI action deducts credits from your monthly balance. Unused credits don't roll over.</p>
               <div className="pricing-credit-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
                 {CREDIT_TABLE.map(({ action, cost }) => (
-                  <div key={action} style={{ borderRadius: '8px', padding: '16px', background: '#f5f5f5', border: '0.5px solid #e8e8f0' }}>
+                  <div key={action} style={{ borderRadius: '8px', padding: '16px', background: '#050D12', border: '0.5px solid rgba(190,225,245,0.12)' }}>
                     <p style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '26px', fontWeight: 400, letterSpacing: '-0.02em', color: '#0297DE', marginBottom: '2px' }}>{cost}</p>
-                    <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', fontWeight: 600, color: '#02070A', marginBottom: '2px' }}>credits</p>
-                    <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#5E717D' }}>{action}</p>
+                    <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', fontWeight: 600, color: '#F1F6F9', marginBottom: '2px' }}>credits</p>
+                    <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#9AAAB5' }}>{action}</p>
                   </div>
                 ))}
               </div>
             </div>
           </Reveal>
 
-          <p style={{ textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#5E717D', margin: '32px 0 0' }}>
-            New accounts get <span style={{ color: '#02070A', fontWeight: 600 }}>54 free credits</span> to try HyperBeing - no card required.
+          <p style={{ textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: '14px', color: '#9AAAB5', margin: '32px 0 0' }}>
+            New accounts get <span style={{ color: '#F1F6F9', fontWeight: 600 }}>54 free credits</span> to try HyperBeing - no card required.
           </p>
         </div>
       </section>
 
       {/* ── FOOTER ── */}
-      <footer style={{ background: '#ffffff', borderTop: '0.5px solid #e8e8f0', padding: '64px 24px 40px', marginTop: '120px' }}>
+      <footer style={{ background: '#08131A', borderTop: '0.5px solid rgba(190,225,245,0.12)', padding: '64px 24px 40px', marginTop: '120px' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
           <div className="pricing-footer-grid" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr 1fr', gap: '48px', marginBottom: '48px' }}>
             {/* Brand */}
             <div>
               <Link to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', marginBottom: '12px' }}>
-                <Logo height={32} />
+                <Logo dark height={32} />
               </Link>
-              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#5E717D', maxWidth: '180px', lineHeight: 1.6 }}>AI-powered presentation studio.</p>
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#9AAAB5', maxWidth: '180px', lineHeight: 1.6 }}>AI-powered presentation studio.</p>
             </div>
             {/* Product */}
             <div>
-              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 600, color: '#02070A', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>Product</p>
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 600, color: '#F1F6F9', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>Product</p>
               {['Features', 'Examples', 'Pricing', 'Enterprise'].map(l => (
-                <a key={l} href="#" style={{ display: 'block', fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#5E717D', textDecoration: 'none', marginBottom: '10px', transition: 'color 0.15s' }}
-                   onMouseEnter={e => e.target.style.color = '#02070A'}
-                   onMouseLeave={e => e.target.style.color = '#5E717D'}>{l}</a>
+                <a key={l} href="#" style={{ display: 'block', fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#9AAAB5', textDecoration: 'none', marginBottom: '10px', transition: 'color 0.15s' }}
+                   onMouseEnter={e => e.target.style.color = '#F1F6F9'}
+                   onMouseLeave={e => e.target.style.color = '#9AAAB5'}>{l}</a>
               ))}
             </div>
             {/* Company */}
             <div>
-              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 600, color: '#02070A', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>Company</p>
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 600, color: '#F1F6F9', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>Company</p>
               {['About', 'Blog', 'Careers', 'Contact'].map(l => (
-                <a key={l} href="#" style={{ display: 'block', fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#5E717D', textDecoration: 'none', marginBottom: '10px', transition: 'color 0.15s' }}
-                   onMouseEnter={e => e.target.style.color = '#02070A'}
-                   onMouseLeave={e => e.target.style.color = '#5E717D'}>{l}</a>
+                <a key={l} href="#" style={{ display: 'block', fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#9AAAB5', textDecoration: 'none', marginBottom: '10px', transition: 'color 0.15s' }}
+                   onMouseEnter={e => e.target.style.color = '#F1F6F9'}
+                   onMouseLeave={e => e.target.style.color = '#9AAAB5'}>{l}</a>
               ))}
             </div>
             {/* Legal */}
             <div>
-              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 600, color: '#02070A', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>Legal</p>
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', fontWeight: 600, color: '#F1F6F9', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '16px' }}>Legal</p>
               {[{ label: 'Privacy', to: '/privacy' }, { label: 'Terms', to: '/terms' }].map(l => (
-                <Link key={l.label} to={l.to} style={{ display: 'block', fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#5E717D', textDecoration: 'none', marginBottom: '10px' }}>{l.label}</Link>
+                <Link key={l.label} to={l.to} style={{ display: 'block', fontFamily: 'Inter, sans-serif', fontSize: '13px', color: '#9AAAB5', textDecoration: 'none', marginBottom: '10px' }}>{l.label}</Link>
               ))}
             </div>
           </div>
-          <div style={{ borderTop: '0.5px solid #e8e8f0', paddingTop: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#5E717D' }}>&copy; {new Date().getFullYear()} HyperBeing. All rights reserved.</p>
+          <div style={{ borderTop: '0.5px solid rgba(190,225,245,0.12)', paddingTop: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#9AAAB5' }}>&copy; {new Date().getFullYear()} HyperBeing. All rights reserved.</p>
           </div>
         </div>
       </footer>
@@ -843,36 +847,36 @@ export default function Pricing() {
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            style={{ background: 'rgba(13,11,26,0.45)' }}
+            style={{ background: 'rgba(0,0,0,0.60)' }}
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-              style={{ width: '100%', maxWidth: '440px', borderRadius: '12px', padding: '28px', background: '#ffffff', border: '0.5px solid #e8e8f0', boxShadow: '0 1px 2px rgba(13,11,26,0.04), 0 8px 24px -8px rgba(13,11,26,0.06), 0 16px 48px rgba(13,11,26,0.12)' }}
+              style={{ width: '100%', maxWidth: '440px', borderRadius: '12px', padding: '28px', background: '#08131A', border: '0.5px solid rgba(190,225,245,0.12)', boxShadow: '0 1px 2px rgba(0,0,0,0.20), 0 8px 24px -8px rgba(0,0,0,0.30), 0 16px 48px rgba(0,0,0,0.60)' }}
             >
-              <div style={{ width: 48, height: 48, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px', fontSize: '22px', background: '#E4F4FC', border: '0.5px solid rgba(2,151,222,0.2)' }}>
+              <div style={{ width: 48, height: 48, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px', fontSize: '22px', background: 'rgba(2,151,222,0.14)', border: '0.5px solid rgba(2,151,222,0.2)' }}>
                 📅
               </div>
-              <h3 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '24px', fontWeight: 400, letterSpacing: '-0.02em', color: '#02070A', marginBottom: '8px' }}>Downgrade confirmed</h3>
-              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', lineHeight: 1.6, marginBottom: '12px', color: '#2B3A44' }}>
-                Your <span style={{ color: '#02070A', fontWeight: 600, textTransform: 'capitalize' }}>{downgradeModal.fromPlan}</span> plan stays fully active until{' '}
-                <span style={{ color: '#02070A', fontWeight: 700 }}>{formatDate(downgradeModal.periodEnd)}</span>. You keep all{' '}
+              <h3 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '24px', fontWeight: 400, letterSpacing: '-0.02em', color: '#F1F6F9', marginBottom: '8px' }}>Downgrade confirmed</h3>
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', lineHeight: 1.6, marginBottom: '12px', color: '#C5D2DA' }}>
+                Your <span style={{ color: '#F1F6F9', fontWeight: 600, textTransform: 'capitalize' }}>{downgradeModal.fromPlan}</span> plan stays fully active until{' '}
+                <span style={{ color: '#F1F6F9', fontWeight: 700 }}>{formatDate(downgradeModal.periodEnd)}</span>. You keep all{' '}
                 <span style={{ textTransform: 'capitalize' }}>{downgradeModal.fromPlan}</span> credits and features until then.
               </p>
-              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', lineHeight: 1.6, marginBottom: '20px', color: '#2B3A44' }}>
-                On <span style={{ color: '#02070A', fontWeight: 700 }}>{formatDate(downgradeModal.periodEnd)}</span>, your subscription automatically switches to{' '}
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', lineHeight: 1.6, marginBottom: '20px', color: '#C5D2DA' }}>
+                On <span style={{ color: '#F1F6F9', fontWeight: 700 }}>{formatDate(downgradeModal.periodEnd)}</span>, your subscription automatically switches to{' '}
                 <span style={{ fontWeight: 600, textTransform: 'capitalize', color: '#0297DE' }}>{downgradeModal.pendingPlan}</span> and you'll be billed at the{' '}
                 <span style={{ textTransform: 'capitalize' }}>{downgradeModal.pendingPlan}</span> plan rate going forward.
               </p>
-              <div style={{ borderRadius: '8px', padding: '12px 16px', marginBottom: '24px', display: 'flex', alignItems: 'flex-start', gap: '10px', background: '#f5f5f5', border: '0.5px solid #e8e8f0' }}>
+              <div style={{ borderRadius: '8px', padding: '12px 16px', marginBottom: '24px', display: 'flex', alignItems: 'flex-start', gap: '10px', background: '#050D12', border: '0.5px solid rgba(190,225,245,0.12)' }}>
                 <span style={{ fontSize: '15px', marginTop: '1px' }}>💡</span>
-                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#5E717D' }}>
+                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#9AAAB5' }}>
                   No charges today. You can revert this by upgrading back before{' '}
-                  <span style={{ color: '#2B3A44' }}>{formatDate(downgradeModal.periodEnd)}</span>.
+                  <span style={{ color: '#C5D2DA' }}>{formatDate(downgradeModal.periodEnd)}</span>.
                 </p>
               </div>
               <button
                 onClick={() => setDowngradeModal(null)}
-                style={{ width: '100%', fontFamily: 'Inter, sans-serif', fontSize: '14px', fontWeight: 600, color: '#fff', background: '#0297DE', border: 'none', borderRadius: '6px', padding: '13px', cursor: 'pointer', transition: 'background 0.15s' }}
+                style={{ width: '100%', fontFamily: 'Inter, sans-serif', fontSize: '14px', fontWeight: 600, color: '#02070A', background: '#0297DE', border: 'none', borderRadius: '6px', padding: '13px', cursor: 'pointer', transition: 'background 0.15s' }}
                 onMouseEnter={e => e.target.style.background = '#1AA6E8'}
                 onMouseLeave={e => e.target.style.background = '#0297DE'}
               >

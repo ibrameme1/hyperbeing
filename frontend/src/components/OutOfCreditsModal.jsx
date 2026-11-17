@@ -161,7 +161,7 @@ export default function OutOfCreditsModal({ currentPlan = 'free', details = null
                         <button
                           onClick={e => { e.stopPropagation(); handleUpgrade(key); }}
                           disabled={!!loading}
-                          style={{ background: '#0297DE', borderRadius: 6, color: '#fff', fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600, padding: '8px 16px', border: 'none', cursor: 'pointer' }}
+                          style={{ background: '#0297DE', borderRadius: 6, color: '#02070A', fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600, padding: '8px 16px', border: 'none', cursor: 'pointer' }}
                         >
                           Upgrade
                         </button>

@@ -395,7 +395,7 @@ function PresentationCard({ pres, onDelete }) {
       style={{ background: 'var(--bg-card)', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', border: '0.5px solid var(--border)' }}
     >
       <div className="aspect-[16/9] overflow-hidden"
-           style={{ background: 'linear-gradient(135deg, rgba(2,151,222,0.1) 0%, rgba(139,128,255,0.1) 100%)' }}>
+           style={{ background: 'linear-gradient(135deg, rgba(2,151,222,0.1) 0%, rgba(252,115,77,0.08) 100%)' }}>
         {pres.has_thumbnail ? (
           // Thumbnails come from a dedicated endpoint instead of base64 in the
           // list payload (which made the dashboard response tens of MB).
@@ -1059,7 +1059,7 @@ export default function Dashboard() {
                     <Plus size={14} />
                     <span style={{ display: 'none' }} className="sm:inline-block">Add files &amp; references</span>
                     {totalAttachments > 0 && (
-                      <span style={{ background: '#0297DE', color: '#fff', borderRadius: 9999, fontSize: 11, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+                      <span style={{ background: '#0297DE', color: '#02070A', borderRadius: 9999, fontSize: 11, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
                         {totalAttachments}
                       </span>
                     )}
@@ -1072,7 +1072,7 @@ export default function Dashboard() {
                     <button
                       onClick={handleSubmit}
                       disabled={analyzing || uploadingFiles || (!input.trim() && allAttachments.length === 0 && readyAssetIds.length === 0)}
-                      className="py-2 px-5 text-sm font-semibold text-white rounded-btn flex items-center gap-2 disabled:opacity-40"
+                      className="py-2 px-5 text-sm font-semibold text-[#02070A] rounded-btn flex items-center gap-2 disabled:opacity-40"
                       style={{ background: '#0297DE', border: 'none', cursor: 'pointer' }}
                     >
                       <Send size={15} /> Create
