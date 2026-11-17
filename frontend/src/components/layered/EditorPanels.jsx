@@ -143,7 +143,7 @@ export function Inspector({ layer, layout, swatches, onPatch, onBox, onArrange, 
       )}
       {layer.kind === 'image' && onAskAI && (
         <button onClick={() => onAskAI(layer)}
-          className="flex items-center justify-center gap-2 h-9 rounded-md text-[13px] font-semibold text-white bg-[#5B50FF] hover:bg-[#4b41f0] transition-colors">
+          className="flex items-center justify-center gap-2 h-9 rounded-md text-[13px] font-semibold text-[#02070A] bg-[#0297DE] hover:bg-[#1AA6E8] transition-colors">
           <Sparkles size={14} /> Change this element with AI
         </button>
       )}

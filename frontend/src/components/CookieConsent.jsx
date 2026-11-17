@@ -28,7 +28,7 @@ export default function CookieConsent() {
         transform: 'translateX(-50%)',
         zIndex: 9999,
         background: 'rgba(15,15,15,0.97)',
-        border: '0.5px solid #1e1e1e',
+        border: '0.5px solid #0F1F28',
         backdropFilter: 'blur(12px)',
         borderRadius: 8,
         padding: '1rem 1.5rem',
@@ -43,11 +43,11 @@ export default function CookieConsent() {
       <p style={{ color: '#888888', fontFamily: 'Inter, sans-serif', fontSize: 13, lineHeight: '1.5', flex: 1, margin: 0 }}>
         We use a session cookie for authentication and{' '}
         <a href="https://vercel.com/docs/analytics/privacy-policy" target="_blank" rel="noopener noreferrer"
-           style={{ color: '#8B80FF', textDecoration: 'underline' }}>
+           style={{ color: '#4CB8F0', textDecoration: 'underline' }}>
           cookieless analytics
         </a>{' '}
         to improve the product. No tracking cookies.{' '}
-        <Link to="/privacy" style={{ color: '#8B80FF', textDecoration: 'underline' }}>
+        <Link to="/privacy" style={{ color: '#4CB8F0', textDecoration: 'underline' }}>
           Privacy policy
         </Link>
       </p>
@@ -55,10 +55,10 @@ export default function CookieConsent() {
         onClick={accept}
         style={{
           flexShrink: 0,
-          background: '#5B50FF',
+          background: '#0297DE',
           border: 'none',
           borderRadius: 6,
-          color: '#fff',
+          color: '#02070A',
           fontFamily: 'Inter, sans-serif',
           fontWeight: 600,
           fontSize: 13,

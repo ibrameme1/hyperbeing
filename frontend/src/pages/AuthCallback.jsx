@@ -52,8 +52,8 @@ export default function AuthCallback() {
   }, []);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
-      <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid #1e1e1e', borderTopColor: '#5B50FF', animation: 'spin 0.8s linear infinite' }} />
+    <div style={{ minHeight: '100vh', background: '#02070A', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+      <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid #0F1F28', borderTopColor: '#0297DE', animation: 'spin 0.8s linear infinite' }} />
       <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#555555', letterSpacing: '0.15em', textTransform: 'uppercase' }}>Signing you in…</p>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>

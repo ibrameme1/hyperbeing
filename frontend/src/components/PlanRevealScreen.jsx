@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import NovaMascot from './NovaMascot';
+import Nova from './nova/Nova';
 
 // Same MeshGradient treatment as LoadingScreen — keeps the two
 // "Nova is working" screens visually consistent. Falls back to a
@@ -15,16 +15,16 @@ function ShaderBackground() {
   if (!MeshGradient) {
     return (
       <div className="absolute inset-0" style={{
-        background: 'linear-gradient(135deg, #080808 0%, #0f0f0f 33%, #1a1540 66%, #5B50FF 100%)'
+        background: 'linear-gradient(135deg, #02070A 0%, #050D12 33%, #0B2A3D 66%, #0297DE 100%)'
       }} />
     );
   }
   return (
     <MeshGradient
       className="absolute inset-0 w-full h-full"
-      colors={['#080808', '#0f0f0f', '#1a1540', '#5B50FF']}
+      colors={['#02070A', '#050D12', '#0B2A3D', '#0297DE']}
       speed={0.4}
-      backgroundColor="#080808"
+      backgroundColor="#02070A"
       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
     />
   );
@@ -125,7 +125,7 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-y-auto py-12"
-      style={{ background: '#080808' }}
+      style={{ background: '#02070A' }}
       onClick={handleSkip}
     >
       <ShaderBackground />
@@ -133,9 +133,9 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
       {/* Ambient glows */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-1/3 left-1/4 w-96 h-96 rounded-full opacity-20"
-             style={{ background: 'radial-gradient(circle, rgba(91,80,255,0.12) 0%, transparent 70%)' }} />
+             style={{ background: 'radial-gradient(circle, rgba(2,151,222,0.12) 0%, transparent 70%)' }} />
         <div className="absolute bottom-1/3 right-1/4 w-72 h-72 rounded-full opacity-10"
-             style={{ background: 'radial-gradient(circle, rgba(91,80,255,0.08) 0%, transparent 70%)' }} />
+             style={{ background: 'radial-gradient(circle, rgba(2,151,222,0.08) 0%, transparent 70%)' }} />
       </div>
 
       <div className="relative z-10 flex flex-col items-center gap-7 px-6 w-full max-w-xl">
@@ -146,7 +146,7 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
           transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
           className="flex items-center justify-center flex-shrink-0"
         >
-          <NovaMascot size={120} />
+          <Nova size={120} mood="happy" />
         </motion.div>
 
         {/* Headline */}
@@ -171,13 +171,13 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
                 className="flex items-center gap-3 px-4 py-3"
                 style={{
                   background: 'rgba(255,255,255,0.04)',
-                  border: '0.5px solid #1e1e1e',
+                  border: '0.5px solid #0F1F28',
                   borderRadius: 8,
                 }}
               >
                 <span
                   className="text-xs font-black w-6 text-center flex-shrink-0 tabular-nums"
-                  style={{ color: '#8B80FF' }}
+                  style={{ color: '#4CB8F0' }}
                 >
                   {String(i + 1).padStart(2, '0')}
                 </span>
@@ -188,9 +188,9 @@ export default function PlanRevealScreen({ totalSlides, slidePlans = [], onDone 
                     fontSize: 9,
                     fontWeight: 600,
                     letterSpacing: '0.10em',
-                    background: 'rgba(91,80,255,0.12)',
-                    color: '#8B80FF',
-                    border: '0.5px solid rgba(91,80,255,0.28)',
+                    background: 'rgba(2,151,222,0.12)',
+                    color: '#4CB8F0',
+                    border: '0.5px solid rgba(2,151,222,0.28)',
                     borderRadius: 4,
                     padding: '4px 9px',
                   }}

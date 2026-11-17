@@ -31,8 +31,8 @@ export default function ModeSwitcher({ mode, onChange, isDark, designEnabled = t
         aria-label="Creation mode"
         style={{
           display: 'inline-flex', gap: 4, padding: 4, borderRadius: 12,
-          background: isDark ? '#141414' : '#fff',
-          border: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8',
+          background: isDark ? '#08131A' : '#fff',
+          border: isDark ? '0.5px solid #18292F' : '0.5px solid #e8e8e8',
           boxShadow: isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.06)',
         }}
       >
@@ -48,8 +48,8 @@ export default function ModeSwitcher({ mode, onChange, isDark, designEnabled = t
                 display: 'flex', alignItems: 'center', gap: 6,
                 padding: '8px 16px', borderRadius: 9, border: 'none', cursor: 'pointer',
                 fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600,
-                background: isActive ? '#5B50FF' : 'transparent',
-                color: isActive ? '#fff' : (isDark ? '#888' : '#666'),
+                background: isActive ? '#0297DE' : 'transparent',
+                color: isActive ? '#02070A' : (isDark ? '#888' : '#666'),
                 transition: 'background 0.15s, color 0.15s',
               }}
             >

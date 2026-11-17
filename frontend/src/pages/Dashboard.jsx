@@ -5,14 +5,14 @@ import { useDropzone } from 'react-dropzone';
 import {
   Sparkles, Send, X, Clock, Trash2, Loader2,
   ImageIcon, Palette, Plus, ChevronDown, ChevronUp, Zap,
-  Bot, Search, Globe, FileText, FileSpreadsheet, FileJson, Presentation,
+  Search, Globe, FileText, FileSpreadsheet, FileJson, Presentation,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { usePresentations, useSubscription, useDeletePresentation, queryKeys } from '../api/queries';
 import { openAuthedEventSource } from '../utils/sse';
 import OutOfCreditsModal from '../components/OutOfCreditsModal';
-import NovaMascot from '../components/NovaMascot';
+import Nova from '../components/nova/Nova';
 import { useTheme } from '../contexts/ThemeContext';
 import { track } from '../utils/track';
 import { capture } from '../utils/posthog';
@@ -86,13 +86,13 @@ function AnalyzingOverlay({ onCancel, webSearch = false, searchQueries = [] }) {
         aria-modal="true"
         aria-label="Nova is analyzing your brief"
         className="rounded-3xl w-full max-w-sm mx-4 shadow-2xl overflow-hidden"
-        style={{ background: 'linear-gradient(160deg, #18102e 0%, #0f172a 100%)', border: '1px solid rgba(139,92,246,0.25)' }}
+        style={{ background: 'linear-gradient(160deg, #18102e 0%, #0f172a 100%)', border: '1px solid rgba(2,151,222,0.25)' }}
       >
         <div className="px-8 py-8 flex flex-col items-center text-center">
 
           {/* Nova mascot video */}
           <div className={`mb-4 ${shouldReduceMotion ? '' : 'nova-float'}`}>
-            <NovaMascot size={140} />
+            <Nova size={140} mood="think" />
           </div>
 
           {/* Speech bubble */}
@@ -119,7 +119,7 @@ function AnalyzingOverlay({ onCancel, webSearch = false, searchQueries = [] }) {
           {webSearch && (
             <div className="w-full mb-4" aria-live="polite" aria-atomic="true">
               <div className="flex items-center justify-center gap-2 mb-2">
-                <Search size={13} className={shouldReduceMotion ? '' : 'animate-pulse'} style={{ color: '#8B5CF6' }} />
+                <Search size={13} className={shouldReduceMotion ? '' : 'animate-pulse'} style={{ color: '#0297DE' }} />
                 <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>
                   {latestQuery ? 'Searching the web' : 'Preparing to search…'}
                 </span>
@@ -133,7 +133,7 @@ function AnalyzingOverlay({ onCancel, webSearch = false, searchQueries = [] }) {
                     exit={{ opacity: 0, y: -4 }}
                     transition={{ duration: 0.24 }}
                     className="text-sm text-center font-medium truncate px-2"
-                    style={{ color: '#C4B5FD' }}
+                    style={{ color: '#A9DDF7' }}
                     title={latestQuery}
                   >
                     “{latestQuery}”
@@ -156,7 +156,7 @@ function AnalyzingOverlay({ onCancel, webSearch = false, searchQueries = [] }) {
                 animate={shouldReduceMotion ? {} : { y: [0, -5, 0], opacity: [0.4, 1, 0.4] }}
                 transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' }}
                 className="w-2 h-2 rounded-full"
-                style={{ background: '#8B5CF6' }}
+                style={{ background: '#0297DE' }}
               />
             ))}
           </div>
@@ -182,7 +182,7 @@ function greeting(name) {
   const h = new Date().getHours();
   const first = name.split(' ')[0];
   const day = new Date().getDay(); // 0=Sun, 6=Sat
-  if (h < 5)  return `Still up, ${first}? Let's make something.`;
+  if (h < 5)  return `Still up, ${first}? Let's make something`;
   if (h < 12) {
     const morning = ['Morning, ', 'Good morning, ', 'Hey ', 'Rise and create, '];
     return morning[day % morning.length] + first;
@@ -237,11 +237,11 @@ function AttachZone({ label, icon: Icon, accentColor, files, onFile, onRemove, i
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept, multiple: true });
   const muted = isDark ? '#555555' : '#888888';
-  const border = isDark ? '#2a2a2a' : '#e8e8e8';
+  const border = isDark ? '#18292F' : '#e8e8e8';
 
   return (
     <div style={{
-      background: isDark ? '#141414' : '#fff',
+      background: isDark ? '#08131A' : '#fff',
       borderRadius: 8,
       overflow: 'hidden',
       border: '0.5px solid',
@@ -252,7 +252,7 @@ function AttachZone({ label, icon: Icon, accentColor, files, onFile, onRemove, i
         <div style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: accentColor + '18', flexShrink: 0 }}>
           <Icon size={14} style={{ color: accentColor }} />
         </div>
-        <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600, color: isDark ? '#f0f0ee' : '#0d0b1a' }}>{label}</span>
+        <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600, color: isDark ? '#f0f0ee' : '#02070A' }}>{label}</span>
         <span style={{ fontSize: 11, color: muted, marginLeft: 'auto' }}>{files.length} file{files.length !== 1 ? 's' : ''}</span>
       </div>
 
@@ -283,9 +283,9 @@ function AttachZone({ label, icon: Icon, accentColor, files, onFile, onRemove, i
                   aria-label={`Remove ${f.name}`}
                   style={{
                     position: 'absolute', top: -8, right: -8, width: 20, height: 20,
-                    background: '#080808', color: '#fff', borderRadius: '50%',
+                    background: '#02070A', color: '#fff', borderRadius: '50%',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    border: '1px solid #2a2a2a', cursor: 'pointer', opacity: 0,
+                    border: '1px solid #18292F', cursor: 'pointer', opacity: 0,
                   }}
                   className="group-hover:opacity-100 focus:opacity-100 transition-opacity"
                 >
@@ -307,7 +307,7 @@ function AttachZone({ label, icon: Icon, accentColor, files, onFile, onRemove, i
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, border: '0.5px solid', borderColor: border, background: isDark ? '#1b1b1b' : '#fafafa' }}>
                     <DocIcon size={18} style={{ color: accentColor, flexShrink: 0 }} />
                     <div style={{ minWidth: 0 }}>
-                      <p title={f.name} style={{ margin: 0, fontSize: 12, fontWeight: 500, color: isDark ? '#f0f0ee' : '#0d0b1a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</p>
+                      <p title={f.name} style={{ margin: 0, fontSize: 12, fontWeight: 500, color: isDark ? '#f0f0ee' : '#02070A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</p>
                       <p style={{ margin: 0, fontSize: 11, color: muted, display: 'flex', alignItems: 'center', gap: 4 }}>
                         {f.status === 'uploading'
                           ? <><Loader2 size={10} className="animate-spin" /> Checking file…</>
@@ -322,7 +322,7 @@ function AttachZone({ label, icon: Icon, accentColor, files, onFile, onRemove, i
             <div style={{
               height: 56, width: 56, borderRadius: 8,
               border: '1.5px dashed',
-              borderColor: isDark ? '#2a2a2a' : '#d0d0d0',
+              borderColor: isDark ? '#18292F' : '#d0d0d0',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: isDark ? '#555555' : '#999999',
             }}>
@@ -367,8 +367,8 @@ function PresentationCard({ pres, onDelete }) {
 
   const statusStyles = {
     chat:       { background: 'rgba(59,130,246,0.15)',  color: '#60a5fa' },
-    ready:      { background: 'rgba(139,92,246,0.15)',  color: '#a78bfa' },
-    generating: { background: 'rgba(245,158,11,0.15)',  color: '#fbbf24' },
+    ready:      { background: 'rgba(2,151,222,0.15)',   color: '#4CB8F0' },
+    generating: { background: 'rgba(252,115,77,0.15)',  color: '#FC734D' },
     completed:  { background: 'rgba(34,197,94,0.15)',   color: '#4ade80' },
   };
   const statusLabels = { chat: 'Draft', ready: 'Ready', generating: 'Generating…', completed: 'Complete' };
@@ -395,7 +395,7 @@ function PresentationCard({ pres, onDelete }) {
       style={{ background: 'var(--bg-card)', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', border: '0.5px solid var(--border)' }}
     >
       <div className="aspect-[16/9] overflow-hidden"
-           style={{ background: 'linear-gradient(135deg, rgba(91,80,255,0.1) 0%, rgba(139,128,255,0.1) 100%)' }}>
+           style={{ background: 'linear-gradient(135deg, rgba(2,151,222,0.1) 0%, rgba(252,115,77,0.08) 100%)' }}>
         {pres.has_thumbnail ? (
           // Thumbnails come from a dedicated endpoint instead of base64 in the
           // list payload (which made the dashboard response tens of MB).
@@ -404,7 +404,7 @@ function PresentationCard({ pres, onDelete }) {
           <img src={thumbnailUrl(pres)} alt="" loading="lazy" className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full skeleton flex items-center justify-center">
-            <Sparkles className="w-7 h-7 opacity-40" style={{ color: '#5B50FF' }} />
+            <Sparkles className="w-7 h-7 opacity-40" style={{ color: '#0297DE' }} />
           </div>
         )}
       </div>
@@ -829,7 +829,7 @@ export default function Dashboard() {
             style={{ background: 'var(--bg-card)', border: '0.5px solid var(--border)' }}
           >
             <div className="w-14 h-14 rounded-2xl mx-auto mb-5 flex items-center justify-center"
-                 style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}>
+                 style={{ background: 'linear-gradient(135deg, #0297DE 0%, #4CB8F0 100%)' }}>
               <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
                 <Sparkles size={24} className="text-white" />
               </motion.div>
@@ -863,7 +863,7 @@ export default function Dashboard() {
           >
             <div
               className="w-16 h-16 rounded-2xl mx-auto mb-5 flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #5B50FF 0%, #8B80FF 100%)' }}
+              style={{ background: 'linear-gradient(135deg, #0297DE 0%, #4CB8F0 100%)' }}
             >
               <motion.div
                 animate={{ rotate: 360 }}
@@ -909,7 +909,7 @@ export default function Dashboard() {
       />
 
       {/* Hero gradient section */}
-      <div style={{ background: isDark ? '#0f0f0f' : '#f5f5f5' }}>
+      <div style={{ background: isDark ? '#050D12' : '#f5f5f5' }}>
         <div className="max-w-3xl mx-auto px-4 pt-8 pb-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -917,10 +917,15 @@ export default function Dashboard() {
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             className="text-center mb-6"
           >
+            {/* Nova keeps an eye on the composer: she looks down at your
+                brief while you type and follows the cursor otherwise. */}
+            <div className="flex justify-center mb-2" aria-hidden="true">
+              <Nova size={84} mood={analyzing || creatingPresentation ? 'think' : 'idle'} look={input ? { x: 0, y: 1 } : null} />
+            </div>
             <h1 className="font-sans text-3xl sm:text-5xl font-bold leading-tight tracking-tight" style={{ color: 'var(--text-primary)' }}>
               What will you<br />create today?
             </h1>
-            <p className="text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>{greeting(user?.name || 'there')} {heroSubtitle}</p>
+            <p className="text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>{greeting(user?.name || 'there')}. {heroSubtitle}</p>
           </motion.div>
 
           <ModeSwitcher mode="presentation" onChange={mode => { if (mode === 'design') navigate('/design'); }} isDark={isDark} designEnabled={!!subscription?.can_use_design_mode} />
@@ -931,7 +936,7 @@ export default function Dashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div style={{ background: isDark ? '#141414' : '#fff', borderRadius: 16, boxShadow: isDark ? '0 4px 24px rgba(0,0,0,0.4)' : '0 4px 24px rgba(0,0,0,0.1)', overflow: 'hidden', border: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8' }}>
+            <div style={{ background: isDark ? '#08131A' : '#fff', borderRadius: 16, boxShadow: isDark ? '0 4px 24px rgba(0,0,0,0.4)' : '0 4px 24px rgba(0,0,0,0.1)', overflow: 'hidden', border: isDark ? '0.5px solid #18292F' : '0.5px solid #e8e8e8' }}>
               <div className="p-5">
                 <style>{`.hb-ta::placeholder{color:${isDark ? '#555555' : '#aaaaaa'}}`}</style>
                 <textarea
@@ -948,13 +953,13 @@ export default function Dashboard() {
                   className="hb-ta w-full resize-none bg-transparent"
                   style={{
                     border: 'none', outline: 'none', fontSize: 15, lineHeight: 1.7,
-                    color: isDark ? '#f0f0ee' : '#0d0b1a',
+                    color: isDark ? '#f0f0ee' : '#02070A',
                     fontFamily: 'Inter, sans-serif',
                   }}
                 />
               </div>
 
-              <div style={{ padding: '4px 20px 20px', borderTop: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8' }}>
+              <div style={{ padding: '4px 20px 20px', borderTop: isDark ? '0.5px solid #18292F' : '0.5px solid #e8e8e8' }}>
                 {/* Controls row */}
                 <div className="flex items-center gap-2 py-2 flex-wrap">
                   {/* Web search toggle — when on, Nova researches the brief online */}
@@ -969,9 +974,9 @@ export default function Dashboard() {
                       display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
                       padding: '8px 12px', borderRadius: 10, cursor: 'pointer',
                       fontSize: 11, fontWeight: 600, fontFamily: 'Inter,sans-serif',
-                      border: webSearchEnabled ? '1px solid rgba(91,80,255,0.4)' : (isDark ? '1px solid #2a2a2a' : '1px solid #e8e8e8'),
-                      background: webSearchEnabled ? 'rgba(91,80,255,0.12)' : (isDark ? '#0f0f0f' : '#f0f0f0'),
-                      color: webSearchEnabled ? '#5B50FF' : (isDark ? '#777' : '#888'),
+                      border: webSearchEnabled ? '1px solid rgba(2,151,222,0.4)' : (isDark ? '1px solid #18292F' : '1px solid #e8e8e8'),
+                      background: webSearchEnabled ? 'rgba(2,151,222,0.12)' : (isDark ? '#050D12' : '#f0f0f0'),
+                      color: webSearchEnabled ? '#0297DE' : (isDark ? '#777' : '#888'),
                       transition: 'background 0.15s, color 0.15s, border-color 0.15s',
                     }}
                   >
@@ -980,7 +985,7 @@ export default function Dashboard() {
                     {/* Track */}
                     <span style={{
                       position: 'relative', width: 26, height: 15, borderRadius: 999,
-                      background: webSearchEnabled ? '#5B50FF' : (isDark ? '#2a2a2a' : '#ccc'),
+                      background: webSearchEnabled ? '#0297DE' : (isDark ? '#18292F' : '#ccc'),
                       transition: 'background 0.18s', flexShrink: 0,
                     }}>
                       <span style={{
@@ -1046,15 +1051,15 @@ export default function Dashboard() {
                       display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'Inter,sans-serif',
                       fontWeight: 500, fontSize: 13, padding: '6px 12px', borderRadius: 8,
                       border: '0.5px solid', cursor: 'pointer', transition: 'all 0.15s',
-                      borderColor: (showZones || totalAttachments > 0) ? 'rgba(91,80,255,0.4)' : (isDark ? '#2a2a2a' : '#e0e0e0'),
-                      background: (showZones || totalAttachments > 0) ? 'rgba(91,80,255,0.1)' : 'transparent',
-                      color: (showZones || totalAttachments > 0) ? '#8B80FF' : (isDark ? '#888' : '#555'),
+                      borderColor: (showZones || totalAttachments > 0) ? 'rgba(2,151,222,0.4)' : (isDark ? '#18292F' : '#e0e0e0'),
+                      background: (showZones || totalAttachments > 0) ? 'rgba(2,151,222,0.1)' : 'transparent',
+                      color: (showZones || totalAttachments > 0) ? '#4CB8F0' : (isDark ? '#888' : '#555'),
                     }}
                   >
                     <Plus size={14} />
                     <span style={{ display: 'none' }} className="sm:inline-block">Add files &amp; references</span>
                     {totalAttachments > 0 && (
-                      <span style={{ background: '#5B50FF', color: '#fff', borderRadius: 9999, fontSize: 11, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+                      <span style={{ background: '#0297DE', color: '#02070A', borderRadius: 9999, fontSize: 11, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
                         {totalAttachments}
                       </span>
                     )}
@@ -1067,8 +1072,8 @@ export default function Dashboard() {
                     <button
                       onClick={handleSubmit}
                       disabled={analyzing || uploadingFiles || (!input.trim() && allAttachments.length === 0 && readyAssetIds.length === 0)}
-                      className="py-2 px-5 text-sm font-semibold text-white rounded-btn flex items-center gap-2 disabled:opacity-40"
-                      style={{ background: '#5B50FF', border: 'none', cursor: 'pointer' }}
+                      className="py-2 px-5 text-sm font-semibold text-[#02070A] rounded-btn flex items-center gap-2 disabled:opacity-40"
+                      style={{ background: '#0297DE', border: 'none', cursor: 'pointer' }}
                     >
                       <Send size={15} /> Create
                     </button>
@@ -1078,7 +1083,7 @@ export default function Dashboard() {
                 {/* Web-search helper caption */}
                 {webSearchEnabled && (
                   <p className="text-xs px-1 pb-1 flex items-center gap-1.5" style={{ color: isDark ? '#666' : '#999' }}>
-                    <Search size={11} style={{ color: '#5B50FF' }} />
+                    <Search size={11} style={{ color: '#0297DE' }} />
                     Nova searches the web for sharper data, takes a little longer
                   </p>
                 )}
@@ -1139,7 +1144,7 @@ export default function Dashboard() {
                   <AttachZone
                     label="Moodboard & Inspiration"
                     icon={Palette}
-                    accentColor="#5B50FF"
+                    accentColor="#0297DE"
                     files={moodboardFiles}
                     onFile={onMoodboardFile}
                     onRemove={removeFrom(setMoodboardFiles)}
@@ -1175,7 +1180,7 @@ export default function Dashboard() {
             transition={{ duration: 0.5, delay: 0.2 }}
           >
             <div className="flex items-center justify-between mb-5">
-              <h2 style={{ fontFamily: 'Inter,sans-serif', fontWeight: 700, color: isDark ? '#f0f0ee' : '#0d0b1a', fontSize: 18 }}>Recents</h2>
+              <h2 style={{ fontFamily: 'Inter,sans-serif', fontWeight: 700, color: isDark ? '#f0f0ee' : '#02070A', fontSize: 18 }}>Recents</h2>
             </div>
 
             {presError && presentations.length === 0 && !presLoading && (
@@ -1214,17 +1219,12 @@ export default function Dashboard() {
             transition={{ duration: 0.5, delay: 0.3 }}
             className="text-center py-8"
           >
-            <div style={{ background: 'rgba(91,80,255,0.1)', border: '0.5px solid rgba(91,80,255,0.2)', borderRadius: 12, width: 64, height: 64, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
-              <motion.div
-                animate={{ rotate: [0, 10, -10, 0] }}
-                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                <Bot size={26} style={{ color: '#5B50FF' }} />
-              </motion.div>
+            <div className="flex justify-center mb-4" aria-hidden="true">
+              <Nova size={96} mood="wave" />
             </div>
             <p className="font-bold text-lg mb-2" style={{ color: 'var(--text-primary)' }}>Your first deck is one brief away</p>
             <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-              Describe your presentation above — audience, purpose, tone. Nova handles the rest.
+              Describe your presentation above: audience, purpose, tone. I&apos;ll handle the rest. Or tap an idea to start.
             </p>
             <div className="flex flex-wrap justify-center gap-2 max-w-2xl mx-auto">
               {[

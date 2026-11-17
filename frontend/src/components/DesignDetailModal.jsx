@@ -63,10 +63,10 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
         aria-label="Design detail"
         onClick={e => e.stopPropagation()}
         className="w-full max-w-5xl rounded-2xl overflow-hidden flex flex-col md:flex-row shadow-2xl"
-        style={{ background: isDark ? '#0f0f0f' : '#fff', border: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8', maxHeight: '90vh' }}
+        style={{ background: isDark ? '#050D12' : '#fff', border: isDark ? '0.5px solid #18292F' : '0.5px solid #e8e8e8', maxHeight: '90vh' }}
       >
         {/* Image */}
-        <div className="flex-1 flex items-center justify-center p-4 md:p-6" style={{ background: isDark ? '#080808' : '#f5f5f5', minHeight: 280 }}>
+        <div className="flex-1 flex items-center justify-center p-4 md:p-6" style={{ background: isDark ? '#02070A' : '#f5f5f5', minHeight: 280 }}>
           {isVideo && generation.status === 'complete' && generation.video_url ? (
             <video
               src={mediaUrl(generation.video_url)}
@@ -86,7 +86,7 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
                 onClick={handleRetry}
                 disabled={retrying}
                 className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-60"
-                style={{ background: '#5B50FF', color: '#fff' }}
+                style={{ background: '#0297DE', color: '#02070A' }}
               >
                 {retrying ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
                 {retrying ? 'Retrying…' : 'Retry'}
@@ -101,9 +101,9 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
         </div>
 
         {/* Side panel */}
-        <div className="w-full md:w-80 flex flex-col" style={{ borderTop: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8', borderLeft: 'none' }}>
-          <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8' }}>
-            <span style={{ fontFamily: 'Inter,sans-serif', fontWeight: 700, fontSize: 14, color: isDark ? '#f0f0ee' : '#0d0b1a' }}>{isVideo ? 'Video details' : 'Design details'}</span>
+        <div className="w-full md:w-80 flex flex-col" style={{ borderTop: isDark ? '0.5px solid #18292F' : '0.5px solid #e8e8e8', borderLeft: 'none' }}>
+          <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: isDark ? '0.5px solid #18292F' : '0.5px solid #e8e8e8' }}>
+            <span style={{ fontFamily: 'Inter,sans-serif', fontWeight: 700, fontSize: 14, color: isDark ? '#f0f0ee' : '#02070A' }}>{isVideo ? 'Video details' : 'Design details'}</span>
             <button onClick={onClose} aria-label="Close" style={{ color: isDark ? '#888' : '#666' }}>
               <X size={18} />
             </button>
@@ -115,7 +115,7 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
               <span style={{
                 display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600,
                 padding: '4px 8px', borderRadius: 6, fontFamily: 'Inter,sans-serif',
-                background: 'rgba(91,80,255,0.12)', color: '#8B80FF',
+                background: 'rgba(2,151,222,0.12)', color: '#4CB8F0',
               }}>
                 {generation.mode === 'nova' ? <Sparkles size={11} /> : <Wand2 size={11} />}
                 {generation.mode === 'nova' ? 'Nova-crafted prompt' : 'Your prompt'}
@@ -124,23 +124,23 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
                 settings.model && settings.model.replace('seedance-', 'Seedance ').replace('-', ' '),
                 settings.duration && `${settings.duration}s`,
               ].filter(Boolean).map(t => (
-                <span key={t} style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 6, fontFamily: 'Inter,sans-serif', background: isDark ? '#1e1e1e' : '#f0f0f0', color: isDark ? '#888' : '#666', textTransform: 'capitalize' }}>
+                <span key={t} style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 6, fontFamily: 'Inter,sans-serif', background: isDark ? '#0F1F28' : '#f0f0f0', color: isDark ? '#888' : '#666', textTransform: 'capitalize' }}>
                   {t}
                 </span>
               ))}
               {isVideo && (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 6, fontFamily: 'Inter,sans-serif', background: isDark ? '#1e1e1e' : '#f0f0f0', color: isDark ? '#888' : '#666' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 6, fontFamily: 'Inter,sans-serif', background: isDark ? '#0F1F28' : '#f0f0f0', color: isDark ? '#888' : '#666' }}>
                   {settings.audio ? <Volume2 size={11} /> : <VolumeX size={11} />}
                   {settings.audio ? 'Sound' : 'Silent'}
                 </span>
               )}
               {settings.aspectRatio && (
-                <span style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 6, fontFamily: 'Inter,sans-serif', background: isDark ? '#1e1e1e' : '#f0f0f0', color: isDark ? '#888' : '#666' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 6, fontFamily: 'Inter,sans-serif', background: isDark ? '#0F1F28' : '#f0f0f0', color: isDark ? '#888' : '#666' }}>
                   {settings.aspectRatio}
                 </span>
               )}
               {settings.resolution && (
-                <span style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 6, fontFamily: 'Inter,sans-serif', background: isDark ? '#1e1e1e' : '#f0f0f0', color: isDark ? '#888' : '#666' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 6, fontFamily: 'Inter,sans-serif', background: isDark ? '#0F1F28' : '#f0f0f0', color: isDark ? '#888' : '#666' }}>
                   {isVideo ? settings.resolution : settings.resolution.toUpperCase()}
                 </span>
               )}
@@ -151,7 +151,7 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
               <p style={{ fontFamily: 'Inter,sans-serif', fontSize: 12, fontWeight: 600, color: isDark ? '#888' : '#666', marginBottom: 6 }}>Prompt</p>
               <div
                 className="rounded-xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap"
-                style={{ background: isDark ? '#141414' : '#f5f5f5', color: isDark ? '#ccc' : '#333', maxHeight: 220, overflowY: 'auto', fontFamily: 'JetBrains Mono, monospace', fontSize: 12.5 }}
+                style={{ background: isDark ? '#08131A' : '#f5f5f5', color: isDark ? '#ccc' : '#333', maxHeight: 220, overflowY: 'auto', fontFamily: 'JetBrains Mono, monospace', fontSize: 12.5 }}
               >
                 {promptText || '—'}
               </div>
@@ -159,19 +159,19 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
           </div>
 
           {/* Actions */}
-          <div className="px-5 py-4 grid grid-cols-2 gap-2" style={{ borderTop: isDark ? '0.5px solid #2a2a2a' : '0.5px solid #e8e8e8' }}>
+          <div className="px-5 py-4 grid grid-cols-2 gap-2" style={{ borderTop: isDark ? '0.5px solid #18292F' : '0.5px solid #e8e8e8' }}>
             <button
               onClick={handleDownload}
               disabled={generation.status !== 'complete'}
               className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-40"
-              style={{ background: isDark ? '#1e1e1e' : '#f0f0f0', color: isDark ? '#f0f0ee' : '#0d0b1a' }}
+              style={{ background: isDark ? '#0F1F28' : '#f0f0f0', color: isDark ? '#f0f0ee' : '#02070A' }}
             >
               <Download size={14} /> Download
             </button>
             <button
               onClick={handleCopy}
               className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors"
-              style={{ background: copied ? '#22c55e' : (isDark ? '#1e1e1e' : '#f0f0f0'), color: copied ? '#fff' : (isDark ? '#f0f0ee' : '#0d0b1a') }}
+              style={{ background: copied ? '#22c55e' : (isDark ? '#0F1F28' : '#f0f0f0'), color: copied ? '#fff' : (isDark ? '#f0f0ee' : '#02070A') }}
             >
               {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Copy prompt'}
             </button>
@@ -180,15 +180,15 @@ export default function DesignDetailModal({ generation, onClose, onReference, on
               onClick={() => onReference(generation)}
               disabled={generation.status !== 'complete'}
               className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-40"
-              style={{ background: isDark ? '#1e1e1e' : '#f0f0f0', color: isDark ? '#f0f0ee' : '#0d0b1a' }}
+              style={{ background: isDark ? '#0F1F28' : '#f0f0f0', color: isDark ? '#f0f0ee' : '#02070A' }}
             >
               <ImagePlus size={14} /> Reference
             </button>
             <button
               onClick={() => onEdit(generation)}
               disabled={generation.status !== 'complete'}
-              className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-40"
-              style={{ background: '#5B50FF' }}
+              className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold text-[#02070A] transition-colors disabled:opacity-40"
+              style={{ background: '#0297DE' }}
             >
               <Pencil size={14} /> Edit
             </button>

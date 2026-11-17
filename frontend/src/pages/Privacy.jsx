@@ -3,7 +3,7 @@ import Logo from '../components/Logo';
 
 const LAST_UPDATED = 'May 28, 2025';
 
-const s = { color: '#8B80FF', textDecoration: 'none' };
+const s = { color: '#4CB8F0', textDecoration: 'none' };
 const h2Style = { fontFamily: 'Inter, sans-serif', fontSize: 16, fontWeight: 600, color: '#f0f0ee', marginBottom: 10 };
 const liStyle = { marginBottom: 6 };
 
@@ -11,8 +11,8 @@ export default function Privacy() {
   const navigate = useNavigate();
 
   return (
-    <div style={{ minHeight: '100vh', background: '#080808', fontFamily: 'Inter, sans-serif' }}>
-      <div style={{ borderBottom: '0.5px solid #1e1e1e', padding: '0 16px', height: 56, display: 'flex', alignItems: 'center' }}>
+    <div style={{ minHeight: '100vh', background: '#02070A', fontFamily: 'Inter, sans-serif' }}>
+      <div style={{ borderBottom: '0.5px solid #0F1F28', padding: '0 16px', height: 56, display: 'flex', alignItems: 'center' }}>
         <button onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', padding: 0 }}>
           <Logo dark height={35} />
         </button>

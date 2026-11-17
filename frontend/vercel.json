@@ -7,5 +7,5 @@
       ]
     }
   ],
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [{ "source": "/:path+", "destination": "/app.html" }]
 }

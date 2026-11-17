@@ -2,7 +2,7 @@ import React from 'react';
 
 function HBIcon() {
   return (
-    <div style={{ width: 40, height: 40, background: '#5B50FF', borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+    <div style={{ width: 40, height: 40, background: '#0297DE', borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
       <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 900, color: '#fff', fontSize: 18, letterSpacing: '-0.1em', paddingRight: '0.05em' }}>HB</span>
     </div>
   );
@@ -11,7 +11,7 @@ function HBIcon() {
 export function ErrorFallback({ error, resetError }) {
   return (
     <div style={{
-      minHeight: '100vh', background: '#080808',
+      minHeight: '100vh', background: '#02070A',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontFamily: 'Inter, sans-serif', padding: 24,
     }}>
@@ -37,7 +37,7 @@ export function ErrorFallback({ error, resetError }) {
           <button
             onClick={resetError}
             style={{
-              background: '#5B50FF', color: '#fff', border: 'none', borderRadius: 10,
+              background: '#0297DE', color: '#02070A', border: 'none', borderRadius: 10,
               padding: '10px 22px', fontSize: 14, fontWeight: 600, cursor: 'pointer',
               fontFamily: 'Inter, sans-serif',
             }}
@@ -47,7 +47,7 @@ export function ErrorFallback({ error, resetError }) {
           <a
             href="/"
             style={{
-              background: '#141414', color: '#888', border: '0.5px solid #2a2a2a', borderRadius: 10,
+              background: '#08131A', color: '#888', border: '0.5px solid #18292F', borderRadius: 10,
               padding: '10px 22px', fontSize: 14, fontWeight: 500, cursor: 'pointer',
               fontFamily: 'Inter, sans-serif', textDecoration: 'none',
             }}

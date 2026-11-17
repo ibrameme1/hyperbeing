@@ -56,6 +56,9 @@ SITEMAP = PUBLIC / "sitemap.xml"
 # Chromium is pre-installed in this environment; point Playwright straight at it
 # so we don't depend on a version-matched download.
 CHROMIUM = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"
+# The pinned build moves between environments; fall back to Playwright's own.
+if not os.path.exists(CHROMIUM):
+    CHROMIUM = "/opt/pw-browsers/chromium" if os.path.exists("/opt/pw-browsers/chromium") else None
 
 # ── Config ─────────────────────────────────────────────────────────────────
 # Paths that should never be mirrored even if they appear in the sitemap
@@ -152,6 +155,9 @@ def strip_chrome(soup):
     for tag in soup(STRIP_TAGS):
         tag.decompose()
     for el in soup.find_all(class_=True):
+        # A parent decomposed earlier in this loop takes its children with it.
+        if getattr(el, "decomposed", False) or el.attrs is None:
+            continue
         classes = el.get("class", [])
         if any(STRIP_CLASS.search(c) for c in classes):
             el.decompose()
@@ -252,7 +258,7 @@ def main():
     generated, failed = [], []
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(executable_path=CHROMIUM, args=["--no-sandbox"])
+            browser = p.chromium.launch(executable_path=CHROMIUM, args=["--no-sandbox"]) if CHROMIUM else p.chromium.launch(args=["--no-sandbox"])
             page = browser.new_page()
             # Block external requests (fonts/analytics) so rendering can't hang
             # on hosts the sandbox proxy blocks.

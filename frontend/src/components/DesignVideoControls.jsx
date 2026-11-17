@@ -5,7 +5,7 @@ import { VIDEO_IMAGE_ROLE_LABELS } from '../utils/designMode';
 // across re-renders.
 function Segmented({ isDark, value, items, onPick, ariaLabel }) {
   return (
-    <div role="group" aria-label={ariaLabel} style={{ display: 'flex', gap: 2, background: isDark ? '#0f0f0f' : '#f0f0f0', borderRadius: 10, padding: 3, flexShrink: 0 }}>
+    <div role="group" aria-label={ariaLabel} style={{ display: 'flex', gap: 2, background: isDark ? '#050D12' : '#f0f0f0', borderRadius: 10, padding: 3, flexShrink: 0 }}>
       {items.map(({ key, text, disabled }) => {
         const active = value === key;
         return (
@@ -18,9 +18,9 @@ function Segmented({ isDark, value, items, onPick, ariaLabel }) {
             style={{
               padding: '4px 9px', borderRadius: 7, border: 'none', cursor: disabled ? 'not-allowed' : 'pointer',
               fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif', opacity: disabled ? 0.35 : 1,
-              background: active ? (isDark ? '#1e1e1e' : '#fff') : 'transparent',
+              background: active ? (isDark ? '#0F1F28' : '#fff') : 'transparent',
               boxShadow: active && !isDark ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
-              color: active ? '#5B50FF' : (isDark ? '#999' : '#555'),
+              color: active ? '#0297DE' : (isDark ? '#999' : '#555'),
             }}
           >
             {text}
@@ -44,19 +44,19 @@ export default function DesignVideoControls({ isDark, options, settings, onChang
 
   const pill = {
     display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-    background: isDark ? '#0f0f0f' : '#f0f0f0', borderRadius: 10, padding: '6px 10px',
+    background: isDark ? '#050D12' : '#f0f0f0', borderRadius: 10, padding: '6px 10px',
   };
   const label = { fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif', color: isDark ? '#999' : '#555', whiteSpace: 'nowrap' };
   const select = {
     fontSize: 12, fontWeight: 600, fontFamily: 'Inter,sans-serif', background: 'transparent', border: 'none',
-    outline: 'none', color: isDark ? '#f0f0ee' : '#0d0b1a', cursor: 'pointer',
+    outline: 'none', color: isDark ? '#f0f0ee' : '#02070A', cursor: 'pointer',
   };
 
   return (
     <div className="flex items-center gap-2 py-2 flex-wrap">
       {/* Model */}
       <label style={pill} title={model.description}>
-        <Film size={13} style={{ color: '#8B80FF' }} />
+        <Film size={13} style={{ color: '#4CB8F0' }} />
         <select
           aria-label="Video model"
           value={model.key}
@@ -101,7 +101,7 @@ export default function DesignVideoControls({ isDark, options, settings, onChang
           value={settings.duration}
           onChange={e => set({ duration: parseInt(e.target.value, 10) })}
           aria-label={`Duration in seconds (${model.minDuration} to ${model.maxDuration})`}
-          style={{ width: 96, accentColor: '#5B50FF' }}
+          style={{ width: 96, accentColor: '#0297DE' }}
         />
       </div>
 
@@ -111,7 +111,7 @@ export default function DesignVideoControls({ isDark, options, settings, onChang
         onClick={() => set({ audio: !settings.audio })}
         aria-pressed={settings.audio}
         title={settings.audio ? 'Sound on: dialogue, effects and music are generated with the clip' : 'Sound off: silent clip'}
-        style={{ ...pill, border: 'none', cursor: 'pointer', color: settings.audio ? '#5B50FF' : (isDark ? '#999' : '#555') }}
+        style={{ ...pill, border: 'none', cursor: 'pointer', color: settings.audio ? '#0297DE' : (isDark ? '#999' : '#555') }}
       >
         {settings.audio ? <Volume2 size={14} /> : <VolumeX size={14} />}
         <span style={{ ...label, color: 'inherit' }}>{settings.audio ? 'Sound on' : 'Sound off'}</span>

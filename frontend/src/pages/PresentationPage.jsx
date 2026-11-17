@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, AlertTriangle } from 'lucide-react';
 import api from '../api/client';
 import PlanRevealScreen from '../components/PlanRevealScreen';
-import NovaMascot from '../components/NovaMascot';
+import Nova from '../components/nova/Nova';
+import NovaCoach from '../components/nova/NovaCoach';
 import PresentationViewer from '../components/PresentationViewer';
 import { SkeletonPresentationViewer } from '../components/Skeleton';
 import { capture } from '../utils/posthog';
@@ -45,7 +46,7 @@ function GeneratingScreen({ sourceFiles = [] }) {
     >
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-1/3 left-1/3 w-96 h-96 rounded-full opacity-20 animate-float"
-             style={{ background: 'radial-gradient(circle, #8B5CF6 0%, transparent 70%)' }} />
+             style={{ background: 'radial-gradient(circle, #0297DE 0%, transparent 70%)' }} />
         <div className="absolute bottom-1/3 right-1/3 w-80 h-80 rounded-full opacity-15 animate-float"
              style={{ background: 'radial-gradient(circle, #00C4D4 0%, transparent 70%)', animationDelay: '2s' }} />
       </div>
@@ -54,7 +55,7 @@ function GeneratingScreen({ sourceFiles = [] }) {
         animate={{ opacity: 1, scale: 1 }}
         className="flex flex-col items-center gap-6 z-10 px-6 text-center"
       >
-        <NovaMascot size={120} />
+        <Nova size={120} mood="think" />
         <div className="flex flex-col items-center gap-2">
           <p className="text-white font-bold text-lg">Nova is crafting your presentation</p>
           <AnimatePresence mode="wait">
@@ -120,6 +121,9 @@ export default function PresentationPage() {
   const [generationStage, setGenerationStage] = useState(0);
   const [slidePlan, setSlidePlan] = useState([]);
   const [currentPlan, setCurrentPlan] = useState('free');
+  // First deck from onboarding (?welcome=1): Nova narrates the build until
+  // the user dismisses her.
+  const [welcomeOpen, setWelcomeOpen] = useState(() => new URLSearchParams(window.location.search).get('welcome') === '1');
 
   useEffect(() => {
     api.get('/billing/subscription')
@@ -569,8 +573,37 @@ export default function PresentationPage() {
   }
 
   if (phase === 'viewing') {
+    let coach = null;
+    if (welcomeOpen && generatedSlides.length) {
+      const done = generatedSlides.filter(s => s.status === 'complete').length;
+      const building = generatedSlides.some(s => s.status === 'generating');
+      const dismiss = () => {
+        setWelcomeOpen(false);
+        capture('first_deck_coach_dismissed', { presentation_id: id, done });
+        navigate(`/presentations/${id}`, { replace: true });
+      };
+      if (building && done === 0) {
+        coach = { id: 'building', mood: 'think', line: <>I&apos;m designing your slides now, <b>all at once</b>. Each one gets its own art direction.</> };
+      } else if (building) {
+        coach = { id: 'first', mood: 'wow', line: <><b>Slide {done} is ready!</b> Take a look. The rest are on their way.</> };
+      } else if (done > 0) {
+        coach = {
+          id: 'done', mood: 'happy', onDismiss: dismiss,
+          line: (
+            <>
+              Your first deck is done! Click any text to <b>edit it</b>, ask me for changes, or <b>export to PowerPoint</b>.
+              <button type="button" onClick={dismiss} className="block mt-2.5 text-[12.5px] font-semibold px-3 py-1.5 rounded-full" style={{ background: '#F1F6F9', color: '#02070A' }}>Got it</button>
+            </>
+          ),
+        };
+      } else {
+        coach = { id: 'failed', mood: 'sad', onDismiss: dismiss, line: <>Something went wrong on my side and your credits were refunded. Let&apos;s try again from the dashboard.</> };
+      }
+    }
     return (
       <>
+        {/* bottom: sit above the viewer's thumbnail strip */}
+        {coach && <NovaCoach id={coach.id} mood={coach.mood} onDismiss={coach.onDismiss} bottom={150}>{coach.line}</NovaCoach>}
         {sseError && (
           <div
             className="flex items-center justify-between px-4 py-2.5 text-sm"
@@ -612,7 +645,7 @@ export default function PresentationPage() {
     return (
       <div
         className="h-screen flex flex-col items-center justify-center gap-6"
-        style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
+        style={{ background: 'linear-gradient(135deg, #02070A 0%, #0B2A3D 50%, #050D12 100%)' }}
       >
         <div className="w-14 h-14 rounded-2xl bg-red-500/20 flex items-center justify-center">
           <AlertTriangle size={28} className="text-red-400" />

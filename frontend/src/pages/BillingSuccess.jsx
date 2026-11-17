@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Sparkles, ArrowRight } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
-import NovaMascot from '../components/NovaMascot';
+import Nova from '../components/nova/Nova';
 
 const EASE = [0.16, 1, 0.3, 1];
 
@@ -86,12 +86,12 @@ export default function BillingSuccess() {
   const novaLine = NOVA_LINES[plan] || NOVA_LINES.default;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden" style={{ background: '#080808' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden" style={{ background: '#02070A' }}>
       {/* Aurora background */}
       <div className="absolute top-0 left-1/4 w-[600px] h-[600px] rounded-full pointer-events-none"
-           style={{ background: 'radial-gradient(circle, rgba(91,80,255,0.18) 0%, transparent 65%)', filter: 'blur(60px)' }} />
+           style={{ background: 'radial-gradient(circle, rgba(2,151,222,0.18) 0%, transparent 65%)', filter: 'blur(60px)' }} />
       <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] rounded-full pointer-events-none"
-           style={{ background: 'radial-gradient(circle, rgba(91,80,255,0.10) 0%, transparent 65%)', filter: 'blur(60px)' }} />
+           style={{ background: 'radial-gradient(circle, rgba(2,151,222,0.10) 0%, transparent 65%)', filter: 'blur(60px)' }} />
 
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 12 }}
@@ -100,7 +100,7 @@ export default function BillingSuccess() {
         className="relative z-10 text-center max-w-md w-full"
       >
         <div className="flex justify-center mb-3">
-          <NovaMascot size={130} />
+          <Nova size={130} mood="happy" />
         </div>
 
         <div className="mb-6">
@@ -122,7 +122,7 @@ export default function BillingSuccess() {
             >
               <div className="flex items-center justify-between">
                 <span className="text-white/70 text-sm font-semibold">Credits added to your account</span>
-                <span className="text-sm font-bold" style={{ color: '#8B80FF' }}>{credits.toLocaleString()} credits</span>
+                <span className="text-sm font-bold" style={{ color: '#4CB8F0' }}>{credits.toLocaleString()} credits</span>
               </div>
             </div>
           )}

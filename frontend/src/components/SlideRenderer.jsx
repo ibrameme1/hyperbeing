@@ -60,8 +60,8 @@ export default function SlideRenderer({ slide, className = '', onUnlock, unlocki
           className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center"
           style={{ background: 'rgba(10,10,15,0.82)', backdropFilter: 'blur(3px)' }}
         >
-          <div className="w-11 h-11 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(91,80,255,0.15)' }}>
-            <Lock size={18} style={{ color: '#8B80FF' }} />
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(2,151,222,0.15)' }}>
+            <Lock size={18} style={{ color: '#4CB8F0' }} />
           </div>
           <div>
             <p className="text-white text-sm font-semibold">This slide is locked</p>
@@ -73,8 +73,8 @@ export default function SlideRenderer({ slide, className = '', onUnlock, unlocki
             <button
               onClick={onUnlock}
               disabled={unlocking}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-colors active:scale-95 disabled:opacity-60"
-              style={{ background: '#5B50FF' }}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-[#02070A] transition-colors active:scale-95 disabled:opacity-60"
+              style={{ background: '#0297DE' }}
             >
               {unlocking ? <Loader2 size={13} className="animate-spin" /> : <Lock size={13} />}
               {unlocking ? 'Unlocking…' : 'Unlock slide'}

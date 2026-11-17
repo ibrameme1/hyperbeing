@@ -70,7 +70,7 @@ function GalleryCell({ gen, onClick, isDark }) {
 
       {isWorking && (
         <div className="w-full h-full skeleton flex flex-col items-center justify-center gap-2">
-          <Loader2 size={20} className="animate-spin" style={{ color: '#8B80FF' }} />
+          <Loader2 size={20} className="animate-spin" style={{ color: '#4CB8F0' }} />
           <span className="text-xs" style={{ color: isDark ? '#888' : '#999' }}>
             {gen.status === 'pending' ? 'Queued…' : isVideo ? 'Rendering video… (usually 1–5 min)' : 'Generating…'}
           </span>
@@ -356,8 +356,8 @@ export default function DesignGalleryPage() {
             animate={{ opacity: 1, y: 0 }}
             className="text-center py-16"
           >
-            <div style={{ background: 'rgba(91,80,255,0.1)', border: '0.5px solid rgba(91,80,255,0.2)', borderRadius: 12, width: 64, height: 64, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
-              <ImageOff size={26} style={{ color: '#5B50FF' }} />
+            <div style={{ background: 'rgba(2,151,222,0.1)', border: '0.5px solid rgba(2,151,222,0.2)', borderRadius: 12, width: 64, height: 64, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+              <ImageOff size={26} style={{ color: '#0297DE' }} />
             </div>
             <p className="font-bold text-lg mb-2" style={{ color: 'var(--text-primary)' }}>Your gallery is empty</p>
             <p className="text-sm max-w-xs mx-auto leading-relaxed" style={{ color: 'var(--text-muted)' }}>

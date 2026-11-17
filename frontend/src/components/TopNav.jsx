@@ -23,12 +23,12 @@ export default function TopNav({ isDark, toggleTheme, user, credits, currentPlan
         <div className="flex items-center gap-3">
           <button
             onClick={toggleTheme}
-            style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isDark ? '#1e1e1e' : '#f0f0f0', border: 'none', cursor: 'pointer' }}
+            style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isDark ? '#0F1F28' : '#f0f0f0', border: 'none', cursor: 'pointer' }}
             aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             {isDark
               ? <Sun size={15} style={{ color: '#facc15' }} />
-              : <Moon size={15} style={{ color: '#5B50FF' }} />}
+              : <Moon size={15} style={{ color: '#0297DE' }} />}
           </button>
           <AccountMenu
             user={user}
