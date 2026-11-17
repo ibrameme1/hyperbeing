@@ -923,7 +923,7 @@ export default function Dashboard() {
             <p className="text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>{greeting(user?.name || 'there')} {heroSubtitle}</p>
           </motion.div>
 
-          <ModeSwitcher mode="presentation" onChange={mode => { if (mode === 'design') navigate('/design'); }} isDark={isDark} />
+          <ModeSwitcher mode="presentation" onChange={mode => { if (mode === 'design') navigate('/design'); }} isDark={isDark} designEnabled={!!subscription?.can_use_design_mode} />
 
           {/* Composer card */}
           <motion.div

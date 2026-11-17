@@ -150,6 +150,13 @@ export default function DesignGalleryPage() {
   const currentPlan = subscription?.plan ?? 'free';
   const isAdmin = subscription?.is_admin || false;
 
+  // Design Mode is Pro/Ultra only. Once the plan is known, send Basic/Free
+  // users (direct links, bookmarks, a downgrade) back to the dashboard.
+  // Their past gallery is kept server-side and reappears if they upgrade.
+  useEffect(() => {
+    if (subscription && !subscription.can_use_design_mode) navigate('/dashboard', { replace: true });
+  }, [subscription, navigate]);
+
   // Update just the credit count in the subscription cache after a mutation.
   const setCreditsRemaining = useCallback((n) => {
     queryClient.setQueryData(queryKeys.subscription, (old) => old ? { ...old, credits_remaining: n } : old);
@@ -269,6 +276,10 @@ export default function DesignGalleryPage() {
           setOutOfCreditsDetails(err.response.data || null);
           setShowOutOfCredits(true);
           capture('out_of_credits', { page: 'design_gallery', action_type: 'design_video' });
+        } else if (err.response?.data?.code === 'PLAN_REQUIRED') {
+          // Plan changed while the page was open — refresh so the redirect above runs.
+          queryClient.invalidateQueries({ queryKey: queryKeys.subscription });
+          setSubmitError(err.response.data.error);
         } else {
           setSubmitError(err.response?.data?.error || 'Failed to start the video. Please try again.');
         }

@@ -54,6 +54,7 @@ const PLANS = [
       'Email support',
     ],
     locked: [
+      'Design Mode: AI images & video',
       'Early feature access',
     ],
   },
@@ -73,6 +74,7 @@ const PLANS = [
       'PDF & PNG export',
       'Add slides feature',
       'Reference image uploads',
+      'Design Mode: AI images & video',
       'Early feature access',
       'Priority support',
     ],
@@ -94,6 +96,7 @@ const PLANS = [
       'PDF & PNG export',
       'Add slides feature',
       'Reference image uploads',
+      'Design Mode: AI images & video',
       'Early feature access',
       'Custom brand kits',
       'Team workspace (soon)',

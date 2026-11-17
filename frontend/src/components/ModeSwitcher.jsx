@@ -17,7 +17,11 @@ export const MODES = [
 ];
 
 // ─── Presentation / Design mode switcher ───────────────────────────────────
-export default function ModeSwitcher({ mode, onChange, isDark }) {
+// Design Mode is Pro/Ultra only: with `designEnabled` false there is only one
+// mode, so the switcher isn't rendered at all (the backend enforces the same
+// rule — this just keeps Basic/Free users from seeing a door they can't use).
+export default function ModeSwitcher({ mode, onChange, isDark, designEnabled = true }) {
+  if (!designEnabled) return null;
   const active = MODES.find(m => m.key === mode) || MODES[0];
 
   return (

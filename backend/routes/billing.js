@@ -4,6 +4,7 @@ import {
   stripe, PLANS, ULTRA_TIERS, PLAN_LADDER, getOrCreateSubscription, resetCreditsForPlan, grantCredits, isAdmin,
   applyPlanUpgrade, scheduleDowngrade, scheduleCancellation,
 } from '../services/stripeService.js';
+import { canUseDesignMode } from '../config/credits.js';
 
 // Plan ordering derived from the single source of truth in config/credits.js.
 // 'ultra' is a legacy alias for ultra1 (old rows are normalized on boot, but
@@ -111,7 +112,7 @@ router.get('/subscription', authMiddleware, async (req, res) => {
     }
 
     const plan = PLANS[sub.plan] || PLANS.free;
-    res.json({ subscription: { ...sub, current_period_end, is_admin: admin, next_payment_date, cancel_at_period_end }, plan });
+    res.json({ subscription: { ...sub, current_period_end, is_admin: admin, next_payment_date, cancel_at_period_end, can_use_design_mode: admin || canUseDesignMode(sub.plan) }, plan });
   } catch (err) {
     logger.error('get subscription failed', { errorMessage: err.message, userId: req.userId });
     res.status(500).json({ error: 'Could not load subscription. Please try again.' });

@@ -14,6 +14,17 @@ export const CREDIT_COSTS = {
   DESIGN_IMAGE_NOVA_PROMPT: 18,    // design mode: per image when Nova crafts the prompt
 };
 
+// Design mode (images AND video) is a Pro/Ultra feature. Basic and Free don't
+// see it in the UI and every generation route refuses them (403 PLAN_REQUIRED).
+// Admins always pass. The frontend reads this via the subscription payload
+// (`can_use_design_mode`), never a copy of this list.
+export const DESIGN_MODE_PLANS = ['pro', 'ultra1', 'ultra2', 'ultra3', 'ultra4'];
+export const DESIGN_MODE_MIN_PLAN = 'pro';
+
+export function canUseDesignMode(planKey) {
+  return DESIGN_MODE_PLANS.includes(planKey);
+}
+
 // Design mode: maximum number of generations that can be in-flight
 // (status pending/generating) at once for a single user.
 export const DESIGN_MAX_PARALLEL_GENERATIONS = 8;

@@ -12,12 +12,12 @@ import { craftDesignPrompts } from '../services/designPromptGenerator.js';
 import { generateDesignImage } from '../services/gptImageGeneration.js';
 import {
   checkTokenBudget, deductCredits, refundCredits, getOrCreateSubscription,
-  CREDIT_COSTS, novaInsufficientCredits,
+  CREDIT_COSTS, novaInsufficientCredits, isAdmin,
 } from '../services/stripeService.js';
 import {
   DESIGN_MAX_PARALLEL_GENERATIONS, DESIGN_MAX_IMAGES_PER_BATCH,
   DESIGN_VIDEO_MODELS, DESIGN_VIDEO_DEFAULT_MODEL, DESIGN_VIDEO_RATIOS, DESIGN_VIDEO_IMAGE_ROLES,
-  DESIGN_MAX_PARALLEL_VIDEOS, videoCreditCost,
+  DESIGN_MAX_PARALLEL_VIDEOS, videoCreditCost, canUseDesignMode, DESIGN_MODE_MIN_PLAN,
 } from '../config/credits.js';
 import {
   VIDEO_MOCK_MODE, PROVIDER_MODEL_IDS, createVideoTask, waitForVideoTask, downloadVideo,
@@ -35,6 +35,23 @@ const DESIGN_RESOLUTION = '1k';
 
 // Shared attachment validation — Design Mode allows up to 4 reference images.
 const validateAttachments = (attachments) => validateAttachmentsShared(attachments, 4, 'reference images');
+
+// Design Mode is Pro/Ultra only (config/credits.js DESIGN_MODE_PLANS). Runs
+// after authenticateToken. Applied to every route that generates or exposes
+// the composer; the gallery list stays readable so a downgrade never deletes
+// anything — the work reappears on re-upgrade.
+function requireDesignPlan(req, res, next) {
+  if (isAdmin(req.user.id)) return next();
+  const sub = getOrCreateSubscription(req.user.id);
+  if (canUseDesignMode(sub.plan)) return next();
+  return res.status(403).json({
+    error: 'Design Mode is available on the Pro and Ultra plans. Upgrade to create images and videos.',
+    code: 'PLAN_REQUIRED',
+    current_plan: sub.plan,
+    required_plan: DESIGN_MODE_MIN_PLAN,
+    upgrade_url: '/pricing',
+  });
+}
 
 // ─── Per-user SSE registry for gallery live updates ────────────────────────
 const userSseRegistry = new Map();
@@ -119,7 +136,7 @@ router.get('/events', (req, res) => {
 });
 
 // ─── POST /api/design/generate — start a new generation batch ─────────────
-router.post('/generate', authenticateToken, costScope('design_mode'), designGenerationLimiter, (req, res) => {
+router.post('/generate', authenticateToken, requireDesignPlan, costScope('design_mode'), designGenerationLimiter, (req, res) => {
   const { prompt = '', mode = 'own', count = 1, attachments = [] } = req.body;
 
   if (!prompt?.trim() && attachments.length === 0) {
@@ -215,7 +232,7 @@ router.post('/generate', authenticateToken, costScope('design_mode'), designGene
 
 // ─── POST /api/design/:id/retry — retry a single failed generation ────────
 // Re-sends the same final prompt + reference images that were used originally.
-router.post('/:id/retry', authenticateToken, costScope('design_mode'), designGenerationLimiter, (req, res) => {
+router.post('/:id/retry', authenticateToken, requireDesignPlan, costScope('design_mode'), designGenerationLimiter, (req, res) => {
   const db = getDb();
   const row = db.prepare('SELECT * FROM design_generations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!row) return res.status(404).json({ error: 'Generation not found' });
@@ -317,7 +334,7 @@ async function runDesignBatch(rowIds, { userId, mode, prompt, attachments, costP
 // ─── GET /api/design/video/options — model catalog for the composer ───────
 // Served from config/credits.js so the UI's sliders and price estimate can
 // never drift from what the backend actually charges.
-router.get('/video/options', authenticateToken, (req, res) => {
+router.get('/video/options', authenticateToken, requireDesignPlan, (req, res) => {
   res.json({
     defaultModel: DESIGN_VIDEO_DEFAULT_MODEL,
     ratios: DESIGN_VIDEO_RATIOS,
@@ -403,7 +420,7 @@ function videoDescription(s) {
 }
 
 // ─── POST /api/design/video/generate — start one video clip ───────────────
-router.post('/video/generate', authenticateToken, costScope('design_video'), designGenerationLimiter, (req, res) => {
+router.post('/video/generate', authenticateToken, requireDesignPlan, costScope('design_video'), designGenerationLimiter, (req, res) => {
   const parsed = parseVideoRequest(req.body);
   if (parsed.error) return res.status(400).json({ error: parsed.error });
   const { prompt, attachments, settings } = parsed;

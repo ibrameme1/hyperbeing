@@ -2,7 +2,7 @@
 title: "Pick your plan, start creating — HyperBeing"
 description: "HyperBeing — AI-powered presentation maker"
 url: "https://www.hyperbeing.co/pricing"
-last_updated: 2026-07-08
+last_updated: 2026-11-17
 ---
 
 Simple, transparent pricing
@@ -33,6 +33,7 @@ Upgrade to Basic
 - Add slides feature
 - Reference image uploads
 - Email support
+- Design Mode: AI images & video
 - Early feature access
 
 Roughly 13 five-slide decks a month
@@ -58,6 +59,7 @@ Upgrade to Pro
 - PDF & PNG export
 - Add slides feature
 - Reference image uploads
+- Design Mode: AI images & video
 - Early feature access
 - Priority support
 
@@ -90,6 +92,7 @@ Customize credits / month8,000
 - PDF & PNG export
 - Add slides feature
 - Reference image uploads
+- Design Mode: AI images & video
 - Early feature access
 - Custom brand kits
 - Team workspace (soon)

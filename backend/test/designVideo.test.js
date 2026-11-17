@@ -53,3 +53,12 @@ describe('buildContent', () => {
     expect(buildContent('', [a, b], 'reference').map(c => c.role)).toEqual(['reference_image', 'reference_image']);
   });
 });
+
+describe('design mode plan gate', () => {
+  it('is Pro and Ultra only', async () => {
+    const { canUseDesignMode, PLAN_LADDER } = await import('../config/credits.js');
+    expect(PLAN_LADDER.filter(canUseDesignMode)).toEqual(['pro', 'ultra1', 'ultra2', 'ultra3', 'ultra4']);
+    expect(canUseDesignMode('free')).toBe(false);
+    expect(canUseDesignMode('basic')).toBe(false);
+  });
+});
