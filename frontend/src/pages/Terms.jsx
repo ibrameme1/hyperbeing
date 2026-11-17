@@ -8,7 +8,7 @@ export default function Terms() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#02070A', fontFamily: 'Inter, sans-serif' }}>
-      <div style={{ borderBottom: '0.5px solid #0F1F28', padding: '0 16px', height: 56, display: 'flex', alignItems: 'center' }}>
+      <div style={{ borderBottom: '0.5px solid #1C2024', padding: '0 16px', height: 56, display: 'flex', alignItems: 'center' }}>
         <button onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', padding: 0 }}>
           <Logo dark height={35} />
         </button>

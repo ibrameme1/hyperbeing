@@ -11,7 +11,6 @@ import PromptGeneratorPage from './pages/PromptGeneratorPage';
 import DesignGalleryPage from './pages/DesignGalleryPage';
 import Onboarding from './pages/Onboarding';
 import AuthCallback from './pages/AuthCallback';
-import Pricing from './pages/Pricing';
 import BillingSuccess from './pages/BillingSuccess';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
@@ -50,7 +49,9 @@ export default function App() {
         <Route path="/prompt-generator" element={<ProtectedRoute>{wrap(<PromptGeneratorPage />)}</ProtectedRoute>} />
         <Route path="/design" element={<ProtectedRoute>{wrap(<DesignGalleryPage />)}</ProtectedRoute>} />
         <Route path="/auth/callback" element={wrap(<AuthCallback />)} />
-        <Route path="/pricing" element={wrap(<Pricing />)} />
+        {/* Pricing lives on the landing page now; keep old links, Stripe's
+            cancel URL and emails working. */}
+        <Route path="/pricing" element={<Navigate to={{ pathname: '/', hash: '#pricing' }} replace />} />
         <Route path="/services/:slug" element={wrap(<ServicePage />)} />
         <Route path="/billing/success" element={<ProtectedRoute>{wrap(<BillingSuccess />)}</ProtectedRoute>} />
         <Route path="/terms" element={wrap(<Terms />)} />

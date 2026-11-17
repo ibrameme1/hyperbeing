@@ -31,8 +31,8 @@ export default function ModeSwitcher({ mode, onChange, isDark, designEnabled = t
         aria-label="Creation mode"
         style={{
           display: 'inline-flex', gap: 4, padding: 4, borderRadius: 12,
-          background: isDark ? '#08131A' : '#fff',
-          border: isDark ? '0.5px solid #18292F' : '0.5px solid #e8e8e8',
+          background: isDark ? '#111417' : '#fff',
+          border: isDark ? '0.5px solid #272C31' : '0.5px solid #e8e8e8',
           boxShadow: isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.06)',
         }}
       >

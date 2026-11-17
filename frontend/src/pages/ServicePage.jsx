@@ -69,7 +69,7 @@ export default function ServicePage() {
 
         <H2>Cost</H2>
         {data.pricing.map((para, i) => <P key={i}>{para}</P>)}
-        <P>See the full breakdown on the <Link to="/pricing" style={{ color: '#0297DE', textDecoration: 'none' }}>pricing page</Link>.</P>
+        <P>See the full breakdown on the <Link to="/#pricing" style={{ color: '#0297DE', textDecoration: 'none' }}>pricing section</Link>.</P>
 
         <H2>How long it takes</H2>
         <P>{data.timing}</P>

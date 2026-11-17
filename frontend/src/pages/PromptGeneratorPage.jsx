@@ -20,7 +20,7 @@ function DeliveryBlock({ text, onUsePrompt }) {
 
   return (
     <div className="flex flex-col gap-2 max-w-[85%]">
-      <div style={{ background: '#08131A', color: '#f0f0ee', borderRadius: '12px 12px 4px 12px', padding: '16px 20px', fontSize: 14, lineHeight: 1.6, fontFamily: 'JetBrains Mono,monospace', whiteSpace: 'pre-wrap', border: '0.5px solid #0F1F28' }}>
+      <div style={{ background: '#111417', color: '#f0f0ee', borderRadius: '12px 12px 4px 12px', padding: '16px 20px', fontSize: 14, lineHeight: 1.6, fontFamily: 'JetBrains Mono,monospace', whiteSpace: 'pre-wrap', border: '0.5px solid #1C2024' }}>
         {text}
       </div>
       <motion.button
@@ -226,7 +226,7 @@ export default function PromptGeneratorPage() {
       {/* Top bar */}
       <div
         className="flex items-center gap-3 px-5 py-4 flex-shrink-0"
-        style={{ background: 'rgba(10,10,10,0.92)', backdropFilter: 'blur(20px)', borderBottom: '0.5px solid #0F1F28' }}
+        style={{ background: 'rgba(10,10,10,0.92)', backdropFilter: 'blur(20px)', borderBottom: '0.5px solid #1C2024' }}
       >
         <button
           onClick={() => navigate('/dashboard')}
@@ -292,9 +292,9 @@ export default function PromptGeneratorPage() {
       {/* Input */}
       <div
         className="p-4 flex-shrink-0"
-        style={{ background: 'rgba(10,10,10,0.92)', backdropFilter: 'blur(20px)', borderTop: '0.5px solid #0F1F28' }}
+        style={{ background: 'rgba(10,10,10,0.92)', backdropFilter: 'blur(20px)', borderTop: '0.5px solid #1C2024' }}
       >
-        <div {...getRootProps()} className="rounded-lg" style={{ background: '#08131A', border: '0.5px solid #0F1F28' }}>
+        <div {...getRootProps()} className="rounded-lg" style={{ background: '#111417', border: '0.5px solid #1C2024' }}>
           <input {...getInputProps()} />
 
           <AnimatePresence>
@@ -329,7 +329,7 @@ export default function PromptGeneratorPage() {
               placeholder="Describe your slide — brand, product, stat, campaign moment…"
               rows={2}
               className="flex-1 resize-none leading-relaxed"
-              style={{ background: '#08131A', color: '#f0f0ee', border: 'none', outline: 'none', fontFamily: 'Inter,sans-serif', fontSize: 14 }}
+              style={{ background: '#111417', color: '#f0f0ee', border: 'none', outline: 'none', fontFamily: 'Inter,sans-serif', fontSize: 14 }}
             />
             <div className="flex items-center gap-2 flex-shrink-0">
               <button

@@ -92,7 +92,7 @@ export default function OutOfCreditsModal({ currentPlan = 'free', details = null
           exit={{ opacity: 0, scale: 0.95, y: 16 }}
           transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
           className="w-full max-w-md overflow-hidden"
-          style={{ background: '#08131A', border: '0.5px solid #0F1F28', borderRadius: 12, padding: 28 }}
+          style={{ background: '#111417', border: '0.5px solid #1C2024', borderRadius: 12, padding: 28 }}
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
@@ -140,8 +140,8 @@ export default function OutOfCreditsModal({ currentPlan = 'free', details = null
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         padding: 16,
-                        background: isPopular ? 'rgba(2,151,222,0.06)' : '#050D12',
-                        border: isPopular ? '0.5px solid rgba(2,151,222,0.4)' : '0.5px solid #0F1F28',
+                        background: isPopular ? 'rgba(2,151,222,0.06)' : '#0A0C0E',
+                        border: isPopular ? '0.5px solid rgba(2,151,222,0.4)' : '0.5px solid #1C2024',
                         borderRadius: 8,
                         cursor: loading ? 'not-allowed' : 'pointer',
                         opacity: loading ? 0.5 : 1,
@@ -176,9 +176,9 @@ export default function OutOfCreditsModal({ currentPlan = 'free', details = null
             {currentPlan !== 'free' && (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0' }}>
-                  <div style={{ flex: 1, height: 1, background: '#0F1F28' }} />
+                  <div style={{ flex: 1, height: 1, background: '#1C2024' }} />
                   <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 12, color: '#555555' }}>or</span>
-                  <div style={{ flex: 1, height: 1, background: '#0F1F28' }} />
+                  <div style={{ flex: 1, height: 1, background: '#1C2024' }} />
                 </div>
                 <button
                   onClick={handlePortal}
@@ -189,8 +189,8 @@ export default function OutOfCreditsModal({ currentPlan = 'free', details = null
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: 16,
-                    background: '#050D12',
-                    border: '0.5px solid #0F1F28',
+                    background: '#0A0C0E',
+                    border: '0.5px solid #1C2024',
                     borderRadius: 8,
                     cursor: loading ? 'not-allowed' : 'pointer',
                     opacity: loading ? 0.5 : 1,
@@ -212,7 +212,7 @@ export default function OutOfCreditsModal({ currentPlan = 'free', details = null
 
             {/* View all plans */}
             <button
-              onClick={() => { onClose(); navigate('/pricing'); }}
+              onClick={() => { onClose(); navigate('/#pricing'); }}
               style={{ width: '100%', textAlign: 'center', fontFamily: 'Inter,sans-serif', fontSize: 13, color: '#555555', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 0' }}
               onMouseEnter={e => e.currentTarget.style.color = '#888888'}
               onMouseLeave={e => e.currentTarget.style.color = '#555555'}

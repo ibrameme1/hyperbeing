@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import LandingNova from '../components/nova/LandingNova';
+import usePlanCheckout, { PLAN_RANK, formatPlanDate } from '../hooks/usePlanCheckout';
 import {
   thumb, full, SLIDE_ALT, ALL, WALL, CASE, RANGE, STUDIO_SLIDES,
   PLANS, ULTRA_TIERS, ULTRA_FEATURES, FAQ, CREDITS_PER_DECK, FREE_CREDITS,
@@ -21,6 +22,35 @@ import './landing.css';
 //     effect after mount.
 
 const fmt = (n) => n.toLocaleString('en-US');
+
+// Eased scroll to a section, landing just under the sticky nav. Duration grows
+// with distance (capped) so long trips through the pinned sections still feel
+// deliberate rather than teleporting. Any wheel/touch input cancels it.
+let scrollAnim = 0;
+function scrollToSection(id) {
+  const el = id === 'top' ? document.body : document.getElementById(id);
+  if (!el) return false;
+  const NAV = 72;
+  const to = id === 'top' ? 0 : Math.max(0, el.getBoundingClientRect().top + window.scrollY - NAV);
+  const from = window.scrollY;
+  const dist = to - from;
+  if (window.history.replaceState) window.history.replaceState(null, '', id === 'top' ? window.location.pathname : '#' + id);
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || Math.abs(dist) < 2) { window.scrollTo(0, to); return true; }
+  const dur = Math.min(1600, 500 + Math.sqrt(Math.abs(dist)) * 9);
+  const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+  cancelAnimationFrame(scrollAnim);
+  const stop = () => { cancelAnimationFrame(scrollAnim); window.removeEventListener('wheel', stop); window.removeEventListener('touchstart', stop); };
+  window.addEventListener('wheel', stop, { passive: true, once: true });
+  window.addEventListener('touchstart', stop, { passive: true, once: true });
+  const t0 = performance.now();
+  const step = (now) => {
+    const p = Math.min(1, (now - t0) / dur);
+    window.scrollTo(0, from + dist * ease(p));
+    if (p < 1) scrollAnim = requestAnimationFrame(step); else stop();
+  };
+  scrollAnim = requestAnimationFrame(step);
+  return true;
+}
 const annualPrice = (monthly, discount) => Math.round(monthly * (1 - discount));
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -33,6 +63,7 @@ export default function Homepage() {
   const [ultraTier, setUltraTier] = useState(0);
   const [lightbox, setLightbox] = useState(null); // { list, i }
   const [copied, setCopied] = useState('');
+  const checkout = usePlanCheckout();
 
   const startHref = user ? '/dashboard' : '/login?mode=signup';
   const startLabel = user ? 'Open dashboard' : 'Start free';
@@ -74,10 +105,27 @@ export default function Homepage() {
   }, [lightbox, closeLightbox, stepLightbox]);
 
   // One delegated click handler opens any slide with data-full.
+  // In-page links (#pricing, #faq…) glide instead of jumping. Native smooth
+  // scrolling is too fast over this page's tall pinned sections and can't
+  // offset for the sticky nav, so we ease it ourselves.
   const onRootClick = (e) => {
+    const a = e.target.closest('a[href^="#"]');
+    if (a && !e.defaultPrevented && !e.metaKey && !e.ctrlKey) {
+      const id = a.getAttribute('href').slice(1);
+      if (scrollToSection(id)) { e.preventDefault(); return; }
+    }
     const t = e.target.closest('[data-full]');
     if (t && !t.closest('.lb')) openLightbox(t.dataset.full, t.closest('.rows,.track,.bento,.fan'));
   };
+
+  // Arriving from another page with a hash (/#pricing, e.g. the old /pricing
+  // URL): glide there once the page has laid out.
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (!id) return undefined;
+    const t = setTimeout(() => scrollToSection(id), 350);
+    return () => clearTimeout(t);
+  }, []);
 
   /* ---------- motion: everything imperative lives here ---------- */
   useEffect(() => {
@@ -325,6 +373,42 @@ export default function Homepage() {
       <div className="billed">{annual ? `Billed $${fmt(annualPrice(monthly, discount) * 12)}/year` : 'Billed monthly'}</div>
     </div>
   );
+
+  // What each plan's button does for this visitor: sign up, buy, upgrade,
+  // downgrade, or manage (plus the pending-downgrade states the old /pricing
+  // page handled).
+  const planCta = (key, name) => {
+    const { user: signedIn, sub, currentPlan, loading } = checkout;
+    const busy = loading === key; // this card's checkout
+    const portalBusy = loading === 'portal'; // only the Manage buttons wait on the portal
+    const go = () => checkout.subscribe(key, { annual, ultraTier });
+    if (!signedIn) return { label: `Choose ${name}`, onClick: go, primary: key === 'pro' };
+    const isCurrent = key === 'ultra' ? currentPlan.startsWith('ultra') : currentPlan === key;
+    const pending = sub?.pending_plan;
+    const end = formatPlanDate(sub?.current_period_end);
+    if (isCurrent && pending) return { label: `Upgrade back to ${name}`, onClick: go, primary: true, busy, note: `${name} benefits active until ${end || 'the end of this billing period'}` };
+    if (key === pending) return { label: 'Manage subscription', onClick: checkout.manage, busy: portalBusy, note: `Switching to ${name} on ${end || 'your next billing date'}` };
+    if (isCurrent) {
+      const cancelled = sub?.status === 'cancelled' || sub?.status === 'canceled';
+      const cancelling = !cancelled && !!sub?.cancel_at_period_end;
+      const renew = formatPlanDate(sub?.next_payment_date) || end;
+      const note = cancelled ? `Cancelled. Access ends ${end}` : cancelling ? `Cancelled. Enjoy ${name} until ${end}` : renew ? `Your plan · renews ${renew}` : 'Your plan';
+      return { label: 'Manage subscription', onClick: checkout.manage, busy: portalBusy, note, current: true };
+    }
+    const up = (PLAN_RANK[key] ?? 0) > (PLAN_RANK[currentPlan] ?? 0);
+    return { label: `${up ? 'Upgrade to' : 'Downgrade to'} ${name}`, onClick: go, primary: up, busy };
+  };
+  const PlanButton = ({ k, name }) => {
+    const c = planCta(k, name);
+    return (
+      <>
+        <button type="button" className={'btn ' + (c.primary ? 'btn-primary' : 'btn-ghost')} onClick={c.onClick} disabled={c.busy} aria-busy={c.busy || undefined}>
+          {c.busy ? 'One moment…' : c.label}{c.primary && !c.busy && <> <span className="arr">→</span></>}
+        </button>
+        {c.note && <p className={'plan-note' + (c.current ? ' cur' : '')}>{c.note}</p>}
+      </>
+    );
+  };
 
   const lbId = lightbox ? lightbox.list[lightbox.i] : null;
   const navLinks = [['#studio', 'Product'], ['#work', 'Examples'], ['#pricing', 'Pricing'], ['#faq', 'FAQ']];
@@ -613,6 +697,12 @@ export default function Homepage() {
               <button type="button" aria-pressed={annual} onClick={() => setAnnual(true)}>Annual</button>
               <span className="save prism-text">save up to 30%</span>
             </div>
+            {checkout.notice && (
+              <p className={'plan-notice ' + checkout.notice.tone} role={checkout.notice.tone === 'error' ? 'alert' : 'status'}>
+                {checkout.notice.text}
+                <button type="button" aria-label="Dismiss" onClick={() => checkout.setNotice(null)}>×</button>
+              </p>
+            )}
             <div className="plans">
               {PLANS.map((p) => (
                 <div key={p.key} className={'plan-c' + (p.popular ? ' pop' : '')} data-plan={p.key}>
@@ -622,7 +712,7 @@ export default function Homepage() {
                   <div className="credits">✦ {fmt(p.credits)} credits / month</div>
                   <ul>{p.features.map((f) => <li key={f}>{f}</li>)}</ul>
                   <div className="decks">About {Math.floor(p.credits / CREDITS_PER_DECK)} five-slide decks a month</div>
-                  <Link className={'btn ' + (p.popular ? 'btn-primary' : 'btn-ghost')} to="/pricing">Choose {p.name}{p.popular && <> <span className="arr">→</span></>}</Link>
+                  <PlanButton k={p.key} name={p.name} />
                 </div>
               ))}
               <div className="plan-c ultra" data-plan="ultra">
@@ -652,7 +742,7 @@ export default function Homepage() {
                 </div>
                 <ul>{ULTRA_FEATURES.map((f) => <li key={f}>{f}</li>)}</ul>
                 <div className="decks">About {Math.floor(ultra.credits / CREDITS_PER_DECK)} five-slide decks a month</div>
-                <Link className="btn btn-ghost" to="/pricing">Choose Ultra {ultraTier + 1}</Link>
+                <PlanButton k="ultra" name={`Ultra ${ultraTier + 1}`} />
               </div>
             </div>
             <div className="ent rv">
@@ -703,7 +793,7 @@ export default function Homepage() {
       <footer>
         <div className="wrap">
           <div><a href="#top" className="logo"><b>HB</b>HyperBeing</a><p style={{ margin: '14px 0 0', maxWidth: '32ch' }}>The AI presentation studio that art-directs every slide.</p></div>
-          <div><h4>Product</h4><ul><li><a href="#studio">How it works</a></li><li><a href="#work">Examples</a></li><li><Link to="/pricing">Pricing</Link></li></ul></div>
+          <div><h4>Product</h4><ul><li><a href="#studio">How it works</a></li><li><a href="#work">Examples</a></li><li><a href="#pricing">Pricing</a></li></ul></div>
           <div><h4>Use cases</h4><ul><li><Link to="/services/marketing-decks">Marketing decks</Link></li><li><Link to="/services/consulting-decks">Consulting decks</Link></li></ul></div>
           <div><h4>Legal</h4><ul><li><Link to="/privacy">Privacy</Link></li><li><Link to="/terms">Terms</Link></li></ul></div>
           <div className="copy">© {new Date().getFullYear()} HyperBeing. All rights reserved.</div>
@@ -713,6 +803,21 @@ export default function Homepage() {
       <div className="mcta" id="mcta"><Link className="btn btn-primary" to={startHref}>{user ? 'Open dashboard' : 'Generate your first deck'} <span className="arr">→</span></Link></div>
 
       <LandingNova rootRef={rootRef} startHref={startHref} signedIn={!!user} />
+
+      {checkout.downgrade && (
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+        <div className="lp-modal" role="dialog" aria-modal="true" aria-labelledby="dg-h" onClick={(e) => { if (e.target === e.currentTarget) checkout.setDowngrade(null); }}>
+          <div className="lp-modal-card">
+            <h3 id="dg-h">Downgrade scheduled</h3>
+            <p>
+              Your <b>{checkout.downgrade.fromPlan}</b> plan stays fully active until <b>{formatPlanDate(checkout.downgrade.periodEnd)}</b>.
+              On that date you switch to <b>{checkout.downgrade.pendingPlan}</b>. You keep every credit you have until then.
+            </p>
+            {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+            <button type="button" className="btn btn-primary" autoFocus onClick={() => checkout.setDowngrade(null)}>Got it</button>
+          </div>
+        </div>
+      )}
 
       {lightbox && (
         // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions

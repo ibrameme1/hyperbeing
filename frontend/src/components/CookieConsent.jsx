@@ -28,7 +28,7 @@ export default function CookieConsent() {
         transform: 'translateX(-50%)',
         zIndex: 9999,
         background: 'rgba(15,15,15,0.97)',
-        border: '0.5px solid #0F1F28',
+        border: '0.5px solid #1C2024',
         backdropFilter: 'blur(12px)',
         borderRadius: 8,
         padding: '1rem 1.5rem',

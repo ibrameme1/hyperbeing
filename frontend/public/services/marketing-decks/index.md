@@ -32,7 +32,7 @@ Individual marketers and small teams typically use Basic ($25/month, or $20/mont
 
 Agencies and marketing teams producing decks for multiple clients or campaigns tend to use one of the four Ultra tiers ($149-$299/month, or $116-$209/month billed annually), which cover higher deck volume.
 
-See the full breakdown on the [pricing page](/pricing).
+See the full breakdown on the [pricing section](/#pricing).
 
 ## How long it takes
 

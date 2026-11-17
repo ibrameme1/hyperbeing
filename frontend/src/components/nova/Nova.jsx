@@ -88,27 +88,29 @@ export default function Nova({
     >
       <defs>
         <linearGradient id={g('body')} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#3C4C8C" />
-          <stop offset="0.5" stopColor="#222E62" />
-          <stop offset="0.82" stopColor="#1A2552" />
-          <stop offset="1" stopColor="#2E5D9E" />
+          <stop offset="0" stopColor="#3A4249" />
+          <stop offset="0.45" stopColor="#151B20" />
+          <stop offset="0.8" stopColor="#090D10" />
+          <stop offset="1" stopColor="#3B2A24" />
         </linearGradient>
         <radialGradient id={g('sheen')} cx="0.38" cy="0.22" r="0.55">
-          <stop offset="0" stopColor="#C9D8FF" stopOpacity="0.38" />
-          <stop offset="1" stopColor="#C9D8FF" stopOpacity="0" />
+          <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.30" />
+          <stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
         </radialGradient>
         <radialGradient id={g('belly')} cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0" stopColor="#E6F7FF" />
-          <stop offset="0.35" stopColor="#4CB8F0" />
+          <stop offset="0" stopColor="#FFE6DA" />
+          <stop offset="0.3" stopColor="#FC734D" />
+          <stop offset="0.7" stopColor="#0297DE" stopOpacity="0.55" />
           <stop offset="1" stopColor="#0297DE" stopOpacity="0" />
         </radialGradient>
         <radialGradient id={g('floor')} cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0" stopColor="#0297DE" stopOpacity="0.55" />
+          <stop offset="0" stopColor="#FC734D" stopOpacity="0.35" />
+          <stop offset="0.5" stopColor="#0297DE" stopOpacity="0.25" />
           <stop offset="1" stopColor="#0297DE" stopOpacity="0" />
         </radialGradient>
         <radialGradient id={g('iris')} cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0.55" stopColor="#060B1E" />
-          <stop offset="0.85" stopColor="#1B3C78" />
+          <stop offset="0.6" stopColor="#05080A" />
+          <stop offset="0.88" stopColor="#1C2A33" />
           <stop offset="1" stopColor="#4CB8F0" />
         </radialGradient>
       </defs>
@@ -133,6 +135,10 @@ export default function Nova({
           fill={`url(#${g('body')})`}
         />
         <path
+          d="M46 92 C42 60 67 31.5 100 31.5 C133 31.5 158 60 154 92"
+          fill="none" stroke="#FFFFFF" strokeOpacity="0.14" strokeWidth="1.2"
+        />
+        <path
           d="M44 94 C40 60 66 30 100 30 C134 30 160 60 156 94 C126 84 74 84 44 94 Z"
           fill={`url(#${g('sheen')})`}
         />
@@ -140,22 +146,19 @@ export default function Nova({
         {glow && (
           <path
             d="M50 104 C56 113 70 115 76 110 C84 117 116 117 124 110 C130 115 144 113 150 104"
-            fill="none" stroke="#7FD3F7" strokeOpacity="0.8" strokeWidth="2.4" strokeLinecap="round"
+            fill="none" stroke="#FFB49C" strokeOpacity="0.75" strokeWidth="2.2" strokeLinecap="round"
           />
         )}
 
-        {/* cheeks */}
-        <ellipse className="nova-cheek" cx="64" cy="86" rx="7.5" ry="3.8" fill="#FC734D" />
-        <ellipse className="nova-cheek" cx="136" cy="86" rx="7.5" ry="3.8" fill="#FC734D" />
 
         {/* eyes */}
         {closed ? (
-          <g fill="none" stroke="#070C1F" strokeWidth="3" strokeLinecap="round">
+          <g fill="none" stroke="#EAF2F6" strokeWidth="3" strokeLinecap="round">
             <path d="M70 72 C75 78 85 78 90 72" />
             <path d="M110 72 C115 78 125 78 130 72" />
           </g>
         ) : smiling ? (
-          <g fill="none" stroke="#070C1F" strokeWidth="3.2" strokeLinecap="round">
+          <g fill="none" stroke="#EAF2F6" strokeWidth="3.2" strokeLinecap="round">
             <path d="M70 74 C75 65 85 65 90 74" />
             <path d="M110 74 C115 65 125 65 130 74" />
           </g>
@@ -176,19 +179,19 @@ export default function Nova({
 
         {/* mouth */}
         {big ? (
-          <ellipse cx="100" cy="91" rx="3.8" ry="4.6" fill="#070C1F" />
+          <ellipse cx="100" cy="91" rx="3.8" ry="4.6" fill="#EAF2F6" />
         ) : mood === 'sad' ? (
-          <path d="M95 93 C98 89 102 89 105 93" fill="none" stroke="#070C1F" strokeWidth="2.4" strokeLinecap="round" />
+          <path d="M95 93 C98 89 102 89 105 93" fill="none" stroke="#EAF2F6" strokeWidth="2.4" strokeLinecap="round" />
         ) : mood === 'think' ? (
-          <path d="M96 91 L105 90" fill="none" stroke="#070C1F" strokeWidth="2.4" strokeLinecap="round" />
+          <path d="M96 91 L105 90" fill="none" stroke="#EAF2F6" strokeWidth="2.4" strokeLinecap="round" />
         ) : smiling ? (
-          <path d="M93 87 C96 95 104 95 107 87 Z" fill="#070C1F" />
+          <path d="M93 87 C96 95 104 95 107 87 Z" fill="#EAF2F6" />
         ) : (
-          <path d="M95 88 C98 92 102 92 105 88" fill="none" stroke="#070C1F" strokeWidth="2.4" strokeLinecap="round" />
+          <path d="M95 88 C98 92 102 92 105 88" fill="none" stroke="#EAF2F6" strokeWidth="2.4" strokeLinecap="round" />
         )}
 
         {mood === 'sleep' && (
-          <text className="nova-z" x="148" y="34" fill="#A9DDF7" fontFamily="Inter, sans-serif" fontWeight="600" fontSize="16">z</text>
+          <text className="nova-z" x="148" y="34" fill="#9AAAB5" fontFamily="Inter, sans-serif" fontWeight="600" fontSize="16">z</text>
         )}
       </g>
     </svg>

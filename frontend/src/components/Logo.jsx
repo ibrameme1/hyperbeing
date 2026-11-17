@@ -1,18 +1,16 @@
 import { useState } from 'react';
 
-// Brand lockup (icon + wordmark). On hover (or tap, on touch devices) the
-// logo recolors for contrast against its current background:
-//  - on a dark background, it inverts to white / primary
-//  - on a light background, the wordmark pops to our primary blue
+// Brand lockup (icon + wordmark), matching the landing page: a plain tile
+// that contrasts with the page (white on dark, Midnight on light) with the
+// opposite color for "HB". On hover (or tap) the tile warms to Cantaloupe,
+// the brand's accent; no blue fill, no glow.
 export default function Logo({ dark = false, height = 32, className = '' }) {
   const [hover, setHover] = useState(false);
   const iconSize = Math.round(height * 0.75);
 
-  const iconBg = hover ? (dark ? '#f0f0ee' : '#02070A') : '#0297DE';
-  const hbColor = hover ? '#0297DE' : '#ffffff';
-  const wordmarkColor = hover
-    ? '#0297DE'
-    : (dark ? '#f0f0ee' : '#02070A');
+  const iconBg = hover ? '#FC734D' : (dark ? '#F1F6F9' : '#02070A');
+  const hbColor = hover ? '#02070A' : (dark ? '#02070A' : '#F1F6F9');
+  const wordmarkColor = dark ? '#F1F6F9' : '#02070A';
 
   return (
     <div

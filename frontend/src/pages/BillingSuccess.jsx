@@ -140,7 +140,7 @@ export default function BillingSuccess() {
             }}>
               We couldn't load your updated plan info —{' '}
               <a
-                href="/pricing"
+                href="/#pricing"
                 style={{ color: '#f87171', textDecoration: 'underline', cursor: 'pointer' }}
               >
                 check your billing page

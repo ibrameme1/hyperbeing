@@ -336,7 +336,7 @@ export default function DesignGalleryPage() {
         currentPlan={currentPlan}
         isAdmin={isAdmin}
         onLogout={logout}
-        onUpgrade={() => navigate('/pricing')}
+        onUpgrade={() => navigate('/#pricing')}
       />
 
       <div className="max-w-3xl mx-auto px-4 pt-8 w-full">

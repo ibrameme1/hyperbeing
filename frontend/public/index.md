@@ -235,7 +235,7 @@ Billed $240/year
 
 About 13 five-slide decks a month
 
-[Choose Basic](/pricing)
+Choose Basic
 
 Most popular
 
@@ -258,7 +258,7 @@ Billed $624/year
 
 About 35 five-slide decks a month
 
-[Choose Pro →](/pricing)
+Choose Pro →
 
 Best value
 
@@ -285,7 +285,7 @@ Ultra 1Ultra 2Ultra 3Ultra 4
 
 About 88 five-slide decks a month
 
-[Choose Ultra 1](/pricing)
+Choose Ultra 1
 
 **Need a plan for your team?** Custom credit volumes, shared workspaces, priority onboarding, SLA support and flexible billing.
 

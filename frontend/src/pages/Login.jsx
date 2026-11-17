@@ -1,38 +1,14 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, EyeOff, Loader2, ArrowRight, Zap, Layers, TrendingUp } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ArrowRight, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSearchParams, Link } from 'react-router-dom';
-import Logo from '../components/Logo';
+import { thumb, SLIDE_ALT } from './landingData';
+import './landing.css';
+import './auth.css';
 import Nova from '../components/nova/Nova';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
-
-const BRAND_FEATURES = [
-  { icon: Zap, title: 'Instant generation', desc: 'A full deck in under 3 minutes', color: '#0297DE' },
-  { icon: Layers, title: 'AI art direction', desc: 'Every slide professionally designed', color: '#FC734D' },
-  { icon: TrendingUp, title: 'Strategy baked in', desc: 'Nova thinks like a McKinsey + Apple hybrid', color: '#22c55e' },
-];
-
-function BrandFeature({ icon: Icon, title, desc, color }) {
-  return (
-    <div
-      className="flex items-center gap-3"
-      style={{ background: '#ffffff', border: '0.5px solid #e8e8f0', borderRadius: '10px', padding: '12px 14px' }}
-    >
-      <div
-        className="flex items-center justify-center flex-shrink-0"
-        style={{ width: 36, height: 36, borderRadius: '8px', background: `${color}14`, border: `1px solid ${color}33` }}
-      >
-        <Icon size={16} style={{ color }} />
-      </div>
-      <div>
-        <p style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: 13, color: '#02070A' }}>{title}</p>
-        <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#5E717D', marginTop: 2 }}>{desc}</p>
-      </div>
-    </div>
-  );
-}
 
 function GoogleIcon() {
   return (
@@ -256,9 +232,9 @@ export default function Login() {
 
   const inputStyle = {
     fontFamily: 'Inter, sans-serif',
-    background: '#ffffff',
-    color: '#02070A',
-    border: '1px solid #e8e8f0',
+    background: 'rgba(255,255,255,0.04)',
+    color: '#F1F6F9',
+    border: '1px solid rgba(190,225,245,0.14)',
   };
 
   // Nova's reaction to the form. Shy (eyes closed) while a hidden password
@@ -276,78 +252,41 @@ export default function Login() {
   const novaLook = typed >= 0 ? { x: Math.min(1, typed / 28) * 1.6 - 0.8, y: 0.9 } : null;
 
   return (
-    <div className="min-h-screen flex" style={{ background: '#f5f5f5' }}>
-      {/* ── Left brand panel (desktop only) ── */}
-      <div className="hidden lg:flex lg:flex-1 lg:flex-col relative overflow-hidden" style={{ padding: '48px' }}>
-        {/* Atmospheric glow, matching the homepage hero */}
-        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 30% 20%, rgba(2,151,222,0.10), transparent 60%)', pointerEvents: 'none' }} />
+    // Same stage as the landing page (.lp tokens, lit from below) so moving
+    // from "Start free" to this form feels like one product, not a new site.
+    <motion.div
+      className="lp lp-auth"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <div className="auth-light" aria-hidden="true" />
+      <header className="auth-top wrap">
+        <Link to="/" className="logo" aria-label="HyperBeing home"><b>HB</b>HyperBeing</Link>
+        <Link to="/" className="auth-back"><ArrowLeft size={15} /> Back to home</Link>
+      </header>
 
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <Link to="/" style={{ display: 'inline-flex', textDecoration: 'none' }}>
-            <Logo height={36} />
-          </Link>
-        </div>
-
-        <div className="flex-1 flex flex-col justify-center" style={{ position: 'relative', zIndex: 1, maxWidth: '460px' }}>
-          <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', letterSpacing: '0.20em', color: '#0297DE', textTransform: 'uppercase', marginBottom: '16px' }}>
-            AI Presentation Maker
-          </p>
-          <h2 style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: 'clamp(32px, 3.4vw, 44px)', fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#02070A', marginBottom: '16px' }}>
-            Presentations that make people go <em>"how?"</em>
-          </h2>
-          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', color: '#2B3A44', lineHeight: 1.65, marginBottom: '32px' }}>
-            Nova designs every slide like a senior art director. You just describe what you need.
-          </p>
-          <div className="flex flex-col gap-2.5">
-            {BRAND_FEATURES.map(f => <BrandFeature key={f.title} {...f} />)}
+      <div className="auth-grid wrap">
+        {/* ── Pitch (desktop only): the landing hero, condensed ── */}
+        <section className="auth-pitch" aria-hidden="true">
+          <span className="eyebrow">AI presentation studio</span>
+          <h2>Presentations that make people go <em>how?</em></h2>
+          <p className="lede">Give Nova your brief. Every slide comes back art-directed, with a real argument and text you can still edit.</p>
+          <div className="auth-fan">
+            {['s23', 's06', 's20'].map((id, i) => (
+              <div key={id} className={'gp ' + ['l', 'c', 'r'][i]}><div className="frame"><img src={thumb(id)} alt={SLIDE_ALT[id]} width="640" height="357" /></div></div>
+            ))}
           </div>
-        </div>
+        </section>
 
-        <div
-          className="flex items-center gap-4"
-          style={{
-            position: 'relative', zIndex: 1,
-            background: '#050D12',
-            border: '0.5px solid #0F1F28',
-            borderRadius: '14px',
-            padding: '20px 24px',
-            boxShadow: 'rgba(2,151,222,0.10) 0px 0px 48px -12px',
-          }}
-        >
-          <Nova size={76} mood="happy" follow={false} />
-          <div>
-            <p style={{ fontFamily: 'Playfair Display, Georgia, serif', fontStyle: 'italic', fontSize: '15px', color: '#f0f0ee', lineHeight: 1.4 }}>
-              "It's like Canva and a McKinsey consultant had a very talented baby."
-            </p>
-            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#999', marginTop: '4px' }}>
-              — Someone who used to dread presentations
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Right form panel ── */}
-      <div className="flex-1 lg:max-w-[480px] lg:flex-shrink-0 flex items-center justify-center px-4 py-10 lg:border-l lg:border-[#e8e8f0] lg:bg-white">
+        {/* ── Form ── */}
+        <div className="auth-form">
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        className="w-full max-w-[420px]"
-        style={{
-          background: '#ffffff',
-          border: '0.5px solid #e8e8f0',
-          borderRadius: '8px',
-          boxShadow: 'rgba(2,151,222,0.06) 0px 4px 16px',
-          padding: '40px',
-        }}
+        transition={{ duration: 0.55, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
+        className="auth-card w-full max-w-[420px]"
       >
-        {/* Logo */}
-        <div className="flex justify-center mb-6 lg:hidden">
-          <Link to="/" style={{ display: 'inline-flex', textDecoration: 'none' }}>
-            <Logo height={36} />
-          </Link>
-        </div>
-
         <div className="flex flex-col items-center mb-3" aria-hidden="true">
           <Nova size={92} mood={novaMood} look={novaLook} />
         </div>
@@ -356,14 +295,14 @@ export default function Login() {
           <>
             <h1
               className="text-center mb-1"
-              style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '32px', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.1, color: '#02070A' }}
+              style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '32px', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.1, color: '#F1F6F9' }}
             >
               {forgotStep === 'done' ? 'Password reset' : 'Reset your password'}
             </h1>
 
             {forgotStep === 'request' && (
               <>
-                <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
+                <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#9AAAB5' }}>
                   Enter your email and we'll send you a code to set a new password.
                 </p>
                 <form onSubmit={handleForgotRequest} className="space-y-3">
@@ -375,9 +314,9 @@ export default function Login() {
                     required
                     autoFocus
                     className="w-full px-4 py-3 text-sm focus:outline-none transition-all duration-200"
-                    style={{ ...inputStyle, borderRadius: '6px' }}
-                    onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; }}
-                    onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
+                    style={{ ...inputStyle, borderRadius: '12px' }}
+                    onFocus={e => { e.target.style.borderColor = 'rgba(169,221,247,0.55)'; e.target.style.boxShadow = '0 0 0 3px rgba(76,184,240,0.14)'; }}
+                    onBlur={e => { e.target.style.borderColor = 'rgba(190,225,245,0.14)'; e.target.style.boxShadow = 'none'; }}
                   />
 
                   <AnimatePresence>
@@ -385,9 +324,9 @@ export default function Login() {
                       <motion.div
                         initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                         className="py-2.5 px-4 text-xs text-center"
-                        style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', fontFamily: 'Inter, sans-serif' }}
+                        style={{ background: 'rgba(252,115,77,0.08)', border: '1px solid rgba(252,115,77,0.3)', borderRadius: '12px', fontFamily: 'Inter, sans-serif' }}
                       >
-                        <span style={{ color: '#ef4444' }}>{forgotError}</span>
+                        <span style={{ color: '#FFB49C' }}>{forgotError}</span>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -396,9 +335,9 @@ export default function Login() {
                     type="submit"
                     disabled={forgotBusy}
                     className="w-full py-3 font-semibold text-sm text-[#02070A] flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
-                    style={{ fontFamily: 'Inter, sans-serif', background: '#0297DE', borderRadius: '6px', boxShadow: 'rgba(2,151,222,0.20) 0px 0px 24px 0px' }}
-                    onMouseEnter={e => { if (!forgotBusy) e.currentTarget.style.background = '#1AA6E8'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#0297DE'; }}
+                    style={{ fontFamily: 'Inter, sans-serif', background: '#F1F6F9', borderRadius: '9999px' }}
+                    onMouseEnter={e => { if (!forgotBusy) e.currentTarget.style.background = '#FFFFFF'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#F1F6F9'; }}
                   >
                     {forgotBusy ? (<><Loader2 size={16} className="animate-spin" /> Sending…</>) : (<>Send reset code <ArrowRight size={15} /></>)}
                   </button>
@@ -408,8 +347,8 @@ export default function Login() {
 
             {forgotStep === 'reset' && (
               <>
-                <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
-                  Enter the 6-digit code sent to <span style={{ color: '#02070A', fontWeight: 600 }}>{forgotEmail}</span> and choose a new password.
+                <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#9AAAB5' }}>
+                  Enter the 6-digit code sent to <span style={{ color: '#F1F6F9', fontWeight: 600 }}>{forgotEmail}</span> and choose a new password.
                 </p>
                 <form onSubmit={handleForgotReset} className="space-y-3">
                   <input
@@ -421,9 +360,9 @@ export default function Login() {
                     onChange={e => setForgotCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     required
                     className="w-full px-4 py-3 text-sm text-center tracking-[0.4em] focus:outline-none transition-all duration-200"
-                    style={{ ...inputStyle, borderRadius: '6px' }}
-                    onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; }}
-                    onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
+                    style={{ ...inputStyle, borderRadius: '12px' }}
+                    onFocus={e => { e.target.style.borderColor = 'rgba(169,221,247,0.55)'; e.target.style.boxShadow = '0 0 0 3px rgba(76,184,240,0.14)'; }}
+                    onBlur={e => { e.target.style.borderColor = 'rgba(190,225,245,0.14)'; e.target.style.boxShadow = 'none'; }}
                   />
                   <div className="relative">
                     <input
@@ -434,15 +373,15 @@ export default function Login() {
                       onChange={e => setForgotNewPw(e.target.value)}
                       required
                       className="w-full px-4 py-3 pr-12 text-sm focus:outline-none transition-all duration-200"
-                      style={{ ...inputStyle, borderRadius: '6px' }}
-                      onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; }}
-                      onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
+                      style={{ ...inputStyle, borderRadius: '12px' }}
+                      onFocus={e => { e.target.style.borderColor = 'rgba(169,221,247,0.55)'; e.target.style.boxShadow = '0 0 0 3px rgba(76,184,240,0.14)'; }}
+                      onBlur={e => { e.target.style.borderColor = 'rgba(190,225,245,0.14)'; e.target.style.boxShadow = 'none'; }}
                     />
                     <button
                       type="button"
                       onClick={() => setShowForgotPw(v => !v)}
                       className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors"
-                      style={{ color: '#5E717D' }}
+                      style={{ color: '#9AAAB5' }}
                     >
                       {showForgotPw ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
@@ -455,9 +394,9 @@ export default function Login() {
                     onChange={e => setForgotConfirmPw(e.target.value)}
                     required
                     className="w-full px-4 py-3 text-sm focus:outline-none transition-all duration-200"
-                    style={{ ...inputStyle, borderRadius: '6px' }}
-                    onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; }}
-                    onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
+                    style={{ ...inputStyle, borderRadius: '12px' }}
+                    onFocus={e => { e.target.style.borderColor = 'rgba(169,221,247,0.55)'; e.target.style.boxShadow = '0 0 0 3px rgba(76,184,240,0.14)'; }}
+                    onBlur={e => { e.target.style.borderColor = 'rgba(190,225,245,0.14)'; e.target.style.boxShadow = 'none'; }}
                   />
 
                   <AnimatePresence>
@@ -465,48 +404,48 @@ export default function Login() {
                       <motion.div
                         initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                         className="py-2.5 px-4 text-xs text-center"
-                        style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', fontFamily: 'Inter, sans-serif' }}
+                        style={{ background: 'rgba(252,115,77,0.08)', border: '1px solid rgba(252,115,77,0.3)', borderRadius: '12px', fontFamily: 'Inter, sans-serif' }}
                       >
-                        <span style={{ color: '#ef4444' }}>{forgotError}</span>
+                        <span style={{ color: '#FFB49C' }}>{forgotError}</span>
                       </motion.div>
                     )}
                   </AnimatePresence>
 
                   {forgotNote && (
-                    <p className="text-center text-xs" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>{forgotNote}</p>
+                    <p className="text-center text-xs" style={{ fontFamily: 'Inter, sans-serif', color: '#9AAAB5' }}>{forgotNote}</p>
                   )}
 
                   <button
                     type="submit"
                     disabled={forgotBusy || forgotCode.length < 6 || !forgotNewPw || !forgotConfirmPw}
                     className="w-full py-3 font-semibold text-sm text-[#02070A] flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
-                    style={{ fontFamily: 'Inter, sans-serif', background: '#0297DE', borderRadius: '6px', boxShadow: 'rgba(2,151,222,0.20) 0px 0px 24px 0px' }}
-                    onMouseEnter={e => { if (!forgotBusy) e.currentTarget.style.background = '#1AA6E8'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#0297DE'; }}
+                    style={{ fontFamily: 'Inter, sans-serif', background: '#F1F6F9', borderRadius: '9999px' }}
+                    onMouseEnter={e => { if (!forgotBusy) e.currentTarget.style.background = '#FFFFFF'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#F1F6F9'; }}
                   >
                     {forgotBusy ? (<><Loader2 size={16} className="animate-spin" /> Resetting…</>) : (<>Reset password <ArrowRight size={15} /></>)}
                   </button>
                 </form>
 
-                <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
+                <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#9AAAB5' }}>
                   Didn't get it?{' '}
-                  <button type="button" onClick={handleForgotResend} className="underline" style={{ color: '#0297DE' }}>Resend code</button>
+                  <button type="button" onClick={handleForgotResend} className="underline" style={{ color: '#A9DDF7' }}>Resend code</button>
                 </p>
               </>
             )}
 
             {forgotStep === 'done' && (
               <>
-                <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
+                <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#9AAAB5' }}>
                   Your password has been updated. You can now sign in with your new password.
                 </p>
                 <button
                   type="button"
                   onClick={() => { closeForgot(); setMode('login'); setPassword(''); if (forgotEmail) setEmail(forgotEmail.trim()); }}
                   className="w-full py-3 font-semibold text-sm text-[#02070A] flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98]"
-                  style={{ fontFamily: 'Inter, sans-serif', background: '#0297DE', borderRadius: '6px', boxShadow: 'rgba(2,151,222,0.20) 0px 0px 24px 0px' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = '#1AA6E8'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = '#0297DE'; }}
+                  style={{ fontFamily: 'Inter, sans-serif', background: '#F1F6F9', borderRadius: '9999px' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#FFFFFF'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#F1F6F9'; }}
                 >
                   Back to sign in <ArrowRight size={15} />
                 </button>
@@ -514,8 +453,8 @@ export default function Login() {
             )}
 
             {forgotStep !== 'done' && (
-              <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
-                <button type="button" onClick={closeForgot} className="underline" style={{ color: '#5E717D' }}>
+              <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#9AAAB5' }}>
+                <button type="button" onClick={closeForgot} className="underline" style={{ color: '#9AAAB5' }}>
                   Back to sign in
                 </button>
               </p>
@@ -525,12 +464,12 @@ export default function Login() {
           <>
             <h1
               className="text-center mb-1"
-              style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '32px', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.1, color: '#02070A' }}
+              style={{ fontFamily: 'Playfair Display, Georgia, serif', fontSize: '32px', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.1, color: '#F1F6F9' }}
             >
               Check your email
             </h1>
-            <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
-              We sent a 6-digit code to <span style={{ color: '#02070A', fontWeight: 600 }}>{pendingEmail}</span>.{' '}
+            <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#9AAAB5' }}>
+              We sent a 6-digit code to <span style={{ color: '#F1F6F9', fontWeight: 600 }}>{pendingEmail}</span>.{' '}
               {verifyContext === 'login'
                 ? "It's a one-time check to verify your account — enter it below to continue."
                 : 'Enter it below to finish signing up.'}
@@ -546,9 +485,9 @@ export default function Login() {
                 onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 required
                 className="w-full px-4 py-3 text-sm text-center tracking-[0.4em] focus:outline-none transition-all duration-200"
-                style={{ ...inputStyle, borderRadius: '6px' }}
-                onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; }}
-                onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; }}
+                style={{ ...inputStyle, borderRadius: '12px' }}
+                onFocus={e => { e.target.style.borderColor = 'rgba(169,221,247,0.55)'; e.target.style.boxShadow = '0 0 0 3px rgba(76,184,240,0.14)'; }}
+                onBlur={e => { e.target.style.borderColor = 'rgba(190,225,245,0.14)'; e.target.style.boxShadow = 'none'; }}
               />
 
               <AnimatePresence>
@@ -556,38 +495,38 @@ export default function Login() {
                   <motion.div
                     initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                     className="py-2.5 px-4 text-xs text-center"
-                    style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', fontFamily: 'Inter, sans-serif' }}
+                    style={{ background: 'rgba(252,115,77,0.08)', border: '1px solid rgba(252,115,77,0.3)', borderRadius: '12px', fontFamily: 'Inter, sans-serif' }}
                   >
-                    <span style={{ color: '#ef4444' }}>{error}</span>
+                    <span style={{ color: '#FFB49C' }}>{error}</span>
                   </motion.div>
                 )}
               </AnimatePresence>
 
               {resendNote && (
-                <p className="text-center text-xs" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>{resendNote}</p>
+                <p className="text-center text-xs" style={{ fontFamily: 'Inter, sans-serif', color: '#9AAAB5' }}>{resendNote}</p>
               )}
 
               <button
                 type="submit"
                 disabled={verifying || code.length < 6}
                 className="w-full py-3 font-semibold text-sm text-[#02070A] flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
-                style={{ fontFamily: 'Inter, sans-serif', background: '#0297DE', borderRadius: '6px', boxShadow: 'rgba(2,151,222,0.20) 0px 0px 24px 0px' }}
-                onMouseEnter={e => { if (!verifying && code.length >= 6) e.currentTarget.style.background = '#1AA6E8'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = '#0297DE'; }}
+                style={{ fontFamily: 'Inter, sans-serif', background: '#F1F6F9', borderRadius: '9999px' }}
+                onMouseEnter={e => { if (!verifying && code.length >= 6) e.currentTarget.style.background = '#FFFFFF'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#F1F6F9'; }}
               >
                 {verifying ? (<><Loader2 size={16} className="animate-spin" /> Verifying…</>) : (<>Verify & continue <ArrowRight size={15} /></>)}
               </button>
             </form>
 
-            <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
+            <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#9AAAB5' }}>
               Didn't get it?{' '}
-              <button type="button" onClick={handleResend} className="underline" style={{ color: '#0297DE' }}>Resend code</button>
+              <button type="button" onClick={handleResend} className="underline" style={{ color: '#A9DDF7' }}>Resend code</button>
               {' · '}
               <button
                 type="button"
                 onClick={() => { setPendingEmail(''); setCode(''); setError(''); setResendNote(''); }}
                 className="underline"
-                style={{ color: '#5E717D' }}
+                style={{ color: '#9AAAB5' }}
               >
                 Use a different email
               </button>
@@ -603,12 +542,12 @@ export default function Login() {
             fontWeight: 400,
             letterSpacing: '-0.02em',
             lineHeight: 1.1,
-            color: '#02070A',
+            color: '#F1F6F9',
           }}
         >
           {mode === 'login' ? 'Welcome back' : 'Create your account'}
         </h1>
-        <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
+        <p className="text-center text-sm mb-6" style={{ fontFamily: 'Inter, sans-serif', color: '#9AAAB5' }}>
           {focusField === 'password' && !showPassword
             ? "I'm not looking. Promise."
             : mode === 'login'
@@ -617,15 +556,15 @@ export default function Login() {
         </p>
 
         {/* Toggle */}
-        <div className="flex gap-1 p-1 mb-6" style={{ background: '#f5f5f5', borderRadius: '8px' }}>
+        <div className="flex gap-1 p-1 mb-6" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(190,225,245,0.10)', borderRadius: '9999px' }}>
           {['login', 'register'].map(m => (
             <button
               key={m}
               onClick={() => { setMode(m); setError(''); setEmailError(''); setPasswordError(''); }}
               className="flex-1 py-2.5 text-sm font-semibold transition-all duration-200"
               style={mode === m
-                ? { background: '#ffffff', color: '#02070A', borderRadius: '6px', boxShadow: 'rgba(2,151,222,0.06) 0px 4px 16px' }
-                : { color: '#5E717D', borderRadius: '6px', fontFamily: 'Inter, sans-serif' }}
+                ? { background: 'rgba(255,255,255,0.10)', color: '#F1F6F9', borderRadius: '9999px', boxShadow: 'none' }
+                : { color: '#9AAAB5', borderRadius: '9999px', fontFamily: 'Inter, sans-serif' }}
             >
               {m === 'login' ? 'Sign in' : 'Sign up'}
             </button>
@@ -650,9 +589,9 @@ export default function Login() {
                   required
                   autoComplete="name"
                   className="w-full px-4 py-3 text-sm focus:outline-none transition-all duration-200"
-                  style={{ ...inputStyle, borderRadius: '6px' }}
-                  onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; setFocusField('name'); }}
-                  onBlur={e => { e.target.style.borderColor = '#e8e8f0'; e.target.style.boxShadow = 'none'; setFocusField(null); }}
+                  style={{ ...inputStyle, borderRadius: '12px' }}
+                  onFocus={e => { e.target.style.borderColor = 'rgba(169,221,247,0.55)'; e.target.style.boxShadow = '0 0 0 3px rgba(76,184,240,0.14)'; setFocusField('name'); }}
+                  onBlur={e => { e.target.style.borderColor = 'rgba(190,225,245,0.14)'; e.target.style.boxShadow = 'none'; setFocusField(null); }}
                 />
               </motion.div>
             )}
@@ -666,18 +605,18 @@ export default function Login() {
               onChange={e => setEmail(e.target.value)}
               required
               className="w-full px-4 py-3 text-sm focus:outline-none transition-all duration-200"
-              style={{ ...inputStyle, borderRadius: '6px' }}
+              style={{ ...inputStyle, borderRadius: '12px' }}
               autoComplete="email"
-              onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; setEmailError(''); setFocusField('email'); }}
+              onFocus={e => { e.target.style.borderColor = 'rgba(169,221,247,0.55)'; e.target.style.boxShadow = '0 0 0 3px rgba(76,184,240,0.14)'; setEmailError(''); setFocusField('email'); }}
               onBlur={e => {
                 setFocusField(null);
-                e.target.style.borderColor = '#e8e8f0';
+                e.target.style.borderColor = 'rgba(190,225,245,0.14)';
                 e.target.style.boxShadow = 'none';
                 if (email && !EMAIL_RE.test(email)) setEmailError('Enter a valid email address.');
               }}
             />
             {emailError && (
-              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#ef4444', marginTop: 4 }}>{emailError}</p>
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#FFB49C', marginTop: 4 }}>{emailError}</p>
             )}
           </div>
 
@@ -690,12 +629,12 @@ export default function Login() {
                 onChange={e => setPassword(e.target.value)}
                 required
                 className="w-full px-4 py-3 pr-12 text-sm focus:outline-none transition-all duration-200"
-                style={{ ...inputStyle, borderRadius: '6px' }}
+                style={{ ...inputStyle, borderRadius: '12px' }}
                 autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-                onFocus={e => { e.target.style.borderColor = '#0297DE'; e.target.style.boxShadow = '0 0 0 3px rgba(2,151,222,0.35)'; setPasswordError(''); setFocusField('password'); }}
+                onFocus={e => { e.target.style.borderColor = 'rgba(169,221,247,0.55)'; e.target.style.boxShadow = '0 0 0 3px rgba(76,184,240,0.14)'; setPasswordError(''); setFocusField('password'); }}
                 onBlur={e => {
                   setFocusField(null);
-                  e.target.style.borderColor = '#e8e8f0';
+                  e.target.style.borderColor = 'rgba(190,225,245,0.14)';
                   e.target.style.boxShadow = 'none';
                   if (mode === 'register' && password && password.length < 8) setPasswordError('Password must be at least 8 characters.');
                 }}
@@ -704,13 +643,13 @@ export default function Login() {
                 type="button"
                 onClick={() => setShowPassword(v => !v)}
                 className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors"
-                style={{ color: '#5E717D' }}
+                style={{ color: '#9AAAB5' }}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
             {passwordError && (
-              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#ef4444', marginTop: 4 }}>{passwordError}</p>
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#FFB49C', marginTop: 4 }}>{passwordError}</p>
             )}
             {mode === 'login' && (
               <div className="text-right mt-2">
@@ -718,7 +657,7 @@ export default function Login() {
                   type="button"
                   onClick={openForgot}
                   className="text-xs underline"
-                  style={{ fontFamily: 'Inter, sans-serif', color: '#0297DE' }}
+                  style={{ fontFamily: 'Inter, sans-serif', color: '#A9DDF7' }}
                 >
                   Forgot password?
                 </button>
@@ -733,9 +672,9 @@ export default function Login() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 className="py-2.5 px-4 text-xs text-center"
-                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', fontFamily: 'Inter, sans-serif' }}
+                style={{ background: 'rgba(252,115,77,0.08)', border: '1px solid rgba(252,115,77,0.3)', borderRadius: '12px', fontFamily: 'Inter, sans-serif' }}
               >
-                <span style={{ color: '#ef4444' }}>{error}</span>
+                <span style={{ color: '#FFB49C' }}>{error}</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -746,12 +685,11 @@ export default function Login() {
             className="w-full py-3 font-semibold text-sm text-[#02070A] flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] mt-2 disabled:opacity-60"
             style={{
               fontFamily: 'Inter, sans-serif',
-              background: '#0297DE',
-              borderRadius: '6px',
-              boxShadow: 'rgba(2,151,222,0.20) 0px 0px 24px 0px',
+              background: '#F1F6F9',
+              borderRadius: '9999px',
             }}
-            onMouseEnter={e => { if (!loading) e.currentTarget.style.background = '#1AA6E8'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = '#0297DE'; }}
+            onMouseEnter={e => { if (!loading) e.currentTarget.style.background = '#FFFFFF'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#F1F6F9'; }}
           >
             {loading ? (
               <><Loader2 size={16} className="animate-spin" /> {mode === 'login' ? 'Signing in…' : 'Creating account…'}</>
@@ -763,9 +701,9 @@ export default function Login() {
 
         {/* Divider */}
         <div className="flex items-center gap-3 my-5">
-          <div className="flex-1 h-px" style={{ background: '#e8e8f0' }} />
-          <span className="text-xs font-medium" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>or continue with</span>
-          <div className="flex-1 h-px" style={{ background: '#e8e8f0' }} />
+          <div className="flex-1 h-px" style={{ background: 'rgba(190,225,245,0.14)' }} />
+          <span className="text-xs font-medium" style={{ fontFamily: 'Inter, sans-serif', color: '#9AAAB5' }}>or continue with</span>
+          <div className="flex-1 h-px" style={{ background: 'rgba(190,225,245,0.14)' }} />
         </div>
 
         {/* Social buttons */}
@@ -777,10 +715,10 @@ export default function Login() {
               className="w-full py-3 font-semibold text-sm flex items-center justify-center gap-2.5 transition-all duration-200 active:scale-[0.98]"
               style={{
                 fontFamily: 'Inter, sans-serif',
-                background: '#ffffff',
-                border: '1px solid #e8e8f0',
-                borderRadius: '6px',
-                color: '#02070A',
+                background: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(190,225,245,0.14)',
+                borderRadius: '12px',
+                color: '#F1F6F9',
               }}
             >
               <Icon />
@@ -790,17 +728,18 @@ export default function Login() {
         </div>
 
         {mode === 'register' && (
-          <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#5E717D' }}>
+          <p className="text-center text-xs mt-6" style={{ fontFamily: 'Inter, sans-serif', color: '#9AAAB5' }}>
             By signing up you agree to our{' '}
-            <Link to="/terms" className="underline" style={{ color: '#0297DE' }}>Terms</Link>
+            <Link to="/terms" className="underline" style={{ color: '#A9DDF7' }}>Terms</Link>
             {' '}and{' '}
-            <Link to="/privacy" className="underline" style={{ color: '#0297DE' }}>Privacy Policy</Link>
+            <Link to="/privacy" className="underline" style={{ color: '#A9DDF7' }}>Privacy Policy</Link>
           </p>
         )}
         </>
         )}
       </motion.div>
+        </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

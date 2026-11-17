@@ -79,7 +79,7 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 16 }}
         className="w-full max-w-lg overflow-hidden"
-        style={{ background: '#08131A', border: '0.5px solid #0F1F28', borderRadius: 12 }}
+        style={{ background: '#111417', border: '0.5px solid #1C2024', borderRadius: 12 }}
       >
         {/* Header */}
         <div style={{ padding: '24px 24px 16px' }}>
@@ -172,7 +172,7 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
                         fontFamily: 'Inter,sans-serif',
                         fontSize: 14,
                         fontWeight: 600,
-                        border: '0.5px solid #0F1F28',
+                        border: '0.5px solid #1C2024',
                         background: 'rgba(255,255,255,0.03)',
                         color: '#b8b8b8',
                         cursor: 'pointer',
@@ -192,8 +192,8 @@ export default function QuestionFlow({ analysis, onComplete, onCancel }) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
-                  background: '#050D12',
-                  border: '0.5px solid #0F1F28',
+                  background: '#0A0C0E',
+                  border: '0.5px solid #1C2024',
                   borderRadius: 6,
                   padding: '10px 14px',
                 }}

@@ -1,0 +1,35 @@
+/* Sign-in / sign-up. Built on the landing page's .lp tokens and pieces
+   (.logo, .eyebrow, .gp .frame) so the two pages read as one product. */
+.lp.lp-auth{min-height:100vh;min-height:100svh;position:relative;isolation:isolate;display:flex;flex-direction:column}
+.lp-auth .auth-light{position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(ellipse 55% 38% at 50% 108%,rgba(252,115,77,.30),transparent 70%),
+    radial-gradient(ellipse 70% 60% at 50% 100%,rgba(2,151,222,.20),transparent 70%),
+    radial-gradient(ellipse 40% 30% at 20% 0%,rgba(2,151,222,.06),transparent 70%),
+    var(--ink)}
+.lp-auth .auth-top{display:flex;align-items:center;justify-content:space-between;height:72px;width:100%}
+.lp-auth .auth-back{display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--muted);transition:color .2s}
+.lp-auth .auth-back:hover{color:var(--fg)}
+.lp-auth .auth-grid{flex:1;width:100%;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,420px);gap:clamp(32px,6vw,96px);align-items:center;padding-bottom:48px}
+.lp-auth .auth-pitch{display:grid;gap:22px;align-content:center}
+.lp-auth .auth-pitch h2{font-size:clamp(40px,4.6vw,68px);line-height:1;letter-spacing:-.03em;max-width:12ch}
+.lp-auth .auth-pitch .lede{font-size:16px;max-width:44ch}
+.lp-auth .auth-fan{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:end;margin-top:18px;max-width:640px}
+.lp-auth .auth-fan .gp{animation:lp-rise 1.2s cubic-bezier(.2,.8,.2,1) backwards}
+.lp-auth .auth-fan .gp.c{animation-delay:.1s}
+.lp-auth .auth-fan .gp.r{animation-delay:.2s}
+.lp-auth .auth-fan .frame{padding:8px;border-radius:18px}
+.lp-auth .auth-fan .frame img{border-radius:11px;aspect-ratio:16/10;object-fit:cover;width:100%}
+.lp-auth .auth-form{display:flex;justify-content:center}
+.lp-auth .auth-card{background:rgba(10,12,14,.72);border:1px solid rgba(190,225,245,.12);border-radius:24px;padding:36px;
+  backdrop-filter:blur(18px) saturate(1.2);-webkit-backdrop-filter:blur(18px) saturate(1.2);box-shadow:0 40px 120px -40px rgba(0,0,0,.85)}
+.lp-auth .auth-card h1{color:var(--fg)}
+.lp-auth input::placeholder{color:#5E717D}
+@media (max-width:980px){
+  .lp-auth .auth-grid{grid-template-columns:1fr;padding-top:8px}
+  .lp-auth .auth-pitch{display:none}
+}
+@media (max-width:520px){
+  .lp-auth .auth-card{padding:26px 20px;border-radius:20px}
+}
+@media (prefers-reduced-motion:reduce){.lp-auth .auth-fan .gp{animation:none}}
